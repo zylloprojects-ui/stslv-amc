@@ -167,7 +167,7 @@ describe("a pending sign-up has no access", () => {
   it("cannot be made active while pending, even directly in the database", async () => {
     await expect(
       pool.query("UPDATE users SET is_active = true WHERE lower(email) = 'new.person@example.com'")
-    ).rejects.toMatchObject({ code: "23514", constraint: "users_pending_inactive_ck" });
+    ).rejects.toMatchObject({ code: "23514", constraint: "users_unapproved_inactive_ck" });
   });
 });
 

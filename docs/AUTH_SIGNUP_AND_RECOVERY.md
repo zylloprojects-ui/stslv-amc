@@ -11,12 +11,16 @@ Sign up page  →  account stored PENDING + inactive, no role
               →  administrator opens Users & Access
               →  assigns a role  →  Approve
               →  account APPROVED + active  →  the person can sign in
+
+              or  →  Reject
+              →  account REJECTED + inactive, no role  →  no access
+              →  the same email may sign up again  →  PENDING once more
 ```
 
 - `POST /api/auth/signup` accepts exactly `fullName`, `email` and `password`. Any other field (`role`, `roleIds`, `permissions`, `isActive`, …) makes the request fail with 400: it is refused, not ignored.
-- The account is created with `is_active = false`, `approval_status = 'PENDING'` and no row in `user_roles`. The database itself refuses an account that is both pending and active (`users_pending_inactive_ck`).
+- The account is created with `is_active = false`, `approval_status = 'PENDING'` and no row in `user_roles`. The database itself refuses any account that is active without being approved (`users_unapproved_inactive_ck`).
 - A pending account cannot sign in and cannot request a password reset. Login answers it exactly as it answers a wrong password.
-- The response is the same whether or not the email already has an account, so the page cannot be used to find out who has one. An existing account is never changed; its owner is told by email, and the attempt is written to the activity log.
+- The response is the same whether the email is new, pending, approved or rejected, so the page cannot be used to find out who has an account. An approved or pending account is never changed; its owner is told by email, and the attempt is written to the activity log. A rejected one is reopened (see below).
 - The password is hashed with bcrypt before anything else happens. It is never stored, logged or returned.
 - Users created by an administrator (**Create User**, `npm run admin:create`) are `APPROVED` and active immediately, as before.
 
@@ -26,7 +30,18 @@ A pending account shows a **Pending approval** badge and an **Approve** action (
 
 Approving an account that has no role is allowed, and the dialog says so: the person can sign in but sees no module until a role is assigned.
 
-There is no "reject" action. An unwanted request simply stays pending and inactive. See open questions.
+### Rejection in Users & Access
+
+A pending account also has a **Reject** action (`POST /api/users/:id/reject`, needs `USERS:EDIT`), behind a confirmation dialog that names the person and email.
+
+- Only a `PENDING`, inactive account can be rejected. An approved account, whether active or deactivated and however it was created, gets 409 and is not touched.
+- The account becomes `REJECTED`. It is kept, not deleted, because the activity log refers to it. It stays inactive, any role given while it was pending is removed, and its password reset tokens are revoked.
+- A rejected account cannot sign in, cannot request a password reset, and cannot be activated or given a role by an administrator. It is listed as **Rejected**, with no actions, and is not counted as waiting.
+- Approve and reject lock the user row, so two administrators deciding at the same moment produce one outcome.
+
+### Signing up again after a rejection
+
+The same email may submit a new request. The existing account is put back to `PENDING`: still inactive, no role, with the newly entered name and password, and an administrator decides again. The statement that does this only matches a `REJECTED`, inactive row, so an approved or pending account can never be changed or downgraded by a sign-up.
 
 ## 2. Forgot password and reset
 
@@ -84,12 +99,13 @@ Until a provider is chosen, a reset requested on a deployed system creates a tok
 |---|---|
 | `0040_user_approval_status` | `users.approval_status` (`PENDING` / `APPROVED`, default `APPROVED`) and the pending-implies-inactive check. Existing users become `APPROVED`. |
 | `0041_password_reset_tokens` | New table `password_reset_tokens`. |
+| `0042_user_registration_rejection` | Adds `REJECTED` to `users.approval_status`; the check becomes "only an approved account can be active". Replaces the two CHECK constraints from 0040; no row changes. |
 
-Both only add; nothing is dropped or rewritten.
+No table, column or row is dropped or rewritten.
 
 ## 6. API
 
-All four are public (no token) and return the standard `{ success, data | error }` shape.
+These four are public (no token) and return the standard `{ success, data | error }` shape.
 
 | Route | Body | Result |
 |---|---|---|
@@ -98,15 +114,16 @@ All four are public (no token) and return the standard `{ success, data | error 
 | `POST /api/auth/reset-password/check` | `token` | 200 `{ status }` |
 | `POST /api/auth/reset-password` | `token`, `password` | 200 `null`; 400 `RESET_TOKEN_INVALID` / `RESET_TOKEN_EXPIRED` / `RESET_TOKEN_USED` |
 
-`GET /api/users` now includes `approvalStatus` for each user.
+`GET /api/users` now includes `approvalStatus` (`PENDING`, `APPROVED` or `REJECTED`) for each user. `POST /api/users/:id/reject` (signed in, `USERS:EDIT`) rejects a pending request and returns the user; 409 if it is not pending.
 
 ## 7. Activity log
 
 | Action | When |
 |---|---|
-| `auth.signup_submitted` | A sign-up request was stored. |
+| `auth.signup_submitted` | A sign-up request was stored. After a rejection, the metadata has `previouslyRejected: true`. |
 | `auth.signup_duplicate` | A sign-up used the email of an existing account (nothing changed). |
 | `user.registration_approved` | An administrator approved a pending account. |
+| `user.registration_rejected` | An administrator rejected a pending account. The metadata lists any roles removed. |
 | `auth.password_reset_requested` | A reset link was created. |
 | `auth.password_reset_completed` | A password was changed with a reset link. |
 
@@ -118,7 +135,7 @@ All four are public (no token) and return the standard `{ success, data | error 
 
 1. **Email provider.** Which service sends mail (SMTP relay, or an email API), and from which address?
 2. **Duplicate sign-up wording.** The page deliberately does not say "this email already has an account". If the business prefers that message, it trades away the protection against finding out who has an account.
-3. **Rejecting a request.** Should an administrator be able to reject or remove a pending request, and should the person be told?
+3. **After a rejection.** The person is not told (no email provider). A rejection cannot be undone by an administrator; the person signs up again. Rejected accounts stay listed. Are these the wanted rules?
 4. **Telling a pending user why they cannot sign in.** Login currently answers "Incorrect email or password" for a pending account, the same as for any other failure.
 5. **Notifying administrators** of a new request (today they see it in Users & Access).
 6. **Login rate limiting** and a shared (not per-process) limiter for production.

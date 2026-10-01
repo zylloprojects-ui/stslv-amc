@@ -5,6 +5,7 @@ import { withTransaction } from "../../shared/db";
 import { isUniqueViolation } from "../../shared/errors";
 import { sendInBackground } from "../../shared/mailer";
 import { hashPassword } from "./password";
+import { revokeResetTokens } from "./password-reset.service";
 
 export interface RegistrationInput {
   email: string;
@@ -21,8 +22,10 @@ export interface RegistrationInput {
  * none of them is read from the request.
  *
  * Resolves the same way whether or not the email already belongs to an account,
- * so the public response does not reveal who has one. An existing account is
- * left exactly as it was.
+ * so the public response does not reveal who has one. An approved or pending
+ * account is left exactly as it was. An account whose earlier request was
+ * rejected is put back to PENDING, still inactive and with no role, so an
+ * administrator decides again.
  */
 export async function registerAccount(input: RegistrationInput): Promise<void> {
   // Hashed before the email is looked at, so both outcomes take the same time.
@@ -52,8 +55,47 @@ export async function registerAccount(input: RegistrationInput): Promise<void> {
       throw error;
     }
 
-    await recordDuplicateRegistration(input.email);
+    if (!(await reopenRejectedRegistration(input, passwordHash))) {
+      await recordDuplicateRegistration(input.email);
+    }
   }
+}
+
+/**
+ * A new request from an email whose earlier request was rejected. Returns false,
+ * changing nothing, when the email belongs to any other kind of account.
+ */
+function reopenRejectedRegistration(input: RegistrationInput, passwordHash: string): Promise<boolean> {
+  return withTransaction(async (client) => {
+    // The condition is part of the statement, so an approved, active or pending
+    // account can never be matched, and the result is always PENDING + inactive.
+    const reopened = await client.query<{ id: string }>(
+      `UPDATE users
+       SET full_name = $2, password_hash = $3, password_changed_at = now(), approval_status = 'PENDING', is_active = false
+       WHERE lower(email) = $1 AND approval_status = 'REJECTED' AND NOT is_active
+       RETURNING id`,
+      [input.email, input.fullName, passwordHash]
+    );
+    const userId = reopened.rows[0]?.id;
+
+    if (!userId) {
+      return false;
+    }
+
+    await client.query("DELETE FROM user_roles WHERE user_id = $1", [userId]);
+    await revokeResetTokens(client, userId);
+    await logActivity(client, {
+      userId,
+      action: "auth.signup_submitted",
+      module: "AUTH",
+      entityType: "users",
+      entityId: userId,
+      description: `"${input.fullName}" (${input.email}) requested an account again after an earlier request was rejected. It is waiting for an administrator's approval.`,
+      metadata: { source: "sign-up page", previouslyRejected: true },
+    });
+
+    return true;
+  });
 }
 
 async function recordDuplicateRegistration(email: string): Promise<void> {
