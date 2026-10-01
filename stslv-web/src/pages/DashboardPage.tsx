@@ -7,6 +7,9 @@ import type { Module } from '../lib/types'
 import { MetricCard, type MetricState } from './dashboard/MetricCard'
 import { METRIC_GROUPS, type DashboardSummary, type MetricDefinition } from './dashboard/metrics'
 
+// Accent colours taken from the STSLEV logo, one per section heading.
+const SECTION_ACCENTS = ['#1B8AD3', '#5BAF48', '#FF8212', '#D1428C', '#00A6C8', '#F5C622']
+
 export function DashboardPage() {
   const auth = useAuth()
   const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
@@ -73,9 +76,10 @@ export function DashboardPage() {
         </Card>
       )}
 
-      {groups.map((group) => (
+      {groups.map((group, index) => (
         <section key={group.id} aria-labelledby={`dashboard-${group.id}`} className="mb-8">
-          <h2 id={`dashboard-${group.id}`} className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">
+          <h2 id={`dashboard-${group.id}`} className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#0b3b66]">
+            <span className="h-4 w-1 rounded-full" style={{ backgroundColor: SECTION_ACCENTS[index % SECTION_ACCENTS.length] }} aria-hidden="true" />
             {group.title}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

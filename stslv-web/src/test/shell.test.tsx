@@ -37,7 +37,9 @@ describe('application shell', () => {
     await screen.findByRole('heading', { name: 'Dashboard' })
     expect(document.title).toBe('Dashboard · STSLEV AMC')
 
-    await userEvent.click(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Invoice Tracking' }))
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
+    await userEvent.click(within(nav).getByRole('link', { name: 'Invoice Tracking' }))
 
     await screen.findByRole('heading', { name: 'Invoice Tracking' })
     expect(document.title).toBe('Invoice Tracking · STSLEV AMC')
@@ -66,6 +68,7 @@ describe('application shell', () => {
     renderApp('/dashboard')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
+    await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
     await userEvent.click(within(nav).getByRole('link', { name: 'Clients' }))
 
     await screen.findByRole('heading', { name: 'Clients' })
@@ -132,12 +135,13 @@ describe('mobile menu', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Open menu' }))
     const menu = await screen.findByRole('dialog', { name: 'Menu' })
     const close = within(menu).getByRole('button', { name: 'Close menu' })
-    const links = within(menu).getAllByRole('link')
+    // Sign Out closes the sidebar, so it is the last control in the menu.
+    const last = within(menu).getByRole('button', { name: 'Sign Out' })
 
     // Backwards from the first control wraps to the last; forwards from the last wraps to the first.
     close.focus()
     await userEvent.tab({ shift: true })
-    expect(links[links.length - 1]).toHaveFocus()
+    expect(last).toHaveFocus()
 
     await userEvent.tab()
     expect(close).toHaveFocus()
@@ -150,7 +154,17 @@ describe('mobile menu', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Open menu' }))
     const menu = await screen.findByRole('dialog', { name: 'Menu' })
 
-    expect(within(menu).getAllByRole('link').map((link) => link.textContent)).toEqual(['Dashboard', 'Clients', 'Projects', 'Expenses'])
+    const links = () =>
+      within(menu)
+        .getAllByRole('link')
+        .map((link) => link.textContent)
+
+    // One group is open at a time; the role has no Administration group and no Settings link.
+    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Operations', 'Finance'])
+    await userEvent.click(within(menu).getByRole('button', { name: 'Finance' }))
+    expect(links()).toEqual(['Dashboard', 'Expenses'])
+    await userEvent.click(within(menu).getByRole('button', { name: 'Operations' }))
+    expect(links()).toEqual(['Dashboard', 'Clients', 'Projects'])
 
     await userEvent.click(within(menu).getByRole('link', { name: 'Clients' }))
 
@@ -218,6 +232,32 @@ describe('shared dialog', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(opener).toHaveFocus()
     expect(document.body.style.overflow).toBe('')
+  })
+
+  it('does not close when the backdrop is clicked, so a half-filled form is not lost', async () => {
+    render(<DialogHarness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open form' }))
+    const dialog = screen.getByRole('dialog', { name: 'Form' })
+    await userEvent.type(within(dialog).getByRole('textbox'), 'Half typed')
+
+    // The backdrop is the dialog's sibling, covering the page behind it.
+    await userEvent.click(dialog.previousElementSibling as HTMLElement)
+
+    expect(screen.getByRole('dialog', { name: 'Form' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('textbox')).toHaveValue('Half typed')
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+
+  it('carries the product name, never an outdated one', async () => {
+    render(<DialogHarness />)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Open form' }))
+
+    expect(screen.getByRole('dialog', { name: 'Form' })).toHaveTextContent('STSLEV AMC · Smart Technical Service LLC')
+    expect(document.body).not.toHaveTextContent('STSLEV ERP')
   })
 
   it('lets Escape close only the dialog on top', async () => {

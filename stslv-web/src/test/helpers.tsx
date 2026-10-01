@@ -95,6 +95,8 @@ export function makeClient(overrides: Partial<Client> = {}): Client {
 /** Marks the browser as holding a session token. */
 export function signIn() {
   localStorage.setItem('stslv-amc.token', 'test-token')
+  // The cookie notice is covered by its own test; keep it out of the way of the other flows.
+  localStorage.setItem('stslev.cookie-consent', '1')
 }
 
 /** Renders the whole application at the given address. */

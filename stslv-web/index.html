@@ -5,6 +5,14 @@
     <link rel="icon" type="image/png" href="/stslv-logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>STSLEV AMC</title>
+    <script>
+      // Apply the saved theme before the page paints, so there is no flash.
+      try {
+        if (localStorage.getItem('stslev.theme') === 'dark') document.documentElement.classList.add('dark')
+        var palette = localStorage.getItem('stslev.palette')
+        if (palette) document.documentElement.dataset.palette = palette
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <noscript>STSLEV AMC needs JavaScript to run. Enable JavaScript in your browser and reload this page.</noscript>

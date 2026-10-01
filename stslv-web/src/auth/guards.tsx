@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { usePageTitle } from '../components/hooks'
-import { Button, FullPageMessage, Spinner } from '../components/ui'
+import { BrandLoader, Button, FullPageMessage } from '../components/ui'
 import type { Action, Module } from '../lib/types'
 import { useAuth } from './context'
 
@@ -13,7 +13,7 @@ export function ProtectedRoute() {
   if (auth.status === 'loading') {
     return (
       <FullPageMessage>
-        <Spinner label="Loading STSLEV AMC" />
+        <BrandLoader label="Loading STSLEV AMC" />
       </FullPageMessage>
     )
   }
