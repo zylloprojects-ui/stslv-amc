@@ -1,4 +1,4 @@
--- 0031_password_reset_tokens
+-- 0041_password_reset_tokens
 -- One row per "Forgot password" request for an existing, active user.
 -- The token itself is sent to the user and is never stored: only its SHA-256
 -- hash is kept, so reading this table does not let anyone reset a password.

@@ -1,4 +1,4 @@
--- 0030_user_approval_status
+-- 0040_user_approval_status
 -- Lets a person request an account from the Sign up page without being able to use it.
 -- A self-registered user is stored PENDING and inactive, with no role. An
 -- administrator assigns a role and activates the account in Users & Access,

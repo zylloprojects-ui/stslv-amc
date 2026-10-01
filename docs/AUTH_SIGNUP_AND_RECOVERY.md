@@ -82,8 +82,8 @@ Until a provider is chosen, a reset requested on a deployed system creates a tok
 
 | Migration | Change |
 |---|---|
-| `0030_user_approval_status` | `users.approval_status` (`PENDING` / `APPROVED`, default `APPROVED`) and the pending-implies-inactive check. Existing users become `APPROVED`. |
-| `0031_password_reset_tokens` | New table `password_reset_tokens`. |
+| `0040_user_approval_status` | `users.approval_status` (`PENDING` / `APPROVED`, default `APPROVED`) and the pending-implies-inactive check. Existing users become `APPROVED`. |
+| `0041_password_reset_tokens` | New table `password_reset_tokens`. |
 
 Both only add; nothing is dropped or rewritten.
 
