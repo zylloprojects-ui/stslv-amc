@@ -1,72 +1,27 @@
 import { useState } from 'react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
-import { useAuth } from '../auth/context'
-import { Button } from '../components/ui'
-import { cx } from '../lib/format'
-import { NAVIGATION } from './navigation'
-
-function Sidebar({ onNavigate }: { onNavigate: () => void }) {
-  const auth = useAuth()
-
-  // Hiding a link is a convenience only; the API enforces every permission.
-  const sections = NAVIGATION.map((section) => ({
-    ...section,
-    items: section.items.filter((item) => auth.can(item.module, 'VIEW')),
-  })).filter((section) => section.items.length > 0)
-
-  return (
-    <nav aria-label="Main" className="flex h-full flex-col bg-slate-900 text-slate-300">
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-slate-800 px-5">
-        <span className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-600 text-sm font-bold text-white" aria-hidden="true">
-          S
-        </span>
-        <span className="text-base font-semibold tracking-wide text-white">STSLEV AMC</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-3 py-4">
-        {sections.length === 0 && <p className="px-3 text-sm text-slate-400">No modules are available for your role.</p>}
-
-        {sections.map((section) => (
-          <div key={section.title ?? 'top'} className="mb-5">
-            {section.title && (
-              <h2 className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">{section.title}</h2>
-            )}
-            <ul className="space-y-0.5">
-              {section.items.map((item) => (
-                <li key={item.path}>
-                  <NavLink
-                    to={item.path}
-                    onClick={onNavigate}
-                    className={({ isActive }) =>
-                      cx(
-                        'block rounded-md px-3 py-2 text-sm font-medium',
-                        isActive ? 'bg-blue-700 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white',
-                      )
-                    }
-                  >
-                    {item.label}
-                  </NavLink>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </div>
-    </nav>
-  )
-}
+import { Outlet } from 'react-router-dom'
+import { usePalette, useSidebarCollapsed, useTheme } from '../lib/preferences'
+import { CookieNotice } from './CookieNotice'
+import { FeedbackButton } from './FeedbackWidget'
+import { HeaderSearch } from './HeaderSearch'
+import { PaletteMenu } from './PaletteMenu'
+import { ScrollToTop } from './ScrollToTop'
+import { Sidebar } from './Sidebar'
+import { SplashLoader } from './SplashLoader'
+import { UserMenu } from './UserMenu'
 
 export function AppLayout() {
-  const auth = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
-
-  const roleNames = auth.user?.roles.map((role) => role.name).join(', ') || 'No role assigned'
+  const [collapsed, toggleCollapsed, setCollapsed] = useSidebarCollapsed()
+  const [theme, toggleTheme] = useTheme()
+  const [palette, choosePalette] = usePalette()
 
   return (
-    <div className="min-h-screen lg:pl-64">
+    <div className={`min-h-screen transition-[padding] duration-300 ${collapsed ? 'lg:pl-[4.5rem]' : 'lg:pl-64'}`}>
       {/* Desktop sidebar */}
-      <div className="fixed inset-y-0 left-0 hidden w-64 lg:block">
-        <Sidebar onNavigate={() => {}} />
+      <div className={`fixed inset-y-0 left-0 z-40 hidden transition-[width] duration-300 lg:block ${collapsed ? 'w-[4.5rem]' : 'w-64'}`}>
+        <Sidebar onNavigate={() => {}} collapsed={collapsed} onExpand={() => setCollapsed(false)} onToggleCollapse={toggleCollapsed} theme={theme} onToggleTheme={toggleTheme} />
+
       </div>
 
       {/* Mobile sidebar */}
@@ -74,13 +29,13 @@ export function AppLayout() {
         <div className="fixed inset-0 z-40 lg:hidden">
           <button type="button" aria-label="Close menu" className="absolute inset-0 bg-slate-900/60" onClick={() => setMenuOpen(false)} />
           <div className="relative h-full w-64 shadow-xl">
-            <Sidebar onNavigate={() => setMenuOpen(false)} />
+            <Sidebar onNavigate={() => setMenuOpen(false)} theme={theme} onToggleTheme={toggleTheme} />
           </div>
         </div>
       )}
 
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 sm:px-6">
-        <div className="flex shrink-0 items-center gap-3">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 bg-white/90 px-4 shadow-sm backdrop-blur sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             type="button"
             className="rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
@@ -92,23 +47,46 @@ export function AppLayout() {
               <path d="M3 5h14M3 10h14M3 15h14" strokeLinecap="round" />
             </svg>
           </button>
-          <span className="whitespace-nowrap text-base font-semibold text-slate-900 lg:hidden">STSLEV AMC</span>
+          <span className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-[#0b3b66] md:hidden">
+            <img src="/stslv-logo.png" alt="" className="h-7 w-7 object-contain" />
+            STSLEV AMC
+          </span>
+          <HeaderSearch />
         </div>
 
-        <div className="flex min-w-0 items-center gap-3">
-          <Link to="/account" className="min-w-0 rounded-md px-2 py-1 text-right hover:bg-slate-100" title="My account">
-            <span className="block truncate text-sm font-medium leading-tight text-slate-900">{auth.user?.fullName}</span>
-            <span className="block truncate text-xs leading-tight text-slate-500">{roleNames}</span>
-          </Link>
-          <Button variant="secondary" size="sm" className="shrink-0 whitespace-nowrap" onClick={auth.logout}>
-            Sign out
-          </Button>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <FeedbackButton />
+          <PaletteMenu palette={palette} onChoose={choosePalette} dark={theme === 'dark'} />
+          <button
+            type="button"
+            onClick={toggleTheme}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+            className="shrink-0 rounded-full p-2 text-slate-600 transition-colors hover:bg-sky-50"
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+              {theme === 'dark' ? (
+                <>
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6" strokeLinecap="round" />
+                </>
+              ) : (
+                <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" strokeLinejoin="round" />
+              )}
+            </svg>
+          </button>
+          <UserMenu />
         </div>
+        <span className="login-gradient pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-r from-[#F5C622] via-[#D1428C] via-35% via-[#1B8AD3] to-[#5BAF48]" aria-hidden="true" />
       </header>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <Outlet />
       </main>
+
+      <ScrollToTop />
+      <CookieNotice />
+      <SplashLoader />
     </div>
   )
 }

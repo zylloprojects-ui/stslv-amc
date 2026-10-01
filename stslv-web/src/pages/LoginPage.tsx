@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form'
 import { Navigate, useLocation } from 'react-router-dom'
 import { z } from 'zod'
 import { useAuth } from '../auth/context'
-import { Alert, Spinner } from '../components/ui'
+import { Alert, BrandLoader } from '../components/ui'
 import { errorMessage } from '../lib/api'
 
 const loginSchema = z.object({
@@ -371,7 +371,7 @@ export function LoginPage() {
                 </button>
               </div>
             ) : auth.status === 'loading' ? (
-              <Spinner label="Checking your session" />
+              <BrandLoader label="Checking your session" size="sm" />
             ) : (
               <form onSubmit={onSubmit} noValidate className="relative space-y-3.5">
                 {failure && (

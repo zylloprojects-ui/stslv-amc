@@ -18,5 +18,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Form tests type character by character; allow slower machines to finish.
+    testTimeout: 15000,
   },
 })

@@ -120,6 +120,7 @@ describe('protected routes', () => {
     session(ADMIN)
     renderApp('/dashboard')
 
+    await userEvent.click(await screen.findByRole('button', { name: /Asha Admin/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
 
     expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
@@ -154,19 +155,43 @@ describe('permission-based navigation', () => {
     'Settings',
   ]
 
+  // The sidebar is an accordion: one group is open at a time, so each group is opened in turn.
   it('shows every section to an Admin', async () => {
     session(ADMIN)
     renderApp('/dashboard')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    const links = within(nav)
-      .getAllByRole('link')
-      .map((link) => link.textContent)
+    const groups = within(nav)
+      .getAllByRole('heading')
+      .map((heading) => heading.textContent)
+    expect(groups).toEqual(['Operations', 'Finance', 'Reporting', 'Administration'])
 
-    expect(links).toEqual(NAV_LABELS)
-    for (const group of ['Operations', 'Finance', 'Reporting', 'Administration']) {
-      expect(within(nav).getByRole('heading', { name: group })).toBeInTheDocument()
+    const seen: string[] = []
+    for (const heading of within(nav).getAllByRole('heading')) {
+      await userEvent.click(within(heading).getByRole('button'))
+      within(nav)
+        .getAllByRole('link')
+        .forEach((link) => seen.push(link.textContent ?? ''))
     }
+
+    // Settings sits in the footer, after the groups.
+    expect([...new Set(seen)]).toEqual(expect.arrayContaining(NAV_LABELS.filter((label) => label !== 'Settings')))
+    expect(within(nav).getByRole('link', { name: 'Settings' })).toBeInTheDocument()
+  })
+
+  it('opens only one group at a time', async () => {
+    session(ADMIN)
+    renderApp('/dashboard')
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
+
+    await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
+    expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
+
+    await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
+    expect(within(nav).getByRole('link', { name: 'Expenses' })).toBeInTheDocument()
+    expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
   })
 
   it('shows a restricted role only the modules it may view', async () => {
@@ -174,11 +199,20 @@ describe('permission-based navigation', () => {
     renderApp('/dashboard')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    const links = within(nav)
-      .getAllByRole('link')
-      .map((link) => link.textContent)
+    const groups = within(nav)
+      .getAllByRole('heading')
+      .map((heading) => heading.textContent)
+    expect(groups).toEqual(['Operations', 'Finance'])
 
-    expect(links).toEqual(['Dashboard', 'Clients', 'Projects', 'Expenses'])
+    const seen: string[] = []
+    for (const heading of within(nav).getAllByRole('heading')) {
+      await userEvent.click(within(heading).getByRole('button'))
+      within(nav)
+        .getAllByRole('link')
+        .forEach((link) => seen.push(link.textContent ?? ''))
+    }
+
+    expect([...new Set(seen)].sort()).toEqual(['Clients', 'Dashboard', 'Expenses', 'Projects'])
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })
 
@@ -215,5 +249,102 @@ describe('dashboard', () => {
       expect(within(card).getByText('Not yet available')).toBeInTheDocument()
       expect(card.textContent).not.toMatch(/\d/)
     }
+  })
+})
+
+describe('cookie notice', () => {
+  function sessionWithoutConsent() {
+    localStorage.setItem('stslv-amc.token', 'test-token')
+    mockApi((request) => {
+      if (request.path === '/auth/me') return ok({ user: ADMIN })
+      if (request.path === '/dashboard/summary') return summary
+      return undefined
+    })
+  }
+
+  it('appears after sign-in and is remembered once accepted', async () => {
+    sessionWithoutConsent()
+    renderApp('/dashboard')
+
+    const dialog = await screen.findByRole('dialog', { name: 'Cookie Policy' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Accept All' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Cookie notice' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('stslev.cookie-consent')).toBe('all')
+  })
+
+  it('minimises to a bar that can be declined, and returns on the next visit if left', async () => {
+    sessionWithoutConsent()
+    renderApp('/dashboard')
+
+    const dialog = await screen.findByRole('dialog', { name: 'Cookie Policy' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Minimise' }))
+
+    const bar = await screen.findByRole('region', { name: 'Cookie notice' })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(within(bar).getByText('We use cookies')).toBeInTheDocument()
+    expect(localStorage.getItem('stslev.cookie-consent')).toBeNull()
+
+    await userEvent.click(within(bar).getByRole('button', { name: 'Decline' }))
+    expect(screen.queryByRole('region', { name: 'Cookie notice' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('stslev.cookie-consent')).toBe('essential')
+  })
+
+  it('reopens the full policy from the bar Settings button', async () => {
+    sessionWithoutConsent()
+    renderApp('/dashboard')
+
+    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Cookie Policy' })).getByRole('button', { name: 'Minimise' }))
+    await userEvent.click(within(await screen.findByRole('region', { name: 'Cookie notice' })).getByRole('button', { name: 'Settings' }))
+
+    expect(await screen.findByRole('dialog', { name: 'Cookie Policy' })).toBeInTheDocument()
+  })
+
+  it('is not shown on the login page', async () => {
+    mockApi(() => undefined)
+    renderApp('/login')
+
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('colour theme', () => {
+  it('lets the user pick a palette and remembers it', async () => {
+    session(ADMIN)
+    renderApp('/dashboard')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Colour theme' }))
+    await userEvent.click(screen.getByRole('button', { name: /Sky Light/ }))
+
+    expect(document.documentElement.dataset.palette).toBe('sky')
+    expect(localStorage.getItem('stslev.palette')).toBe('sky')
+  })
+})
+
+describe('page search', () => {
+  it('opens the chosen page and keeps its name in the search box', async () => {
+    session(ADMIN)
+    mockApi((request) => {
+      if (request.path === '/auth/me') return ok({ user: ADMIN })
+      if (request.path === '/dashboard/summary') return summary
+      if (request.path === '/clients') return ok({ items: [], total: 0 })
+      return undefined
+    })
+    renderApp('/dashboard')
+
+    const box = await screen.findByRole('combobox', { name: 'Search pages' })
+    await userEvent.type(box, 'clien')
+    await userEvent.click(within(await screen.findByRole('option', { name: /Clients/ })).getByRole('button'))
+
+    expect(await screen.findByRole('heading', { name: 'Clients' })).toBeInTheDocument()
+    expect(box).toHaveValue('Clients')
+
+    // Focusing again lists the pages with the current one marked.
+    await userEvent.click(box)
+    const options = await screen.findAllByRole('option')
+    expect(options.length).toBeGreaterThan(1)
+    expect(within(screen.getByRole('option', { name: /Clients/ })).getByLabelText('Selected')).toBeInTheDocument()
   })
 })

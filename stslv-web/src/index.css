@@ -66,7 +66,26 @@
   50% { background-position: 100% 50%; }
 }
 
+@keyframes login-pop {
+  0% { opacity: 0; transform: translateY(24px) scale(0.92); }
+  60% { opacity: 1; transform: translateY(-4px) scale(1.015); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes login-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes login-orbit {
+  to { transform: rotate(360deg); }
+}
+
 @layer utilities {
+  .login-orbit { animation: login-orbit 9s linear infinite; }
+  .login-orbit-counter { animation: login-orbit 9s linear infinite reverse; }
+  .login-pop { animation: login-pop 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15) both; }
+  .login-fade { animation: login-fade 0.25s ease-out both; }
   .login-float { animation: login-float 16s ease-in-out infinite; }
   .login-spin-slow { animation: login-spin 40s linear infinite; }
   .login-spin-reverse { animation: login-spin 60s linear infinite reverse; }
@@ -82,6 +101,260 @@
 
 @media (prefers-reduced-motion: reduce) {
   .login-float, .login-spin-slow, .login-spin-reverse, .login-pulse-ring, .login-grid,
-  .login-sheen, .login-flow, .login-gradient { animation: none; }
-  .login-rise, .login-slide-in, .login-shake { animation-duration: 0.01ms; }
+  .login-sheen, .login-flow, .login-gradient, .login-orbit, .login-orbit-counter { animation: none; }
+  .login-rise, .login-slide-in, .login-shake, .login-pop, .login-fade { animation-duration: 0.01ms; }
 }
+
+/* Slim scrollbar for the sidebar menu. */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+/* Dark theme. The pages use fixed Tailwind colour classes, so the dark theme
+   re-maps those classes here instead of repeating dark: variants everywhere. */
+.dark {
+  color-scheme: dark;
+}
+.dark body {
+  background: #0b1624;
+  color: #e6eef8;
+}
+.dark .bg-white,
+.dark .bg-white\/95,
+.dark .bg-white\/90,
+.dark .bg-white\/80,
+.dark .bg-white\/70 {
+  background-color: #112238;
+}
+.dark .bg-slate-50,
+.dark .bg-slate-50\/70,
+.dark .bg-slate-100,
+.dark .bg-slate-100\/90 {
+  background-color: #172c46;
+}
+.dark .from-white,
+.dark .to-emerald-50,
+.dark .from-slate-100,
+.dark .via-sky-50,
+.dark .to-slate-200 {
+  --tw-gradient-from: #0b1624;
+  --tw-gradient-via: #0e1c30;
+  --tw-gradient-to: #0b1624;
+}
+.dark .bg-blue-50,
+.dark .bg-green-50,
+.dark .bg-sky-100 {
+  background-color: #14304f;
+}
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700,
+.dark .text-\[\#0b3b66\] {
+  color: #e6eef8;
+}
+.dark .text-slate-600,
+.dark .text-slate-500 {
+  color: #9db2cc;
+}
+.dark .text-slate-400,
+.dark .text-slate-300 {
+  color: #6f89a8;
+}
+.dark .text-blue-700,
+.dark .text-blue-800,
+.dark .text-blue-900,
+.dark .text-\[\#1479BD\] {
+  color: #6cc0f5;
+}
+.dark .text-green-800 {
+  color: #8fdc9a;
+}
+.dark .text-red-700,
+.dark .text-red-800 {
+  color: #ff9a9a;
+}
+.dark .text-amber-800 {
+  color: #f6cf76;
+}
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-sky-200,
+.dark .ring-slate-200,
+.dark .ring-sky-100,
+.dark .ring-sky-100\/60 {
+  border-color: #25405e;
+  --tw-ring-color: #25405e;
+}
+.dark .divide-slate-100 > :not(:last-child),
+.dark .divide-slate-200 > :not(:last-child) {
+  border-color: #1f3552;
+}
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-100:hover,
+.dark .hover\:bg-sky-50:hover,
+.dark .hover\:bg-blue-50:hover,
+.dark .hover\:bg-white:hover {
+  background-color: #1b3354;
+}
+.dark .hover\:text-slate-900:hover,
+.dark .hover\:text-slate-800:hover,
+.dark .hover\:text-slate-700:hover {
+  color: #ffffff;
+}
+.dark input,
+.dark select,
+.dark textarea {
+  color: #e6eef8;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #6f89a8;
+}
+.dark .focus\:bg-white:focus {
+  background-color: #14304f;
+}
+.dark .bg-red-50,
+.dark .hover\:bg-red-50:hover {
+  background-color: #3a1a22;
+}
+.dark .border-red-200 {
+  border-color: #6b2a35;
+}
+.dark .border-green-200 {
+  border-color: #245a38;
+}
+
+/* ---------------------------------------------------------------------------
+   Colour palettes for the sidebar and page banners.
+   The palette is chosen from the header and stored on <html data-palette="...">.
+   Dark mode always uses the dark values, whatever palette is selected.
+--------------------------------------------------------------------------- */
+:root,
+:root[data-palette='ocean'] {
+  --sb-bg: linear-gradient(to bottom, #06182c, #0a2e52, #07203a);
+  --sb-fg: rgba(224, 242, 254, 0.88);
+  --sb-strong: #ffffff;
+  --sb-muted: rgba(125, 211, 252, 0.75);
+  --sb-hover: rgba(255, 255, 255, 0.1);
+  --sb-line: rgba(255, 255, 255, 0.14);
+  --bn-bg: linear-gradient(to right, #07203a, #0a2e52, #0b3a63);
+  --bn-strong: #ffffff;
+  --bn-sub: rgba(224, 242, 254, 0.85);
+  --bn-eyebrow: rgba(125, 211, 252, 0.85);
+  --bn-chip-border: rgba(255, 255, 255, 0.3);
+  --bn-chip-hover-bg: #ffffff;
+  --bn-chip-hover-fg: #0b3b66;
+  --bn-panel-bg: rgba(255, 255, 255, 0.06);
+  --bn-panel-border: rgba(255, 255, 255, 0.12);
+  --swatch: linear-gradient(135deg, #06182c, #0b4a7a);
+}
+:root[data-palette='sky'] {
+  --sb-bg: linear-gradient(to bottom, #ffffff, #eef6fd, #e3f0fb);
+  --sb-fg: #334155;
+  --sb-strong: #0b3b66;
+  --sb-muted: #64748b;
+  --sb-hover: rgba(27, 138, 211, 0.1);
+  --sb-line: #d7e5f2;
+  --bn-bg: linear-gradient(to right, #e6f2fc, #f3f9ff, #e8f6f3);
+  --bn-strong: #0b3b66;
+  --bn-sub: #475569;
+  --bn-eyebrow: #1479bd;
+  --bn-chip-border: #b7d1e6;
+  --bn-chip-hover-bg: #1479bd;
+  --bn-chip-hover-fg: #ffffff;
+  --bn-panel-bg: rgba(255, 255, 255, 0.75);
+  --bn-panel-border: #d3e4f1;
+  --swatch: linear-gradient(135deg, #ffffff, #cfe6f8);
+}
+:root[data-palette='mint'] {
+  --sb-bg: linear-gradient(to bottom, #ffffff, #eefaf3, #dff3e8);
+  --sb-fg: #334155;
+  --sb-strong: #0f4a3a;
+  --sb-muted: #5b7a6c;
+  --sb-hover: rgba(91, 175, 72, 0.14);
+  --sb-line: #d3e9db;
+  --bn-bg: linear-gradient(to right, #e4f6ec, #f3fbf7, #e6f3f8);
+  --bn-strong: #0f4a3a;
+  --bn-sub: #44594f;
+  --bn-eyebrow: #2f8a3c;
+  --bn-chip-border: #b4dcc2;
+  --bn-chip-hover-bg: #2f8a3c;
+  --bn-chip-hover-fg: #ffffff;
+  --bn-panel-bg: rgba(255, 255, 255, 0.75);
+  --bn-panel-border: #cfe8d9;
+  --swatch: linear-gradient(135deg, #ffffff, #bfe7cf);
+}
+:root[data-palette='sand'] {
+  --sb-bg: linear-gradient(to bottom, #fffdf8, #fdf4e3, #fbead0);
+  --sb-fg: #4a3f31;
+  --sb-strong: #6b3a06;
+  --sb-muted: #8a7258;
+  --sb-hover: rgba(255, 130, 18, 0.13);
+  --sb-line: #f0e0c4;
+  --bn-bg: linear-gradient(to right, #fdeccd, #fff8ec, #fdeaf1);
+  --bn-strong: #6b3a06;
+  --bn-sub: #6b5a45;
+  --bn-eyebrow: #c2650a;
+  --bn-chip-border: #ecd3a8;
+  --bn-chip-hover-bg: #c2650a;
+  --bn-chip-hover-fg: #ffffff;
+  --bn-panel-bg: rgba(255, 255, 255, 0.75);
+  --bn-panel-border: #f0dcb8;
+  --swatch: linear-gradient(135deg, #fffdf8, #f9d9a3);
+}
+:root[data-palette='lavender'] {
+  --sb-bg: linear-gradient(to bottom, #ffffff, #f3effa, #e8e1f5);
+  --sb-fg: #3f3a52;
+  --sb-strong: #3b2d6b;
+  --sb-muted: #766d96;
+  --sb-hover: rgba(126, 111, 172, 0.15);
+  --sb-line: #e0d8f0;
+  --bn-bg: linear-gradient(to right, #ece5f8, #f8f5fd, #e7f0fb);
+  --bn-strong: #3b2d6b;
+  --bn-sub: #54496f;
+  --bn-eyebrow: #6a58a8;
+  --bn-chip-border: #cfc4e8;
+  --bn-chip-hover-bg: #6a58a8;
+  --bn-chip-hover-fg: #ffffff;
+  --bn-panel-bg: rgba(255, 255, 255, 0.75);
+  --bn-panel-border: #dcd2ee;
+  --swatch: linear-gradient(135deg, #ffffff, #d6cbef);
+}
+/* Dark mode wins over every palette. */
+:root.dark,
+:root.dark[data-palette] {
+  --sb-bg: linear-gradient(to bottom, #07131f, #0b2440, #07182b);
+  --sb-fg: rgba(224, 236, 250, 0.9);
+  --sb-strong: #ffffff;
+  --sb-muted: rgba(125, 211, 252, 0.75);
+  --sb-hover: rgba(255, 255, 255, 0.1);
+  --sb-line: rgba(255, 255, 255, 0.14);
+  --bn-bg: linear-gradient(to right, #0a1b2e, #0c2a47, #10375c);
+  --bn-strong: #ffffff;
+  --bn-sub: rgba(224, 236, 250, 0.85);
+  --bn-eyebrow: rgba(125, 211, 252, 0.85);
+  --bn-chip-border: rgba(255, 255, 255, 0.3);
+  --bn-chip-hover-bg: #ffffff;
+  --bn-chip-hover-fg: #0b3b66;
+  --bn-panel-bg: rgba(255, 255, 255, 0.06);
+  --bn-panel-border: rgba(255, 255, 255, 0.12);
+}
+
+.app-sidebar { background: var(--sb-bg); color: var(--sb-fg); }
+.sb-strong { color: var(--sb-strong); }
+.sb-muted { color: var(--sb-muted); }
+.sb-line-b { border-bottom: 1px solid var(--sb-line); }
+.sb-line-t { border-top: 1px solid var(--sb-line); }
+.sb-line-l { border-left: 1px solid var(--sb-line); }
+.sb-idle { color: var(--sb-fg); }
+.sb-idle:hover { background: var(--sb-hover); color: var(--sb-strong); }
+
+.app-banner { background: var(--bn-bg); }
+.bn-strong { color: var(--bn-strong); }
+.bn-sub { color: var(--bn-sub); }
+.bn-eyebrow { color: var(--bn-eyebrow); }
+.bn-chip { border: 1px solid var(--bn-chip-border); color: var(--bn-strong); }
+.bn-chip:hover { background: var(--bn-chip-hover-bg); color: var(--bn-chip-hover-fg); border-color: var(--bn-chip-hover-bg); }
+.bn-panel { background: var(--bn-panel-bg); border: 1px solid var(--bn-panel-border); }
+.sidebar-scroll { scrollbar-color: var(--sb-line) transparent; }
