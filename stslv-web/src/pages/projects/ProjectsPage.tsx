@@ -6,7 +6,7 @@ import { FILTER_INPUT, FILTER_LABEL, InvoiceStateBadge, LoadError, Money, Pager,
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api } from '../../lib/api'
-import { formatDate } from '../../lib/format'
+import { formatJobDate } from '../../lib/format'
 import { PROJECT_STATUSES, PROJECT_STATUS_LABELS, type InvoiceState, type Project, type ProjectStatus } from '../../lib/projectTypes'
 import type { Paged } from '../../lib/types'
 import { ProjectFormModal } from './ProjectFormModal'
@@ -199,10 +199,10 @@ export function ProjectsPage() {
                       </td>
                       <td className={TABLE.td}>{project.clientName}</td>
                       <td className={`${TABLE.td} min-w-56`}>{project.description}</td>
-                      <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(project.jobDate)}</td>
+                      <td className={`${TABLE.td} whitespace-nowrap`}>{formatJobDate(project)}</td>
                       <td className={TABLE.td}>
                         <div className="flex flex-col items-start gap-1">
-                          <ProjectStatusBadge status={project.status} />
+                          <ProjectStatusBadge status={project.status} legacyStatus={project.legacyStatus} />
                           <InvoiceStateBadge state={project.invoiceState} />
                         </div>
                       </td>
@@ -234,7 +234,7 @@ export function ProjectsPage() {
                           >
                             View
                           </Link>
-                          {canEdit && project.status !== 'CANCELLED' && (
+                          {canEdit && project.status !== 'CANCELLED' && project.status !== 'HISTORICAL' && (
                             <Button
                               variant="ghost"
                               size="sm"

@@ -21,7 +21,12 @@ export const CONTRACT_STATUS_LABELS: Record<ContractStatus, string> = {
   CANCELLED: 'Cancelled',
 }
 
-export const VISIT_STATUSES = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'POSTPONED', 'CANCELLED'] as const
+/** The statuses a user can give a visit. */
+export const OPERATIONAL_VISIT_STATUSES = ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'POSTPONED', 'CANCELLED'] as const
+
+// HISTORICAL is a period row imported from an earlier schedule: whether and
+// when the visit took place is not recorded. The application only displays it.
+export const VISIT_STATUSES = [...OPERATIONAL_VISIT_STATUSES, 'HISTORICAL'] as const
 export type VisitStatus = (typeof VISIT_STATUSES)[number]
 
 export const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
@@ -30,9 +35,10 @@ export const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
   COMPLETED: 'Completed',
   POSTPONED: 'Postponed',
   CANCELLED: 'Cancelled',
+  HISTORICAL: 'Historical',
 }
 
-export const INVOICE_ELIGIBILITIES = ['NOT_COMPLETED', 'AMOUNT_REQUIRED', 'NO_INVOICE_REQUIRED', 'READY_FOR_INVOICE'] as const
+export const INVOICE_ELIGIBILITIES = ['NOT_COMPLETED', 'AMOUNT_REQUIRED', 'NO_INVOICE_REQUIRED', 'READY_FOR_INVOICE', 'HISTORICAL'] as const
 export type InvoiceEligibility = (typeof INVOICE_ELIGIBILITIES)[number]
 
 export const INVOICE_ELIGIBILITY_LABELS: Record<InvoiceEligibility, string> = {
@@ -40,6 +46,7 @@ export const INVOICE_ELIGIBILITY_LABELS: Record<InvoiceEligibility, string> = {
   AMOUNT_REQUIRED: 'Amount required',
   NO_INVOICE_REQUIRED: 'No invoice required',
   READY_FOR_INVOICE: 'Ready for invoice',
+  HISTORICAL: 'Historical',
 }
 
 export interface Contract {
@@ -56,6 +63,8 @@ export interface Contract {
   defaultVisitAmount: string | null
   status: ContractStatus
   isPastValidity: boolean
+  /** Set on a contract imported from an earlier register: visits are generated only for periods from this date. */
+  scheduleCutoverDate: string | null
   notes: string | null
   createdAt: string
   updatedAt: string
@@ -63,6 +72,7 @@ export interface Contract {
     visitCount: number
     completedCount: number
     openCount: number
+    historicalCount: number
     cancelledCount: number
     amountMissingCount: number
     scheduledTotal: string

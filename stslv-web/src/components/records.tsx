@@ -19,13 +19,19 @@ import { Alert, Badge, Button, SelectField } from './ui'
 export const FILTER_LABEL = 'mb-1 block text-sm font-medium text-slate-700'
 export const FILTER_INPUT = 'block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400'
 
-export function ProjectStatusBadge({ status }: { status: ProjectStatus }) {
-  const tone = ({ NEW: 'blue', IN_PROGRESS: 'amber', COMPLETED: 'green', CANCELLED: 'slate' } as const)[status]
+/** A historical project also shows the status written in the earlier register: "Historical · Completed". */
+export function ProjectStatusBadge({ status, legacyStatus = null }: { status: ProjectStatus; legacyStatus?: string | null }) {
+  const tone = ({ NEW: 'blue', IN_PROGRESS: 'amber', COMPLETED: 'green', CANCELLED: 'slate', HISTORICAL: 'slate' } as const)[status]
 
-  return <Badge tone={tone}>{PROJECT_STATUS_LABELS[status]}</Badge>
+  return (
+    <Badge tone={tone}>
+      {PROJECT_STATUS_LABELS[status]}
+      {legacyStatus !== null && ` · ${legacyStatus}`}
+    </Badge>
+  )
 }
 
-/** Shown only for the two states that matter to invoicing. */
+/** Shown only for the two states that matter to invoicing. A historical project is waiting for no invoice. */
 export function InvoiceStateBadge({ state }: { state: InvoiceState }) {
   if (state === 'READY_FOR_INVOICE') {
     return <Badge tone="amber">Ready for invoice</Badge>
@@ -120,8 +126,9 @@ interface ProjectPickerFieldProps {
 }
 
 /**
- * Project choice for a new record. Cancelled projects cannot take new records,
- * so they are left out. The box above the list narrows a long list of jobs.
+ * Project choice for a new record. Cancelled and historical projects cannot
+ * take new records, so they are left out. The box above the list narrows a
+ * long list of jobs.
  */
 export function ProjectPickerField({ options, registration, selectedId, error }: ProjectPickerFieldProps) {
   const filterId = useId()
@@ -129,7 +136,8 @@ export function ProjectPickerField({ options, registration, selectedId, error }:
   const needle = filter.trim().toLowerCase()
   const visible = options.filter(
     (option) =>
-      option.id === selectedId || (option.status !== 'CANCELLED' && (needle === '' || projectLabel(option).toLowerCase().includes(needle))),
+      option.id === selectedId ||
+      (option.status !== 'CANCELLED' && option.status !== 'HISTORICAL' && (needle === '' || projectLabel(option).toLowerCase().includes(needle))),
   )
 
   return (

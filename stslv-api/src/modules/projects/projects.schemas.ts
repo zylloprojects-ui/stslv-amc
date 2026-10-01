@@ -2,13 +2,23 @@ import { z } from "zod";
 import { dateSchema, moneySchema, optionalDateSchema, optionalMoneySchema, pagingSchema, rateSchema } from "../../shared/money";
 import { idSchema, optionalText, requiredText } from "../../shared/validation";
 
-// PROVISIONAL status list (open question Q7). Must match projects_status_ck.
-export const PROJECT_STATUSES = ["NEW", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
+// PROVISIONAL status list (open question Q7): the statuses a user can give a project.
+export const OPERATIONAL_PROJECT_STATUSES = ["NEW", "IN_PROGRESS", "COMPLETED", "CANCELLED"] as const;
+
+// Every stored status; must match projects_status_ck. HISTORICAL is a job
+// imported from an earlier register. It is written only by the controlled
+// import, is read-only in the application, and is never ready for invoice.
+export const PROJECT_STATUSES = [...OPERATIONAL_PROJECT_STATUSES, "HISTORICAL"] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 // Derived by v_project_financials, never stored.
-export const INVOICE_STATES = ["NOT_READY", "READY_FOR_INVOICE", "NO_INVOICE_REQUIRED", "NOT_APPLICABLE"] as const;
+export const INVOICE_STATES = ["NOT_READY", "READY_FOR_INVOICE", "NO_INVOICE_REQUIRED", "NOT_APPLICABLE", "HISTORICAL"] as const;
 export type InvoiceState = (typeof INVOICE_STATES)[number];
+
+// Must match projects_job_date_precision_ck. MONTH: the source gave a month
+// and a year only, and the job date holds the first of that month as a placeholder.
+export const JOB_DATE_PRECISIONS = ["DAY", "MONTH"] as const;
+export type JobDatePrecision = (typeof JOB_DATE_PRECISIONS)[number];
 
 const clientId = z.string({ error: "Client is required." }).regex(/^[1-9]\d{0,17}$/, "Select a client.");
 
@@ -56,7 +66,8 @@ export const updateProjectSchema = z
   .refine((value) => Object.values(value).some((field) => field !== undefined), "Provide at least one field to update.");
 
 export const changeProjectStatusSchema = z.strictObject({
-  status: z.enum(PROJECT_STATUSES, { error: "Select a valid status." }),
+  // HISTORICAL is not offered: it is written only by the controlled import.
+  status: z.enum(OPERATIONAL_PROJECT_STATUSES, { error: "Select a valid status." }),
   // Only used when completing. Left out: today.
   completedDate: optionalDateSchema("Completion date").optional(),
 });

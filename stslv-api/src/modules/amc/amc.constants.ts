@@ -26,7 +26,16 @@ export const CONTRACT_TRANSITIONS: Record<ContractStatus, readonly ContractStatu
   CANCELLED: ["ACTIVE"],
 };
 
-export const VISIT_STATUSES = ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "POSTPONED", "CANCELLED"] as const;
+/** The statuses a user can give a visit through the application. */
+export const OPERATIONAL_VISIT_STATUSES = ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "POSTPONED", "CANCELLED"] as const;
+
+/**
+ * Every stored status. HISTORICAL is a period row imported from an earlier
+ * schedule: whether and when the visit took place is not recorded. It is
+ * written only by the controlled import, is read-only in the application, and
+ * is neither outstanding work nor ready for invoice.
+ */
+export const VISIT_STATUSES = [...OPERATIONAL_VISIT_STATUSES, "HISTORICAL"] as const;
 export type VisitStatus = (typeof VISIT_STATUSES)[number];
 
 /** Statuses of a visit that still has work outstanding. */
@@ -38,6 +47,7 @@ export const INVOICE_ELIGIBILITIES = [
   "AMOUNT_REQUIRED",
   "NO_INVOICE_REQUIRED",
   "READY_FOR_INVOICE",
+  "HISTORICAL",
 ] as const;
 export type InvoiceEligibility = (typeof INVOICE_ELIGIBILITIES)[number];
 

@@ -2,7 +2,9 @@
 // Money and rates are decimal strings with three decimals; dates are YYYY-MM-DD.
 
 // PROVISIONAL status lists: the business has not confirmed them.
-export const PROJECT_STATUSES = ['NEW', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] as const
+// HISTORICAL is a job imported from an earlier register. The application only
+// displays it: it cannot be given to a project, edited or moved to another status.
+export const PROJECT_STATUSES = ['NEW', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'HISTORICAL'] as const
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
 
 export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
@@ -10,9 +12,10 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   IN_PROGRESS: 'In progress',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',
+  HISTORICAL: 'Historical',
 }
 
-export type InvoiceState = 'NOT_READY' | 'READY_FOR_INVOICE' | 'NO_INVOICE_REQUIRED' | 'NOT_APPLICABLE'
+export type InvoiceState = 'NOT_READY' | 'READY_FOR_INVOICE' | 'NO_INVOICE_REQUIRED' | 'NOT_APPLICABLE' | 'HISTORICAL'
 
 export interface Project {
   id: string
@@ -21,6 +24,10 @@ export interface Project {
   clientName: string
   description: string
   jobDate: string
+  /** MONTH: only the month and year are known; the day in jobDate is a placeholder. */
+  jobDatePrecision: 'DAY' | 'MONTH'
+  /** The status as written in the earlier register. Present on a historical project only. */
+  legacyStatus: string | null
   lpoNumber: string | null
   lpoDate: string | null
   /** Excluding VAT. */

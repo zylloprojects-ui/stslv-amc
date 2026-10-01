@@ -3,6 +3,7 @@ import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { activeContract, createClient, createContract, today, visitsOf } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
+import { insertHistoricalProject, insertHistoricalVisit, insertImportedContract } from "./historical-helpers";
 import { categoryId, insertClient, newProject, postExpense, resetProjectData, setStatus, type Session } from "./projects-helpers";
 
 // GET /api/dashboard/summary puts the figures of the Clients, AMC and Projects
@@ -334,6 +335,70 @@ describe("dashboard permissions", () => {
     // Execution: AMC, projects without costs.
     expect(execution.amc.visits).toMatchObject({ due: 1 });
     expect(execution.projects.costs).toBeNull();
+  });
+});
+
+describe("dashboard with historical records", () => {
+  it("shows the same operational figures after historical projects and visits are imported", async () => {
+    const before = (await dashboard()).body.data;
+    const now = await today();
+    const client = (await one<{ id: string }>("SELECT id FROM clients WHERE name = 'Test Hotel One'")).id;
+
+    // Jobs from an earlier register: completed with a value, completed with no value, and not completed.
+    await insertHistoricalProject(client, { jobNumber: "GPSA0901", legacyStatus: "Completed", jobValue: "500" });
+    await insertHistoricalProject(client, { jobNumber: "GPSA0902", legacyStatus: "Completed", jobValue: "0" });
+    await insertHistoricalProject(client, { jobNumber: "GPSA0903", legacyStatus: "Not Completed", jobValue: "18000" });
+
+    // Period rows from an earlier schedule: long past, last month, and dated today.
+    const contract = await insertImportedContract(client, {
+      system: "HISTORY",
+      validFrom: addDays(now, -200),
+      validTo: addDays(now, 100),
+      cutoverDate: now,
+    });
+    await insertHistoricalVisit(contract, { sequenceNo: 1, periodStart: addDays(now, -200), periodEnd: addDays(now, -110), visitAmount: "405.000" });
+    await insertHistoricalVisit(contract, { sequenceNo: 2, periodStart: addDays(now, -30), periodEnd: addDays(now, -1), visitAmount: null });
+    await insertHistoricalVisit(contract, { sequenceNo: 3, periodStart: now, periodEnd: addDays(now, 30), visitAmount: "775.000" });
+
+    const after = (await dashboard()).body.data;
+
+    // Every figure the dashboard shows is unchanged.
+    expect(after.clients).toEqual(before.clients);
+    expect(after.amc.contracts).toEqual({ ...before.amc.contracts, draft: before.amc.contracts.draft + 1 });
+    expect(after.amc.visits).toEqual({ ...before.amc.visits, historical: 3 });
+    expect(after.amc.invoicing).toEqual(before.amc.invoicing);
+    expect(after.projects.counts).toEqual({ ...before.projects.counts, total: before.projects.counts.total + 3, historical: 3 });
+    expect(after.projects.values).toEqual({ ...before.projects.values, historicalJobValue: "18500.000", historicalGrandValue: "19425.000" });
+    expect(after.projects.costs).toEqual(before.projects.costs);
+
+    // The same figures, stated outright.
+    expect(after.amc.contracts).toMatchObject({ active: 2 });
+    expect(after.amc.visits).toMatchObject({ due: 1, overdue: 1 });
+    expect(after.amc.invoicing.readyForInvoice).toEqual({ count: 2, amount: "350.625" });
+    expect(after.projects.counts).toMatchObject({ active: 2, readyForInvoice: 1, noInvoiceRequired: 1 });
+    expect(after.projects.values.readyForInvoiceValue).toBe("2000.250");
+    expect(after.projects.costs).toMatchObject({ trackedExpenses: "350.125", trackedExpensesOnHistoricalProjects: "0.000" });
+  });
+
+  it("checks those figures against the base tables: historical rows are in none of them", async () => {
+    const due = await one<{ n: number }>(
+      `SELECT count(*)::int AS n FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
+       WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED') AND c.status <> 'CANCELLED' AND v.scheduled_date <= current_date`
+    );
+    const ready = await one<{ visits: number; projects: number }>(
+      `SELECT (SELECT count(*)::int FROM amc_visits WHERE status = 'COMPLETED' AND visit_amount > 0) AS visits,
+              (SELECT count(*)::int FROM projects WHERE status = 'COMPLETED' AND job_value > 0) AS projects`
+    );
+    const historical = await one<{ visits: number; projects: number }>(
+      `SELECT (SELECT count(*)::int FROM amc_visits WHERE status = 'HISTORICAL') AS visits,
+              (SELECT count(*)::int FROM projects WHERE status = 'HISTORICAL') AS projects`
+    );
+    const { amc, projects } = (await dashboard()).body.data;
+
+    expect(historical).toEqual({ visits: 3, projects: 3 });
+    expect(amc.visits.due).toBe(due.n);
+    expect(amc.invoicing.readyForInvoice.count).toBe(ready.visits);
+    expect(projects.counts.readyForInvoice).toBe(ready.projects);
   });
 });
 

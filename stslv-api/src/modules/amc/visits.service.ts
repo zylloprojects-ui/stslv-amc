@@ -1,7 +1,7 @@
 import { pool } from "../../config/database";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
-import { forbidden, notFound, validationError } from "../../shared/errors";
+import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import type {
@@ -160,6 +160,17 @@ async function findVisitRow(db: Queryable, id: string, lock = false): Promise<Vi
   return row;
 }
 
+/**
+ * A historical visit was imported from an earlier schedule. It records what
+ * that schedule said and nothing more, so no application route may change it
+ * or give it an operational status.
+ */
+function assertNotHistorical(row: VisitRow): void {
+  if (row.status === "HISTORICAL") {
+    throw conflict("This visit is a historical record imported from an earlier schedule. It cannot be changed.");
+  }
+}
+
 export async function getScheduleVisit(id: string): Promise<ScheduleVisit> {
   return toScheduleVisit(await findVisitRow(pool, id));
 }
@@ -252,6 +263,9 @@ export async function listVisits(query: ListVisitsQuery) {
 export function updateVisit(auth: AuthContext, id: string, input: UpdateVisitInput): Promise<ScheduleVisit> {
   return withTransaction(async (client) => {
     const row = await findVisitRow(client, id, true);
+
+    assertNotHistorical(row);
+
     const before = {
       visitAmount: row.visit_amount,
       scheduledDate: row.scheduled_date,
@@ -354,6 +368,9 @@ const fieldError = (field: string, message: string) => validationError(message, 
 export function updateExecution(auth: AuthContext, id: string, input: UpdateExecutionInput): Promise<ExecutionVisit> {
   return withTransaction(async (client) => {
     const row = await findVisitRow(client, id, true);
+
+    assertNotHistorical(row);
+
     const status = input.status ?? row.status;
     const statusChanged = status !== row.status;
 

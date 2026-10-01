@@ -6,7 +6,7 @@ import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { fetchClients, queryString } from './amcApi'
 import { currentMonth, formatDate, formatMoney, monthLabel, monthRange, shiftMonth } from './amcFormat'
-import { EligibilityPill, Filter, Pager, VisitStatusPill } from './components'
+import { EligibilityPill, Filter, Pager, PlannedDate, VisitStatusPill } from './components'
 import {
   INVOICE_ELIGIBILITIES,
   INVOICE_ELIGIBILITY_LABELS,
@@ -226,7 +226,7 @@ export function AmcSchedulePage() {
                   {data.items.map((visit) => (
                     <tr key={visit.id} className={TABLE.row}>
                       <td className={`${TABLE.td} whitespace-nowrap`}>
-                        {formatDate(visit.scheduledDate)}
+                        <PlannedDate visit={visit} format={formatDate} />
                         {visit.isRescheduled && <div className="text-xs text-slate-500">was {formatDate(visit.originalScheduledDate)}</div>}
                       </td>
                       <td className={`${TABLE.td} min-w-40 font-medium text-slate-900`}>
@@ -250,7 +250,7 @@ export function AmcSchedulePage() {
                           <Button variant="ghost" size="sm" aria-label={`View ${label(visit)}`} onClick={() => setDialog({ kind: 'view', visitId: visit.id })}>
                             View
                           </Button>
-                          {canEdit && (
+                          {canEdit && visit.status !== 'HISTORICAL' && (
                             <Button variant="ghost" size="sm" aria-label={`Edit ${label(visit)}`} onClick={() => setDialog({ kind: 'edit', visit })}>
                               Edit
                             </Button>

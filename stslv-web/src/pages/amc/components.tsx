@@ -100,12 +100,20 @@ export function Pill({ tone, children }: { tone: Tone; children: ReactNode }) {
 }
 
 const CONTRACT_TONES: Record<ContractStatus, Tone> = { DRAFT: 'amber', ACTIVE: 'green', EXPIRED: 'slate', CANCELLED: 'red' }
-const VISIT_TONES: Record<VisitStatus, Tone> = { SCHEDULED: 'blue', IN_PROGRESS: 'amber', COMPLETED: 'green', POSTPONED: 'slate', CANCELLED: 'red' }
+const VISIT_TONES: Record<VisitStatus, Tone> = {
+  SCHEDULED: 'blue',
+  IN_PROGRESS: 'amber',
+  COMPLETED: 'green',
+  POSTPONED: 'slate',
+  CANCELLED: 'red',
+  HISTORICAL: 'slate',
+}
 const ELIGIBILITY_TONES: Record<InvoiceEligibility, Tone> = {
   NOT_COMPLETED: 'slate',
   AMOUNT_REQUIRED: 'red',
   NO_INVOICE_REQUIRED: 'slate',
   READY_FOR_INVOICE: 'green',
+  HISTORICAL: 'slate',
 }
 
 export function ContractStatusPill({ status }: { status: ContractStatus }) {
@@ -122,11 +130,20 @@ export function VisitStatusPill({ status, overdue = false }: { status: VisitStat
 }
 
 export function EligibilityPill({ eligibility }: { eligibility: InvoiceEligibility }) {
-  if (eligibility === 'NOT_COMPLETED') {
+  // A historical visit is waiting for no invoice; its status already says what it is.
+  if (eligibility === 'NOT_COMPLETED' || eligibility === 'HISTORICAL') {
     return <span className="text-slate-400">—</span>
   }
 
   return <Pill tone={ELIGIBILITY_TONES[eligibility]}>{INVOICE_ELIGIBILITY_LABELS[eligibility]}</Pill>
+}
+
+/**
+ * The planned date of a visit. A historical visit has none: the earlier
+ * schedule gave only its period, so nothing is shown as a date.
+ */
+export function PlannedDate({ visit, format }: { visit: { status: VisitStatus; scheduledDate: string }; format: (value: string) => string }) {
+  return visit.status === 'HISTORICAL' ? <span className="text-slate-500">Not recorded</span> : <>{format(visit.scheduledDate)}</>
 }
 
 /** One label/value line of a details view. */

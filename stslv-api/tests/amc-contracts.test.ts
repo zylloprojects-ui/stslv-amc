@@ -625,6 +625,7 @@ describe("read contracts", () => {
       visitCount: 20,
       completedCount: 0,
       openCount: 20,
+      historicalCount: 0,
       cancelledCount: 0,
       amountMissingCount: 0,
       scheduledTotal: "8100.000",

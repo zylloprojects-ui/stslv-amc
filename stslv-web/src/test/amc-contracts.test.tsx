@@ -12,7 +12,7 @@ const DRAFT = makeContract({
   status: 'DRAFT',
   contractValue: '9000.000',
   finalCredit: '8000.000',
-  schedule: { visitCount: 0, completedCount: 0, openCount: 0, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '0.000', valueDifference: '9000.000' },
+  schedule: { visitCount: 0, completedCount: 0, openCount: 0, historicalCount: 0, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '0.000', valueDifference: '9000.000' },
 })
 
 async function openAddForm() {

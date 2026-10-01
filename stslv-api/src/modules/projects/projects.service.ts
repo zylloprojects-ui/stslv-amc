@@ -9,6 +9,7 @@ import type {
   ChangeProjectStatusInput,
   CreateProjectInput,
   InvoiceState,
+  JobDatePrecision,
   ListProjectsQuery,
   ProjectStatus,
   UpdateProjectInput,
@@ -21,6 +22,8 @@ interface ProjectRow {
   client_name: string;
   description: string;
   job_date: string;
+  job_date_precision: JobDatePrecision;
+  legacy_status: string | null;
   lpo_number: string | null;
   lpo_date: string | null;
   job_value: string;
@@ -48,6 +51,10 @@ export interface Project {
   description: string;
   /** YYYY-MM-DD */
   jobDate: string;
+  /** MONTH: only the month and year are known, and jobDate is the first of that month as a placeholder. */
+  jobDatePrecision: JobDatePrecision;
+  /** The status as written in the source register. Present on a historical project only. */
+  legacyStatus: string | null;
   lpoNumber: string | null;
   lpoDate: string | null;
   /** Excluding VAT. */
@@ -77,7 +84,8 @@ export interface Project {
 // The date columns are read as text so a calendar day is never shifted by a time zone.
 const SELECT_PROJECT = `
   SELECT p.id, p.job_number, p.client_id, c.name AS client_name, p.description,
-         p.job_date::text AS job_date, p.lpo_number, p.lpo_date::text AS lpo_date,
+         p.job_date::text AS job_date, p.job_date_precision, p.legacy_status,
+         p.lpo_number, p.lpo_date::text AS lpo_date,
          p.job_value, p.vat_rate, p.vat_amount, p.grand_value, p.budget_amount,
          p.status, p.completed_date::text AS completed_date, p.notes,
          f.tracked_expenses, f.operational_job_margin, f.budget_remaining, f.invoice_state,
@@ -89,12 +97,18 @@ const SELECT_PROJECT = `
 // PROVISIONAL workflow (open question Q7). A small job may go straight from
 // NEW to COMPLETED. A completed or cancelled project can be reopened, so a
 // mistake can be corrected; every change is written to the activity log.
+// Nothing leads into or out of HISTORICAL: it is written only by the
+// controlled import.
 const STATUS_TRANSITIONS: Record<ProjectStatus, ProjectStatus[]> = {
   NEW: ["IN_PROGRESS", "COMPLETED", "CANCELLED"],
   IN_PROGRESS: ["COMPLETED", "CANCELLED"],
   COMPLETED: ["IN_PROGRESS"],
   CANCELLED: ["NEW"],
+  HISTORICAL: [],
 };
+
+const HISTORICAL_READ_ONLY =
+  "is a historical record imported from an earlier job register. It cannot be changed here.";
 
 const EDITABLE_FIELDS = [
   "clientId",
@@ -120,6 +134,8 @@ function toProject(row: ProjectRow, showCosts: boolean): Project {
     clientName: row.client_name,
     description: row.description,
     jobDate: row.job_date,
+    jobDatePrecision: row.job_date_precision,
+    legacyStatus: row.legacy_status,
     lpoNumber: row.lpo_number,
     lpoDate: row.lpo_date,
     jobValue: row.job_value,
@@ -336,6 +352,9 @@ export function updateProject(auth: AuthContext, id: string, input: UpdateProjec
   return withTransaction(async (client) => {
     const before = await lockProject(client, id, true);
 
+    if (before.status === "HISTORICAL") {
+      throw conflict(`Project ${before.jobNumber} ${HISTORICAL_READ_ONLY}`);
+    }
     if (before.status === "CANCELLED") {
       throw conflict("A cancelled project cannot be edited. Reopen it first.");
     }
@@ -405,6 +424,9 @@ export function changeProjectStatus(auth: AuthContext, id: string, input: Change
   return withTransaction(async (client) => {
     const before = await lockProject(client, id, canSeeCosts(auth));
 
+    if (before.status === "HISTORICAL") {
+      throw conflict(`Project ${before.jobNumber} ${HISTORICAL_READ_ONLY}`);
+    }
     if (input.completedDate && input.status !== "COMPLETED") {
       throw validationError("Some fields are invalid.", [
         { field: "completedDate", message: "A completion date can only be given when completing a project." },
@@ -458,14 +480,18 @@ interface SummaryRow {
   in_progress: number;
   completed: number;
   cancelled: number;
+  historical: number;
   ready_for_invoice: number;
   no_invoice_required: number;
   total_job_value: string;
   total_grand_value: string;
   ready_for_invoice_value: string;
+  historical_job_value: string;
+  historical_grand_value: string;
   tracked_expenses: string;
   operational_job_margin: string;
   cancelled_tracked_expenses: string;
+  historical_tracked_expenses: string;
 }
 
 /**
@@ -473,6 +499,8 @@ interface SummaryRow {
  * read from projects and v_project_financials; nothing is stored or estimated.
  * Value and cost totals leave cancelled projects out; what was spent on
  * cancelled projects is reported separately so it is not lost.
+ * Historical projects are not operational work: they are in none of the
+ * operational counts and totals, and are reported apart in the same way.
  */
 export async function getProjectSummary(auth: AuthContext) {
   const result = await pool.query<SummaryRow>(
@@ -482,14 +510,18 @@ export async function getProjectSummary(auth: AuthContext) {
        count(*) FILTER (WHERE p.status = 'IN_PROGRESS')::int AS in_progress,
        count(*) FILTER (WHERE p.status = 'COMPLETED')::int AS completed,
        count(*) FILTER (WHERE p.status = 'CANCELLED')::int AS cancelled,
+       count(*) FILTER (WHERE p.status = 'HISTORICAL')::int AS historical,
        count(*) FILTER (WHERE f.invoice_state = 'READY_FOR_INVOICE')::int AS ready_for_invoice,
        count(*) FILTER (WHERE f.invoice_state = 'NO_INVOICE_REQUIRED')::int AS no_invoice_required,
-       COALESCE(sum(p.job_value) FILTER (WHERE p.status <> 'CANCELLED'), 0)::numeric(18,3) AS total_job_value,
-       COALESCE(sum(p.grand_value) FILTER (WHERE p.status <> 'CANCELLED'), 0)::numeric(18,3) AS total_grand_value,
+       COALESCE(sum(p.job_value) FILTER (WHERE p.status NOT IN ('CANCELLED', 'HISTORICAL')), 0)::numeric(18,3) AS total_job_value,
+       COALESCE(sum(p.grand_value) FILTER (WHERE p.status NOT IN ('CANCELLED', 'HISTORICAL')), 0)::numeric(18,3) AS total_grand_value,
        COALESCE(sum(p.job_value) FILTER (WHERE f.invoice_state = 'READY_FOR_INVOICE'), 0)::numeric(18,3) AS ready_for_invoice_value,
-       COALESCE(sum(f.tracked_expenses) FILTER (WHERE p.status <> 'CANCELLED'), 0)::numeric(18,3) AS tracked_expenses,
-       COALESCE(sum(f.operational_job_margin) FILTER (WHERE p.status <> 'CANCELLED'), 0)::numeric(18,3) AS operational_job_margin,
-       COALESCE(sum(f.tracked_expenses) FILTER (WHERE p.status = 'CANCELLED'), 0)::numeric(18,3) AS cancelled_tracked_expenses
+       COALESCE(sum(p.job_value) FILTER (WHERE p.status = 'HISTORICAL'), 0)::numeric(18,3) AS historical_job_value,
+       COALESCE(sum(p.grand_value) FILTER (WHERE p.status = 'HISTORICAL'), 0)::numeric(18,3) AS historical_grand_value,
+       COALESCE(sum(f.tracked_expenses) FILTER (WHERE p.status NOT IN ('CANCELLED', 'HISTORICAL')), 0)::numeric(18,3) AS tracked_expenses,
+       COALESCE(sum(f.operational_job_margin) FILTER (WHERE p.status NOT IN ('CANCELLED', 'HISTORICAL')), 0)::numeric(18,3) AS operational_job_margin,
+       COALESCE(sum(f.tracked_expenses) FILTER (WHERE p.status = 'CANCELLED'), 0)::numeric(18,3) AS cancelled_tracked_expenses,
+       COALESCE(sum(f.tracked_expenses) FILTER (WHERE p.status = 'HISTORICAL'), 0)::numeric(18,3) AS historical_tracked_expenses
      FROM projects p
      JOIN v_project_financials f ON f.project_id = p.id`
   );
@@ -504,16 +536,21 @@ export async function getProjectSummary(auth: AuthContext) {
       inProgress: row.in_progress,
       completed: row.completed,
       cancelled: row.cancelled,
+      // Imported from an earlier register; in none of the counts above except total.
+      historical: row.historical,
       readyForInvoice: row.ready_for_invoice,
       noInvoiceRequired: row.no_invoice_required,
     },
     values: {
-      // Excluding VAT, cancelled projects left out.
+      // Excluding VAT, cancelled and historical projects left out.
       totalJobValue: row.total_job_value,
-      // Including VAT, cancelled projects left out.
+      // Including VAT, cancelled and historical projects left out.
       totalGrandValue: row.total_grand_value,
       // Job value excluding VAT of the projects that are ready for invoice.
       readyForInvoiceValue: row.ready_for_invoice_value,
+      // The historical projects on their own, excluding and including VAT.
+      historicalJobValue: row.historical_job_value,
+      historicalGrandValue: row.historical_grand_value,
     },
     // Null when the signed-in user does not hold EXPENSES:VIEW.
     costs: canSeeCosts(auth)
@@ -522,6 +559,7 @@ export async function getProjectSummary(auth: AuthContext) {
           // Total job value excluding VAT minus tracked expenses. Not accounting profit.
           operationalJobMargin: row.operational_job_margin,
           trackedExpensesOnCancelledProjects: row.cancelled_tracked_expenses,
+          trackedExpensesOnHistoricalProjects: row.historical_tracked_expenses,
         }
       : null,
   };
@@ -529,8 +567,8 @@ export async function getProjectSummary(auth: AuthContext) {
 
 /**
  * Used by Procurement and Expenses: the project a new record is attached to
- * must exist and must not be cancelled. Locks the row so the project cannot
- * be cancelled while the record is being saved.
+ * must exist and must be neither cancelled nor historical. Locks the row so
+ * the project cannot be cancelled while the record is being saved.
  */
 export async function requireOpenProject(db: Queryable, projectId: string): Promise<{ id: string; jobNumber: string }> {
   const result = await db.query<{ job_number: string; status: ProjectStatus }>(
@@ -545,6 +583,11 @@ export async function requireOpenProject(db: Queryable, projectId: string): Prom
   if (project.status === "CANCELLED") {
     throw validationError("Some fields are invalid.", [
       { field: "projectId", message: `Project ${project.job_number} is cancelled. Nothing new can be recorded against it.` },
+    ]);
+  }
+  if (project.status === "HISTORICAL") {
+    throw validationError("Some fields are invalid.", [
+      { field: "projectId", message: `Project ${project.job_number} is a historical record. Nothing new can be recorded against it.` },
     ]);
   }
 

@@ -19,7 +19,7 @@ export interface DashboardSummary {
   projects?: {
     counts: { active: number; new: number; inProgress: number; readyForInvoice: number }
     values: { readyForInvoiceValue: string }
-    costs: { trackedExpenses: string; trackedExpensesOnCancelledProjects: string } | null
+    costs: { trackedExpenses: string; trackedExpensesOnCancelledProjects: string; trackedExpensesOnHistoricalProjects?: string } | null
   } | null
 }
 
@@ -212,11 +212,20 @@ export const METRIC_GROUPS: MetricGroup[] = [
             return null
           }
 
+          // Expenses on cancelled and on historical projects are not in the figure. Whatever
+          // was recorded against them is stated beside it, so it is never lost from view.
+          const apart = [
+            ...(isZeroAmount(costs.trackedExpensesOnCancelledProjects)
+              ? []
+              : [`${formatMoney(costs.trackedExpensesOnCancelledProjects)} on cancelled projects`]),
+            ...(costs.trackedExpensesOnHistoricalProjects === undefined || isZeroAmount(costs.trackedExpensesOnHistoricalProjects)
+              ? []
+              : [`${formatMoney(costs.trackedExpensesOnHistoricalProjects)} on historical projects`]),
+          ]
+
           return {
             value: formatMoney(costs.trackedExpenses),
-            detail: isZeroAmount(costs.trackedExpensesOnCancelledProjects)
-              ? 'Cancelled projects left out'
-              : `Plus ${formatMoney(costs.trackedExpensesOnCancelledProjects)} on cancelled projects`,
+            detail: apart.length > 0 ? `Plus ${apart.join(' and ')}` : 'Cancelled projects left out',
           }
         },
       },

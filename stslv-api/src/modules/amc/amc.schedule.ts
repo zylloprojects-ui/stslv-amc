@@ -74,11 +74,17 @@ export interface SchedulePeriod {
  *   validity ends.
  * - The last period ends on validTo even when that makes it shorter than the
  *   others. PROVISIONAL (Q4): a short final period still gets a visit.
+ * - With a cutover date (a contract imported from an earlier register), only
+ *   the periods that start on or after it are returned. Earlier periods are
+ *   history: they exist only where the source recorded them and are never
+ *   generated. The later periods keep the dates they would have had anyway,
+ *   because every period is still counted from the contract start.
  */
 export function buildSchedulePeriods(
   validFrom: string,
   validTo: string,
-  frequency: MaintenanceFrequency
+  frequency: MaintenanceFrequency,
+  cutoverDate: string | null = null
 ): SchedulePeriod[] {
   const interval = FREQUENCY_MONTHS[frequency];
   const periods: SchedulePeriod[] = [];
@@ -88,6 +94,9 @@ export function buildSchedulePeriods(
 
     if (periodStart > validTo) {
       break;
+    }
+    if (cutoverDate !== null && periodStart < cutoverDate) {
+      continue;
     }
 
     const naturalEnd = addDays(addMonths(validFrom, (index + 1) * interval), -1);

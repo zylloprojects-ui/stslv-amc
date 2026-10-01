@@ -87,6 +87,7 @@ describe("AMC summary", () => {
       postponed: 1,
       completedThisMonth: 2,
       completedTotal: 3,
+      historical: 0,
     });
   });
 

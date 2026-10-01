@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/context'
 import { DetailRow, InvoiceStateBadge, LoadError, Money, OrDash, ProjectStatusBadge } from '../../components/records'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError } from '../../lib/api'
-import { formatDate, formatDateTime } from '../../lib/format'
+import { formatDate, formatDateTime, formatJobDate } from '../../lib/format'
 import { formatRate } from '../../lib/money'
 import type { PagedExpenses, ProcurementRequest, Project, ProjectStatus } from '../../lib/projectTypes'
 import type { Paged } from '../../lib/types'
@@ -84,7 +84,9 @@ export function ProjectDetailPage() {
   }
 
   const project = query.data
-  const open = project.status !== 'CANCELLED'
+  const historical = project.status === 'HISTORICAL'
+  // A cancelled or historical project cannot be edited and takes no new records.
+  const open = project.status !== 'CANCELLED' && !historical
   const fixedProject = { id: project.id, jobNumber: project.jobNumber, clientName: project.clientName, description: project.description }
 
   return (
@@ -123,6 +125,14 @@ export function ProjectDetailPage() {
         </div>
       )}
 
+      {historical && (
+        <div className="mb-4">
+          <Alert tone="info">
+            <strong>Historical record.</strong> This job was imported from an earlier job register and is shown as that register recorded it. It
+            cannot be edited here and is not counted as current work or as ready for invoice.
+          </Alert>
+        </div>
+      )}
       {project.invoiceState === 'READY_FOR_INVOICE' && (
         <div className="mb-4">
           <Alert tone="info">
@@ -150,14 +160,20 @@ export function ProjectDetailPage() {
                 <InvoiceStateBadge state={project.invoiceState} />
               </span>
             </DetailRow>
+            {project.legacyStatus !== null && <DetailRow label="Status in the earlier register">{project.legacyStatus}</DetailRow>}
             <DetailRow label="Client">{project.clientName}</DetailRow>
             <DetailRow label="Job description">{project.description}</DetailRow>
-            <DetailRow label="Job date">{formatDate(project.jobDate)}</DetailRow>
+            <DetailRow label="Job date">
+              {formatJobDate(project)}
+              {project.jobDatePrecision === 'MONTH' && <span className="text-slate-500"> (day not recorded)</span>}
+            </DetailRow>
             <DetailRow label="LPO number">
               <OrDash value={project.lpoNumber} />
             </DetailRow>
             <DetailRow label="LPO date">{formatDate(project.lpoDate)}</DetailRow>
-            <DetailRow label="Completed">{formatDate(project.completedDate)}</DetailRow>
+            <DetailRow label="Completed">
+              {historical ? <span className="text-slate-500">Not recorded</span> : formatDate(project.completedDate)}
+            </DetailRow>
             <DetailRow label="Notes">
               <OrDash value={project.notes} />
             </DetailRow>

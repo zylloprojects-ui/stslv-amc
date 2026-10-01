@@ -7,7 +7,7 @@ import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../c
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { formatDate, formatMoney, MONEY_PATTERN } from './amcFormat'
-import { DetailRow, EligibilityPill, OrDash, VisitStatusPill } from './components'
+import { DetailRow, EligibilityPill, OrDash, PlannedDate, VisitStatusPill } from './components'
 import { FREQUENCY_LABELS, type ScheduleVisit } from './types'
 
 const visitLabel = (visit: ScheduleVisit) => `${visit.client.name} – ${visit.contract.systemDescription}, visit ${visit.sequenceNo}`
@@ -31,7 +31,7 @@ export function VisitDetailsModal({ visitId, canEdit, onEdit, onClose }: VisitDe
       size="lg"
       footer={
         <>
-          {canEdit && visit && (
+          {canEdit && visit && visit.status !== 'HISTORICAL' && (
             <Button variant="secondary" onClick={() => onEdit(visit)}>
               Edit
             </Button>
@@ -42,6 +42,14 @@ export function VisitDetailsModal({ visitId, canEdit, onEdit, onClose }: VisitDe
     >
       {query.isPending && <Spinner label="Loading visit" />}
       {query.isError && <Alert>{errorMessage(query.error)}</Alert>}
+      {visit && visit.status === 'HISTORICAL' && (
+        <div className="mb-4">
+          <Alert tone="info">
+            <strong>Historical record.</strong> This period was imported from an earlier schedule. Whether and when the visit took place was not
+            recorded, so it is not counted as due, overdue or ready for invoice, and it cannot be changed here.
+          </Alert>
+        </div>
+      )}
       {visit && (
         <dl className="divide-y divide-slate-100">
           <DetailRow label="Client">{visit.client.name}</DetailRow>
@@ -53,7 +61,7 @@ export function VisitDetailsModal({ visitId, canEdit, onEdit, onClose }: VisitDe
             {formatDate(visit.periodStart)} to {formatDate(visit.periodEnd)}
           </DetailRow>
           <DetailRow label="Scheduled date">
-            {formatDate(visit.scheduledDate)}
+            <PlannedDate visit={visit} format={formatDate} />
             {visit.isRescheduled && <span className="text-slate-500"> (originally {formatDate(visit.originalScheduledDate)})</span>}
           </DetailRow>
           <DetailRow label="Status">

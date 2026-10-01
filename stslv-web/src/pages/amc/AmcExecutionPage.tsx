@@ -7,7 +7,7 @@ import { api, errorMessage } from '../../lib/api'
 import type { Paged } from '../../lib/types'
 import { fetchClients, queryString } from './amcApi'
 import { formatDate } from './amcFormat'
-import { Filter, Pager, VisitStatusPill } from './components'
+import { Filter, Pager, PlannedDate, VisitStatusPill } from './components'
 import { ExecutionVisitModal, type ExecutionMode } from './ExecutionVisitModal'
 import type { ExecutionVisit } from './types'
 
@@ -211,7 +211,7 @@ export function AmcExecutionPage() {
                     return (
                       <tr key={visit.id} className={TABLE.row}>
                         <td className={`${TABLE.td} whitespace-nowrap`}>
-                          {formatDate(scope === 'completed' ? visit.completedDate : visit.scheduledDate)}
+                          {scope === 'completed' ? formatDate(visit.completedDate) : <PlannedDate visit={visit} format={formatDate} />}
                           {scope !== 'completed' && visit.isRescheduled && (
                             <div className="text-xs text-slate-500">was {formatDate(visit.originalScheduledDate)}</div>
                           )}
@@ -252,7 +252,7 @@ export function AmcExecutionPage() {
                                 Complete
                               </Button>
                             )}
-                            {canEdit && (
+                            {canEdit && visit.status !== 'HISTORICAL' && (
                               <Button
                                 variant="ghost"
                                 size="sm"

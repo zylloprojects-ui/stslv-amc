@@ -4,7 +4,7 @@ import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { formatDate, formatMoney, isZeroMoney } from './amcFormat'
-import { ContractStatusPill, DetailRow, EligibilityPill, OrDash, VisitStatusPill } from './components'
+import { ContractStatusPill, DetailRow, EligibilityPill, OrDash, PlannedDate, VisitStatusPill } from './components'
 import { FREQUENCY_LABELS, type Contract, type ContractStatus, type VisitList } from './types'
 
 interface ContractDetailsModalProps {
@@ -100,6 +100,7 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               <DetailRow label="Final credit">{formatMoney(contract.finalCredit)}</DetailRow>
               <DetailRow label="Visits">
                 {contract.schedule.visitCount} ({contract.schedule.completedCount} completed, {contract.schedule.openCount} open
+                {contract.schedule.historicalCount > 0 && `, ${contract.schedule.historicalCount} historical`}
                 {contract.schedule.cancelledCount > 0 && `, ${contract.schedule.cancelledCount} cancelled`})
               </DetailRow>
               <DetailRow label="Total of visit amounts">{formatMoney(contract.schedule.scheduledTotal)}</DetailRow>
@@ -120,8 +121,19 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
             <h3 id="contract-schedule-heading" className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-600">
               Maintenance schedule
             </h3>
+            {contract.scheduleCutoverDate !== null && (
+              <p className="mb-2 text-sm text-slate-600">
+                This contract was imported from an earlier register. Visits are generated only for periods starting on or after{' '}
+                {formatDate(contract.scheduleCutoverDate)}. Earlier periods are shown as historical where the earlier schedule listed them, and are
+                not created otherwise.
+              </p>
+            )}
             {contract.status === 'DRAFT' && (
-              <p className="text-sm text-slate-600">A draft has no schedule. The visits are generated when the contract is activated.</p>
+              <p className="mb-2 text-sm text-slate-600">
+                {contract.schedule.historicalCount > 0
+                  ? 'A draft has no generated schedule. New visits are generated when the contract is activated.'
+                  : 'A draft has no schedule. The visits are generated when the contract is activated.'}
+              </p>
             )}
             {contract.status !== 'DRAFT' && !canViewSchedule && (
               <p className="text-sm text-slate-600">Your role does not include access to the AMC schedule.</p>
@@ -158,7 +170,9 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
                     {visits.data.items.map((visit) => (
                       <tr key={visit.id}>
                         <td className={TABLE.td}>{visit.sequenceNo}</td>
-                        <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(visit.scheduledDate)}</td>
+                        <td className={`${TABLE.td} whitespace-nowrap`}>
+                          <PlannedDate visit={visit} format={formatDate} />
+                        </td>
                         <td className={`${TABLE.td} whitespace-nowrap`}>
                           {formatDate(visit.periodStart)} – {formatDate(visit.periodEnd)}
                         </td>

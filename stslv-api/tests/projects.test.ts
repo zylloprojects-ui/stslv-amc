@@ -654,6 +654,7 @@ describe("project summary for the dashboard", () => {
         inProgress: 1,
         completed: 2,
         cancelled: 1,
+        historical: 0,
         readyForInvoice: 1,
         noInvoiceRequired: 1,
       },
@@ -661,11 +662,14 @@ describe("project summary for the dashboard", () => {
         totalJobValue: "3500.500",
         totalGrandValue: "3675.525",
         readyForInvoiceValue: "2000.000",
+        historicalJobValue: "0.000",
+        historicalGrandValue: "0.000",
       },
       costs: {
         trackedExpenses: "350.125",
         operationalJobMargin: "3150.375",
         trackedExpensesOnCancelledProjects: "40.000",
+        trackedExpensesOnHistoricalProjects: "0.000",
       },
     });
   });
@@ -674,11 +678,18 @@ describe("project summary for the dashboard", () => {
     const summary = await get("/api/projects/summary");
 
     expect(summary.body.data.counts).toMatchObject({ total: 0, active: 0, readyForInvoice: 0 });
-    expect(summary.body.data.values).toEqual({ totalJobValue: "0.000", totalGrandValue: "0.000", readyForInvoiceValue: "0.000" });
+    expect(summary.body.data.values).toEqual({
+      totalJobValue: "0.000",
+      totalGrandValue: "0.000",
+      readyForInvoiceValue: "0.000",
+      historicalJobValue: "0.000",
+      historicalGrandValue: "0.000",
+    });
     expect(summary.body.data.costs).toEqual({
       trackedExpenses: "0.000",
       operationalJobMargin: "0.000",
       trackedExpensesOnCancelledProjects: "0.000",
+      trackedExpensesOnHistoricalProjects: "0.000",
     });
   });
 });

@@ -128,6 +128,51 @@ describe("contract date boundaries", () => {
   });
 });
 
+describe("import cutover date", () => {
+  // A July-to-June contract, quarterly.
+  const all = ["2025-07-01", "2025-10-01", "2026-01-01", "2026-04-01"];
+
+  it("changes nothing when there is none", () => {
+    expect(starts("2025-07-01", "2026-06-30", "QUARTERLY")).toEqual(all);
+    expect(starts("2025-07-01", "2026-06-30", "QUARTERLY", null)).toEqual(all);
+  });
+
+  it("returns only the periods that start on or after it", () => {
+    expect(starts("2025-07-01", "2026-06-30", "QUARTERLY", "2025-11-15")).toEqual(["2026-01-01", "2026-04-01"]);
+    // A period in progress on the cutover date started before it: it is history.
+    expect(starts("2025-07-01", "2026-06-30", "QUARTERLY", "2026-04-02")).toEqual([]);
+  });
+
+  it("includes a period that starts exactly on it", () => {
+    expect(starts("2025-07-01", "2026-06-30", "QUARTERLY", "2026-01-01")).toEqual(["2026-01-01", "2026-04-01"]);
+  });
+
+  it("has no effect before the contract starts, and leaves nothing once the last period has started", () => {
+    expect(starts("2025-07-01", "2026-06-30", "QUARTERLY", "2025-01-01")).toEqual(all);
+    expect(starts("2025-07-01", "2026-06-30", "QUARTERLY", "2026-10-01")).toEqual([]);
+  });
+
+  it("keeps the later periods on the dates they would have had anyway", () => {
+    const full = buildSchedulePeriods("2027-01-31", "2027-06-30", "MONTHLY");
+
+    // 31 Jan and 28 Feb are before the cutover; 31 Mar onwards is not.
+    expect(buildSchedulePeriods("2027-01-31", "2027-06-30", "MONTHLY", "2027-03-15")).toEqual(full.slice(2));
+    expect(full[2]?.periodStart).toBe("2027-03-31");
+  });
+
+  it("plans no visit for a period before it, and keeps the historical visits that exist", () => {
+    const periods = buildSchedulePeriods("2025-07-01", "2026-06-30", "QUARTERLY", "2026-01-01");
+    // The source listed only the second period.
+    const historical = [visit("2025-10-01", "2025-12-31", { status: "HISTORICAL", locked: true })];
+    const plan = planSchedule(periods, historical, "2025-07-01", "2026-06-30");
+
+    expect(plan.toCreate.map((period) => period.periodStart)).toEqual(["2026-01-01", "2026-04-01"]);
+    expect(plan.kept).toEqual(historical);
+    expect(plan.toRemove).toEqual([]);
+    expect(plan.blocking).toEqual([]);
+  });
+});
+
 describe("schedule plan", () => {
   const quarterly = buildSchedulePeriods("2027-01-01", "2027-12-31", "QUARTERLY");
   const existing = quarterly.map((period) => visit(period.periodStart, period.periodEnd));

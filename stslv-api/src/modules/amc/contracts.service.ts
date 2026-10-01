@@ -43,12 +43,14 @@ interface ContractRow {
   default_visit_amount: string | null;
   status: ContractStatus;
   is_past_validity: boolean;
+  schedule_cutover_date: string | null;
   notes: string | null;
   created_at: Date;
   updated_at: Date;
   visit_count: number;
   completed_count: number;
   open_count: number;
+  historical_count: number;
   cancelled_count: number;
   amount_missing_count: number;
   scheduled_total: string;
@@ -72,6 +74,12 @@ export interface Contract {
   status: ContractStatus;
   /** The validity period has ended. Information only: the status does not change by itself. */
   isPastValidity: boolean;
+  /**
+   * Set only on a contract imported from an earlier register: the date of that
+   * import. Visits are generated only for periods that start on or after it.
+   * It cannot be set or changed through the API.
+   */
+  scheduleCutoverDate: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -80,6 +88,8 @@ export interface Contract {
     visitCount: number;
     completedCount: number;
     openCount: number;
+    /** Imported period rows whose execution is not recorded. Never outstanding work. */
+    historicalCount: number;
     cancelledCount: number;
     /** Non-cancelled visits with no amount set. */
     amountMissingCount: number;
@@ -106,8 +116,9 @@ const CONTRACT_SELECT = `
          c.responsible_engineer, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
          c.system_description, c.description, c.contract_value, c.final_credit,
          c.maintenance_frequency, c.default_visit_amount, c.status,
-         (c.valid_to < current_date) AS is_past_validity, c.notes, c.created_at, c.updated_at,
-         s.visit_count, s.completed_count, s.open_count, s.cancelled_count, s.amount_missing_count,
+         (c.valid_to < current_date) AS is_past_validity, c.schedule_cutover_date::text AS schedule_cutover_date,
+         c.notes, c.created_at, c.updated_at,
+         s.visit_count, s.completed_count, s.open_count, s.historical_count, s.cancelled_count, s.amount_missing_count,
          s.scheduled_total, (c.contract_value - s.scheduled_total)::numeric(16,3) AS value_difference
   FROM amc_contracts c
   JOIN clients cl ON cl.id = c.client_id
@@ -115,6 +126,7 @@ const CONTRACT_SELECT = `
     SELECT count(*) FILTER (WHERE v.status <> 'CANCELLED')::int AS visit_count,
            count(*) FILTER (WHERE v.status = 'COMPLETED')::int AS completed_count,
            count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED'))::int AS open_count,
+           count(*) FILTER (WHERE v.status = 'HISTORICAL')::int AS historical_count,
            count(*) FILTER (WHERE v.status = 'CANCELLED')::int AS cancelled_count,
            count(*) FILTER (WHERE v.status <> 'CANCELLED' AND v.visit_amount IS NULL)::int AS amount_missing_count,
            COALESCE(sum(v.visit_amount) FILTER (WHERE v.status <> 'CANCELLED'), 0)::numeric(16,3) AS scheduled_total
@@ -171,6 +183,7 @@ function toContract(row: ContractRow): Contract {
     defaultVisitAmount: row.default_visit_amount,
     status: row.status,
     isPastValidity: row.is_past_validity,
+    scheduleCutoverDate: row.schedule_cutover_date,
     notes: row.notes,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
@@ -178,6 +191,7 @@ function toContract(row: ContractRow): Contract {
       visitCount: row.visit_count,
       completedCount: row.completed_count,
       openCount: row.open_count,
+      historicalCount: row.historical_count,
       cancelledCount: row.cancelled_count,
       amountMissingCount: row.amount_missing_count,
       scheduledTotal: row.scheduled_total,
@@ -356,9 +370,13 @@ interface TermsPlan extends SchedulePlan {
   blockedReason: string | null;
 }
 
-/** The schedule plan for a contract under the given terms, including the reasons a change is refused. */
-function planForTerms(current: Terms, proposed: Terms, existing: ExistingVisit[]): TermsPlan {
-  const periods = buildSchedulePeriods(proposed.validFrom, proposed.validTo, proposed.maintenanceFrequency);
+/**
+ * The schedule plan for a contract under the given terms, including the reasons a change is refused.
+ * The cutover date is the contract's own (null unless it was imported): it is
+ * not one of the terms and cannot be proposed.
+ */
+function planForTerms(current: Terms, proposed: Terms, existing: ExistingVisit[], cutoverDate: string | null): TermsPlan {
+  const periods = buildSchedulePeriods(proposed.validFrom, proposed.validTo, proposed.maintenanceFrequency, cutoverDate);
   const plan = planSchedule(periods, existing, proposed.validFrom, proposed.validTo);
   const acted = existing.filter((visit) => visit.locked && visit.status !== "CANCELLED");
   let blockedReason: string | null = null;
@@ -453,7 +471,7 @@ async function applyPlan(
 /** Brings an ACTIVE contract's visits in line with its stored terms. */
 async function syncSchedule(db: Queryable, auth: AuthContext, contract: Contract): Promise<ScheduleChange> {
   const existing = await loadExistingVisits(db, contract.id, true);
-  const plan = planForTerms(contract, contract, existing);
+  const plan = planForTerms(contract, contract, existing, contract.scheduleCutoverDate);
 
   if (plan.blockedReason) {
     throw conflict(plan.blockedReason);
@@ -485,7 +503,7 @@ export async function previewSchedule(id: string, query: SchedulePreviewQuery): 
 
   assertValidity(proposed.validFrom, proposed.validTo);
 
-  const plan = planForTerms(contract, proposed, await loadExistingVisits(pool, id, false));
+  const plan = planForTerms(contract, proposed, await loadExistingVisits(pool, id, false), contract.scheduleCutoverDate);
 
   return {
     ...proposed,
@@ -639,7 +657,7 @@ export function updateContract(
     // Only the terms drive the schedule. A new default visit amount applies to
     // visits generated from now on; existing visits keep their amounts.
     if (termsChanged && updated.status === "ACTIVE") {
-      const plan = planForTerms(before, updated, await loadExistingVisits(client, id, true));
+      const plan = planForTerms(before, updated, await loadExistingVisits(client, id, true), updated.scheduleCutoverDate);
 
       if (plan.blockedReason) {
         throw conflict(plan.blockedReason);

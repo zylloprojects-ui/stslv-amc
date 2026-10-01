@@ -29,6 +29,7 @@ const TRANSITIONS: Record<ProjectStatus, ProjectStatus[]> = {
   IN_PROGRESS: ['COMPLETED', 'CANCELLED'],
   COMPLETED: ['IN_PROGRESS'],
   CANCELLED: ['NEW'],
+  HISTORICAL: [],
 }
 
 export const CATEGORIES: ExpenseCategory[] = [
@@ -45,6 +46,8 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     clientName: 'Test Client One',
     description: 'Fire alarm panel replacement',
     jobDate: '2026-09-01',
+    jobDatePrecision: 'DAY',
+    legacyStatus: null,
     lpoNumber: null,
     lpoDate: null,
     jobValue: '1000.000',
@@ -136,6 +139,7 @@ export function projectsApi(user: SessionUser, seed: Seed = {}, override?: Overr
   let nextId = 900
 
   const invoiceState = (project: Project): InvoiceState => {
+    if (project.status === 'HISTORICAL') return 'HISTORICAL'
     if (project.status === 'CANCELLED') return 'NOT_APPLICABLE'
     if (project.status !== 'COMPLETED') return 'NOT_READY'
 

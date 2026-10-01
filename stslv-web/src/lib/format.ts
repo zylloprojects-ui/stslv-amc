@@ -15,6 +15,20 @@ export function formatDate(value: string | null): string {
   return match ? dateOnly.format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])))) : '—'
 }
 
+const monthOnly = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
+
+/** The month and year of a date held as YYYY-MM-DD ("Feb 2025"), for a date whose day is not known. */
+export function formatMonth(value: string | null): string {
+  const match = value ? /^(\d{4})-(\d{2})-\d{2}$/.exec(value) : null
+
+  return match ? monthOnly.format(new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, 1))) : '—'
+}
+
+/** A job date as far as it is known: the full day, or only the month when the day was never recorded. */
+export function formatJobDate(project: { jobDate: string; jobDatePrecision: 'DAY' | 'MONTH' }): string {
+  return project.jobDatePrecision === 'MONTH' ? formatMonth(project.jobDate) : formatDate(project.jobDate)
+}
+
 /** Today's date on this computer, as YYYY-MM-DD. */
 export function todayIso(): string {
   const now = new Date()

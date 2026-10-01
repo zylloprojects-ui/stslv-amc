@@ -26,13 +26,18 @@ export interface AmcSummary {
     /** Outstanding visits planned after today, within upcomingDays. */
     upcoming: number;
     upcomingDays: number;
-    /** Visits planned in the current calendar month, cancelled visits excluded. */
+    /** Visits planned in the current calendar month, cancelled and historical visits excluded. */
     dueThisMonth: number;
     inProgress: number;
     postponed: number;
     /** Completed visits with a completion date in the current calendar month. */
     completedThisMonth: number;
     completedTotal: number;
+    /**
+     * Period rows imported from an earlier schedule. Their execution is not
+     * recorded, so they are in none of the figures above.
+     */
+    historical: number;
   } | null;
   /** Requires AMC_SCHEDULE:VIEW, because it contains amounts. */
   invoicing: {
@@ -93,8 +98,9 @@ export async function getAmcSummary(auth: AuthContext, upcomingDays: number): Pr
   }
 
   if (canVisits) {
-    // "Outstanding" matches the execution work list: not completed, not
-    // cancelled, and the contract itself has not been cancelled.
+    // "Outstanding" matches the execution work list: scheduled, in progress or
+    // postponed, and the contract itself has not been cancelled. A historical
+    // visit is none of these, so it is never due, overdue or upcoming.
     const result = await pool.query<{
       due: number;
       overdue: number;
@@ -104,6 +110,7 @@ export async function getAmcSummary(auth: AuthContext, upcomingDays: number): Pr
       postponed: number;
       completed_this_month: number;
       completed_total: number;
+      historical: number;
     }>(
       `WITH visits AS (
          SELECT v.status, v.scheduled_date, v.completed_date,
@@ -114,11 +121,12 @@ export async function getAmcSummary(auth: AuthContext, upcomingDays: number): Pr
        SELECT count(*) FILTER (WHERE outstanding AND scheduled_date <= current_date)::int AS due,
               count(*) FILTER (WHERE outstanding AND status IN ('SCHEDULED', 'POSTPONED') AND scheduled_date < current_date)::int AS overdue,
               count(*) FILTER (WHERE outstanding AND scheduled_date > current_date AND scheduled_date <= current_date + $1::int)::int AS upcoming,
-              count(*) FILTER (WHERE status <> 'CANCELLED' AND date_trunc('month', scheduled_date) = date_trunc('month', current_date))::int AS due_this_month,
+              count(*) FILTER (WHERE status NOT IN ('CANCELLED', 'HISTORICAL') AND date_trunc('month', scheduled_date) = date_trunc('month', current_date))::int AS due_this_month,
               count(*) FILTER (WHERE outstanding AND status = 'IN_PROGRESS')::int AS in_progress,
               count(*) FILTER (WHERE outstanding AND status = 'POSTPONED')::int AS postponed,
               count(*) FILTER (WHERE status = 'COMPLETED' AND date_trunc('month', completed_date) = date_trunc('month', current_date))::int AS completed_this_month,
-              count(*) FILTER (WHERE status = 'COMPLETED')::int AS completed_total
+              count(*) FILTER (WHERE status = 'COMPLETED')::int AS completed_total,
+              count(*) FILTER (WHERE status = 'HISTORICAL')::int AS historical
        FROM visits`,
       [upcomingDays]
     );
@@ -134,6 +142,7 @@ export async function getAmcSummary(auth: AuthContext, upcomingDays: number): Pr
       postponed: row?.postponed ?? 0,
       completedThisMonth: row?.completed_this_month ?? 0,
       completedTotal: row?.completed_total ?? 0,
+      historical: row?.historical ?? 0,
     };
   }
 

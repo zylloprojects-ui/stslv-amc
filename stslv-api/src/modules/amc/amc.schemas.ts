@@ -4,6 +4,7 @@ import {
   CONTRACT_STATUSES,
   INVOICE_ELIGIBILITIES,
   MAINTENANCE_FREQUENCIES,
+  OPERATIONAL_VISIT_STATUSES,
   VISIT_STATUSES,
 } from "./amc.constants";
 import { isValidIsoDate } from "./amc.schedule";
@@ -194,7 +195,8 @@ export const listExecutionSchema = z.object({
 
 export const updateExecutionSchema = z
   .strictObject({
-    status: z.enum(VISIT_STATUSES, { error: "Select a visit status." }).optional(),
+    // HISTORICAL is not offered: it is written only by the controlled import.
+    status: z.enum(OPERATIONAL_VISIT_STATUSES, { error: "Select a visit status." }).optional(),
     completedDate: optionalIsoDate("Completion date").optional(),
     // New planned date, for example when a visit is postponed.
     scheduledDate: isoDate("Scheduled date").optional(),

@@ -3,8 +3,8 @@ import { useState, type FormEvent } from 'react'
 import { Alert, Button, Modal, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { formatDate, todayIso } from './amcFormat'
-import { DetailRow, OrDash, SelectField, VisitStatusPill } from './components'
-import { VISIT_STATUSES, VISIT_STATUS_LABELS, type ExecutionVisit, type VisitStatus } from './types'
+import { DetailRow, OrDash, PlannedDate, SelectField, VisitStatusPill } from './components'
+import { OPERATIONAL_VISIT_STATUSES, VISIT_STATUS_LABELS, type ExecutionVisit, type VisitStatus } from './types'
 
 export type ExecutionMode = 'view' | 'complete' | 'update'
 
@@ -98,7 +98,7 @@ export function ExecutionVisitModal({ visit, mode, canReopen, onClose, onSaved }
         No. {visit.sequenceNo} · period {formatDate(visit.periodStart)} to {formatDate(visit.periodEnd)}
       </DetailRow>
       <DetailRow label="Planned date">
-        {formatDate(visit.scheduledDate)}
+        <PlannedDate visit={visit} format={formatDate} />
         {visit.isRescheduled && <span className="text-slate-500"> (originally {formatDate(visit.originalScheduledDate)})</span>}
       </DetailRow>
       <DetailRow label="Assigned to">
@@ -115,6 +115,12 @@ export function ExecutionVisitModal({ visit, mode, canReopen, onClose, onSaved }
     return (
       <Modal title={TITLES.view} onClose={onClose} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
         <div className="space-y-4">
+          {visit.status === 'HISTORICAL' && (
+            <Alert tone="info">
+              <strong>Historical record.</strong> This period was imported from an earlier schedule. Whether and when the visit took place was not
+              recorded, and it cannot be changed here.
+            </Alert>
+          )}
           {summary}
           <dl className="divide-y divide-slate-100 px-4">
             {visit.statusReason && <DetailRow label="Reason">{visit.statusReason}</DetailRow>}
@@ -176,7 +182,7 @@ export function ExecutionVisitModal({ visit, mode, canReopen, onClose, onSaved }
                   : undefined
             }
           >
-            {VISIT_STATUSES.map((value) => (
+            {OPERATIONAL_VISIT_STATUSES.map((value) => (
               <option key={value} value={value}>
                 {VISIT_STATUS_LABELS[value]}
               </option>
