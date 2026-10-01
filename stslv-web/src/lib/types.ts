@@ -82,6 +82,11 @@ export interface User {
   email: string
   fullName: string
   isActive: boolean
+  /**
+   * PENDING: requested from the Sign up page and not yet decided by an administrator.
+   * REJECTED: the request was refused; the account cannot sign in and holds no role.
+   */
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
   lastLoginAt: string | null
   createdAt: string
   roles: RoleSummary[]

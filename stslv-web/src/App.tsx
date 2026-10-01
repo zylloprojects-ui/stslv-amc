@@ -10,10 +10,13 @@ import { AccountPage } from './pages/AccountPage'
 import { AmcContractsPage } from './pages/amc/AmcContractsPage'
 import { AmcExecutionPage } from './pages/amc/AmcExecutionPage'
 import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
+import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
+import { SignUpPage } from './pages/auth/SignUpPage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ExpensesPage } from './pages/expenses/ExpensesPage'
-import { LoginPage } from './pages/LoginPage'
+import { AuthLayout, LoginPage } from './pages/LoginPage'
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProcurementPage } from './pages/procurement/ProcurementPage'
@@ -53,7 +56,13 @@ const PENDING_MODULES: { path: string; module: Module; title: string }[] = [
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      {/* Open to visitors who are not signed in. They share one frame, so moving between them keeps it in place. */}
+      <Route element={<AuthLayout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignUpPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+      </Route>
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>

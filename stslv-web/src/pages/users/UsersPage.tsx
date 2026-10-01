@@ -11,12 +11,21 @@ import { CreateUserModal, EditRolesModal, ResetPasswordModal } from './UserDialo
 
 type Tab = 'users' | 'roles'
 
+/** Requested from the Sign up page and still waiting for an administrator. */
+const isPending = (user: User) => user.approvalStatus === 'PENDING'
+
+/** A sign-up request an administrator refused. Nothing can be done with it until the person signs up again. */
+const isRejected = (user: User) => user.approvalStatus === 'REJECTED'
+
+const toggleLabel = (user: User) => (user.isActive ? 'Deactivate' : isPending(user) ? 'Approve' : 'Activate')
+
 type Dialog =
   | { kind: 'none' }
   | { kind: 'create' }
   | { kind: 'roles'; user: User }
   | { kind: 'password'; user: User }
   | { kind: 'toggle'; user: User }
+  | { kind: 'reject'; user: User }
 
 export function UsersPage() {
   const auth = useAuth()
@@ -30,21 +39,37 @@ export function UsersPage() {
 
   const toggle = useMutation({
     mutationFn: (user: User) => api.post<User>(`/users/${user.id}/${user.isActive ? 'deactivate' : 'activate'}`),
-    onSuccess: async (updated) => {
+    onSuccess: async (updated, before) => {
       await queryClient.invalidateQueries({ queryKey: ['users'] })
-      setNotice(`${updated.fullName} was ${updated.isActive ? 'activated' : 'deactivated'}.`)
+      setNotice(
+        isPending(before)
+          ? `The sign-up request of ${updated.fullName} was approved. They can now sign in.`
+          : `${updated.fullName} was ${updated.isActive ? 'activated' : 'deactivated'}.`,
+      )
+      setDialog({ kind: 'none' })
+    },
+  })
+
+  const reject = useMutation({
+    mutationFn: (user: User) => api.post<User>(`/users/${user.id}/reject`),
+    onSuccess: async (updated) => {
+      // The roles tab counts the users of each role, and a rejection removes any role given while pending.
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['users'] }), queryClient.invalidateQueries({ queryKey: ['roles'] })])
+      setNotice(`The sign-up request of ${updated.fullName} was rejected. They cannot sign in.`)
       setDialog({ kind: 'none' })
     },
   })
 
   const closeDialog = () => {
     toggle.reset()
+    reject.reset()
     setDialog({ kind: 'none' })
   }
 
   const canCreate = auth.can('USERS', 'CREATE')
   const canEdit = auth.can('USERS', 'EDIT')
   const roleList = roles.data?.roles ?? []
+  const pendingCount = users.data?.filter(isPending).length ?? 0
 
   const tabButton = (value: Tab, label: string) => (
     <button
@@ -95,6 +120,14 @@ export function UsersPage() {
       )}
 
       <div role="tabpanel" id="users-tabpanel" aria-labelledby={`users-tab-${tab}`}>
+        {tab === 'users' && pendingCount > 0 && (
+          <div className="mb-4">
+            <Alert tone="info">
+              {pendingCount === 1 ? '1 sign-up request is' : `${pendingCount} sign-up requests are`} waiting for approval. A pending account cannot
+              sign in.{canEdit && ' Assign a role, then approve it.'}
+            </Alert>
+          </div>
+        )}
         {tab === 'users' && (
           <Card>
             {users.isPending && <Spinner label="Loading users" />}
@@ -154,11 +187,20 @@ export function UsersPage() {
                             </div>
                           </td>
                           <td className={TABLE.td}>
-                            <StatusBadge active={user.isActive} />
+                            {isPending(user) ? (
+                              <Badge tone="amber">Pending approval</Badge>
+                            ) : isRejected(user) ? (
+                              <Badge>Rejected</Badge>
+                            ) : (
+                              <StatusBadge active={user.isActive} />
+                            )}
                           </td>
                           <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>
                           {canEdit && (
                             <td className={cx(TABLE.td, 'whitespace-nowrap text-right')}>
+                              {isRejected(user) ? (
+                                <span className="text-xs text-slate-500">No actions</span>
+                              ) : (
                               <div className="flex justify-end gap-1">
                                 <Button
                                   variant="ghost"
@@ -184,12 +226,24 @@ export function UsersPage() {
                                   disabled={isSelf}
                                   title={isSelf ? 'You cannot deactivate your own account.' : undefined}
                                   className={user.isActive && !isSelf ? 'text-red-700 hover:bg-red-50' : undefined}
-                                  aria-label={`${user.isActive ? 'Deactivate' : 'Activate'} ${user.fullName}`}
+                                  aria-label={`${toggleLabel(user)} ${user.fullName}`}
                                   onClick={() => setDialog({ kind: 'toggle', user })}
                                 >
-                                  {user.isActive ? 'Deactivate' : 'Activate'}
+                                  {toggleLabel(user)}
                                 </Button>
+                                {isPending(user) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="text-red-700 hover:bg-red-50"
+                                    aria-label={`Reject ${user.fullName}`}
+                                    onClick={() => setDialog({ kind: 'reject', user })}
+                                  >
+                                    Reject
+                                  </Button>
+                                )}
                               </div>
+                              )}
                             </td>
                           )}
                         </tr>
@@ -247,12 +301,24 @@ export function UsersPage() {
 
       {dialog.kind === 'toggle' && (
         <ConfirmDialog
-          title={dialog.user.isActive ? 'Deactivate user' : 'Activate user'}
+          title={dialog.user.isActive ? 'Deactivate user' : isPending(dialog.user) ? 'Approve sign-up request' : 'Activate user'}
           message={
             dialog.user.isActive ? (
               <>
                 Deactivate <strong>{dialog.user.fullName}</strong>? They are signed out immediately and cannot sign in until
                 activated again. Their records and history are kept.
+              </>
+            ) : isPending(dialog.user) ? (
+              <>
+                <p>
+                  Approve the sign-up request of <strong>{dialog.user.fullName}</strong> ({dialog.user.email})? The account is activated and
+                  they can sign in with the password they chose.
+                </p>
+                <p className="mt-3">
+                  {dialog.user.roles.length === 0
+                    ? 'No role is assigned yet, so they will be able to sign in but will not see any module. Use Roles first to give them access.'
+                    : `They will have the access of: ${dialog.user.roles.map((role) => role.name).join(', ')}.`}
+                </p>
               </>
             ) : (
               <>
@@ -260,11 +326,35 @@ export function UsersPage() {
               </>
             )
           }
-          confirmLabel={dialog.user.isActive ? 'Deactivate' : 'Activate'}
+          confirmLabel={toggleLabel(dialog.user)}
           danger={dialog.user.isActive}
           loading={toggle.isPending}
           error={toggle.isError ? errorMessage(toggle.error) : null}
           onConfirm={() => toggle.mutate(dialog.user)}
+          onCancel={closeDialog}
+        />
+      )}
+
+      {dialog.kind === 'reject' && (
+        <ConfirmDialog
+          title="Reject registration?"
+          message={
+            <>
+              <p>
+                <strong>{dialog.user.fullName}</strong>
+                <span className="block break-all">{dialog.user.email}</span>
+              </p>
+              <p className="mt-3">This registration request will be rejected and the user will not receive access to STSLEV AMC.</p>
+              {dialog.user.roles.length > 0 && (
+                <p className="mt-3">The role given while it was pending ({dialog.user.roles.map((role) => role.name).join(', ')}) is removed.</p>
+              )}
+            </>
+          }
+          confirmLabel="Reject"
+          danger
+          loading={reject.isPending}
+          error={reject.isError ? errorMessage(reject.error) : null}
+          onConfirm={() => reject.mutate(dialog.user)}
           onCancel={closeDialog}
         />
       )}

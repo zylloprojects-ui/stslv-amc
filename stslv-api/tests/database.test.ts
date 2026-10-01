@@ -26,6 +26,7 @@ describe("migrations", () => {
       "legacy_import_batches",
       "legacy_import_rows",
       "number_sequences",
+      "password_reset_tokens",
       "procurement_requests",
       "project_expenses",
       "projects",
