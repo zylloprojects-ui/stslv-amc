@@ -5,6 +5,9 @@ import { env } from "./config/env";
 import { authRouter } from "./modules/auth/auth.routes";
 import { clientsRouter } from "./modules/clients/clients.routes";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
+import { expensesRouter } from "./modules/expenses/expenses.routes";
+import { procurementRouter } from "./modules/procurement/procurement.routes";
+import { projectsRouter } from "./modules/projects/projects.routes";
 import { rolesRouter } from "./modules/roles/roles.routes";
 import { usersRouter } from "./modules/users/users.routes";
 import { errorHandler, notFoundHandler } from "./shared/errors";
@@ -54,6 +57,9 @@ export function createApp() {
   app.use("/api/clients", clientsRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/roles", rolesRouter);
+  app.use("/api/projects", projectsRouter);
+  app.use("/api/procurement", procurementRouter);
+  app.use("/api/expenses", expensesRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
