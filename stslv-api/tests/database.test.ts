@@ -11,19 +11,22 @@ beforeAll(resetData);
 afterAll(closePool);
 
 describe("migrations", () => {
-  it("creates exactly the foundation tables", async () => {
+  it("creates exactly the expected tables and views", async () => {
     const result = await pool.query<{ table_name: string }>(
       "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY table_name"
     );
 
     expect(result.rows.map((row) => row.table_name)).toEqual([
       "activity_logs",
+      "amc_contracts",
+      "amc_visits",
       "clients",
       "role_permissions",
       "roles",
       "schema_migrations",
       "user_roles",
       "users",
+      "v_amc_visit_billing",
     ]);
   });
 

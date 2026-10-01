@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { checkDatabaseHealth } from "./config/database";
 import { env } from "./config/env";
+import { amcRouter } from "./modules/amc/amc.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { clientsRouter } from "./modules/clients/clients.routes";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
@@ -54,6 +55,7 @@ export function createApp() {
   app.use("/api/clients", clientsRouter);
   app.use("/api/users", usersRouter);
   app.use("/api/roles", rolesRouter);
+  app.use("/api/amc", amcRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
