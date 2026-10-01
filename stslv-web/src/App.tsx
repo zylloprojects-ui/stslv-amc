@@ -7,6 +7,9 @@ import { AppLayout } from './layout/AppLayout'
 import { ApiError } from './lib/api'
 import type { Module } from './lib/types'
 import { AccountPage } from './pages/AccountPage'
+import { AmcContractsPage } from './pages/amc/AmcContractsPage'
+import { AmcExecutionPage } from './pages/amc/AmcExecutionPage'
+import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { LoginPage } from './pages/LoginPage'
@@ -39,9 +42,6 @@ export function AppProviders({ children, client }: { children: ReactNode; client
 
 // Modules that exist in the navigation but are not built yet.
 const PENDING_MODULES: { path: string; module: Module; title: string }[] = [
-  { path: '/amc/contracts', module: 'AMC_CONTRACTS', title: 'AMC Contracts' },
-  { path: '/amc/schedule', module: 'AMC_SCHEDULE', title: 'AMC Schedule' },
-  { path: '/amc/execution', module: 'AMC_EXECUTION', title: 'AMC Execution' },
   { path: '/projects', module: 'PROJECTS', title: 'Projects' },
   { path: '/procurement', module: 'PROCUREMENT', title: 'Procurement' },
   { path: '/expenses', module: 'EXPENSES', title: 'Expenses' },
@@ -70,6 +70,30 @@ export function AppRoutes() {
             element={
               <RequirePermission module="CLIENTS">
                 <ClientsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/contracts"
+            element={
+              <RequirePermission module="AMC_CONTRACTS">
+                <AmcContractsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/schedule"
+            element={
+              <RequirePermission module="AMC_SCHEDULE">
+                <AmcSchedulePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/execution"
+            element={
+              <RequirePermission module="AMC_EXECUTION">
+                <AmcExecutionPage />
               </RequirePermission>
             }
           />

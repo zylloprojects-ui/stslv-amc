@@ -193,9 +193,9 @@ describe('permission-based navigation', () => {
 
   it('shows unbuilt modules as in progress, with no data', async () => {
     session(ADMIN)
-    renderApp('/amc/contracts')
+    renderApp('/reports')
 
-    expect(await screen.findByRole('heading', { name: 'AMC Contracts' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument()
     expect(screen.getByText('Module implementation in progress')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
