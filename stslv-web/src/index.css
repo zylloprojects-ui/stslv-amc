@@ -224,6 +224,16 @@
 .dark .border-green-200 {
   border-color: #245a38;
 }
+/* "Live" tiles of the dashboard's module rollout. */
+.dark .bg-emerald-50\/60 {
+  background-color: #12332b;
+}
+.dark .border-emerald-200 {
+  border-color: #245a38;
+}
+.dark .text-emerald-700 {
+  color: #8fdc9a;
+}
 
 /* ---------------------------------------------------------------------------
    Colour palettes for the sidebar and page banners.

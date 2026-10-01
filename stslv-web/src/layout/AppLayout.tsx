@@ -49,7 +49,7 @@ function MobileMenu({ onClose, theme, onToggleTheme }: { onClose: () => void; th
         aria-modal="true"
         aria-label="Menu"
         tabIndex={-1}
-        className="relative h-full w-72 max-w-[85vw] shadow-xl outline-none"
+        className="relative h-full w-64 max-w-[85vw] shadow-xl outline-none"
       >
         <Sidebar onNavigate={onClose} onClose={onClose} theme={theme} onToggleTheme={onToggleTheme} />
       </div>
@@ -120,11 +120,11 @@ export function AppLayout() {
       {/* Mobile sidebar */}
       {menuOpen && <MobileMenu onClose={() => setMenuOpen(false)} theme={theme} onToggleTheme={toggleTheme} />}
 
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-3 bg-white/90 px-4 shadow-sm backdrop-blur sm:px-6 lg:px-8">
-        <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 bg-white/90 px-4 shadow-sm backdrop-blur sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             type="button"
-            className="-ml-2 rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+            className="rounded-md p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
             aria-label="Open menu"
             aria-haspopup="dialog"
             aria-expanded={menuOpen}

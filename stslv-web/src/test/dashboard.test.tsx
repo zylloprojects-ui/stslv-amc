@@ -48,7 +48,7 @@ const withPermissions = (permissions: string[]): SessionUser => ({ ...ACCOUNTANT
 async function cardOf(label: string) {
   const heading = await screen.findByRole('heading', { name: label, level: 3 })
 
-  return heading.closest('div.rounded-lg') as HTMLElement
+  return heading.closest('[data-metric-card]') as HTMLElement
 }
 
 const shownCards = () => screen.queryAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)
@@ -96,6 +96,163 @@ describe('dashboard layout', () => {
     expect(within(card).getByText('2 inactive')).toBeInTheDocument()
     expect(within(card).getByRole('link', { name: 'View clients' })).toHaveAttribute('href', '/clients')
     expect(within(card).queryByText('Not yet available')).not.toBeInTheDocument()
+  })
+})
+
+describe('dashboard banner', () => {
+  it('greets the user by name under the product name, with today’s date', async () => {
+    dashboardApi(ADMIN, () => SUMMARY)
+    renderApp('/dashboard')
+
+    expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument()
+
+    const main = screen.getByRole('main')
+    expect(main).toHaveTextContent(/Good (morning|afternoon|evening), Asha Admin\./)
+    expect(main).toHaveTextContent(new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
+    expect(main).toHaveTextContent('STSLEV AMC · Operations Suite')
+    expect(main).not.toHaveTextContent('STSLEV ERP')
+    expect(document.title).toBe('Dashboard · STSLEV AMC')
+  })
+
+  it('offers quick links only to pages the role may open', async () => {
+    dashboardApi(ADMIN, () => SUMMARY)
+    const admin = renderApp('/dashboard')
+
+    await cardOf('Active Clients')
+    const banner = () => screen.getByRole('heading', { name: 'Dashboard', level: 1 }).parentElement as HTMLElement
+
+    expect(within(banner()).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/clients')
+    expect(within(banner()).getByRole('link', { name: 'Users & Access' })).toHaveAttribute('href', '/admin/users')
+    admin.unmount()
+
+    dashboardApi(ACCOUNTANT, () => ok({ clients: FULL.clients, amc: null, projects: PROJECTS }))
+    renderApp('/dashboard')
+
+    await cardOf('Active Clients')
+    expect(within(banner()).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
+    expect(within(banner()).queryByRole('link', { name: 'Users & Access' })).not.toBeInTheDocument()
+  })
+})
+
+describe('workspace cards', () => {
+  const workspace = () => within(screen.getByRole('region', { name: 'Workspace' }))
+
+  it('counts the modules the role may open, from the navigation', async () => {
+    dashboardApi(ADMIN, () => SUMMARY)
+    const admin = renderApp('/dashboard')
+
+    await cardOf('Active Clients')
+    // Every navigation item: the Admin may open them all.
+    expect(workspace().getByText('Modules Available').nextElementSibling).toHaveTextContent(/^12$/)
+    expect(workspace().getByText('Admin')).toBeInTheDocument()
+    admin.unmount()
+
+    dashboardApi(ACCOUNTANT, () => ok({ clients: FULL.clients, amc: null, projects: PROJECTS }))
+    renderApp('/dashboard')
+
+    await cardOf('Active Clients')
+    // Dashboard, Clients, Projects and Expenses.
+    expect(workspace().getByText('Modules Available').nextElementSibling).toHaveTextContent(/^4$/)
+  })
+
+  it('reports the connection from the dashboard’s own request, never as a fixed text', async () => {
+    let release: (reply: MockReply) => void = () => {}
+    dashboardApi(
+      ADMIN,
+      () =>
+        new Promise<MockReply>((resolve) => {
+          release = resolve
+        }),
+    )
+    const pending = renderApp('/dashboard')
+
+    await cardOf('Active Clients')
+    expect(workspace().getByText('Checking…')).toBeInTheDocument()
+
+    release(SUMMARY)
+    expect(await workspace().findByText('Connected')).toBeInTheDocument()
+    pending.unmount()
+
+    dashboardApi(ADMIN, () => fail(500, 'INTERNAL_ERROR', 'An unexpected error occurred.'))
+    renderApp('/dashboard')
+
+    await screen.findByRole('alert')
+    expect(await workspace().findByText('Unreachable')).toBeInTheDocument()
+    expect(workspace().queryByText('Connected')).not.toBeInTheDocument()
+  })
+
+  it('draws the Active Clients ring only from figures the API returned', async () => {
+    let release: (reply: MockReply) => void = () => {}
+    dashboardApi(
+      ADMIN,
+      () =>
+        new Promise<MockReply>((resolve) => {
+          release = resolve
+        }),
+    )
+    renderApp('/dashboard')
+
+    const card = await cardOf('Active Clients')
+    const arc = () => card.querySelector('circle[stroke^="url"]')
+
+    // Nothing is drawn while the figures are still loading.
+    expect(arc()).toBeNull()
+
+    // 3 active of 4 clients: three quarters of the ring.
+    release(ok({ ...FULL, clients: { active: 3, inactive: 1 } }))
+    expect(await within(card).findByText('3')).toBeInTheDocument()
+
+    const [filled, whole] = (arc()?.getAttribute('stroke-dasharray') ?? '').split(' ').map(Number)
+    expect((filled as number) / (whole as number)).toBeCloseTo(0.75)
+  })
+})
+
+describe('module rollout', () => {
+  const tiles = () =>
+    within(screen.getByRole('region', { name: 'Module rollout' }))
+      .getAllByRole('listitem')
+      .map((item) => item.textContent)
+
+  it('marks built modules Live and only the unbuilt ones Planned', async () => {
+    dashboardApi(ADMIN, () => SUMMARY)
+    renderApp('/dashboard')
+
+    await cardOf('Active Clients')
+
+    expect(tiles()).toEqual([
+      'ClientsLive',
+      'AMC ContractsLive',
+      'AMC ScheduleLive',
+      'AMC ExecutionLive',
+      'ProjectsLive',
+      'ProcurementLive',
+      'ExpensesLive',
+      'Invoice TrackingPlanned',
+      'ReportsPlanned',
+      'Users & AccessLive',
+      'SettingsLive',
+    ])
+  })
+
+  it('agrees with the pages: a Planned module opens a placeholder, a Live one opens its page', async () => {
+    dashboardApi(ADMIN, () => SUMMARY)
+    const planned = renderApp('/invoices')
+    expect(await screen.findByText('Module implementation in progress')).toBeInTheDocument()
+    planned.unmount()
+
+    const live = renderApp('/settings')
+    expect(await screen.findByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
+    expect(screen.queryByText('Module implementation in progress')).not.toBeInTheDocument()
+    live.unmount()
+  })
+
+  it('lists only the modules the role may open', async () => {
+    dashboardApi(ACCOUNTANT, () => ok({ clients: FULL.clients, amc: null, projects: PROJECTS }))
+    renderApp('/dashboard')
+
+    await cardOf('Active Clients')
+
+    expect(tiles()).toEqual(['ClientsLive', 'ProjectsLive', 'ExpensesLive'])
   })
 })
 
@@ -186,7 +343,8 @@ describe('connected metrics', () => {
     expect(shownCards()).toEqual(ALL_LABELS)
     expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
     expect(screen.queryByText(/no data source yet/)).not.toBeInTheDocument()
-    expect(document.querySelector('.border-dashed')).toBeNull()
+    // No figure card is drawn as an empty placeholder.
+    expect(document.querySelector('[data-metric-card].border-dashed')).toBeNull()
   })
 })
 
@@ -268,7 +426,7 @@ describe('a metric with no data source', () => {
       </MemoryRouter>,
     )
 
-    const card = screen.getByRole('heading', { name: 'Pending Invoices' }).closest('div.rounded-lg') as HTMLElement
+    const card = screen.getByRole('heading', { name: 'Pending Invoices' }).closest('[data-metric-card]') as HTMLElement
 
     expect(within(card).getByText('Not yet available')).toBeInTheDocument()
     expect(card.textContent).not.toMatch(/\d/)
@@ -426,8 +584,14 @@ describe('dashboard permissions', () => {
     dashboardApi(withPermissions(['DASHBOARD:VIEW']), () => ok({ clients: null, amc: null, projects: null }))
     renderApp('/dashboard')
 
-    expect(await screen.findByText('No figures to show')).toBeInTheDocument()
+    const empty = (await screen.findByText('No figures to show')).parentElement as HTMLElement
+
     expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument()
-    expect((screen.getByRole('main').textContent ?? '').replace(/Welcome, .*?\./, '')).not.toMatch(/\d/)
+    expect(document.querySelector('[data-metric-card]')).toBeNull()
+    // No business figure is invented: the only numbers on the page are today's date and
+    // the count of modules this role may open (just the dashboard itself).
+    expect(empty.textContent).not.toMatch(/\d/)
+    expect(within(screen.getByRole('region', { name: 'Workspace' })).getByText('Modules Available').nextElementSibling).toHaveTextContent(/^1$/)
+    expect(screen.queryByRole('region', { name: 'Module rollout' })).not.toBeInTheDocument()
   })
 })

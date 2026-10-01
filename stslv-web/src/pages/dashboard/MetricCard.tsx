@@ -1,6 +1,9 @@
+import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
-import { Badge, Card } from '../../components/ui'
+import { Badge } from '../../components/ui'
 import { cx } from '../../lib/format'
+import { IconTile, type IconName } from './icons'
+import { ACCENTS, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
 import type { MetricDefinition, MetricLink, MetricReading } from './metrics'
 
 export type MetricState =
@@ -15,46 +18,122 @@ interface MetricCardProps {
   state: MetricState
   /** The page to open from the card, already chosen for what the user may open. */
   link?: MetricLink | null
+  /** Position of the card on the page: picks its accent colours and staggers its entrance. */
+  index?: number
+  /**
+   * For a card that carries a ring in the corner instead of an icon: the share (0 to 1) that the
+   * figure is of its whole, or null until the API has returned it. Decorative only; the numbers
+   * are always shown as text beside it.
+   */
+  ring?: number | null | undefined
+}
+
+// The icon of each figure. A figure not listed here gets the general one.
+const METRIC_ICONS: Record<string, IconName> = {
+  'clients.active': 'users',
+  'amc.activeContracts': 'contract',
+  'amc.visitsDue': 'calendar',
+  'amc.readyForInvoice': 'invoice',
+  'projects.active': 'project',
+  'projects.readyForInvoice': 'invoice',
+  'finance.trackedExpenses': 'wallet',
+  'finance.readyForInvoiceValue': 'invoice',
+}
+
+const FIGURE = 'break-words font-bold tabular-nums text-[#0b3b66]'
+
+/** Ring showing a share of a whole. Decorative; the numbers are shown as text beside it. */
+function ShareRing({ share }: { share: number }) {
+  const circumference = 2 * Math.PI * 26
+
+  return (
+    <svg viewBox="0 0 64 64" className="h-16 w-16 -rotate-90" aria-hidden="true">
+      <circle cx="32" cy="32" r="26" fill="none" stroke="#E2E8F0" strokeWidth="8" />
+      <circle
+        cx="32"
+        cy="32"
+        r="26"
+        fill="none"
+        stroke="url(#metric-ring-gradient)"
+        strokeWidth="8"
+        strokeLinecap="round"
+        strokeDasharray={`${circumference * Math.min(Math.max(share, 0), 1)} ${circumference}`}
+      />
+      <defs>
+        <linearGradient id="metric-ring-gradient" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#1B8AD3" />
+          <stop offset="100%" stopColor="#5BAF48" />
+        </linearGradient>
+      </defs>
+    </svg>
+  )
 }
 
 /** One dashboard figure. A card never shows a number it did not receive from the API. */
-export function MetricCard({ metric, state, link = null }: MetricCardProps) {
+export function MetricCard({ metric, state, link = null, index = 0, ring }: MetricCardProps) {
+  const from = ACCENTS[index % ACCENTS.length] as string
+  const to = ACCENTS[(index + 1) % ACCENTS.length] as string
+  const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s` }
+  const icon = METRIC_ICONS[metric.id] ?? 'pulse'
+
   if (state.kind === 'unavailable') {
     return (
-      <Card className="border-dashed p-5 shadow-none">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <h3 className="text-sm font-medium text-slate-600">{metric.label}</h3>
+      <div
+        data-metric-card
+        className="login-rise relative rounded-2xl border border-dashed border-slate-300 bg-white/70 p-5 transition-all duration-300 hover:-translate-y-0.5 hover:border-[#1B8AD3] hover:bg-white hover:shadow-md"
+        style={entrance}
+      >
+        <IconTile icon={icon} from={from} to={to} className="absolute right-5 top-5" />
+        <h3 className={cx(DASHBOARD_LABEL, 'pr-12')}>{metric.label}</h3>
+        <div className="mt-2">
           <Badge tone="amber">Not yet available</Badge>
         </div>
-        <p className="mt-2 text-3xl font-semibold text-slate-300" aria-hidden="true">
+        <p className="mt-3 text-3xl font-bold text-slate-300" aria-hidden="true">
           —
         </p>
         <p className="mt-2 text-xs text-slate-600">No figure yet. It will come from {metric.source}, which is not connected to the dashboard.</p>
-      </Card>
+      </div>
     )
   }
 
   const reading = state.kind === 'ready' ? state.reading : null
   const detail = reading && 'value' in reading ? reading.detail : undefined
+  const hasRing = ring !== undefined
 
   return (
-    <Card className={cx('p-5', metric.attention && state.kind === 'ready' && 'border-l-4 border-l-amber-500')}>
-      <h3 className="text-sm font-medium text-slate-600">{metric.label}</h3>
+    <div
+      data-metric-card
+      className={cx(DASHBOARD_CARD, metric.attention && state.kind === 'ready' && 'border-l-4 border-l-amber-500')}
+      style={entrance}
+    >
+      {hasRing ? (
+        ring !== null &&
+        state.kind === 'ready' && (
+          <div className="absolute right-4 top-4">
+            <ShareRing share={ring} />
+          </div>
+        )
+      ) : (
+        <IconTile icon={icon} from={from} to={to} className="absolute right-5 top-5" />
+      )}
+
+      {/* Beside an icon the label keeps the icon's height, so every card in a row lines up. */}
+      <h3 className={cx(DASHBOARD_LABEL, hasRing ? 'pr-20' : 'min-h-9 pr-12')}>{metric.label}</h3>
 
       {state.kind === 'loading' && (
-        <div role="status" className="mt-3">
+        <div role="status" className="mt-4">
           <span className="sr-only">Loading {metric.label}</span>
-          <span className="block h-8 w-20 animate-pulse rounded bg-slate-200 motion-reduce:animate-none" aria-hidden="true" />
-          <span className="mt-3 block h-3 w-28 animate-pulse rounded bg-slate-100 motion-reduce:animate-none" aria-hidden="true" />
+          <span className="skeleton block h-9 w-24 rounded-lg" aria-hidden="true" />
+          <span className="skeleton mt-4 block h-3.5 w-32 rounded" aria-hidden="true" />
         </div>
       )}
 
       {state.kind === 'failed' && (
         <>
-          <p className="mt-2 text-3xl font-semibold text-slate-300" aria-hidden="true">
+          <p className="mt-3 text-4xl font-bold text-slate-300" aria-hidden="true">
             —
           </p>
-          <p className="mt-2 text-xs font-medium text-red-700">Could not be loaded.</p>
+          <p className="mt-3 text-sm font-medium text-red-700">Could not be loaded.</p>
         </>
       )}
 
@@ -64,9 +143,9 @@ export function MetricCard({ metric, state, link = null }: MetricCardProps) {
             {reading.parts.map((part) => (
               <div key={part.label} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 first:pt-0">
                 <dt className="text-sm text-slate-700">
-                  <span className="font-medium">{part.label}</span> <span className="whitespace-nowrap text-xs text-slate-600">{part.basis}</span>
+                  <span className="font-semibold">{part.label}</span> <span className="whitespace-nowrap text-xs text-slate-600">{part.basis}</span>
                 </dt>
-                <dd className="min-w-0 break-words text-xl font-semibold tabular-nums text-slate-900">{part.value}</dd>
+                <dd className={cx(FIGURE, 'min-w-0 text-xl')}>{part.value}</dd>
               </div>
             ))}
           </dl>
@@ -76,13 +155,14 @@ export function MetricCard({ metric, state, link = null }: MetricCardProps) {
 
       {reading && 'value' in reading && (
         <>
-          <p className="mt-2 break-words text-3xl font-semibold tabular-nums text-slate-900">{reading.value}</p>
+          {/* A long amount takes a smaller size, so it fits the card. */}
+          <p className={cx(FIGURE, 'mt-3', reading.value.length > 9 ? 'text-3xl' : 'text-4xl')}>{reading.value}</p>
           {(detail || link) && (
-            <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
+            <p className="mt-3 break-words text-sm text-slate-600">
               {detail && <span>{detail}</span>}
-              {detail && link && <span aria-hidden="true">·</span>}
+              {detail && link && <span aria-hidden="true"> · </span>}
               {link && (
-                <Link to={link.to} className="font-medium text-blue-700 hover:underline">
+                <Link to={link.to} className="font-medium text-[#1479BD] hover:underline">
                   {link.label}
                 </Link>
               )}
@@ -90,6 +170,6 @@ export function MetricCard({ metric, state, link = null }: MetricCardProps) {
           )}
         </>
       )}
-    </Card>
+    </div>
   )
 }

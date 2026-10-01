@@ -4,6 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute, RequirePermission } from './auth/guards'
 import { AppLayout } from './layout/AppLayout'
+import { NAVIGATION } from './layout/navigation'
 import { ApiError } from './lib/api'
 import type { Module } from './lib/types'
 import { AccountPage } from './pages/AccountPage'
@@ -47,11 +48,10 @@ export function AppProviders({ children, client }: { children: ReactNode; client
   )
 }
 
-// Modules that exist in the navigation but are not built yet.
-const PENDING_MODULES: { path: string; module: Module; title: string }[] = [
-  { path: '/invoices', module: 'INVOICES', title: 'Invoice Tracking' },
-  { path: '/reports', module: 'REPORTS', title: 'Reports' },
-]
+// Modules that exist in the navigation but are not built yet. The navigation is the one place that says which.
+const PENDING_MODULES: { path: string; module: Module; title: string }[] = NAVIGATION.flatMap((section) => section.items)
+  .filter((item) => item.pending)
+  .map((item) => ({ path: item.path, module: item.module, title: item.label }))
 
 export function AppRoutes() {
   return (

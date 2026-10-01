@@ -293,7 +293,7 @@ describe('dashboard', () => {
     })
   }
 
-  const cardOf = async (label: string) => (await screen.findByRole('heading', { name: label, level: 3 })).closest('div.rounded-lg') as HTMLElement
+  const cardOf = async (label: string) => (await screen.findByRole('heading', { name: label, level: 3 })).closest('[data-metric-card]') as HTMLElement
 
   it('shows the operational figures only: the value of historical projects is in none of them', async () => {
     dashboardApi(summary({ trackedExpensesOnCancelledProjects: '0.000', trackedExpensesOnHistoricalProjects: '0.000' }))
