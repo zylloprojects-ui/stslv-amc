@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type TextareaHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
+import { BrandLoader } from './loaders'
 import { pageMetaFor } from './pageMeta'
 import { cx } from '../lib/format'
 
@@ -150,78 +151,7 @@ export function StatusBadge({ active }: { active: boolean }) {
   return <Badge tone={active ? 'green' : 'slate'}>{active ? 'Active' : 'Inactive'}</Badge>
 }
 
-const LOADER_ICONS: { position: string; color: string; path: ReactNode }[] = [
-  {
-    // calendar: scheduled visits
-    position: 'left-1/2 top-0 -translate-x-1/2 -translate-y-1/2',
-    color: '#1B8AD3',
-    path: (
-      <>
-        <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
-        <path d="M3.5 10h17M8 3v4M16 3v4" strokeLinecap="round" />
-      </>
-    ),
-  },
-  {
-    // wrench: maintenance
-    position: 'right-0 top-1/2 -translate-y-1/2 translate-x-1/2',
-    color: '#FF8212',
-    path: <path d="M14.5 6.5a4 4 0 0 0 4.9 4.9L20.5 17l-3.5 3.5-5.6-5.6A4 4 0 0 1 6.5 9.5L9 12l3-3-2.5-2.5a4 4 0 0 1 5 0Z" strokeLinejoin="round" />,
-  },
-  {
-    // clipboard with a tick: execution completed
-    position: 'bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2',
-    color: '#5BAF48',
-    path: (
-      <>
-        <rect x="5.5" y="4.5" width="13" height="16" rx="2.5" />
-        <path d="M9.5 4.5h5v2h-5zM9 13l2.2 2.2L15 11" strokeLinecap="round" strokeLinejoin="round" />
-      </>
-    ),
-  },
-  {
-    // receipt: invoicing
-    position: 'left-0 top-1/2 -translate-x-1/2 -translate-y-1/2',
-    color: '#D1428C',
-    path: (
-      <>
-        <path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2v-17Z" strokeLinejoin="round" />
-        <path d="M9.5 8.5h5M9.5 12h5" strokeLinecap="round" />
-      </>
-    ),
-  },
-]
-
-/** Branded loader: the logo with AMC icons (schedule, maintenance, execution, invoice) orbiting it. */
-export function BrandLoader({ label = 'Loading', size = 'md', announce = true }: { label?: string; size?: 'sm' | 'md'; announce?: boolean }) {
-  const box = size === 'sm' ? 'h-24 w-24' : 'h-36 w-36'
-  const core = size === 'sm' ? 'h-12 w-12' : 'h-[4.5rem] w-[4.5rem]'
-  const logo = size === 'sm' ? 'h-8 w-8' : 'h-12 w-12'
-
-  return (
-    <div role={announce ? 'status' : undefined} className={cx('flex flex-col items-center gap-4 text-sm text-slate-500', size === 'sm' ? 'py-8' : 'py-10')}>
-      <div className={cx('relative', box)} aria-hidden="true">
-        <span className="absolute inset-0 rounded-full border border-dashed border-sky-300" />
-        <span className="login-pulse-ring absolute inset-3 rounded-full border border-sky-300" />
-        <div className="login-orbit absolute inset-0">
-          {LOADER_ICONS.map((icon) => (
-            <span key={icon.color} className={cx('absolute', icon.position)}>
-              <span className="login-orbit-counter flex h-7 w-7 items-center justify-center rounded-full bg-white shadow-md ring-1 ring-slate-100" style={{ color: icon.color }}>
-                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.9">
-                  {icon.path}
-                </svg>
-              </span>
-            </span>
-          ))}
-        </div>
-        <span className={cx('absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white shadow-lg shadow-sky-200/70 ring-1 ring-sky-100', core)}>
-          <img src="/stslv-logo.png" alt="" className={cx('object-contain', logo)} />
-        </span>
-      </div>
-      <span className="font-medium">{label}…</span>
-    </div>
-  )
-}
+export { BrandLoader }
 
 export function Spinner({ label = 'Loading' }: { label?: string }) {
   return <BrandLoader label={label} size="sm" />

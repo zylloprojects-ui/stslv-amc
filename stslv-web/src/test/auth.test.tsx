@@ -348,3 +348,16 @@ describe('page search', () => {
     expect(within(screen.getByRole('option', { name: /Clients/ })).getByLabelText('Selected')).toBeInTheDocument()
   })
 })
+
+describe('loader style', () => {
+  it('lets the user pick a loader design and remembers it', async () => {
+    session(ADMIN)
+    renderApp('/dashboard')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Colour theme' }))
+    await userEvent.click(screen.getByRole('button', { name: /Skeleton/ }))
+
+    expect(localStorage.getItem('stslev.loader')).toBe('skeleton')
+    expect(screen.getByRole('button', { name: /Skeleton/ })).toHaveAttribute('aria-pressed', 'true')
+  })
+})

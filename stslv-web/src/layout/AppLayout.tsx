@@ -80,13 +80,15 @@ export function AppLayout() {
         <span className="login-gradient pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-r from-[#F5C622] via-[#D1428C] via-35% via-[#1B8AD3] to-[#5BAF48]" aria-hidden="true" />
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <Outlet />
-      </main>
+      <div className="relative min-h-[calc(100vh-4rem)]">
+        <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <Outlet />
+        </main>
+        <SplashLoader />
+      </div>
 
       <ScrollToTop />
       <CookieNotice />
-      <SplashLoader />
     </div>
   )
 }

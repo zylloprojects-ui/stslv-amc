@@ -1,11 +1,22 @@
 import { useEffect, useState } from 'react'
 import { BrandLoader } from '../components/ui'
+import { useLoaderPreviews, useLoaderStyle } from '../lib/loaderStyle'
 
 const SHOW_MS = 1600
-const FADE_MS = 400
+const FADE_MS = 350
 
-/** Full-screen branded loader shown for a moment when the application opens after sign-in. */
+/**
+ * Loader shown over the page content (not the sidebar or header) for a moment when the application
+ * opens, and again whenever a different loader style is picked so it can be previewed. The content
+ * behind it stays faintly visible. Place it inside a relatively positioned container.
+ */
 export function SplashLoader() {
+  // A new key restarts the timers, which replays the loader for each preview request.
+  return <Splash key={useLoaderPreviews()} />
+}
+
+function Splash() {
+  const [style] = useLoaderStyle()
   const [phase, setPhase] = useState<'show' | 'fade' | 'gone'>('show')
 
   useEffect(() => {
@@ -22,19 +33,24 @@ export function SplashLoader() {
     return null
   }
 
+  const wide = style === 'skeleton'
+
   return (
     <div
-      className={`fixed inset-0 z-[200] flex flex-col items-center justify-center bg-gradient-to-br from-white via-sky-50 to-emerald-50 transition-opacity duration-[400ms] ${
-        phase === 'fade' ? 'pointer-events-none opacity-0' : 'opacity-100'
-      }`}
+      className={`absolute inset-0 z-20 flex justify-center bg-white/60 backdrop-blur-[2px] transition-opacity duration-[350ms] ${
+        wide ? 'items-start px-4 py-6 sm:px-6 lg:px-8' : 'items-start pt-[16vh]'
+      } ${phase === 'fade' ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
       aria-hidden="true"
     >
-      <BrandLoader label="Loading STSLEV AMC" announce={false} />
-      <div className="mt-2 flex h-1 w-40 overflow-hidden rounded-full">
-        {['#1B8AD3', '#00A6C8', '#5BAF48', '#F5C622', '#FF8212', '#D1428C'].map((color) => (
-          <span key={color} className="flex-1" style={{ backgroundColor: color }} />
-        ))}
-      </div>
+      {wide ? (
+        <div className="w-full max-w-7xl">
+          <BrandLoader label="Loading" announce={false} />
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-white/85 px-12 py-3 shadow-xl shadow-sky-200/60 ring-1 ring-sky-100">
+          <BrandLoader label="Loading" announce={false} />
+        </div>
+      )}
     </div>
   )
 }
