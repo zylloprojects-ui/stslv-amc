@@ -20,7 +20,7 @@ function Sidebar({ onNavigate }: { onNavigate: () => void }) {
         <span className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-600 text-sm font-bold text-white" aria-hidden="true">
           S
         </span>
-        <span className="text-base font-semibold tracking-wide text-white">STSLV AMC</span>
+        <span className="text-base font-semibold tracking-wide text-white">STSLEV AMC</span>
       </div>
 
       <div className="flex-1 overflow-y-auto px-3 py-4">
@@ -92,7 +92,7 @@ export function AppLayout() {
               <path d="M3 5h14M3 10h14M3 15h14" strokeLinecap="round" />
             </svg>
           </button>
-          <span className="whitespace-nowrap text-base font-semibold text-slate-900 lg:hidden">STSLV AMC</span>
+          <span className="whitespace-nowrap text-base font-semibold text-slate-900 lg:hidden">STSLEV AMC</span>
         </div>
 
         <div className="flex min-w-0 items-center gap-3">
