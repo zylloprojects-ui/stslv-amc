@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { usePageTitle } from '../components/hooks'
 import { Button, FullPageMessage, Spinner } from '../components/ui'
 import type { Action, Module } from '../lib/types'
 import { useAuth } from './context'
@@ -51,6 +52,8 @@ export function RequirePermission({ module, action = 'VIEW', children }: { modul
 }
 
 export function AccessDenied() {
+  usePageTitle('Access denied')
+
   return (
     <div className="mx-auto mt-16 max-w-md rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
       <h1 className="text-lg font-semibold text-slate-900">Access denied</h1>

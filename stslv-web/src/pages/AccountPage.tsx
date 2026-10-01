@@ -74,11 +74,11 @@ export function AccountPage() {
           <dl className="mt-4 space-y-3 text-sm">
             <div>
               <dt className="font-medium text-slate-500">Name</dt>
-              <dd className="mt-0.5 text-slate-900">{auth.user?.fullName}</dd>
+              <dd className="mt-0.5 break-words text-slate-900">{auth.user?.fullName}</dd>
             </div>
             <div>
               <dt className="font-medium text-slate-500">Email</dt>
-              <dd className="mt-0.5 text-slate-900">{auth.user?.email}</dd>
+              <dd className="mt-0.5 break-all text-slate-900">{auth.user?.email}</dd>
             </div>
             <div>
               <dt className="font-medium text-slate-500">Roles</dt>
@@ -106,7 +106,11 @@ export function AccountPage() {
               change.mutate(values)
             })}
           >
-            {done && <Alert tone="success">Your password was changed. Other devices have been signed out.</Alert>}
+            {done && (
+              <Alert tone="success" onDismiss={() => setDone(false)}>
+                Your password was changed. Other devices have been signed out.
+              </Alert>
+            )}
             {failure && <Alert>{failure}</Alert>}
             <TextField
               label="Current password"

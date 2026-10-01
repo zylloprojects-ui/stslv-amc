@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { Navigate, useLocation } from 'react-router-dom'
 import { z } from 'zod'
 import { useAuth } from '../auth/context'
+import { usePageTitle } from '../components/hooks'
 import { Alert, Button, Spinner, TextField } from '../components/ui'
 import { errorMessage } from '../lib/api'
 
@@ -24,6 +25,8 @@ export function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } })
 
+  usePageTitle('Sign in')
+
   if (auth.status === 'authenticated') {
     const from = (location.state as { from?: string } | null)?.from
 
@@ -41,7 +44,7 @@ export function LoginPage() {
   })
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
+    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-blue-700 text-xl font-bold text-white" aria-hidden="true">
@@ -58,7 +61,7 @@ export function LoginPage() {
             <form onSubmit={onSubmit} noValidate className="space-y-4">
               {failure && <Alert>{failure}</Alert>}
 
-              <TextField label="Email" type="email" autoComplete="username" required error={errors.email?.message} {...register('email')} />
+              <TextField label="Email" type="email" autoComplete="username" autoFocus required error={errors.email?.message} {...register('email')} />
               <TextField
                 label="Password"
                 type="password"
@@ -75,8 +78,8 @@ export function LoginPage() {
           )}
         </div>
 
-        <p className="mt-4 text-center text-xs text-slate-500">Accounts are created by an administrator.</p>
+        <p className="mt-4 text-center text-xs text-slate-600">Accounts are created by an administrator.</p>
       </div>
-    </div>
+    </main>
   )
 }
