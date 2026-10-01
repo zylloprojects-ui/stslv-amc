@@ -12,9 +12,13 @@ import { AmcExecutionPage } from './pages/amc/AmcExecutionPage'
 import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { ExpensesPage } from './pages/expenses/ExpensesPage'
 import { LoginPage } from './pages/LoginPage'
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { ProcurementPage } from './pages/procurement/ProcurementPage'
+import { ProjectDetailPage } from './pages/projects/ProjectDetailPage'
+import { ProjectsPage } from './pages/projects/ProjectsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { UsersPage } from './pages/users/UsersPage'
 
@@ -42,9 +46,6 @@ export function AppProviders({ children, client }: { children: ReactNode; client
 
 // Modules that exist in the navigation but are not built yet.
 const PENDING_MODULES: { path: string; module: Module; title: string }[] = [
-  { path: '/projects', module: 'PROJECTS', title: 'Projects' },
-  { path: '/procurement', module: 'PROCUREMENT', title: 'Procurement' },
-  { path: '/expenses', module: 'EXPENSES', title: 'Expenses' },
   { path: '/invoices', module: 'INVOICES', title: 'Invoice Tracking' },
   { path: '/reports', module: 'REPORTS', title: 'Reports' },
 ]
@@ -94,6 +95,38 @@ export function AppRoutes() {
             element={
               <RequirePermission module="AMC_EXECUTION">
                 <AmcExecutionPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/projects"
+            element={
+              <RequirePermission module="PROJECTS">
+                <ProjectsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/projects/:id"
+            element={
+              <RequirePermission module="PROJECTS">
+                <ProjectDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/procurement"
+            element={
+              <RequirePermission module="PROCUREMENT">
+                <ProcurementPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/expenses"
+            element={
+              <RequirePermission module="EXPENSES">
+                <ExpensesPage />
               </RequirePermission>
             }
           />

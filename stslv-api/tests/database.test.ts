@@ -20,13 +20,20 @@ describe("migrations", () => {
       "activity_logs",
       "amc_contracts",
       "amc_visits",
+      "app_settings",
       "clients",
+      "expense_categories",
+      "number_sequences",
+      "procurement_requests",
+      "project_expenses",
+      "projects",
       "role_permissions",
       "roles",
       "schema_migrations",
       "user_roles",
       "users",
       "v_amc_visit_billing",
+      "v_project_financials",
     ]);
   });
 

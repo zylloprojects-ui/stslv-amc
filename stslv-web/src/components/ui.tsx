@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type TextareaHTMLAttributes } from 'react'
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { cx } from '../lib/format'
 
 // Small shared building blocks so every page uses the same controls and spacing.
@@ -122,6 +122,32 @@ export function TextAreaField({ label, error, hint, required, className, rows = 
         className={cx(INPUT_STYLE, error ? 'border-red-500' : 'border-slate-300', className)}
         {...rest}
       />
+    </FieldShell>
+  )
+}
+
+interface SelectFieldProps extends SelectHTMLAttributes<HTMLSelectElement> {
+  ref?: Ref<HTMLSelectElement>
+  label: string
+  error?: string | undefined
+  hint?: string | undefined
+}
+
+export function SelectField({ label, error, hint, required, className, children, ...rest }: SelectFieldProps) {
+  const id = useId()
+
+  return (
+    <FieldShell id={id} label={label} error={error} hint={hint} required={required}>
+      <select
+        id={id}
+        aria-invalid={error ? true : undefined}
+        aria-required={required || undefined}
+        aria-describedby={error ? `${id}-error` : hint ? `${id}-hint` : undefined}
+        className={cx(INPUT_STYLE, error ? 'border-red-500' : 'border-slate-300', className)}
+        {...rest}
+      >
+        {children}
+      </select>
     </FieldShell>
   )
 }
