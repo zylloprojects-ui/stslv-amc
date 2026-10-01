@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom'
+import { usePageTitle } from '../components/hooks'
 import { Card } from '../components/ui'
 
 export function NotFoundPage() {
+  usePageTitle('Page not found')
+
   return (
     <Card className="mx-auto mt-16 max-w-md p-8 text-center">
       <h1 className="text-lg font-semibold text-slate-900">Page not found</h1>

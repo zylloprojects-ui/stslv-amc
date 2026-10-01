@@ -1,7 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { useAuth } from '../../auth/context'
-import { Alert, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner, StatusBadge } from '../../components/ui'
+import { Alert, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner, StatusBadge, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import type { Client, Paged } from '../../lib/types'
@@ -89,7 +89,9 @@ export function ClientsPage() {
 
       {notice && (
         <div className="mb-4">
-          <Alert tone="success">{notice}</Alert>
+          <Alert tone="success" onDismiss={() => setNotice(null)}>
+            {notice}
+          </Alert>
         </div>
       )}
 
@@ -105,7 +107,7 @@ export function ClientsPage() {
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
               placeholder="Name, contact person, email or phone"
-              className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400"
+              className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-500"
             />
           </div>
           <div>
@@ -155,7 +157,7 @@ export function ClientsPage() {
 
         {data && data.items.length > 0 && (
           <>
-            <div className={TABLE.wrapper}>
+            <TableScroll label="Clients">
               <table className={TABLE.table}>
                 <caption className="sr-only">Clients</caption>
                 <thead>
@@ -183,10 +185,10 @@ export function ClientsPage() {
                 <tbody className="divide-y divide-slate-100">
                   {data.items.map((client) => (
                     <tr key={client.id} className={TABLE.row}>
-                      <td className={`${TABLE.td} min-w-48 font-medium text-slate-900`}>{client.name}</td>
-                      <td className={TABLE.td}>{client.contactPerson ?? '—'}</td>
+                      <td className={`${TABLE.td} ${TABLE.text} font-medium text-slate-900`}>{client.name}</td>
+                      <td className={`${TABLE.td} min-w-28 max-w-48 break-words`}>{client.contactPerson ?? '—'}</td>
                       <td className={`${TABLE.td} whitespace-nowrap`}>{client.phone ?? '—'}</td>
-                      <td className={TABLE.td}>{client.email ?? '—'}</td>
+                      <td className={`${TABLE.td} ${TABLE.unbroken}`}>{client.email ?? '—'}</td>
                       <td className={TABLE.td}>
                         <StatusBadge active={client.isActive} />
                       </td>
@@ -222,7 +224,7 @@ export function ClientsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
               <p>

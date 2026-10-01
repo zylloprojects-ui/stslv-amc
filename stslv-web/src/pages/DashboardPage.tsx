@@ -1,92 +1,90 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/context'
-import { Alert, Badge, Card, PageHeader } from '../components/ui'
+import { Alert, Button, Card, EmptyState, PageHeader } from '../components/ui'
 import { api, errorMessage } from '../lib/api'
-
-interface DashboardSummary {
-  clients: { active: number; inactive: number }
-}
-
-// Metrics that depend on modules which are not built yet. They show no number
-// at all, so nothing here can be mistaken for real operational data.
-const PENDING_METRICS: { group: string; items: { label: string; reason: string }[] }[] = [
-  {
-    group: 'AMC',
-    items: [
-      { label: 'Active AMC Contracts', reason: 'the AMC Contracts module is not implemented yet' },
-      { label: 'Visits Due', reason: 'the AMC Schedule module is not implemented yet' },
-      { label: 'Ready for Invoice', reason: 'the AMC Execution and Invoice Tracking modules are not implemented yet' },
-    ],
-  },
-  {
-    group: 'Projects and finance',
-    items: [
-      { label: 'Active Projects', reason: 'the Projects module is not implemented yet' },
-      { label: 'Project Costs', reason: 'the Expenses module is not implemented yet' },
-      { label: 'Pending Invoices', reason: 'the Invoice Tracking module is not implemented yet' },
-    ],
-  },
-]
+import { formatTime } from '../lib/format'
+import { MetricCard, type MetricState } from './dashboard/MetricCard'
+import { METRIC_GROUPS, type DashboardSummary, type MetricDefinition } from './dashboard/metrics'
 
 export function DashboardPage() {
   const auth = useAuth()
   const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
 
+  const stateOf = (metric: MetricDefinition): MetricState => {
+    if (!metric.read) {
+      return { kind: 'unavailable' }
+    }
+    if (summary.data) {
+      return { kind: 'ready', reading: metric.read(summary.data) }
+    }
+
+    return summary.isError ? { kind: 'failed' } : { kind: 'loading' }
+  }
+
+  // A user sees a figure only where they can also open the module it belongs to.
+  const groups = METRIC_GROUPS.map((group) => ({
+    ...group,
+    metrics: group.metrics.filter((metric) => auth.can(metric.module, 'VIEW')),
+  })).filter((group) => group.metrics.length > 0)
+
+  const pending = groups.flatMap((group) => group.metrics).filter((metric) => !metric.read).length
+
   return (
     <>
-      <PageHeader title="Dashboard" description={`Welcome, ${auth.user?.fullName ?? ''}.`} />
+      <PageHeader
+        title="Dashboard"
+        description={`Welcome, ${auth.user?.fullName ?? ''}.`}
+        actions={
+          <Button variant="secondary" loading={summary.isFetching} onClick={() => void summary.refetch()}>
+            Refresh
+          </Button>
+        }
+      />
 
       {summary.isError && (
         <div className="mb-6">
-          <Alert>{errorMessage(summary.error)}</Alert>
+          <Alert>
+            The dashboard figures could not be loaded. {errorMessage(summary.error)}{' '}
+            <button type="button" className="font-medium underline" onClick={() => void summary.refetch()}>
+              Try again
+            </button>
+          </Alert>
         </div>
       )}
 
-      <section aria-labelledby="live-heading" className="mb-8">
-        <h2 id="live-heading" className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">
-          Master data
-        </h2>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Card className="p-5">
-            <p className="text-sm font-medium text-slate-600">Active Clients</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900" aria-live="polite">
-              {summary.isPending ? <span className="text-slate-300">…</span> : (summary.data?.clients.active ?? '—')}
-            </p>
-            <p className="mt-2 text-xs text-slate-500">
-              {summary.data ? `${summary.data.clients.inactive} inactive` : ' '}
-              {auth.can('CLIENTS', 'VIEW') && (
-                <>
-                  {' · '}
-                  <Link to="/clients" className="font-medium text-blue-700 hover:underline">
-                    View clients
-                  </Link>
-                </>
-              )}
-            </p>
-          </Card>
-        </div>
-      </section>
+      {groups.length === 0 && (
+        <Card>
+          <EmptyState
+            title="No figures to show"
+            description="Your role does not include any module that reports to the dashboard. If you need one, ask an administrator to update your role."
+          />
+        </Card>
+      )}
 
-      {PENDING_METRICS.map((group) => (
-        <section key={group.group} aria-label={group.group} className="mb-8">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">{group.group}</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {group.items.map((metric) => (
-              <Card key={metric.label} className="border-dashed p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-600">{metric.label}</p>
-                  <Badge tone="amber">Not yet available</Badge>
-                </div>
-                <p className="mt-2 text-3xl font-semibold text-slate-300" aria-hidden="true">
-                  —
-                </p>
-                <p className="mt-2 text-xs text-slate-500">No data: {metric.reason}.</p>
-              </Card>
+      {groups.map((group) => (
+        <section key={group.id} aria-labelledby={`dashboard-${group.id}`} className="mb-8">
+          <h2 id={`dashboard-${group.id}`} className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-600">
+            {group.title}
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {group.metrics.map((metric) => (
+              <MetricCard key={metric.id} metric={metric} state={stateOf(metric)} />
             ))}
           </div>
         </section>
       ))}
+
+      {groups.length > 0 && (
+        <p className="text-xs text-slate-600">
+          {summary.data && !summary.isError && <>Figures as of {formatTime(summary.dataUpdatedAt)}. </>}
+          {pending > 0 && (
+            <>
+              Figures marked “Not yet available” have no data source yet. They are left empty on purpose, so nothing here can be mistaken
+              for real operational data.
+            </>
+          )}
+        </p>
+      )}
     </>
   )
 }

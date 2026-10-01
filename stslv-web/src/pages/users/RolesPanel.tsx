@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useAuth } from '../../auth/context'
-import { Alert, Badge, Button, Card } from '../../components/ui'
+import { Alert, Badge, Button, Card, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
@@ -54,15 +54,15 @@ function PermissionMatrix({ role, catalogue, canEdit }: { role: Role; catalogue:
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 p-4">
-        <div>
-          <h3 className="text-base font-semibold text-slate-900">{role.name}</h3>
+        <div className="min-w-0">
+          <h3 className="break-words text-base font-semibold text-slate-900">{role.name}</h3>
           {role.description && <p className="mt-0.5 text-sm text-slate-600">{role.description}</p>}
           <p className="mt-1 text-xs text-slate-500">
             {role.userCount} {role.userCount === 1 ? 'user' : 'users'} with this role
           </p>
         </div>
         {editable && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="secondary" size="sm" disabled={!dirty || save.isPending} onClick={() => setSelected(new Set(keysOf(role)))}>
               Discard changes
             </Button>
@@ -81,7 +81,7 @@ function PermissionMatrix({ role, catalogue, canEdit }: { role: Role; catalogue:
         {saved && !dirty && <Alert tone="success">Permissions saved. They apply immediately.</Alert>}
       </div>
 
-      <div className={cx(TABLE.wrapper, 'p-4')}>
+      <TableScroll label={`${role.name} permissions`} className="m-4">
         <table className={cx(TABLE.table, 'border border-slate-200')}>
           <caption className="sr-only">Permissions of the {role.name} role</caption>
           <thead>
@@ -124,7 +124,7 @@ function PermissionMatrix({ role, catalogue, canEdit }: { role: Role; catalogue:
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroll>
     </div>
   )
 }
@@ -140,8 +140,9 @@ export function RolesPanel({ catalogue, canEdit }: { catalogue: RolesResponse; c
         not yet been approved by the business. Modules that are not built yet have no effect until they exist.
       </Alert>
 
-      <div className="grid gap-4 lg:grid-cols-[16rem_1fr]">
-        <Card className="self-start">
+      {/* minmax(0, …) lets the permission table scroll inside its card instead of widening the page. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <Card className="self-start overflow-hidden">
           <ul aria-label="Roles" className="divide-y divide-slate-100">
             {catalogue.roles.map((candidate) => (
               <li key={candidate.id}>
@@ -154,7 +155,7 @@ export function RolesPanel({ catalogue, canEdit }: { catalogue: RolesResponse; c
                     candidate.id === selectedId ? 'bg-blue-50 font-semibold text-blue-900' : 'text-slate-700 hover:bg-slate-50',
                   )}
                 >
-                  <span>{candidate.name}</span>
+                  <span className="min-w-0 break-words">{candidate.name}</span>
                   {!candidate.isActive && <Badge>Inactive</Badge>}
                 </button>
               </li>
@@ -162,7 +163,7 @@ export function RolesPanel({ catalogue, canEdit }: { catalogue: RolesResponse; c
           </ul>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           {/* key: reset the unsaved selection when another role is chosen or the saved data changes. */}
           {role && <PermissionMatrix key={`${role.id}:${keysOf(role).join(',')}`} role={role} catalogue={catalogue} canEdit={canEdit} />}
         </Card>

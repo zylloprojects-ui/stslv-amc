@@ -210,7 +210,15 @@ describe('dashboard', () => {
     expect(await within(clientsCard).findByText('4')).toBeInTheDocument()
     expect(within(clientsCard).getByText(/1 inactive/)).toBeInTheDocument()
 
-    for (const label of ['Active AMC Contracts', 'Visits Due', 'Ready for Invoice', 'Active Projects', 'Project Costs', 'Pending Invoices']) {
+    for (const label of [
+      'Active Contracts',
+      'Visits Due',
+      'Ready for Invoice',
+      'Active Projects',
+      'Projects Ready for Invoice',
+      'Tracked Expenses',
+      'Ready-for-Invoice Value',
+    ]) {
       const card = screen.getByText(label).closest('div.border-dashed') as HTMLElement
       expect(within(card).getByText('Not yet available')).toBeInTheDocument()
       expect(card.textContent).not.toMatch(/\d/)
