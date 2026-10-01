@@ -13,7 +13,7 @@ export function ProtectedRoute() {
   if (auth.status === 'loading') {
     return (
       <FullPageMessage>
-        <Spinner label="Loading STSLV AMC" />
+        <Spinner label="Loading STSLEV AMC" />
       </FullPageMessage>
     )
   }

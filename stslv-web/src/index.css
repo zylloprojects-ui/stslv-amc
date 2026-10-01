@@ -14,3 +14,74 @@
     @apply outline-2 outline-offset-2 outline-blue-600;
   }
 }
+
+/* Login page animations. All are decorative and switched off for users who
+   prefer reduced motion (see the media query at the end). */
+@keyframes login-float {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(40px, -30px, 0) scale(1.08); }
+  66% { transform: translate3d(-30px, 25px, 0) scale(0.95); }
+}
+
+@keyframes login-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes login-rise {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes login-slide-in {
+  from { opacity: 0; transform: translateX(-28px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes login-pulse-ring {
+  0% { transform: scale(0.85); opacity: 0.55; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+@keyframes login-grid-drift {
+  to { background-position: 48px 48px; }
+}
+
+@keyframes login-sheen {
+  0% { transform: translateX(-120%) skewX(-20deg); }
+  60%, 100% { transform: translateX(260%) skewX(-20deg); }
+}
+
+@keyframes login-flow {
+  to { stroke-dashoffset: -24; }
+}
+
+@keyframes login-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
+@keyframes login-gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@layer utilities {
+  .login-float { animation: login-float 16s ease-in-out infinite; }
+  .login-spin-slow { animation: login-spin 40s linear infinite; }
+  .login-spin-reverse { animation: login-spin 60s linear infinite reverse; }
+  .login-rise { animation: login-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .login-slide-in { animation: login-slide-in 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .login-pulse-ring { animation: login-pulse-ring 3.2s ease-out infinite; }
+  .login-grid { animation: login-grid-drift 6s linear infinite; }
+  .login-sheen { animation: login-sheen 4.5s ease-in-out infinite; }
+  .login-flow { animation: login-flow 1.2s linear infinite; }
+  .login-shake { animation: login-shake 0.45s ease-in-out; }
+  .login-gradient { background-size: 200% 200%; animation: login-gradient 9s ease infinite; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-float, .login-spin-slow, .login-spin-reverse, .login-pulse-ring, .login-grid,
+  .login-sheen, .login-flow, .login-gradient { animation: none; }
+  .login-rise, .login-slide-in, .login-shake { animation-duration: 0.01ms; }
+}

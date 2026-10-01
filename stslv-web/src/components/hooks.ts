@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from 'react'
 
-const APP_NAME = 'STSLV AMC'
+const APP_NAME = 'STSLEV AMC'
 
 /** Names the browser tab after the current page, so tabs and history entries can be told apart. */
 export function usePageTitle(title: string | null): void {

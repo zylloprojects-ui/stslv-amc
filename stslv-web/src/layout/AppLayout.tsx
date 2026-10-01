@@ -32,7 +32,7 @@ function Sidebar({ onNavigate, onClose }: { onNavigate: () => void; onClose?: ()
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-blue-600 text-sm font-bold text-white" aria-hidden="true">
           S
         </span>
-        <span className="flex-1 text-base font-semibold tracking-wide text-white">STSLV AMC</span>
+        <span className="flex-1 text-base font-semibold tracking-wide text-white">STSLEV AMC</span>
         {onClose && (
           <button
             type="button"
@@ -187,7 +187,7 @@ export function AppLayout() {
               <path d="M3 5h14M3 10h14M3 15h14" strokeLinecap="round" />
             </svg>
           </button>
-          <span className="whitespace-nowrap text-base font-semibold text-slate-900 lg:hidden">STSLV AMC</span>
+          <span className="whitespace-nowrap text-base font-semibold text-slate-900 lg:hidden">STSLEV AMC</span>
           {location && (
             <p className="hidden truncate text-sm text-slate-500 lg:block">
               {location.section && (
