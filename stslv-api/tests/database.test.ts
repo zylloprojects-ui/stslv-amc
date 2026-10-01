@@ -24,6 +24,7 @@ describe("migrations", () => {
       "clients",
       "expense_categories",
       "number_sequences",
+      "password_reset_tokens",
       "procurement_requests",
       "project_expenses",
       "projects",

@@ -11,6 +11,11 @@ import { CreateUserModal, EditRolesModal, ResetPasswordModal } from './UserDialo
 
 type Tab = 'users' | 'roles'
 
+/** Requested from the Sign up page and still waiting for an administrator. */
+const isPending = (user: User) => user.approvalStatus === 'PENDING'
+
+const toggleLabel = (user: User) => (user.isActive ? 'Deactivate' : isPending(user) ? 'Approve' : 'Activate')
+
 type Dialog =
   | { kind: 'none' }
   | { kind: 'create' }
@@ -30,9 +35,13 @@ export function UsersPage() {
 
   const toggle = useMutation({
     mutationFn: (user: User) => api.post<User>(`/users/${user.id}/${user.isActive ? 'deactivate' : 'activate'}`),
-    onSuccess: async (updated) => {
+    onSuccess: async (updated, before) => {
       await queryClient.invalidateQueries({ queryKey: ['users'] })
-      setNotice(`${updated.fullName} was ${updated.isActive ? 'activated' : 'deactivated'}.`)
+      setNotice(
+        isPending(before)
+          ? `The sign-up request of ${updated.fullName} was approved. They can now sign in.`
+          : `${updated.fullName} was ${updated.isActive ? 'activated' : 'deactivated'}.`,
+      )
       setDialog({ kind: 'none' })
     },
   })
@@ -45,6 +54,7 @@ export function UsersPage() {
   const canCreate = auth.can('USERS', 'CREATE')
   const canEdit = auth.can('USERS', 'EDIT')
   const roleList = roles.data?.roles ?? []
+  const pendingCount = users.data?.filter(isPending).length ?? 0
 
   const tabButton = (value: Tab, label: string) => (
     <button
@@ -95,6 +105,14 @@ export function UsersPage() {
       )}
 
       <div role="tabpanel" id="users-tabpanel" aria-labelledby={`users-tab-${tab}`}>
+        {tab === 'users' && pendingCount > 0 && (
+          <div className="mb-4">
+            <Alert tone="info">
+              {pendingCount === 1 ? '1 sign-up request is' : `${pendingCount} sign-up requests are`} waiting for approval. A pending account cannot
+              sign in.{canEdit && ' Assign a role, then approve it.'}
+            </Alert>
+          </div>
+        )}
         {tab === 'users' && (
           <Card>
             {users.isPending && <Spinner label="Loading users" />}
@@ -154,7 +172,7 @@ export function UsersPage() {
                             </div>
                           </td>
                           <td className={TABLE.td}>
-                            <StatusBadge active={user.isActive} />
+                            {isPending(user) ? <Badge tone="amber">Pending approval</Badge> : <StatusBadge active={user.isActive} />}
                           </td>
                           <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>
                           {canEdit && (
@@ -184,10 +202,10 @@ export function UsersPage() {
                                   disabled={isSelf}
                                   title={isSelf ? 'You cannot deactivate your own account.' : undefined}
                                   className={user.isActive && !isSelf ? 'text-red-700 hover:bg-red-50' : undefined}
-                                  aria-label={`${user.isActive ? 'Deactivate' : 'Activate'} ${user.fullName}`}
+                                  aria-label={`${toggleLabel(user)} ${user.fullName}`}
                                   onClick={() => setDialog({ kind: 'toggle', user })}
                                 >
-                                  {user.isActive ? 'Deactivate' : 'Activate'}
+                                  {toggleLabel(user)}
                                 </Button>
                               </div>
                             </td>
@@ -247,12 +265,24 @@ export function UsersPage() {
 
       {dialog.kind === 'toggle' && (
         <ConfirmDialog
-          title={dialog.user.isActive ? 'Deactivate user' : 'Activate user'}
+          title={dialog.user.isActive ? 'Deactivate user' : isPending(dialog.user) ? 'Approve sign-up request' : 'Activate user'}
           message={
             dialog.user.isActive ? (
               <>
                 Deactivate <strong>{dialog.user.fullName}</strong>? They are signed out immediately and cannot sign in until
                 activated again. Their records and history are kept.
+              </>
+            ) : isPending(dialog.user) ? (
+              <>
+                <p>
+                  Approve the sign-up request of <strong>{dialog.user.fullName}</strong> ({dialog.user.email})? The account is activated and
+                  they can sign in with the password they chose.
+                </p>
+                <p className="mt-3">
+                  {dialog.user.roles.length === 0
+                    ? 'No role is assigned yet, so they will be able to sign in but will not see any module. Use Roles first to give them access.'
+                    : `They will have the access of: ${dialog.user.roles.map((role) => role.name).join(', ')}.`}
+                </p>
               </>
             ) : (
               <>
@@ -260,7 +290,7 @@ export function UsersPage() {
               </>
             )
           }
-          confirmLabel={dialog.user.isActive ? 'Deactivate' : 'Activate'}
+          confirmLabel={toggleLabel(dialog.user)}
           danger={dialog.user.isActive}
           loading={toggle.isPending}
           error={toggle.isError ? errorMessage(toggle.error) : null}

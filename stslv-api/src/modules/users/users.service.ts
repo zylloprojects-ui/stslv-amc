@@ -5,13 +5,18 @@ import { conflict, forbidden, isUniqueViolation, notFound, validationError } fro
 import { ADMIN_ROLE_CODE, type PermissionKey } from "../../shared/permissions";
 import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth/access";
 import { hashPassword } from "../auth/password";
+import { revokeResetTokens } from "../auth/password-reset.service";
 import type { CreateUserInput } from "./users.schemas";
+
+/** PENDING: requested from the Sign up page and not yet activated by an administrator. */
+export type ApprovalStatus = "PENDING" | "APPROVED";
 
 interface UserRow {
   id: string;
   email: string;
   full_name: string;
   is_active: boolean;
+  approval_status: ApprovalStatus;
   last_login_at: Date | null;
   created_at: Date;
   roles: RoleSummary[];
@@ -22,6 +27,7 @@ export interface User {
   email: string;
   fullName: string;
   isActive: boolean;
+  approvalStatus: ApprovalStatus;
   lastLoginAt: string | null;
   createdAt: string;
   roles: RoleSummary[];
@@ -29,7 +35,7 @@ export interface User {
 
 // password_hash is deliberately never selected here.
 const USER_SELECT = `
-  SELECT u.id, u.email, u.full_name, u.is_active, u.last_login_at, u.created_at,
+  SELECT u.id, u.email, u.full_name, u.is_active, u.approval_status, u.last_login_at, u.created_at,
          COALESCE(
            json_agg(json_build_object('id', r.id::text, 'code', r.code, 'name', r.name) ORDER BY r.name)
              FILTER (WHERE r.id IS NOT NULL),
@@ -45,6 +51,7 @@ function toUser(row: UserRow): User {
     email: row.email,
     fullName: row.full_name,
     isActive: row.is_active,
+    approvalStatus: row.approval_status,
     lastLoginAt: row.last_login_at ? row.last_login_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
     roles: row.roles,
@@ -224,14 +231,28 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
       throw conflict("This is the only active Admin. Assign the Admin role to another active user first.");
     }
 
-    await client.query("UPDATE users SET is_active = $1 WHERE id = $2", [isActive, id]);
+    // Activating an account requested from the Sign up page is its approval.
+    const approving = isActive && before.approvalStatus === "PENDING";
+
+    await client.query(
+      "UPDATE users SET is_active = $1, approval_status = CASE WHEN $1 THEN 'APPROVED' ELSE approval_status END WHERE id = $2",
+      [isActive, id]
+    );
+
+    if (!isActive) {
+      await revokeResetTokens(client, id);
+    }
+
     await logActivity(client, {
       userId: auth.user.id,
-      action: isActive ? "user.activated" : "user.deactivated",
+      action: approving ? "user.registration_approved" : isActive ? "user.activated" : "user.deactivated",
       module: "USERS",
       entityType: "users",
       entityId: id,
-      description: `User "${before.fullName}" ${isActive ? "activated" : "deactivated"}.`,
+      description: approving
+        ? `Sign-up request of "${before.fullName}" (${before.email}) approved and the account activated.`
+        : `User "${before.fullName}" ${isActive ? "activated" : "deactivated"}.`,
+      ...(approving ? { metadata: { roles: before.roles.map((role) => role.code) } } : {}),
     });
 
     return findUser(client, id);
@@ -303,6 +324,7 @@ export async function resetUserPassword(auth: AuthContext, id: string, password:
       passwordHash,
       id,
     ]);
+    await revokeResetTokens(client, id);
     await logActivity(client, {
       userId: auth.user.id,
       action: "user.password_reset",

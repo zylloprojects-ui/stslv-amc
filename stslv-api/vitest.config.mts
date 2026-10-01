@@ -15,6 +15,12 @@ export default defineConfig({
       BCRYPT_ROUNDS: "4",
       JWT_SECRET: "test-only-secret-not-used-anywhere-else-0123456789",
       JWT_EXPIRES_IN: "1h",
+      // Email is captured in memory (shared/mailer.ts testOutbox); nothing is sent or printed.
+      MAIL_TRANSPORT: "memory",
+      APP_URL: "http://app.test",
+      PASSWORD_RESET_EXPIRES_MINUTES: "30",
+      // Every test request comes from one address; the limiter has its own test.
+      PUBLIC_AUTH_RATE_LIMIT: "100000",
     },
   },
 });

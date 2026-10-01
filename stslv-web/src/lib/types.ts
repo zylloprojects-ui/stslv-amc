@@ -82,6 +82,8 @@ export interface User {
   email: string
   fullName: string
   isActive: boolean
+  /** PENDING: requested from the Sign up page and not yet activated by an administrator. */
+  approvalStatus: 'PENDING' | 'APPROVED'
   lastLoginAt: string | null
   createdAt: string
   roles: RoleSummary[]

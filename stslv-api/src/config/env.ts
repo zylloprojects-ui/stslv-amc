@@ -61,10 +61,73 @@ function readCorsOrigins(): string[] {
     .filter((origin) => origin !== "");
 }
 
+export const MAIL_TRANSPORTS = ["none", "log", "memory"] as const;
+
+export type MailTransport = (typeof MAIL_TRANSPORTS)[number];
+
+/**
+ * How outgoing email is handled.
+ *   none    nothing is sent and nothing about the message is printed (the default).
+ *   log     the whole message, including any reset link, is printed to the API
+ *           console. For local development only: refused when NODE_ENV=production.
+ *   memory  messages are kept in memory for the automated tests: refused outside them.
+ * A real provider (SMTP or an email API) is not configured yet; see docs/AUTH_SIGNUP_AND_RECOVERY.md.
+ */
+export function resolveMailTransport(raw: string | undefined, nodeEnv: string | undefined): MailTransport {
+  const value = raw?.trim().toLowerCase() || (nodeEnv === "test" ? "memory" : "none");
+
+  if (!(MAIL_TRANSPORTS as readonly string[]).includes(value)) {
+    throw new Error(`Invalid MAIL_TRANSPORT. Use one of: ${MAIL_TRANSPORTS.join(", ")}.`);
+  }
+  if (value === "log" && nodeEnv === "production") {
+    throw new Error("MAIL_TRANSPORT=log prints password reset links to the console and is not allowed in production.");
+  }
+  if (value === "memory" && nodeEnv !== "test") {
+    throw new Error("MAIL_TRANSPORT=memory is only for the automated tests.");
+  }
+
+  return value as MailTransport;
+}
+
+// The address of the web application, used to build links sent by email.
+function readAppUrl(corsOrigins: string[]): string {
+  const raw = process.env.APP_URL?.trim() || corsOrigins[0] || "http://localhost:5173";
+
+  if (!/^https?:\/\/[^\s/]+/.test(raw)) {
+    throw new Error("Invalid APP_URL. It must be the web address of the application, for example http://localhost:5173.");
+  }
+
+  return raw.replace(/\/+$/, "");
+}
+
+function readWholeNumber(name: string, fallback: number, minimum: number, maximum: number): number {
+  const raw = process.env[name]?.trim();
+
+  if (!raw) {
+    return fallback;
+  }
+
+  const value = Number(raw);
+
+  if (!Number.isInteger(value) || value < minimum || value > maximum) {
+    throw new Error(`Invalid ${name}. It must be a whole number between ${minimum} and ${maximum}.`);
+  }
+
+  return value;
+}
+
+const corsOrigins = readCorsOrigins();
+
 export const env = {
   isTest,
   jwtSecret: readJwtSecret(),
   jwtExpirySeconds: readJwtExpirySeconds(),
   bcryptRounds: readBcryptRounds(),
-  corsOrigins: readCorsOrigins(),
+  corsOrigins,
+  appUrl: readAppUrl(corsOrigins),
+  mailTransport: resolveMailTransport(process.env.MAIL_TRANSPORT, process.env.NODE_ENV),
+  // How long a password reset link stays usable.
+  passwordResetMinutes: readWholeNumber("PASSWORD_RESET_EXPIRES_MINUTES", 30, 5, 1440),
+  // Requests one address may make to the public sign-up and password-recovery routes per 15 minutes.
+  publicAuthRateLimit: readWholeNumber("PUBLIC_AUTH_RATE_LIMIT", 10, 1, 100_000),
 };
