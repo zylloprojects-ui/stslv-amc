@@ -198,7 +198,7 @@ describe("existing health routes", () => {
     const health = await api().get("/api/health");
     const database = await api().get("/api/health/database");
 
-    expect(health.body).toEqual({ success: true, message: "STSLV AMC API is running" });
+    expect(health.body).toEqual({ success: true, message: "STSLEV AMC API is running" });
     expect(database.body).toMatchObject({ success: true, message: "Database connected" });
   });
 });

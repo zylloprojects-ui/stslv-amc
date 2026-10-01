@@ -29,7 +29,7 @@ export function createApp() {
   app.get("/api/health", (_req, res) => {
     res.json({
       success: true,
-      message: "STSLV AMC API is running",
+      message: "STSLEV AMC API is running",
     });
   });
 
