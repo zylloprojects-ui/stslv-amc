@@ -1,0 +1,100 @@
+# STSLV AMC — root ignore rules.
+# This repository is PUBLIC. Nothing listed here may ever be committed.
+
+# --- Environment files and secrets -------------------------------------
+.env
+.env.*
+!.env.example
+
+# Keys, certificates and credential files
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.jks
+id_rsa*
+id_ed25519*
+.npmrc
+*credentials*.json
+*secret*.json
+
+# --- Dependencies -------------------------------------------------------
+node_modules/
+**/node_modules/
+
+# --- Build output -------------------------------------------------------
+dist/
+**/dist/
+dist-ssr/
+build/
+**/build/
+*.tsbuildinfo
+
+# --- Tests and coverage -------------------------------------------------
+coverage/
+**/coverage/
+test-results/
+playwright-report/
+
+# --- Logs ---------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Database dumps and backups -----------------------------------------
+# The schema is recreated from stslv-api/migrations. Dumps are never committed.
+# (Plain *.sql is NOT ignored: migrations are .sql files.)
+*.dump
+*.backup
+*.pgdump
+*.sql.gz
+*.sql.zip
+*.sqlite
+*.sqlite3
+*.db
+backups/
+dumps/
+
+# --- Client source data -------------------------------------------------
+# Original client spreadsheets and exports are confidential.
+# CLIENT_EXCEL_MAPPING.md quotes real client names, values and invoice
+# numbers, so it is kept locally and shared privately, never committed.
+docs/CLIENT_EXCEL_MAPPING.md
+docs/client-source/
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+
+# --- Uploaded files (quotations, receipts, LPOs) ------------------------
+uploads/
+storage/
+
+# --- Editors, IDEs and OS files -----------------------------------------
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Local tool settings ------------------------------------------------
+*.local
+.claude/settings.local.json
+
+# --- Temporary files ----------------------------------------------------
+*.tmp
+*.temp
+*.bak
+*.swp
+*.sw?
+~$*
+tmp/
+.tmp/
