@@ -135,7 +135,7 @@ The seeded permission matrix was not changed. With it: Admin can do everything; 
 - `costs` is `null` for a user without `EXPENSES:VIEW`.
 - The same function, `getProjectSummary(auth)` in `projects.service.ts`, can be called from the dashboard module instead of over HTTP.
 
-The Dashboard page itself was not changed: it still shows the project metrics as "not yet available". Wiring it to this endpoint belongs to the dashboard work.
+The dashboard calls `getProjectSummary(auth)` from `GET /api/dashboard/summary` and shows these figures (see `DASHBOARD_UI.md` section 1).
 
 ## 6. Web application
 

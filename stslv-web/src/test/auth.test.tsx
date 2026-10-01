@@ -202,7 +202,7 @@ describe('permission-based navigation', () => {
 })
 
 describe('dashboard', () => {
-  it('shows the real client counts and no figures for modules that do not exist yet', async () => {
+  it('shows the real client counts, and no card for a figure the API did not return', async () => {
     session(ADMIN)
     renderApp('/dashboard')
 
@@ -210,6 +210,8 @@ describe('dashboard', () => {
     expect(await within(clientsCard).findByText('4')).toBeInTheDocument()
     expect(within(clientsCard).getByText(/1 inactive/)).toBeInTheDocument()
 
+    // The summary above carries client counts only. The other metrics are connected
+    // to the API, so without a figure from it they are left out: no placeholder, no zero.
     for (const label of [
       'Active Contracts',
       'Visits Due',
@@ -219,9 +221,8 @@ describe('dashboard', () => {
       'Tracked Expenses',
       'Ready-for-Invoice Value',
     ]) {
-      const card = screen.getByText(label).closest('div.border-dashed') as HTMLElement
-      expect(within(card).getByText('Not yet available')).toBeInTheDocument()
-      expect(card.textContent).not.toMatch(/\d/)
+      expect(screen.queryByRole('heading', { name: label, level: 3 })).not.toBeInTheDocument()
     }
+    expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
   })
 })

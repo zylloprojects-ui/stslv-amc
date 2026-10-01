@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { Badge, Card } from '../../components/ui'
 import { cx } from '../../lib/format'
-import type { MetricDefinition, MetricReading } from './metrics'
+import type { MetricDefinition, MetricLink, MetricReading } from './metrics'
 
 export type MetricState =
   | { kind: 'loading' }
@@ -10,8 +10,15 @@ export type MetricState =
   /** The metric has no data source yet. */
   | { kind: 'unavailable' }
 
+interface MetricCardProps {
+  metric: MetricDefinition
+  state: MetricState
+  /** The page to open from the card, already chosen for what the user may open. */
+  link?: MetricLink | null
+}
+
 /** One dashboard figure. A card never shows a number it did not receive from the API. */
-export function MetricCard({ metric, state }: { metric: MetricDefinition; state: MetricState }) {
+export function MetricCard({ metric, state, link = null }: MetricCardProps) {
   if (state.kind === 'unavailable') {
     return (
       <Card className="border-dashed p-5 shadow-none">
@@ -27,7 +34,8 @@ export function MetricCard({ metric, state }: { metric: MetricDefinition; state:
     )
   }
 
-  const link = metric.link ?? null
+  const reading = state.kind === 'ready' ? state.reading : null
+  const detail = reading && 'value' in reading ? reading.detail : undefined
 
   return (
     <Card className={cx('p-5', metric.attention && state.kind === 'ready' && 'border-l-4 border-l-amber-500')}>
@@ -50,13 +58,29 @@ export function MetricCard({ metric, state }: { metric: MetricDefinition; state:
         </>
       )}
 
-      {state.kind === 'ready' && (
+      {reading && 'parts' in reading && (
         <>
-          <p className="mt-2 break-words text-3xl font-semibold tabular-nums text-slate-900">{state.reading.value}</p>
-          {(state.reading.detail || link) && (
+          <dl className="mt-3 divide-y divide-slate-200">
+            {reading.parts.map((part) => (
+              <div key={part.label} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 first:pt-0">
+                <dt className="text-sm text-slate-700">
+                  <span className="font-medium">{part.label}</span> <span className="whitespace-nowrap text-xs text-slate-600">{part.basis}</span>
+                </dt>
+                <dd className="min-w-0 break-words text-xl font-semibold tabular-nums text-slate-900">{part.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className="mt-2 text-xs text-slate-600">{reading.note}</p>
+        </>
+      )}
+
+      {reading && 'value' in reading && (
+        <>
+          <p className="mt-2 break-words text-3xl font-semibold tabular-nums text-slate-900">{reading.value}</p>
+          {(detail || link) && (
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
-              {state.reading.detail && <span>{state.reading.detail}</span>}
-              {state.reading.detail && link && <span aria-hidden="true">·</span>}
+              {detail && <span>{detail}</span>}
+              {detail && link && <span aria-hidden="true">·</span>}
               {link && (
                 <Link to={link.to} className="font-medium text-blue-700 hover:underline">
                   {link.label}

@@ -2,67 +2,70 @@
 
 | | |
 |---|---|
-| Status | Implemented on `feature/dashboard-ui`, 2026-10-01 |
-| Scope | Dashboard presentation, application shell, shared UI components, responsive and accessibility fixes. Frontend only: no migration, no table, no API contract was added or changed. |
+| Status | Shell and shared UI implemented on `feature/dashboard-ui`; dashboard connected to the AMC and Projects modules on `develop`, 2026-10-01 |
+| Scope | Dashboard, application shell, shared UI components, responsive and accessibility fixes. The dashboard wiring added no migration and no table. |
 
-This document records how the dashboard is built to receive real figures, what the shared UI offers to every module, and what is left to do once the AMC and Projects branches are merged.
+This document records where each dashboard figure comes from, who may see it, what the shared UI offers to every module, and what is left to do.
 
 ## 1. Dashboard
 
-### 1.1 What it shows today
+### 1.1 What it shows
 
-| Group | Metric | State |
-|---|---|---|
-| Clients | Active Clients | **Real.** Read from `GET /api/dashboard/summary` (`clients.active`, `clients.inactive`). |
-| AMC | Active Contracts | Not yet available |
-| AMC | Visits Due | Not yet available |
-| AMC | Ready for Invoice | Not yet available |
-| Projects | Active Projects | Not yet available |
-| Projects | Projects Ready for Invoice | Not yet available |
-| Finance | Tracked Expenses | Not yet available |
-| Finance | Ready-for-Invoice Value | Not yet available |
+Every figure is read from `GET /api/dashboard/summary`. The dashboard module calculates nothing about AMC or projects itself: `dashboard.service.ts` returns the Clients count next to the AMC module's own summary (`getAmcSummary`) and the Projects module's own summary (`getProjectSummary`), unchanged.
 
-A metric that is not connected shows a dash, the label "Not yet available" and the module the figure will come from. It never shows a number. No operational figure is hard-coded anywhere in the web application, and a test proves that extra values sent by the API do not appear until a metric is deliberately connected.
+| Group | Metric | Field | Meaning, as defined by the owning module |
+|---|---|---|---|
+| Clients | Active Clients | `clients.active` (`clients.inactive`) | Clients marked active. |
+| AMC | Active Contracts | `amc.contracts.active` (`activePastValidity`) | Contracts with status `ACTIVE`, including those whose validity has ended. |
+| AMC | Visits Due | `amc.visits.due` (`overdue`) | Scheduled, in-progress or postponed visits, planned today or earlier, on a contract that is not cancelled. |
+| AMC | Ready for Invoice | `amc.invoicing.readyForInvoice.count` (`amountRequired.count`) | `v_amc_visit_billing`: completed visits with an amount above zero. |
+| Projects | Active Projects | `projects.counts.active` (`new`, `inProgress`) | Projects that are `NEW` or `IN_PROGRESS`. |
+| Projects | Projects Ready for Invoice | `projects.counts.readyForInvoice` | `v_project_financials`: completed projects with a job value above zero. |
+| Finance | Tracked Expenses | `projects.costs.trackedExpenses` (`trackedExpensesOnCancelledProjects`) | Expenses recorded here and not voided, cancelled projects left out. |
+| Finance | Ready-for-Invoice Value | `amc.invoicing.readyForInvoice.amount` and `projects.values.readyForInvoiceValue` | Two separate amounts. See section 1.4. |
 
-### 1.2 How a metric is connected
+No operational figure is hard-coded anywhere in the web application. A card shows a number only when the API returned it.
 
-All metrics are declared in one list, `stslv-web/src/pages/dashboard/metrics.ts`. A metric is "not yet available" for exactly one reason: it has no `read` function.
+### 1.2 How a metric is declared
 
-To connect one, after the module that owns the figure is merged:
+All metrics are declared in one list, `stslv-web/src/pages/dashboard/metrics.ts`. Each has:
 
-1. **API.** Add the figure to `GET /api/dashboard/summary`, computed by a query over the module's tables (see `PHASE1_SYSTEM_DESIGN.md` section 16). Return it only to users who hold `VIEW` on the module (section 1.3).
-2. **Type.** Extend `DashboardSummary` in `metrics.ts` to match what the API really returns.
-3. **Metric.** Give the metric a `read` function that turns the summary into display text.
+- `visible`: whether the user's role includes the figure. It mirrors the API's check so that the right cards show while loading.
+- `read`: turns the summary into display text, or returns `null` when the API left the figure out. The card is then not shown at all: never a zero, never a placeholder.
 
-Nothing else changes: the card, the loading and failure states, the permission filter and the layout already handle a connected metric. The Active Clients metric is the working example.
+A metric without `read` has no data source and is shown as "Not yet available". No metric is in that state today; it remains for figures whose module is not built yet.
 
-The names of the new summary fields are **not** decided here. They belong to the session that writes the query, so that the dashboard conforms to the API and not the other way round.
+To add a figure: have the owning module report it, return it from `dashboard.service.ts` under that module's permission, extend `DashboardSummary` in `metrics.ts`, and add the metric.
 
 ### 1.3 Permissions
 
-A user sees a metric only if they hold `VIEW` on the module it belongs to, in the same way the navigation hides modules. The ready-for-invoice metrics are tied to `INVOICES`, the module that acts on them. This mapping is provisional, like the rest of the permission matrix (open question Q12).
+The API is the authority. A section the user may not see is returned as `null`.
 
-Hiding a card is a convenience. **When a figure is added to the API it must be protected there too**: today the summary route checks only `DASHBOARD:VIEW`, which is enough for a client count but not for contract, project or money figures.
+| Figure | Permission |
+|---|---|
+| Any dashboard figure | `DASHBOARD:VIEW` |
+| Active Clients | `CLIENTS:VIEW` |
+| Active Contracts | `AMC_CONTRACTS:VIEW` |
+| Visits Due | `AMC_SCHEDULE:VIEW` or `AMC_EXECUTION:VIEW` |
+| AMC Ready for Invoice, and its amount | `AMC_SCHEDULE:VIEW` |
+| Active Projects, Projects Ready for Invoice, and its value | `PROJECTS:VIEW` |
+| Tracked Expenses | `PROJECTS:VIEW` and `EXPENSES:VIEW` |
+
+These are the checks the AMC and Projects modules already make on their own summaries. No figure is tied to `INVOICES`: that permission will gate the invoice figures when Invoice Tracking exists. The matrix itself is still provisional (open question Q12).
 
 ### 1.4 Rules for money figures
 
-Tracked Expenses and Ready-for-Invoice Value are amounts of money. When they are connected:
-
-- The API must send them as decimal strings, as it does everywhere else. A metric's `read` returns text, so an amount never has to pass through a JavaScript number.
-- A shared formatter for decimal strings does not exist yet. It should be written once, with tests, and used by the dashboard and by the Projects and Expenses screens. It must not use `parseFloat` or `Number`.
-- The number of decimal places and the currency label must follow what the Projects and Expenses modules use.
+- Amounts travel as three-decimal strings and are formatted as text by `formatMoney` in `lib/money.ts`. They never pass through a JavaScript number.
+- **Ready-for-Invoice Value is two amounts, never one total.** The AMC amount is the sum of the visit amounts as entered: the AMC module has no VAT basis for them. The project amount is the sum of job values, which exclude VAT. Adding them would assume they are on the same basis, which the client has not confirmed. The card labels them "AMC — As entered" and "Projects — Excl. VAT".
 - "Tracked Expenses" means expenses recorded in STSLV AMC. It must not be labelled as cost, profit or margin (open question Q10).
 
-### 1.5 Definitions that are still open
-
-These need the owning module and, in some cases, the client:
+### 1.5 Points that are still open
 
 | Metric | Open point |
 |---|---|
-| Visits Due | Due in which period: this month, the next N days, or overdue as well? `PHASE1_SYSTEM_DESIGN.md` 16.1 lists them as separate metrics. The card can show the period in its detail line. |
-| Ready for Invoice (AMC) | Depends on Invoice Tracking: "completed with no active invoice allocation". Until invoices exist, the honest figure is "completed visits", which is a different thing and should be labelled as such or left unavailable. |
-| Projects Ready for Invoice | Same dependency, plus open question Q21 (invoicing before completion). |
-| Ready-for-Invoice Value | Needs both of the above and open question Q11 (VAT inclusive or exclusive). |
+| Ready for Invoice (AMC and Projects) | No invoice records exist yet, so completed work stays "ready for invoice". When Invoice Tracking replaces the two views, invoiced work leaves these figures without any change to the dashboard. |
+| Ready-for-Invoice Value | VAT basis of AMC visit amounts (Q11). Until it is confirmed the two amounts stay separate. |
+| Projects Ready for Invoice | Invoicing before completion (Q21). |
 
 ## 2. Shared UI available to every module
 
@@ -85,19 +88,15 @@ A grid or flex child that contains a table needs `min-w-0` (or a `minmax(0, 1fr)
 | Check | Result |
 |---|---|
 | `npm run typecheck` | Passes |
-| `npm test` | 61 tests in 5 files (36 foundation tests kept, 25 added) |
+| `npm test` | 61 tests in 5 files on `feature/dashboard-ui` (36 foundation tests kept, 25 added). The dashboard wiring is covered by `stslv-web/src/test/dashboard.test.tsx` and `stslv-api/tests/dashboard.test.ts`. |
 | `npm run lint` | Passes |
 | `npm run build` | Passes |
 | Browser check | Login, Dashboard, Clients, Users & Access, Roles & Permissions, Settings, Account, placeholder, not-found and access-denied pages, with their dialogs, at 1440, 820 and 375 pixels wide. No page scrolls sideways at any of the three widths. |
 
 The browser check ran against a stand-in API with invented records, outside the repository. The development database was not read or written. `docs/FOUNDATION.md` section 7 still gives the foundation's test count (36); it was left unchanged to avoid a conflict with the other branches and should be updated when the branches are merged.
 
-## 4. Work remaining after the AMC and Projects branches are merged
+## 4. Work remaining
 
-1. Merge `develop` into this branch and resolve `src/App.tsx` (the list of placeholder routes shrinks as modules arrive) and any shared component both sides touched.
-2. Connect the dashboard metrics, one at a time, following section 1.2, and settle the definitions in section 1.5.
-3. Add per-module permission checks to `GET /api/dashboard/summary` (section 1.3) with API tests.
-4. Write the shared decimal-string formatter (section 1.4).
-5. Move the new modules' tables to `TableScroll`, and check their pages at phone and tablet width.
-6. Add the "pending invoices" list that `PHASE1_SYSTEM_DESIGN.md` 16.3 asks to be the most prominent item on the dashboard. It needs Invoice Tracking.
-7. Update the test count in `docs/FOUNDATION.md` section 7.
+1. Move the AMC and Projects tables to `TableScroll`, and check their pages at phone and tablet width.
+2. Add the "pending invoices" list that `PHASE1_SYSTEM_DESIGN.md` 16.3 asks to be the most prominent item on the dashboard. It needs Invoice Tracking.
+3. Update the test count in `docs/FOUNDATION.md` section 7.
