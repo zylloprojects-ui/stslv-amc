@@ -11,6 +11,7 @@ export const MODULES = [
   'REPORTS',
   'USERS',
   'SETTINGS',
+  'HISTORICAL_DATA',
 ] as const
 
 export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE', 'EXPORT'] as const
@@ -31,6 +32,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   REPORTS: 'Reports',
   USERS: 'Users & Access',
   SETTINGS: 'Settings',
+  HISTORICAL_DATA: 'Historical Data Review',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {

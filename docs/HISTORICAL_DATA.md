@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Status | Implemented. **No historical data has been imported.** |
-| Migrations | `0030_historical_records`, `0031_legacy_import_staging` |
+| Status | Implemented. **No historical data has been imported into `stslv_amc_dev`.** |
+| Migrations | `0030_historical_records`, `0031_legacy_import_staging`, `0050_historical_review`, `0051_seed_historical_data_permission` |
 | Scope | How records from the client's earlier registers are stored and shown. The import itself is a separate, later step. |
 
 ## Principle
@@ -94,11 +94,42 @@ The same source record cannot be staged twice. Invoice references from the
 source registers stay in these rows until the Invoice Tracking module
 reconciles them. They are not stored on projects or visits.
 
-These tables have no API and no page.
+Each row also keeps the column order of the sheet, what the import proposed
+for the record, the reasons it is held (as data), its warnings, and the source
+invoice cell with its classification (migration `0050`).
+
+## Historical Data Review
+
+Page `/historical-data` (Reporting → Historical Data), API
+`GET /api/historical-data/summary`, `/rows`, `/rows/:id`.
+
+It shows every staged source record, imported or not:
+
+- **Imported** — the record is in the normal application as a historical
+  record (a client, a `DRAFT` contract, a `HISTORICAL` visit or project). The
+  review row links to it.
+- **Provisional** — the record is held. It exists in `legacy_import_rows`
+  only. No client, contract, visit, project or invoice was created for it, so
+  it is in no dashboard figure, schedule, invoice state or margin.
+
+For each record the page shows the original Excel values in the sheet's column
+order, beside the proposed mapping; the workbook, sheet, row and cell; why it
+is provisional; and the source invoice cell. A value the source does not give
+is shown as not given, never as zero.
+
+The module is read-only: it has no route that writes, and the page has no
+control that changes anything.
+
+Permission: module `HISTORICAL_DATA`, action `VIEW`. Seeded for Admin only
+(`0051`). The review shows every client's names, values and invoice references,
+so granting it to another role is a business decision, made in Users & Access.
 
 ## Not done here
 
-- No data has been imported.
-- No import script exists yet.
-- Invoice Tracking is not part of this change.
+- No data has been imported into `stslv_amc_dev`.
+- Releasing a provisional record after the client decides (approving an alias,
+  supplying a missing value, choosing which row keeps a duplicated job number)
+  is not built. The import leaves an already staged record exactly as it is.
+- Invoice Tracking is not part of this change. No invoice record is created
+  from a historical invoice reference.
 - A way to bring a historical record into the live workflow is not provided.

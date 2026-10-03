@@ -7,7 +7,9 @@ import { insertBatch, insertHistoricalProject, insertHistoricalVisit, insertImpo
 import { insertClient, resetProjectData, type Session } from "./projects-helpers";
 
 // legacy_import_batches and legacy_import_rows: the audit trail of a
-// controlled import. Written by the import only; no API, no page.
+// controlled import. Written by the import only. The application reads them
+// through the Historical Data Review (tests/historical-data.test.ts) and has
+// no route that writes them.
 
 let admin: Session;
 let clientId: string;
@@ -271,10 +273,14 @@ describe("staging rules", () => {
   });
 });
 
-describe("no application route", () => {
-  it("exposes the staging tables through no API path", async () => {
+describe("no application route that imports", () => {
+  it("offers no API path that stages or imports a record", async () => {
     for (const path of ["/api/legacy-import-rows", "/api/legacy-import-batches", "/api/legacy-import", "/api/import"]) {
       expect((await api().get(path).set(admin.headers)).status).toBe(404);
+      expect((await api().post(path).set(admin.headers).send({})).status).toBe(404);
+    }
+    // The review routes read only.
+    for (const path of ["/api/historical-data/rows", "/api/historical-data/import", "/api/historical-data/batches"]) {
       expect((await api().post(path).set(admin.headers).send({})).status).toBe(404);
     }
 

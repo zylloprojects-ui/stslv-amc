@@ -15,6 +15,7 @@ export const MODULES = [
   "REPORTS",
   "USERS",
   "SETTINGS",
+  "HISTORICAL_DATA",
 ] as const;
 
 export const ACTIONS = ["VIEW", "CREATE", "EDIT", "DELETE", "APPROVE", "EXPORT"] as const;

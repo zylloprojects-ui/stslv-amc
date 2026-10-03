@@ -9,13 +9,16 @@ export const api = () => request(app);
 
 export const PASSWORD = "Correct-Horse-42";
 
-const seedSql = loadMigrationFiles().find((migration) => migration.name === "seed_roles_and_permissions")?.sql;
+// The seed migrations, in order. Each is idempotent, so they can be run again after the grants are emptied.
+const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_permission"];
+const seedSql = SEED_MIGRATIONS.map((name) => loadMigrationFiles().find((migration) => migration.name === name)?.sql ?? "").join("\n");
+const seedsFound = SEED_MIGRATIONS.every((name) => loadMigrationFiles().some((migration) => migration.name === name));
 
 /** Empties every table and restores the seeded roles and permissions. */
 export async function resetData(): Promise<void> {
   const schema = await pool.query<{ schema: string }>("SELECT current_schema() AS schema");
 
-  if (schema.rows[0]?.schema !== "stslv_test" || !seedSql) {
+  if (schema.rows[0]?.schema !== "stslv_test" || !seedsFound) {
     throw new Error("Refusing to reset data: not connected to the stslv_test schema.");
   }
 

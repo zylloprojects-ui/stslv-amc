@@ -500,6 +500,17 @@ export function buildPlan(source: SourceData, database: DatabaseState, options: 
       }
     }
 
+    // A row attached by reconciliation names its client differently from the
+    // contract register. Until that alias is approved the mapping is a
+    // proposal, so the row is held exactly as the jobs under that name are.
+    if (contract && label && attachedByReconciliation.has(row)) {
+      const alias = clientHold(clientOf(label.clientPart));
+
+      if (alias?.code === "CLIENT_ALIAS_NOT_APPROVED") {
+        reasons.push(alias);
+      }
+    }
+
     if (contract && label && attachedByReconciliation.has(row)) {
       warnings.push(
         `The schedule names the client "${normalizeName(label.clientPart)}"; the contract register names it "${normalizeName(contract.clientRaw ?? "")}". ` +

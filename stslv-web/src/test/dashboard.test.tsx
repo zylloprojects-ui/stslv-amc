@@ -143,7 +143,7 @@ describe('workspace cards', () => {
 
     await cardOf('Active Clients')
     // Every navigation item: the Admin may open them all.
-    expect(workspace().getByText('Modules Available').nextElementSibling).toHaveTextContent(/^12$/)
+    expect(workspace().getByText('Modules Available').nextElementSibling).toHaveTextContent(/^13$/)
     expect(workspace().getByText('Admin')).toBeInTheDocument()
     admin.unmount()
 
@@ -229,6 +229,7 @@ describe('module rollout', () => {
       'ExpensesLive',
       'Invoice TrackingPlanned',
       'ReportsPlanned',
+      'Historical DataLive',
       'Users & AccessLive',
       'SettingsLive',
     ])

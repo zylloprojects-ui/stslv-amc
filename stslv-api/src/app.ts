@@ -7,6 +7,7 @@ import { authRouter } from "./modules/auth/auth.routes";
 import { clientsRouter } from "./modules/clients/clients.routes";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
 import { expensesRouter } from "./modules/expenses/expenses.routes";
+import { historicalDataRouter } from "./modules/historical-data/historical-data.routes";
 import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
 import { rolesRouter } from "./modules/roles/roles.routes";
@@ -62,6 +63,7 @@ export function createApp() {
   app.use("/api/projects", projectsRouter);
   app.use("/api/procurement", procurementRouter);
   app.use("/api/expenses", expensesRouter);
+  app.use("/api/historical-data", historicalDataRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

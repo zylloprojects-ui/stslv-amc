@@ -31,6 +31,7 @@ const MODULE_ICONS: Record<Module, IconName> = {
   REPORTS: 'chart',
   USERS: 'shield',
   SETTINGS: 'settings',
+  HISTORICAL_DATA: 'contract',
 }
 
 function greeting(date: Date) {

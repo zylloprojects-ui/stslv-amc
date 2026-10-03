@@ -35,7 +35,13 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES', pending: true },
     ],
   },
-  { title: 'Reporting', items: [{ label: 'Reports', path: '/reports', module: 'REPORTS', pending: true }] },
+  {
+    title: 'Reporting',
+    items: [
+      { label: 'Reports', path: '/reports', module: 'REPORTS', pending: true },
+      { label: 'Historical Data', path: '/historical-data', module: 'HISTORICAL_DATA' },
+    ],
+  },
   {
     title: 'Administration',
     items: [

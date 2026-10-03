@@ -17,6 +17,7 @@ import { SignUpPage } from './pages/auth/SignUpPage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ExpensesPage } from './pages/expenses/ExpensesPage'
+import { HistoricalDataPage } from './pages/historical/HistoricalDataPage'
 import { AuthLayout, LoginPage } from './pages/LoginPage'
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
 import { NotFoundPage } from './pages/NotFoundPage'
@@ -136,6 +137,14 @@ export function AppRoutes() {
             element={
               <RequirePermission module="EXPENSES">
                 <ExpensesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/historical-data"
+            element={
+              <RequirePermission module="HISTORICAL_DATA">
+                <HistoricalDataPage />
               </RequirePermission>
             }
           />

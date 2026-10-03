@@ -80,6 +80,12 @@ const ICON = {
     </>
   ),
   page: <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20V3.5Z" strokeLinejoin="round" />,
+  archive: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="4.5" rx="1.5" />
+      <path d="M5 9v9a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 18V9M10 13h4" strokeLinecap="round" />
+    </>
+  ),
   dashboard: (
     <>
       <rect x="3.5" y="3.5" width="7" height="7" rx="1.8" />
@@ -102,6 +108,7 @@ const PAGES: { prefix: string; meta: PageMeta }[] = [
   { prefix: '/expenses', meta: { icon: ICON.wallet, from: '#00A6C8', to: '#F5C622', description: 'Project costs recorded against each job' } },
   { prefix: '/invoices', meta: { icon: ICON.invoice, from: '#1B8AD3', to: '#D1428C', description: 'Zoho invoice details tracked against visits and projects' } },
   { prefix: '/reports', meta: { icon: ICON.chart, from: '#7E6FAC', to: '#1B8AD3', description: 'Management reporting across AMC and projects' } },
+  { prefix: '/historical-data', meta: { icon: ICON.archive, from: '#7E6FAC', to: '#5BAF48', description: 'Records from the earlier Excel registers · Imported and provisional · Read-only' } },
   { prefix: '/admin/users', meta: { icon: ICON.shield, from: '#1B8AD3', to: '#5BAF48', description: 'Users · Roles · Permissions' } },
   { prefix: '/settings', meta: { icon: ICON.settings, from: '#7E6FAC', to: '#00A6C8', description: 'Application settings' } },
   { prefix: '/account', meta: { icon: ICON.person, from: '#1B8AD3', to: '#5BAF48', description: 'Your profile, role and sign-in details' } },

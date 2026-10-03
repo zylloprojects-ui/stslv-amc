@@ -385,8 +385,8 @@ describe("AMC contracts", () => {
     expect(visit(result, "N37").warnings.join(" ")).toContain("labels this period Q2; by its position it is period 4");
   });
 
-  it("attaches schedule rows named differently when exactly one contract fits, and proposes the alias without applying it", () => {
-    const result = plan({
+  it("attaches schedule rows named differently when exactly one contract fits, and holds them until the alias is approved", () => {
+    const source = {
       contracts: [ALPHA, contract(8, { clientRaw: "BETA TOWER", system: "CCTV", validFrom: "2026-02-01", validTo: "2027-01-31", amount: "3100.000" })],
       schedule: [
         ...ALPHA_ROWS,
@@ -396,9 +396,18 @@ describe("AMC contracts", () => {
         period("H36", "2026-11-01", "BT CCTV Q4", "775.000"),
       ],
       jobs: [job(5, { client: "BT" })],
-    });
+    };
+    const result = plan(source);
+    const approved = plan(source, { approvedClientAliases: [{ alias: "BT", master: "BETA TOWER" }] });
 
-    expect(visit(result, "H6")).toMatchObject({ disposition: "IMPORTABLE", proposed: { contractSourceRow: 8, clientName: "BETA TOWER", sequenceNo: 1 } });
+    // The row is attached to the contract, so the review can show the proposed mapping, but it is not a visit yet.
+    expect(visit(result, "H6")).toMatchObject({ disposition: "HELD", proposed: { contractSourceRow: 8, clientName: "BETA TOWER", sequenceNo: 1 } });
+    expect(codes(visit(result, "H6"))).toEqual(["CLIENT_ALIAS_NOT_APPROVED"]);
+    expect(codes(visit(result, "H36"))).toEqual(["NOT_HISTORY_AT_CUTOVER", "CLIENT_ALIAS_NOT_APPROVED"]);
+    // The contract itself is named as the register names it, and is not held.
+    expect(result.contracts.find((row) => row.source.row === 8)).toMatchObject({ disposition: "IMPORTABLE", proposed: { sourceVisitCount: 4, historicalVisitCount: 0 } });
+    expect(visit(approved, "H6").disposition).toBe("IMPORTABLE");
+    expect(codes(visit(approved, "H36"))).toEqual(["NOT_HISTORY_AT_CUTOVER"]);
     expect(visit(result, "H6").warnings.join(" ")).toContain('The schedule names the client "BT"; the contract register names it "BETA TOWER"');
     expect(result.clients.names.find((name) => name.raw === "BT")).toMatchObject({ classification: "PROPOSED_ALIAS", outcome: "HELD_ALIAS_NOT_APPROVED", masterName: "BETA TOWER" });
     // The job under the short name is not attached to the contract's client without approval.

@@ -4,7 +4,7 @@ import path from "node:path";
 import type { Pool } from "pg";
 import type { ImportConfig, WorkbookRole } from "./config";
 import { readDatabase, type DatabaseSnapshot } from "./database";
-import { buildPlan, type ImportPlan, type PlanRow } from "./plan";
+import { buildPlan, type HoldReason, type ImportPlan, type InvoiceReference, type PlanRow } from "./plan";
 import { parseContracts, parseJobs, parseSchedule, type SourceData } from "./source";
 import { readWorkbook, type Sheet } from "./xlsx";
 
@@ -34,8 +34,16 @@ export interface StagedRow {
   record_kind: string;
   original_identifier: string;
   raw_values: Record<string, string | null>;
+  /** The headings of raw_values in the order of the sheet. */
+  source_columns: string[];
   disposition: "IMPORTED" | "HELD";
   hold_reason: string | null;
+  /** What the import would store for the record. A value the source does not give is null. */
+  proposed_values: Record<string, unknown>;
+  hold_reasons: HoldReason[];
+  warnings: string[];
+  /** The source invoice cell and its classification. Null for a kind of record that has none. */
+  invoice_reference: InvoiceReference | null;
 }
 
 export interface DryRunResult {
@@ -131,11 +139,16 @@ export function loadSource(config: ImportConfig): { data: SourceData; files: Sou
   };
 }
 
-/** The staging rows a real import would write, in source order. */
-export function stagingRows(plan: ImportPlan): StagedRow[] {
-  const rows: PlanRow<unknown>[] = [...plan.clientRows, ...plan.contracts, ...plan.visits, ...plan.projects];
+/** Every plan row, in the order it is staged: client names, contracts, schedule rows, jobs. */
+export const planRows = (plan: ImportPlan): PlanRow<unknown>[] => [...plan.clientRows, ...plan.contracts, ...plan.visits, ...plan.projects];
 
-  return rows.map((row) => ({
+/** The staging row of one plan row, as a real import would write it. */
+export function stagedRow(plan: ImportPlan, row: PlanRow<unknown>): StagedRow {
+  const proposed = row.proposed as Record<string, unknown>;
+  // A client name carries its mapping: why it leads to that client, and how often each workbook uses it.
+  const name = row.kind === "CLIENT" ? plan.clients.names.find((candidate) => candidate.raw === row.identifier) : undefined;
+
+  return {
     source_workbook: row.source.workbook,
     source_sheet: row.source.sheet,
     source_row: row.source.row,
@@ -143,9 +156,19 @@ export function stagingRows(plan: ImportPlan): StagedRow[] {
     record_kind: row.kind,
     original_identifier: row.identifier,
     raw_values: row.raw,
+    source_columns: Object.keys(row.raw),
     disposition: row.disposition === "IMPORTABLE" ? "IMPORTED" : "HELD",
     hold_reason: row.disposition === "HELD" ? row.holdReasons.map((reason) => `${reason.code}: ${reason.message}`).join(" | ") : null,
-  }));
+    proposed_values: name ? { ...proposed, mappingReason: name.reason, confidence: name.confidence, occurrences: name.occurrences } : proposed,
+    hold_reasons: row.disposition === "HELD" ? row.holdReasons : [],
+    warnings: row.warnings,
+    invoice_reference: row.invoice,
+  };
+}
+
+/** The staging rows a real import would write, in source order. */
+export function stagingRows(plan: ImportPlan): StagedRow[] {
+  return planRows(plan).map((row) => stagedRow(plan, row));
 }
 
 export async function runDryRun(config: ImportConfig, pool: Pool): Promise<DryRunResult> {

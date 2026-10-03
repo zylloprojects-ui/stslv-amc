@@ -39,28 +39,31 @@ export async function withReadOnly<T>(pool: Pool, fn: (client: PoolClient) => Pr
   }
 }
 
+/** The snapshot itself, on a connection whose transaction the caller owns. */
+export async function readSnapshot(client: PoolClient): Promise<DatabaseSnapshot> {
+  const target = await client.query<{ database: string; schema: string; today: string }>(
+    "SELECT current_database() AS database, current_schema() AS schema, current_date::text AS today"
+  );
+  const clients = await client.query<{ id: string; name: string }>("SELECT id, name FROM clients ORDER BY id");
+  const projects = await client.query<{ job_number: string }>("SELECT job_number FROM projects ORDER BY job_number");
+  const counts: Record<string, number> = {};
+
+  for (const table of WATCHED_TABLES) {
+    counts[table] = (await client.query<{ count: number }>(`SELECT count(*)::int AS count FROM ${table}`)).rows[0]?.count ?? 0;
+  }
+
+  const row = target.rows[0] as { database: string; schema: string; today: string };
+
+  return {
+    database: row.database,
+    schema: row.schema,
+    asOf: row.today,
+    clients: clients.rows,
+    jobNumbers: projects.rows.map((project) => project.job_number),
+    counts,
+  };
+}
+
 export function readDatabase(pool: Pool): Promise<DatabaseSnapshot> {
-  return withReadOnly(pool, async (client) => {
-    const target = await client.query<{ database: string; schema: string; today: string }>(
-      "SELECT current_database() AS database, current_schema() AS schema, current_date::text AS today"
-    );
-    const clients = await client.query<{ id: string; name: string }>("SELECT id, name FROM clients ORDER BY id");
-    const projects = await client.query<{ job_number: string }>("SELECT job_number FROM projects ORDER BY job_number");
-    const counts: Record<string, number> = {};
-
-    for (const table of WATCHED_TABLES) {
-      counts[table] = (await client.query<{ count: number }>(`SELECT count(*)::int AS count FROM ${table}`)).rows[0]?.count ?? 0;
-    }
-
-    const row = target.rows[0] as { database: string; schema: string; today: string };
-
-    return {
-      database: row.database,
-      schema: row.schema,
-      asOf: row.today,
-      clients: clients.rows,
-      jobNumbers: projects.rows.map((project) => project.job_number),
-      counts,
-    };
-  });
+  return withReadOnly(pool, readSnapshot);
 }

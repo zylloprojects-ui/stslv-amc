@@ -144,8 +144,9 @@ describe("source workbooks", () => {
     expect(plan.checks.filter((check) => !check.passed)).toEqual([]);
     expect(plan.totals.clients).toEqual({ rawNames: 14, masters: 10, existing: 0, proposedNew: 5, deferred: 3, heldMasters: 2, heldAliases: 2 });
     expect(plan.totals.contracts).toMatchObject({ source: 3, importable: 2, held: 1, sourceValue: "16700.000", importableValue: "4700.000", heldValue: "12000.000", sourceFinalCredit: "14700.000" });
-    expect(plan.totals.visits).toMatchObject({ source: 12, importable: 5, held: 7, generatedWithoutSource: 0, sourceAmount: "16700.000", importableAmount: "3125.000", heldAmount: "13575.000" });
-    expect(plan.totals.visits.heldByReason).toEqual({ CONTRACT_HELD: 4, NOT_HISTORY_AT_CUTOVER: 1, POSSIBLE_RENEWAL: 2 });
+    // The four "BT" rows reconcile to the BETA TOWER contract, but that alias is not approved: they stay held.
+    expect(plan.totals.visits).toMatchObject({ source: 12, importable: 2, held: 10, generatedWithoutSource: 0, sourceAmount: "16700.000", importableAmount: "800.000", heldAmount: "15900.000" });
+    expect(plan.totals.visits.heldByReason).toEqual({ CLIENT_ALIAS_NOT_APPROVED: 4, CONTRACT_HELD: 4, NOT_HISTORY_AT_CUTOVER: 1, POSSIBLE_RENEWAL: 2 });
     expect(plan.totals.projects).toMatchObject({ source: 14, importable: 8, held: 6, sourceValue: "11451.609", importableValue: "4810.609", heldValue: "6641.000" });
     expect(plan.totals.projects.heldByReason).toEqual({ CLIENT_ALIAS_NOT_APPROVED: 2, CLIENT_IDENTITY_UNCONFIRMED: 1, DUPLICATE_JOB_NUMBER: 2, JOB_VALUE_BLANK: 1 });
     expect(plan.totals.invoices.jobs).toEqual({
