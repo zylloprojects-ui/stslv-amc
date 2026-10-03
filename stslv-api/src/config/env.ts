@@ -130,4 +130,8 @@ export const env = {
   passwordResetMinutes: readWholeNumber("PASSWORD_RESET_EXPIRES_MINUTES", 30, 5, 1440),
   // Requests one address may make to the public sign-up and password-recovery routes per 15 minutes.
   publicAuthRateLimit: readWholeNumber("PUBLIC_AUTH_RATE_LIMIT", 10, 1, 100_000),
+  // How many reverse proxies stand between the internet and this API. 0 (the default)
+  // means none: forwarded-address headers are ignored, which is right for local
+  // development. A hosting platform's load balancer counts as one.
+  trustProxyHops: readWholeNumber("TRUST_PROXY", 0, 0, 10),
 };

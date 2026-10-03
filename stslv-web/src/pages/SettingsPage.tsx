@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { Badge, Card, PageHeader } from '../components/ui'
+import { apiUrl } from '../lib/api'
 
 interface HealthResponse {
   success: boolean
@@ -10,7 +11,7 @@ interface HealthResponse {
 
 // The two health routes predate the { success, data } response format, so they are read directly.
 async function fetchHealth(path: string): Promise<HealthResponse> {
-  const response = await fetch(path, { headers: { Accept: 'application/json' } })
+  const response = await fetch(apiUrl(path), { headers: { Accept: 'application/json' } })
   const body = (await response.json().catch(() => null)) as HealthResponse | null
 
   if (!response.ok || !body?.success) {

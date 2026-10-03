@@ -3,6 +3,16 @@
 
 const TOKEN_KEY = 'stslv-amc.token'
 
+// Where the API lives. Empty in local development, where Vite forwards /api to
+// the API (vite.config.ts). A hosted build sets VITE_API_BASE_URL to the API's
+// address, for example https://api.example.com (see docs/DEPLOYMENT.md).
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '')
+
+/** The full address of an API path such as /api/health. */
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`
+}
+
 export interface ApiErrorDetail {
   field: string
   message: string
@@ -62,7 +72,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   let response: Response
 
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetch(apiUrl(`/api${path}`), {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),

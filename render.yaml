@@ -1,0 +1,60 @@
+# Render Blueprint for the STSLV AMC API (client-review deployment, free plan).
+# The web application (stslv-web) is hosted on Cloudflare Pages and the
+# database on Neon; neither is created by this file.
+# See docs/DEPLOYMENT.md. No secret values belong in this file.
+
+services:
+  - type: web
+    name: stslv-amc-api
+    runtime: node
+    plan: free
+    # Keep this next to the Neon project's region.
+    region: frankfurt
+    branch: develop
+    rootDir: stslv-api
+    # Redeploy on every push to develop. Because rootDir is set, Render only
+    # redeploys when files inside stslv-api changed.
+    autoDeployTrigger: commit
+    # TypeScript is a dev dependency, so dev dependencies are needed to build.
+    buildCommand: npm ci --include=dev && npm run build
+    # Pending migrations are applied before the API starts. If one fails it is
+    # rolled back, the start fails and Render keeps the previous version running.
+    startCommand: node dist/db/migrate-cli.js && node dist/server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production
+      # The Neon database. All five are entered in the Render dashboard.
+      # DB_HOST must be Neon's direct host (the one without "-pooler"): the
+      # migrations hold a session lock, which a connection pooler does not keep.
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      # Neon only accepts encrypted connections. Read by the PostgreSQL driver:
+      # the connection uses TLS and the server certificate is verified.
+      - key: PGSSLMODE
+        value: require
+      # Generated once by Render and kept; never stored in the repository.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 8h
+      # Both are the web application's address on Cloudflare Pages; entered in the Render dashboard.
+      - key: CORS_ORIGIN
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: MAIL_TRANSPORT
+        value: none
+      # Render's load balancer is the one proxy in front of the API.
+      - key: TRUST_PROXY
+        value: "1"

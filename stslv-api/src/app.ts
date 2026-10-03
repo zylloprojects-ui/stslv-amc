@@ -23,6 +23,12 @@ export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
+  // Behind a hosting platform's proxy the caller's address arrives in X-Forwarded-For.
+  // Only the configured number of proxies is trusted (TRUST_PROXY in .env), so a
+  // caller cannot pick its own address and slip past the rate limit.
+  if (env.trustProxyHops > 0) {
+    app.set("trust proxy", env.trustProxyHops);
+  }
   // Only the configured web origins may call the API from a browser (CORS_ORIGIN in .env).
   app.use(cors({ origin: env.corsOrigins }));
   app.use(express.json());
