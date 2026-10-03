@@ -266,6 +266,10 @@ export function AuthLayout() {
 
 export function LoginPage() {
   const auth = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  // Set by the reset password page once the new password is saved.
+  const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true
   const [failure, setFailure] = useState<string | null>(null)
   const [attempts, setAttempts] = useState(0)
   const {
@@ -276,8 +280,16 @@ export function LoginPage() {
 
   usePageTitle('Sign in')
 
+  // Removed from the history entry too, so it does not come back on reload or when switching tabs.
+  const clearPasswordReset = () => {
+    if (passwordReset) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }
+
   const onSubmit = handleSubmit(async (values) => {
     setFailure(null)
+    clearPasswordReset()
 
     try {
       await auth.login(values.email, values.password)
@@ -293,6 +305,11 @@ export function LoginPage() {
 
   return (
     <form onSubmit={onSubmit} noValidate className="relative space-y-3.5">
+      {passwordReset && (
+        <Alert tone="success" onDismiss={clearPasswordReset}>
+          Your password has been reset successfully. Please sign in again using your new password.
+        </Alert>
+      )}
       {failure && (
         <div key={attempts} className="login-shake">
           <Alert>{failure}</Alert>

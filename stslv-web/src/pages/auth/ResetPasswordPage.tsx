@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { useLocation } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { useAuth } from '../../auth/context'
 import { usePageTitle } from '../../components/hooks'
@@ -10,7 +10,7 @@ import { Alert, Button, Spinner } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { applyApiErrors } from '../../lib/formErrors'
 import { passwordRule } from '../../lib/password'
-import { AlertIcon, AuthNotice, AuthPrimaryLink, AuthSecondaryLink, AuthSubmitButton, CheckIcon, PasswordField } from './authUi'
+import { AlertIcon, AuthNotice, AuthPrimaryLink, AuthSecondaryLink, AuthSubmitButton, PasswordField } from './authUi'
 
 type LinkStatus = 'valid' | 'invalid' | 'expired' | 'used'
 
@@ -53,8 +53,8 @@ function tokenFrom(hash: string): string | null {
 /** Opened from the emailed link: checks the link, then lets the person choose a new password. */
 export function ResetPasswordPage() {
   const auth = useAuth()
+  const navigate = useNavigate()
   const token = tokenFrom(useLocation().hash)
-  const [done, setDone] = useState(false)
   // Set when the API refuses the link at the moment the new password is sent.
   const [refused, setRefused] = useState<Exclude<LinkStatus, 'valid'> | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
@@ -71,7 +71,7 @@ export function ResetPasswordPage() {
   const link = useQuery({
     queryKey: ['auth', 'reset-link', token],
     queryFn: () => api.post<{ status: LinkStatus }>('/auth/reset-password/check', { token }),
-    enabled: token !== null && !done,
+    enabled: token !== null,
     staleTime: Infinity,
     gcTime: 0,
     refetchOnWindowFocus: false,
@@ -87,7 +87,8 @@ export function ResetPasswordPage() {
       if (auth.status !== 'anonymous') {
         auth.logout()
       }
-      setDone(true)
+      // The sign in page confirms the reset (see LoginPage).
+      navigate('/login', { replace: true, state: { passwordReset: true } })
     } catch (error) {
       const refusal = error instanceof ApiError ? REFUSALS[error.code] : undefined
 
@@ -100,18 +101,6 @@ export function ResetPasswordPage() {
       setAttempts((count) => count + 1)
     }
   })
-
-  if (done) {
-    return (
-      <div className="login-rise space-y-4">
-        <AuthNotice icon={<CheckIcon />} tone="success" title="Password updated">
-          <p>Your new password is set. Sign in with it to continue.</p>
-          <p>Any device that was signed in to this account has been signed out.</p>
-        </AuthNotice>
-        <AuthPrimaryLink to="/login">Go to sign in</AuthPrimaryLink>
-      </div>
-    )
-  }
 
   const status: LinkStatus | null = refused ?? (token === null ? 'invalid' : (link.data?.status ?? null))
 

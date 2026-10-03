@@ -69,7 +69,9 @@ Link  →  /reset-password#token=…
 
 A successful reset moves `password_changed_at`, so every existing session of that account is signed out. It does not activate an inactive account and does not change roles.
 
-The administrator's **Reset password** action in Users & Access is unchanged and remains available.
+After the new password is saved, the person is sent to `/login`, which shows "Your password has been reset successfully. Please sign in again using your new password." until they dismiss it or submit the sign-in form.
+
+The administrator's **Reset password** action in Users & Access remains available and still works without email: the administrator sets the new password (`POST /api/users/:id/reset-password`). It first asks for confirmation ("Reset Password?", naming the user); nothing changes until the new password is saved. It does not create or send a reset link, and it does not sign the administrator out.
 
 ## 3. Email delivery
 

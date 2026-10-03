@@ -23,6 +23,7 @@ type Dialog =
   | { kind: 'none' }
   | { kind: 'create' }
   | { kind: 'roles'; user: User }
+  | { kind: 'confirm-password'; user: User }
   | { kind: 'password'; user: User }
   | { kind: 'toggle'; user: User }
   | { kind: 'reject'; user: User }
@@ -216,7 +217,7 @@ export function UsersPage() {
                                   variant="ghost"
                                   size="sm"
                                   aria-label={`Reset password of ${user.fullName}`}
-                                  onClick={() => setDialog({ kind: 'password', user })}
+                                  onClick={() => setDialog({ kind: 'confirm-password', user })}
                                 >
                                   Reset password
                                 </Button>
@@ -288,12 +289,33 @@ export function UsersPage() {
         />
       )}
 
+      {dialog.kind === 'confirm-password' && (
+        <ConfirmDialog
+          title="Reset Password?"
+          message={
+            <>
+              <p>Are you sure you want to reset the password for this user?</p>
+              <p className="mt-3">
+                <strong>{dialog.user.fullName}</strong>
+                <span className="block break-all">{dialog.user.email}</span>
+              </p>
+              <p className="mt-3">Nothing changes until you set the new password in the next step.</p>
+            </>
+          }
+          confirmLabel="Yes, Reset Password"
+          onConfirm={() => setDialog({ kind: 'password', user: dialog.user })}
+          onCancel={closeDialog}
+        />
+      )}
+
       {dialog.kind === 'password' && (
         <ResetPasswordModal
           user={dialog.user}
           onClose={closeDialog}
           onSaved={() => {
-            setNotice(`Password reset for ${dialog.user.fullName}.`)
+            setNotice(
+              `Password reset successfully for ${dialog.user.fullName}. They have been signed out and must sign in again using the new password.`,
+            )
             setDialog({ kind: 'none' })
           }}
         />

@@ -13,6 +13,7 @@ const styles: string = readFileSync('src/index.css', 'utf8')
 
 const SIGNUP_MESSAGE = 'Your registration has been submitted. An administrator will review it before you can sign in.'
 const RESET_MESSAGE = 'If an active account exists for that email, a password reset link has been sent to it.'
+const RESET_DONE_MESSAGE = 'Your password has been reset successfully. Please sign in again using your new password.'
 
 /** Holds back the reply to one request until the test releases it. */
 function deferred() {
@@ -407,7 +408,7 @@ describe('reset password', () => {
     expect(api.find('POST', '/auth/reset-password')).toHaveLength(0)
   })
 
-  it('sets the new password, shows a loading state, then offers to sign in', async () => {
+  it('sets the new password, shows a loading state, then returns to sign in with a confirmation', async () => {
     const pending = deferred()
     const api = mockApi((request) => {
       if (request.path === '/auth/reset-password/check') return ok({ status: 'valid' })
@@ -421,18 +422,72 @@ describe('reset password', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
 
     expect(await screen.findByRole('button', { name: 'Saving' })).toBeDisabled()
-    expect(screen.queryByText('Password updated')).not.toBeInTheDocument()
+    // Nothing is claimed before the API answers.
+    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
 
     pending.release(ok(null))
 
-    expect(await screen.findByRole('heading', { name: 'Password updated' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Welcome back' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(RESET_DONE_MESSAGE)
+    expect(api.find('POST', '/auth/reset-password')).toHaveLength(1)
     expect(api.find('POST', '/auth/reset-password')[0]?.body).toEqual({ token: 'emailed-token', password: GOOD_PASSWORD })
     // Resetting does not sign the person in.
     expect(localStorage.getItem('stslv-amc.token')).toBeNull()
+  })
 
-    await userEvent.click(screen.getByRole('link', { name: 'Go to sign in' }))
+  async function completeReset() {
+    renderApp('/reset-password#token=emailed-token')
+
+    await userEvent.type(await screen.findByLabelText(/^New password/), GOOD_PASSWORD)
+    await userEvent.type(screen.getByLabelText(/^Confirm new password/), GOOD_PASSWORD)
+    await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
+
+    expect(await screen.findByText(RESET_DONE_MESSAGE)).toBeInTheDocument()
+  }
+
+  it('keeps the confirmation while the person types, and removes it when they dismiss it', async () => {
+    resetApi('valid')
+    await completeReset()
+
+    await userEvent.type(screen.getByLabelText(/Email/), 'someone@example.com')
+    expect(screen.getByText(RESET_DONE_MESSAGE)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss message' }))
+    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
+
+    // It does not come back when moving between the tabs.
+    await userEvent.click(screen.getByRole('tab', { name: 'Sign up' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Sign in' }))
 
     expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
+  })
+
+  it('removes the confirmation once the person signs in', async () => {
+    const api = mockApi((request) => {
+      if (request.path === '/auth/reset-password/check') return ok({ status: 'valid' })
+      if (request.path === '/auth/reset-password') return ok(null)
+      if (request.path === '/auth/login') return fail(401, 'INVALID_CREDENTIALS', 'Incorrect email or password.')
+      return undefined
+    })
+    await completeReset()
+
+    await userEvent.type(screen.getByLabelText(/Email/), 'someone@example.com')
+    await userEvent.type(screen.getByLabelText(/Password/), 'not-the-new-password')
+    await userEvent.click(screen.getByRole('button', { name: 'Login' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Incorrect email or password.')
+    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
+    expect(api.find('POST', '/auth/login')).toHaveLength(1)
+  })
+
+  it('does not show the confirmation on an ordinary visit to sign in', async () => {
+    mockApi(() => undefined)
+    renderApp('/login')
+
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
   })
 
   it.each([
@@ -448,7 +503,7 @@ describe('reset password', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
 
     expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument()
-    expect(screen.queryByText('Password updated')).not.toBeInTheDocument()
+    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
     expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
   })
 
@@ -498,7 +553,9 @@ describe('reset password', () => {
     await userEvent.type(screen.getByLabelText(/^Confirm new password/), GOOD_PASSWORD)
     await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
 
-    expect(await screen.findByRole('heading', { name: 'Password updated' })).toBeInTheDocument()
+    // Sent to sign in, not on to the dashboard of the session that just ended.
+    expect(await screen.findByText(RESET_DONE_MESSAGE)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument()
     expect(localStorage.getItem('stslv-amc.token')).toBeNull()
   })
 })

@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ACTIONS, MODULES, type Role, type SessionUser, type User } from '../lib/types'
-import { ADMIN, fail, mockApi, ok, renderApp, signIn } from './helpers'
+import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply } from './helpers'
 
 const ROLES: Role[] = [
   {
@@ -35,7 +35,9 @@ const USERS: User[] = [
   { id: '2', email: 'accountant@example.com', fullName: 'Arun Accountant', isActive: true, approvalStatus: 'APPROVED', lastLoginAt: null, createdAt: '2026-10-01T07:00:00.000Z', roles: [{ id: '2', code: 'ACCOUNTANT', name: 'Accountant' }] },
 ]
 
-function usersApi(user: SessionUser = ADMIN) {
+type ResetReply = () => MockReply | Promise<MockReply>
+
+function usersApi(user: SessionUser = ADMIN, onReset: ResetReply = () => ok(null)) {
   const users = USERS.map((entry) => ({ ...entry }))
 
   signIn()
@@ -63,6 +65,7 @@ function usersApi(user: SessionUser = ADMIN) {
       users[1] = { ...(users[1] as User), isActive: false }
       return ok(users[1])
     }
+    if (request.method === 'POST' && request.path === '/users/2/reset-password') return onReset()
     if (request.method === 'PUT' && request.path === '/users/2/roles') {
       const { roleIds } = request.body as { roleIds: string[] }
       users[1] = { ...(users[1] as User), roles: ROLES.filter((role) => roleIds.includes(role.id)) }
@@ -134,6 +137,97 @@ describe('users', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('POST', '/users/2/deactivate')).toHaveLength(1)
     expect(await screen.findByRole('button', { name: 'Activate Arun Accountant' })).toBeInTheDocument()
+  })
+
+  describe('reset password', () => {
+    const NEW_PASSWORD = 'a-good-long-password'
+
+    const resetApi = (onReset?: ResetReply) => usersApi(ADMIN, onReset)
+
+    async function openConfirmation() {
+      renderApp('/admin/users')
+      await userEvent.click(await screen.findByRole('button', { name: 'Reset password of Arun Accountant' }))
+
+      return screen.findByRole('dialog', { name: 'Reset Password?' })
+    }
+
+    async function confirmAndFill() {
+      await userEvent.click(within(await openConfirmation()).getByRole('button', { name: 'Yes, Reset Password' }))
+      const form = await screen.findByRole('dialog', { name: 'Reset password for Arun Accountant' })
+
+      await userEvent.type(within(form).getByLabelText(/^New password/), NEW_PASSWORD)
+      await userEvent.type(within(form).getByLabelText(/^Repeat new password/), NEW_PASSWORD)
+
+      return form
+    }
+
+    it('asks for confirmation first, naming the user', async () => {
+      const api = resetApi()
+      const dialog = await openConfirmation()
+
+      expect(dialog).toHaveTextContent('Are you sure you want to reset the password for this user?')
+      expect(dialog).toHaveTextContent('Arun Accountant')
+      expect(dialog).toHaveTextContent('accountant@example.com')
+      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled()
+      expect(within(dialog).getByRole('button', { name: 'Yes, Reset Password' })).toBeEnabled()
+      expect(api.requests.filter((request) => request.method !== 'GET')).toHaveLength(0)
+    })
+
+    it('changes nothing when cancelled', async () => {
+      const api = resetApi()
+      const dialog = await openConfirmation()
+
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(api.requests.filter((request) => request.method !== 'GET')).toHaveLength(0)
+      expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    })
+
+    it('resets the password of the chosen user exactly once, and confirms only after the API does', async () => {
+      let release: (reply: MockReply) => void = () => {}
+      const api = resetApi(
+        () =>
+          new Promise<MockReply>((resolve) => {
+            release = resolve
+          }),
+      )
+      const form = await confirmAndFill()
+
+      await userEvent.click(within(form).getByRole('button', { name: 'Reset password' }))
+
+      await waitFor(() => expect(api.find('POST', '/users/2/reset-password')).toHaveLength(1))
+      expect(screen.queryByText(/Password reset successfully/)).not.toBeInTheDocument()
+
+      release(ok(null))
+
+      expect(await screen.findByRole('status')).toHaveTextContent(
+        'Password reset successfully for Arun Accountant. They have been signed out and must sign in again using the new password.',
+      )
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(api.requests.filter((request) => request.path.endsWith('/reset-password'))).toHaveLength(1)
+      expect(api.find('POST', '/users/2/reset-password')[0]?.body).toEqual({ password: NEW_PASSWORD })
+      // The administrator stays signed in, on the same page.
+      expect(localStorage.getItem('stslv-amc.token')).not.toBeNull()
+      expect(screen.getByRole('table', { name: 'Users' })).toBeInTheDocument()
+    })
+
+    it('shows a failed reset and lets the administrator retry', async () => {
+      let failing = true
+      const api = resetApi(() => (failing ? fail(403, 'FORBIDDEN', 'You cannot manage a user who holds permissions you do not hold.') : ok(null)))
+      const form = await confirmAndFill()
+
+      await userEvent.click(within(form).getByRole('button', { name: 'Reset password' }))
+
+      expect(await within(form).findByRole('alert')).toHaveTextContent('You cannot manage a user who holds permissions you do not hold.')
+      expect(screen.queryByText(/Password reset successfully/)).not.toBeInTheDocument()
+
+      failing = false
+      await userEvent.click(within(form).getByRole('button', { name: 'Reset password' }))
+
+      expect(await screen.findByRole('status')).toHaveTextContent('Password reset successfully for Arun Accountant.')
+      expect(api.find('POST', '/users/2/reset-password')).toHaveLength(2)
+    })
   })
 
   it('assigns and removes roles', async () => {
