@@ -23,7 +23,7 @@ const SECTION_SIZE = 50
 function Figure({ label, hint, children, strong = false }: { label: string; hint?: string; children: ReactNode; strong?: boolean }) {
   return (
     <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3">
-      <dt className="text-sm font-medium text-slate-600">{label}</dt>
+      <dt className="text-sm font-bold text-slate-800">{label}</dt>
       <dd className={`mt-1 text-right text-lg ${strong ? 'font-semibold text-slate-900' : 'text-slate-800'}`}>{children}</dd>
       {hint && <p className="mt-1 text-right text-xs text-slate-500">{hint}</p>}
     </div>
@@ -238,7 +238,7 @@ export function ProjectDetailPage() {
               )}
             </div>
           </div>
-          {procurement.isPending && <Spinner label="Loading procurement" />}
+          {procurement.isPending && <Spinner size="sm" label="Loading procurement" />}
           {procurement.isError && <LoadError error={procurement.error} onRetry={() => void procurement.refetch()} />}
           {procurement.data && procurement.data.items.length === 0 && (
             <EmptyState title="No procurement requests for this project" />
@@ -270,7 +270,7 @@ export function ProjectDetailPage() {
               )}
             </div>
           </div>
-          {expenses.isPending && <Spinner label="Loading expenses" />}
+          {expenses.isPending && <Spinner size="sm" label="Loading expenses" />}
           {expenses.isError && <LoadError error={expenses.error} onRetry={() => void expenses.refetch()} />}
           {expenses.data && expenses.data.items.length === 0 && <EmptyState title="No expenses recorded for this project" />}
           {expenses.data && expenses.data.items.length > 0 && (

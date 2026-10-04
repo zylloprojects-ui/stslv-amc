@@ -11,12 +11,12 @@ import type { Module } from '../lib/types'
 import { IconTile, type IconName } from './dashboard/icons'
 import { MetricCard, type MetricState } from './dashboard/MetricCard'
 import { METRIC_GROUPS, type DashboardSummary, type MetricDefinition } from './dashboard/metrics'
-import { ACCENTS, DASHBOARD_CARD, DASHBOARD_LABEL } from './dashboard/style'
+import { DASHBOARD_CARD, DASHBOARD_LABEL } from './dashboard/style'
 
 const SECTION_HEADING = 'mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#0b3b66]'
 
-// One accent per section heading, in the order of the logo's colours.
-const SECTION_ACCENTS = ['#1B8AD3', '#5BAF48', '#FF8212', '#D1428C', '#00A6C8', '#F5C622']
+// One accent for every section heading: structure, not meaning.
+const SECTION_ACCENTS = ['#1479BD']
 
 const MODULE_ICONS: Record<Module, IconName> = {
   DASHBOARD: 'pulse',
@@ -110,19 +110,21 @@ export function DashboardPage() {
 
   const workspace = (
     <section aria-labelledby="dashboard-workspace" className={cx('flex flex-col', lead && 'xl:col-span-2')}>
-      <SectionHeading id="dashboard-workspace" accent={SECTION_ACCENTS[1] as string}>
+      <SectionHeading id="dashboard-workspace" accent={SECTION_ACCENTS[0] as string}>
         Workspace
       </SectionHeading>
       <div className="grid flex-1 gap-4 sm:grid-cols-2">
         <div className={DASHBOARD_CARD} style={{ animationDelay: '0.06s' }}>
-          <IconTile icon="shield" from="#00A6C8" to="#5BAF48" className="absolute right-5 top-5" />
+          <span className="card-dots" aria-hidden="true" />
+          <IconTile icon="shield" from="#1479BD" to="#4aa3df" className="absolute right-5 top-5" />
           <p className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')}>Modules Available</p>
           <p className="mt-3 text-4xl font-bold tabular-nums text-[#0b3b66]">{formatCount(modules.length)}</p>
           <p className="mt-3 truncate text-sm text-slate-600">{roleNames}</p>
         </div>
 
         <div className={DASHBOARD_CARD} style={{ animationDelay: '0.12s' }}>
-          <IconTile icon="pulse" from="#D1428C" to="#FF8212" className="absolute right-5 top-5" />
+          <span className="card-dots" aria-hidden="true" />
+          <IconTile icon="pulse" from="#1479BD" to="#4aa3df" className="absolute right-5 top-5" />
           <p className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')}>System Status</p>
           {/* Says only whether the dashboard's own request to the API succeeded. */}
           <p className="mt-3 flex items-center gap-2 text-xl font-bold text-[#0b3b66]">
@@ -187,10 +189,8 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
-        <div className="flex h-1" aria-hidden="true">
-          {ACCENTS.map((color) => (
-            <span key={color} className="flex-1" style={{ backgroundColor: color }} />
-          ))}
+        <div className="flex h-[3px]" aria-hidden="true">
+          <span className="flex-1 bg-gradient-to-r from-white/30 via-white/80 to-white/30" />
         </div>
       </div>
 
@@ -225,10 +225,10 @@ export function DashboardPage() {
 
       {rollout.length > 0 && (
         <section aria-labelledby="dashboard-rollout" className="mb-8">
-          <SectionHeading id="dashboard-rollout" accent={SECTION_ACCENTS[2] as string}>
+          <SectionHeading id="dashboard-rollout" accent={SECTION_ACCENTS[0] as string}>
             Module rollout
           </SectionHeading>
-          <div className="login-rise rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="surface login-rise rounded-2xl p-4 sm:p-5">
             <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {rollout.map((item) => {
                 const live = !item.pending
@@ -236,12 +236,18 @@ export function DashboardPage() {
                 return (
                   <li
                     key={item.path}
-                    className={cx('flex items-center gap-3 rounded-xl border p-3', live ? 'border-emerald-200 bg-emerald-50/60' : 'border-dashed border-slate-300')}
+                    className={cx(
+                      'flex items-center gap-3 rounded-xl border p-3 transition-colors',
+                      live ? 'border-slate-200 bg-slate-50/70 hover:border-sky-300 hover:bg-sky-50' : 'border-dashed border-slate-300',
+                    )}
                   >
-                    <IconTile icon={MODULE_ICONS[item.module]} from={live ? '#5BAF48' : '#94A3B8'} to={live ? '#00A6C8' : '#CBD5E1'} />
+                    <IconTile icon={MODULE_ICONS[item.module]} from={live ? '#1479BD' : '#94A3B8'} to={live ? '#4aa3df' : '#CBD5E1'} />
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-900">{item.label}</p>
-                      <p className={cx('text-xs font-medium', live ? 'text-emerald-700' : 'text-slate-600')}>{live ? 'Live' : 'Planned'}</p>
+                      <p className={cx('flex items-center gap-1.5 text-xs font-medium', live ? 'text-emerald-700' : 'text-slate-600')}>
+                        <span className={cx('h-1.5 w-1.5 rounded-full', live ? 'bg-emerald-500' : 'bg-slate-400')} aria-hidden="true" />
+                        {live ? 'Live' : 'Planned'}
+                      </p>
                     </div>
                   </li>
                 )
@@ -262,7 +268,7 @@ export function DashboardPage() {
 
       {sections.map((group, position) => (
         <section key={group.id} aria-labelledby={`dashboard-${group.id}`} className="mb-8">
-          <SectionHeading id={`dashboard-${group.id}`} accent={SECTION_ACCENTS[(position + 3) % SECTION_ACCENTS.length] as string}>
+          <SectionHeading id={`dashboard-${group.id}`} accent={SECTION_ACCENTS[0] as string}>
             {group.title}
           </SectionHeading>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

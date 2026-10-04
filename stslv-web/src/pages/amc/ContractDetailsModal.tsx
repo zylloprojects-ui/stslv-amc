@@ -61,7 +61,7 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
         </>
       }
     >
-      {query.isPending && <Spinner label="Loading contract" />}
+      {query.isPending && <Spinner size="sm" label="Loading contract" />}
       {query.isError && <Alert>{errorMessage(query.error)}</Alert>}
 
       {contract && (
@@ -71,7 +71,7 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
           )}
 
           <div className="grid gap-x-8 lg:grid-cols-2">
-            <dl className="divide-y divide-slate-100">
+            <dl>
               <DetailRow label="Client">
                 {contract.client.name}
                 {!contract.client.isActive && ' (inactive)'}
@@ -94,7 +94,7 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
                 <OrDash value={contract.notes} />
               </DetailRow>
             </dl>
-            <dl className="divide-y divide-slate-100">
+            <dl>
               <DetailRow label="Contract value">{formatMoney(contract.contractValue)}</DetailRow>
               <DetailRow label="Default visit amount">{formatMoney(contract.defaultVisitAmount)}</DetailRow>
               <DetailRow label="Final credit">{formatMoney(contract.finalCredit)}</DetailRow>
@@ -138,7 +138,7 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
             {contract.status !== 'DRAFT' && !canViewSchedule && (
               <p className="text-sm text-slate-600">Your role does not include access to the AMC schedule.</p>
             )}
-            {canViewSchedule && visits.isPending && contract.status !== 'DRAFT' && <Spinner label="Loading visits" />}
+            {canViewSchedule && visits.isPending && contract.status !== 'DRAFT' && <Spinner size="sm" label="Loading visits" />}
             {visits.isError && <Alert>{errorMessage(visits.error)}</Alert>}
             {visits.data && visits.data.items.length > 0 && (
               <div className={`${TABLE.wrapper} rounded-md border border-slate-200`}>

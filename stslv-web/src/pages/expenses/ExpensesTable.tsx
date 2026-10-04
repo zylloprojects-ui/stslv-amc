@@ -15,15 +15,20 @@ interface ExpensesTableProps {
   canEdit: boolean
   canVoid: boolean
   onDialog: (dialog: ExpenseDialog) => void
+  /** How many rows come before the first one shown (earlier pages), so the serial numbers carry on. */
+  startAt?: number
 }
 
-export function ExpensesTable({ items, showProject, linkProject, canEdit, canVoid, onDialog }: ExpensesTableProps) {
+export function ExpensesTable({ items, showProject, linkProject, canEdit, canVoid, onDialog, startAt = 0 }: ExpensesTableProps) {
   return (
     <div className={TABLE.wrapper}>
       <table className={TABLE.table}>
         <caption className="sr-only">Project expenses</caption>
         <thead>
           <tr>
+            <th scope="col" className={TABLE.snHead}>
+              #
+            </th>
             <th scope="col" className={TABLE.th}>
               Date
             </th>
@@ -53,8 +58,9 @@ export function ExpensesTable({ items, showProject, linkProject, canEdit, canVoi
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {items.map((expense) => (
+          {items.map((expense, index) => (
             <tr key={expense.id} className={cx(TABLE.row, expense.isVoided && 'bg-slate-50 text-slate-400')}>
+              <td className={TABLE.sn}>{startAt + index + 1}</td>
               <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(expense.expenseDate)}</td>
               {showProject && (
                 <td className={`${TABLE.td} whitespace-nowrap font-medium`}>

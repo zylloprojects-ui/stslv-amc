@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import { Link } from 'react-router-dom'
 import { Badge } from '../../components/ui'
 import { cx } from '../../lib/format'
-import { IconTile, type IconName } from './icons'
+import { Icon, IconTile, type IconName } from './icons'
 import { ACCENTS, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
 import type { MetricDefinition, MetricLink, MetricReading } from './metrics'
 
@@ -47,6 +47,8 @@ function ShareRing({ share }: { share: number }) {
   const circumference = 2 * Math.PI * 26
 
   return (
+    <div className="relative h-16 w-16" aria-hidden="true">
+    <span className="absolute inset-0 flex items-center justify-center text-[13px] font-bold tabular-nums text-[#0b3b66]">{Math.round(Math.min(Math.max(share, 0), 1) * 100)}%</span>
     <svg viewBox="0 0 64 64" className="h-16 w-16 -rotate-90" aria-hidden="true">
       <circle cx="32" cy="32" r="26" fill="none" stroke="#E2E8F0" strokeWidth="8" />
       <circle
@@ -62,10 +64,11 @@ function ShareRing({ share }: { share: number }) {
       <defs>
         <linearGradient id="metric-ring-gradient" x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="#1B8AD3" />
-          <stop offset="100%" stopColor="#5BAF48" />
+          <stop offset="100%" stopColor="#4aa3df" />
         </linearGradient>
       </defs>
     </svg>
+    </div>
   )
 }
 
@@ -106,6 +109,8 @@ export function MetricCard({ metric, state, link = null, index = 0, ring }: Metr
       className={cx(DASHBOARD_CARD, metric.attention && state.kind === 'ready' && 'border-l-4 border-l-amber-500')}
       style={entrance}
     >
+      <span className="card-dots" aria-hidden="true" />
+      <Icon name={icon} className="card-watermark" />
       {hasRing ? (
         ring !== null &&
         state.kind === 'ready' && (

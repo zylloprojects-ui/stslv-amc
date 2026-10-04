@@ -14,15 +14,20 @@ interface ProcurementTableProps {
   /** Whether the job number links to the project page. */
   linkProject: boolean
   onDialog: (dialog: ProcurementDialog) => void
+  /** How many rows come before the first one shown (earlier pages), so the serial numbers carry on. */
+  startAt?: number
 }
 
-export function ProcurementTable({ items, showProject, canEdit, linkProject, onDialog }: ProcurementTableProps) {
+export function ProcurementTable({ items, showProject, canEdit, linkProject, onDialog, startAt = 0 }: ProcurementTableProps) {
   return (
     <div className={TABLE.wrapper}>
       <table className={TABLE.table}>
         <caption className="sr-only">Procurement requests</caption>
         <thead>
           <tr>
+            <th scope="col" className={TABLE.snHead}>
+              #
+            </th>
             {showProject && (
               <th scope="col" className={TABLE.th}>
                 Job number
@@ -55,8 +60,9 @@ export function ProcurementTable({ items, showProject, canEdit, linkProject, onD
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {items.map((request) => (
+          {items.map((request, index) => (
             <tr key={request.id} className={TABLE.row}>
+              <td className={TABLE.sn}>{startAt + index + 1}</td>
               {showProject && (
                 <td className={`${TABLE.td} whitespace-nowrap font-medium`}>
                   {linkProject ? (

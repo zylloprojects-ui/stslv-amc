@@ -181,6 +181,9 @@ export function AmcExecutionPage() {
                 <caption className="sr-only">AMC visits: {current.label}</caption>
                 <thead>
                   <tr>
+                    <th scope="col" className={TABLE.snHead}>
+                      #
+                    </th>
                     <th scope="col" className={TABLE.th}>
                       {scope === 'completed' ? 'Completed' : 'Planned date'}
                     </th>
@@ -205,11 +208,12 @@ export function AmcExecutionPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {data.items.map((visit) => {
+                  {data.items.map((visit, index) => {
                     const outstanding = visit.status === 'SCHEDULED' || visit.status === 'IN_PROGRESS' || visit.status === 'POSTPONED'
 
                     return (
                       <tr key={visit.id} className={TABLE.row}>
+                        <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
                         <td className={`${TABLE.td} whitespace-nowrap`}>
                           {scope === 'completed' ? formatDate(visit.completedDate) : <PlannedDate visit={visit} format={formatDate} />}
                           {scope !== 'completed' && visit.isRescheduled && (

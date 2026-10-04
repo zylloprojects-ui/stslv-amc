@@ -17,7 +17,7 @@ import { Alert, Badge, Button, SelectField } from './ui'
 // Building blocks shared by the Projects, Procurement and Expenses pages.
 
 export const FILTER_LABEL = 'mb-1 block text-sm font-medium text-slate-700'
-export const FILTER_INPUT = 'block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400'
+export const FILTER_INPUT = 'block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm placeholder:text-slate-400'
 
 /** A historical project also shows the status written in the earlier register: "Historical · Completed". */
 export function ProjectStatusBadge({ status, legacyStatus = null }: { status: ProjectStatus; legacyStatus?: string | null }) {
@@ -93,9 +93,9 @@ export function Pager({ page, pageSize, shown, total, onPage, children }: PagerP
 
 export function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-3 gap-4 py-2.5">
-      <dt className="text-sm font-medium text-slate-500">{label}</dt>
-      <dd className="col-span-2 whitespace-pre-wrap break-words text-sm text-slate-900">{children}</dd>
+    <div className="grid min-h-[3.25rem] grid-cols-[10.5rem_minmax(0,1fr)] border border-slate-300! [&:not(:first-child)]:-mt-px">
+      <dt className="flex items-center border-r border-slate-300! bg-slate-100 px-3 py-2.5 text-sm font-bold text-slate-800">{label}</dt>
+      <dd className="flex min-w-0 items-center whitespace-pre-wrap break-words px-3 py-2.5 text-sm text-slate-900">{children}</dd>
     </div>
   )
 }

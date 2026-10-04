@@ -101,10 +101,10 @@ function ProcurementDetailsModal({ requestId, canEdit, onEdit, onClose }: Procur
         </>
       }
     >
-      {query.isPending && <Spinner label="Loading request" />}
+      {query.isPending && <Spinner size="sm" label="Loading request" />}
       {query.isError && <Alert>{errorMessage(query.error)}</Alert>}
       {request && (
-        <dl className="divide-y divide-slate-100">
+        <dl>
           <DetailRow label="Project / job">
             {projectLabel({ jobNumber: request.jobNumber, clientName: request.clientName, description: request.projectDescription })}
           </DetailRow>

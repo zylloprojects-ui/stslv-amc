@@ -46,6 +46,7 @@ export const NAVIGATION: NavSection[] = [
     title: 'Administration',
     items: [
       { label: 'Users & Access', path: '/admin/users', module: 'USERS' },
+      { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
     ],
   },

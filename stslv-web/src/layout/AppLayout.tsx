@@ -6,9 +6,9 @@ import { usePalette, useSidebarCollapsed, useTheme, type Theme } from '../lib/pr
 import { CookieNotice } from './CookieNotice'
 import { FeedbackButton } from './FeedbackWidget'
 import { HeaderSearch } from './HeaderSearch'
-import { NAVIGATION } from './navigation'
 import { PaletteMenu } from './PaletteMenu'
 import { ScrollToTop } from './ScrollToTop'
+import { SelectPopup } from './SelectPopup'
 import { Sidebar } from './Sidebar'
 import { SplashLoader } from './SplashLoader'
 import { UserMenu } from './UserMenu'
@@ -57,23 +57,6 @@ function MobileMenu({ onClose, theme, onToggleTheme }: { onClose: () => void; th
   )
 }
 
-/** Where the current page sits in the navigation, for the header. */
-function currentLocation(pathname: string): { section: string | null; label: string } | null {
-  if (pathname === '/account') {
-    return { section: null, label: 'My Account' }
-  }
-
-  for (const section of NAVIGATION) {
-    for (const item of section.items) {
-      if (pathname === item.path || pathname.startsWith(`${item.path}/`)) {
-        return { section: section.title, label: item.label }
-      }
-    }
-  }
-
-  return null
-}
-
 export function AppLayout() {
   const { pathname } = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -93,8 +76,6 @@ export function AppLayout() {
     document.documentElement.scrollTop = 0
     mainRef.current?.focus({ preventScroll: true })
   }, [pathname])
-
-  const location = currentLocation(pathname)
 
   return (
     <div className={cx('min-h-screen transition-[padding] duration-300', collapsed ? 'lg:pl-[4.5rem]' : 'lg:pl-64')}>
@@ -120,7 +101,7 @@ export function AppLayout() {
       {/* Mobile sidebar */}
       {menuOpen && <MobileMenu onClose={() => setMenuOpen(false)} theme={theme} onToggleTheme={toggleTheme} />}
 
-      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 bg-white/90 px-4 shadow-sm backdrop-blur sm:px-6">
+      <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-slate-200/70 bg-white/80 px-4 shadow-[0_1px_0_rgba(255,255,255,0.6),0_6px_20px_-12px_rgba(15,23,42,0.18)] backdrop-blur-xl sm:px-6">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             type="button"
@@ -136,22 +117,9 @@ export function AppLayout() {
           </button>
           <span className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-[#0b3b66] md:hidden">
             <img src="/stslv-logo.png" alt="" className="h-7 w-7 object-contain" />
-            STSLEV AMC
+            <span className="max-[430px]:sr-only">STSLEV AMC</span>
           </span>
           <HeaderSearch />
-          {location && (
-            <p className="hidden shrink-0 truncate text-sm text-slate-500 xl:block">
-              {location.section && (
-                <>
-                  {location.section}
-                  <span className="mx-2 text-slate-300" aria-hidden="true">
-                    /
-                  </span>
-                </>
-              )}
-              <span className="font-medium text-slate-700">{location.label}</span>
-            </p>
-          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
@@ -177,20 +145,19 @@ export function AppLayout() {
           </button>
           <UserMenu />
         </div>
-        <span
-          className="login-gradient pointer-events-none absolute inset-x-0 bottom-0 h-[3px] bg-gradient-to-r from-[#F5C622] via-[#D1428C] via-35% via-[#1B8AD3] to-[#5BAF48]"
-          aria-hidden="true"
-        />
       </header>
 
       {/* The loader covers the page content only, never the sidebar or the header. */}
       <div className="relative min-h-[calc(100vh-4rem)]">
-        <main id="main-content" ref={mainRef} tabIndex={-1} className="mx-auto max-w-7xl px-4 py-6 outline-none sm:px-6 lg:px-8">
-          <Outlet />
+        <main id="main-content" ref={mainRef} tabIndex={-1} className="mx-auto max-w-[92rem] px-4 py-5 outline-none sm:px-6 sm:py-7 lg:px-5 xl:px-6">
+          <div key={pathname} className="page-enter">
+            <Outlet />
+          </div>
         </main>
         <SplashLoader />
       </div>
 
+      <SelectPopup />
       <ScrollToTop />
       <CookieNotice />
     </div>

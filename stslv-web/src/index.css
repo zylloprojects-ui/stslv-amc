@@ -1,12 +1,87 @@
+/* Inter, the application typeface. It is installed with the project (@fontsource-variable/inter) and
+   served from this site, so no font is ever requested from another website. */
+@import "@fontsource-variable/inter";
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
 
 @layer base {
   html {
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-sans);
+    font-optical-sizing: auto;
+    text-rendering: optimizeLegibility;
+    /* Inter's alternate shapes that read best in business screens: open digits and a clearer lowercase "l". */
+    font-feature-settings: "cv05", "cv08", "ss03";
   }
 
   body {
     @apply bg-slate-100 text-slate-900 antialiased;
+    letter-spacing: -0.003em;
+    /* A calm canvas: two faint washes of the brand blue over a cool grey, fixed so they do not scroll with the page. */
+    background-color: #eef2f7;
+    background-image:
+      radial-gradient(1100px 520px at 88% -8%, rgba(27, 138, 211, 0.11), transparent 62%),
+      radial-gradient(900px 480px at -6% 4%, rgba(11, 59, 102, 0.07), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: rgba(27, 138, 211, 0.22);
+  }
+
+  /* Form controls: one soft ring instead of the browser outline, so focus is clear without being heavy. */
+  input:not([type='checkbox']):not([type='radio']):focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid transparent;
+    border-color: #1b8ad3;
+    box-shadow: 0 0 0 3px rgba(27, 138, 211, 0.2);
+  }
+
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  }
+
+  input:not([type='checkbox']):not([type='radio']):not(:disabled):not(:focus):hover,
+  select:not(:disabled):not(:focus):hover,
+  textarea:not(:disabled):not(:focus):hover {
+    border-color: #94a3b8;
+  }
+
+  /* Select boxes: the same chevron in every browser. */
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m5.5 7.5 4.5 4.5 4.5-4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.6rem center;
+    background-size: 1.05rem;
+    padding-right: 2.1rem;
+  }
+
+  /* Slim, quiet scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(100, 116, 139, 0.4) transparent;
+  }
+
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']) {
+    cursor: pointer;
+  }
+
+  /* Figures line up in columns. */
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.012em;
   }
 
   /* One visible keyboard focus style for every interactive control. */
@@ -117,8 +192,18 @@
   color-scheme: dark;
 }
 .dark body {
-  background: #0b1624;
+  background-color: #0b1624;
+  background-image:
+    radial-gradient(1100px 520px at 88% -8%, rgba(27, 138, 211, 0.16), transparent 62%),
+    radial-gradient(900px 480px at -6% 4%, rgba(11, 59, 102, 0.4), transparent 60%);
   color: #e6eef8;
+}
+.dark * {
+  scrollbar-color: rgba(148, 163, 184, 0.35) transparent;
+}
+.dark .shadow-sm,
+.dark .shadow-lg {
+  --tw-shadow-color: rgba(0, 0, 0, 0.35);
 }
 .dark .bg-white,
 .dark .bg-white\/95,
@@ -248,15 +333,15 @@
   --sb-muted: rgba(125, 211, 252, 0.75);
   --sb-hover: rgba(255, 255, 255, 0.1);
   --sb-line: rgba(255, 255, 255, 0.14);
-  --bn-bg: linear-gradient(to right, #07203a, #0a2e52, #0b3a63);
+  --bn-bg: linear-gradient(120deg, #0a3a66 0%, #0e5a96 38%, #1479bd 70%, #2f9bd8 100%);
   --bn-strong: #ffffff;
-  --bn-sub: rgba(224, 242, 254, 0.85);
-  --bn-eyebrow: rgba(125, 211, 252, 0.85);
-  --bn-chip-border: rgba(255, 255, 255, 0.3);
+  --bn-sub: rgba(255, 255, 255, 0.9);
+  --bn-eyebrow: rgba(255, 255, 255, 0.85);
+  --bn-chip-border: rgba(255, 255, 255, 0.5);
   --bn-chip-hover-bg: #ffffff;
-  --bn-chip-hover-fg: #0b3b66;
-  --bn-panel-bg: rgba(255, 255, 255, 0.06);
-  --bn-panel-border: rgba(255, 255, 255, 0.12);
+  --bn-chip-hover-fg: #0f62a3;
+  --bn-panel-bg: rgba(255, 255, 255, 0.16);
+  --bn-panel-border: rgba(255, 255, 255, 0.35);
   --swatch: linear-gradient(135deg, #06182c, #0b4a7a);
 }
 :root[data-palette='sky'] {
@@ -369,108 +454,8 @@
 .bn-panel { background: var(--bn-panel-bg); border: 1px solid var(--bn-panel-border); }
 .sidebar-scroll { scrollbar-color: var(--sb-line) transparent; }
 
-/* Branded loader: a gradient ring that spins, and three dots that bounce. */
-.loader-ring {
-  background: conic-gradient(from 0deg, #1b8ad3, #00a6c8, #5baf48, #f5c622, #ff8212, #d1428c, transparent 80%);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3px));
-  animation: login-orbit 1.1s linear infinite;
-}
 
-@keyframes loader-dot {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
-  40% { transform: translateY(-4px); opacity: 1; }
-}
 
-.loader-dot {
-  animation: loader-dot 1s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loader-ring { animation-duration: 4s; }
-  .loader-dot { animation: none; }
-}
-
-/* Pinwheel loader: petals light up in turn, the mark turns, and a bar slides underneath. */
-@keyframes loader-petal {
-  0%, 100% { opacity: 0.22; transform: scale(0.9); }
-  40% { opacity: 1; transform: scale(1); }
-}
-
-@keyframes loader-bar {
-  0% { left: -50%; }
-  100% { left: 100%; }
-}
-
-.loader-petal {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: loader-petal 0.96s ease-in-out infinite;
-}
-
-.loader-turn {
-  animation: login-orbit 8s linear infinite;
-}
-
-.loader-bar {
-  animation: loader-bar 1.2s ease-in-out infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loader-petal, .loader-turn, .loader-bar { animation: none; }
-  .loader-petal { opacity: 1; }
-  .loader-bar { left: 25%; }
-}
-
-/* Pulse loader */
-@keyframes loader-ripple {
-  0% { transform: scale(0.55); opacity: 0.8; }
-  100% { transform: scale(1.35); opacity: 0; }
-}
-
-@keyframes loader-breathe {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.07); }
-}
-
-@keyframes loader-shimmer-text {
-  to { background-position: -200% 0; }
-}
-
-.loader-ripple { animation: loader-ripple 2.1s ease-out infinite; }
-.loader-breathe { animation: loader-breathe 1.8s ease-in-out infinite; }
-.loader-shimmer-text {
-  background: linear-gradient(90deg, #475569 30%, #1b8ad3 50%, #475569 70%) 0 0 / 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: loader-shimmer-text 1.6s linear infinite;
-}
-
-/* Skeleton loader */
-@keyframes loader-skeleton {
-  to { background-position: -200% 0; }
-}
-
-.skeleton {
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%) 0 0 / 200% 100%;
-  animation: loader-skeleton 1.4s ease-in-out infinite;
-}
-
-.dark .skeleton {
-  background: linear-gradient(90deg, #172c46 25%, #1f3a5c 50%, #172c46 75%) 0 0 / 200% 100%;
-}
-
-.dark .loader-shimmer-text {
-  background: linear-gradient(90deg, #9db2cc 30%, #6cc0f5 50%, #9db2cc 70%) 0 0 / 200% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .loader-ripple, .loader-breathe, .loader-shimmer-text, .skeleton { animation: none; }
-  .loader-shimmer-text { color: #475569; background: none; }
-}
 
 /* Logo ring loader */
 @keyframes loader-arc {
@@ -492,4 +477,511 @@
 @media (prefers-reduced-motion: reduce) {
   .loader-arc { animation-duration: 5s; }
   .loader-glow { animation: none; }
+}
+
+/* Logo ring loader: the logo breathes and the label shimmers. */
+@keyframes loader-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.07); }
+}
+
+@keyframes loader-shimmer-text {
+  to { background-position: -200% 0; }
+}
+
+.loader-breathe { animation: loader-breathe 1.8s ease-in-out infinite; }
+.loader-shimmer-text {
+  background: linear-gradient(90deg, #0b3b66 30%, #1b8ad3 50%, #0b3b66 70%) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: loader-shimmer-text 1.6s linear infinite;
+}
+
+.dark .loader-shimmer-text {
+  background: linear-gradient(90deg, #9db2cc 30%, #6cc0f5 50%, #9db2cc 70%) 0 0 / 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-breathe, .loader-shimmer-text { animation: none; }
+  .loader-shimmer-text { color: #475569; background: none; }
+}
+
+/* Sliding progress bar under the loader. */
+@keyframes loader-bar {
+  0% { left: -50%; }
+  100% { left: 100%; }
+}
+
+.loader-bar {
+  animation: loader-bar 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-bar { animation: none; left: 25%; }
+}
+
+/* Coloured satellites that travel around the loader's logo. */
+@keyframes loader-sat {
+  to { transform: rotate(360deg); }
+}
+
+.loader-sat-a { animation: loader-sat 2.8s linear infinite; }
+.loader-sat-b { animation: loader-sat 4.4s linear infinite reverse; animation-delay: -1.2s; }
+.loader-sat-c { animation: loader-sat 6.5s linear infinite; animation-delay: -3s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-sat-a, .loader-sat-b, .loader-sat-c { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Page banner icon tile, page entrance and shared surfaces.
+--------------------------------------------------------------------------- */
+:root {
+  --bn-icon-bg: rgba(255, 255, 255, 0.2);
+  --bn-icon-fg: #ffffff;
+  --bn-icon-ring: rgba(255, 255, 255, 0.45);
+}
+:root[data-palette='sky'],
+:root[data-palette='mint'],
+:root[data-palette='sand'],
+:root[data-palette='lavender'] {
+  --bn-icon-bg: #ffffff;
+  --bn-icon-fg: var(--bn-eyebrow);
+  --bn-icon-ring: var(--bn-panel-border);
+}
+:root.dark,
+:root.dark[data-palette] {
+  --bn-icon-bg: rgba(255, 255, 255, 0.12);
+  --bn-icon-fg: #ffffff;
+  --bn-icon-ring: rgba(255, 255, 255, 0.22);
+}
+.bn-icon { background: var(--bn-icon-bg); color: var(--bn-icon-fg); box-shadow: inset 0 0 0 1px var(--bn-icon-ring); }
+
+/* A soft highlight in the banner's corner: depth without extra colour. */
+.app-banner { position: relative; isolation: isolate; }
+.app-banner::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(520px 260px at 96% -10%, rgba(125, 211, 252, 0.45), transparent 70%),
+    radial-gradient(420px 220px at 8% 120%, rgba(56, 189, 248, 0.28), transparent 70%),
+    radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1.4px) 0 0 / 18px 18px;
+  -webkit-mask-image: linear-gradient(100deg, rgba(0, 0, 0, 0.35) 0%, #000 55%);
+  mask-image: linear-gradient(100deg, rgba(0, 0, 0, 0.35) 0%, #000 55%);
+  pointer-events: none;
+}
+.app-banner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), transparent 38%), linear-gradient(0deg, rgba(4, 30, 56, 0.18), transparent 45%);
+  pointer-events: none;
+}
+
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: page-enter 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+/* The surface every card and table sits on. */
+.surface {
+  background: #ffffff;
+  border: 1px solid rgba(203, 213, 225, 0.75);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.14);
+}
+.dark .surface {
+  background: #112238;
+  border-color: #25405e;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 28px -14px rgba(0, 0, 0, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter { animation-duration: 0.01ms; }
+}
+
+/* Outside any layer on purpose: beats the px-* utilities, so the chevron never overlaps the text. */
+select:not([multiple]) {
+  padding-right: 2.1rem;
+}
+
+/* A wide table scrolls sideways inside its card. Soft shadows at the edges say that more is hidden there,
+   and fade away once the edge has been reached. */
+.table-scroll {
+  background:
+    linear-gradient(to right, #ffffff 30%, rgba(255, 255, 255, 0)) left center / 36px 100% no-repeat local,
+    linear-gradient(to left, #ffffff 30%, rgba(255, 255, 255, 0)) right center / 36px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(15, 23, 42, 0.16), transparent) left center / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, 0.16), transparent) right center / 10px 100% no-repeat scroll;
+}
+.dark .table-scroll {
+  background:
+    linear-gradient(to right, #112238 30%, rgba(17, 34, 56, 0)) left center / 36px 100% no-repeat local,
+    linear-gradient(to left, #112238 30%, rgba(17, 34, 56, 0)) right center / 36px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, 0.5), transparent) left center / 10px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, 0.5), transparent) right center / 10px 100% no-repeat scroll;
+}
+
+/* Dashboard figure cards: a gradient top edge, a soft glow in the corner, and a hover lift that turns the border blue. */
+.metric-card {
+  border-color: rgba(186, 205, 224, 0.9);
+  background-image: linear-gradient(180deg, rgba(240, 247, 253, 0.9), rgba(255, 255, 255, 0) 55%);
+}
+.metric-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0b3b66, #1479bd 60%, #4aa3df);
+}
+.metric-card::after {
+  content: '';
+  position: absolute;
+  right: -48px;
+  top: -48px;
+  width: 190px;
+  height: 190px;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(27, 138, 211, 0.17), transparent 68%);
+  pointer-events: none;
+}
+.metric-card:hover {
+  border-color: #5fb0e6;
+}
+.dark .metric-card {
+  border-color: #2b4a6b;
+  background-image: linear-gradient(180deg, rgba(27, 138, 211, 0.1), rgba(17, 34, 56, 0) 55%);
+}
+.dark .metric-card:hover {
+  border-color: #3f86c0;
+}
+
+/* A faint grid of dots in the card's lower corner. */
+.card-dots {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 150px;
+  height: 90px;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(20, 121, 189, 0.28) 1.2px, transparent 1.4px);
+  background-size: 11px 11px;
+  -webkit-mask-image: radial-gradient(ellipse at 100% 100%, #000, transparent 70%);
+  mask-image: radial-gradient(ellipse at 100% 100%, #000, transparent 70%);
+}
+.dark .card-dots {
+  background-image: radial-gradient(rgba(108, 192, 245, 0.3) 1.2px, transparent 1.4px);
+}
+.card-watermark {
+  position: absolute;
+  right: 14px;
+  bottom: 10px;
+  width: 78px;
+  height: 78px;
+  color: #1479bd;
+  opacity: 0.07;
+  pointer-events: none;
+}
+.dark .card-watermark {
+  color: #6cc0f5;
+  opacity: 0.09;
+}
+
+/* Data tables: compact enough that every column fits beside the sidebar on a normal laptop screen, so no text is cut off.
+   Outside any layer on purpose: this must win over the per-column utility classes (padding, nowrap, minimum widths). */
+.table-scroll table {
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+.table-scroll th,
+.table-scroll td {
+  padding: 0.6rem 0.6rem;
+}
+.table-scroll th:first-child,
+.table-scroll td:first-child {
+  padding-left: 1rem;
+}
+.table-scroll th:last-child,
+.table-scroll td:last-child {
+  padding-right: 1rem;
+}
+.table-scroll th {
+  white-space: normal;
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  letter-spacing: 0.04em;
+  vertical-align: bottom;
+}
+.table-scroll td[class*='min-w-'],
+.table-scroll th[class*='min-w-'] {
+  min-width: 5rem;
+}
+.table-scroll td[class*='max-w-'] {
+  max-width: 16rem;
+}
+
+/* Dialog header: light and clean, with the brand colours as a line along its bottom edge. */
+.app-modal-header {
+  background: linear-gradient(180deg, #ffffff 0%, #f1f7fc 100%);
+  border-bottom: 1px solid #b8c4d4;
+}
+.app-modal-logo {
+  background: #ffffff;
+  border: 1px solid #cfdceb;
+  box-shadow: 0 4px 12px -4px rgba(11, 59, 102, 0.25);
+}
+.app-modal-title { color: #0b3b66; }
+.app-modal-sub { color: #64748b; }
+.app-modal-x {
+  color: #475569;
+  background: #ffffff;
+  border: 1px solid #b8c4d4;
+}
+.app-modal-x:hover { color: #ffffff; background: #1479bd; border-color: #1479bd; }
+.app-modal-edge { background: linear-gradient(90deg, #1b8ad3 0%, #5baf48 38%, #f5c622 68%, #d1428c 100%); }
+.dark .app-modal-header {
+  background: linear-gradient(180deg, #112238, #0e1d31);
+  border-bottom-color: #2b4a6b;
+}
+.dark .app-modal-logo { background: #ffffff; border-color: #2b4a6b; }
+.dark .app-modal-title { color: #ffffff; }
+.dark .app-modal-sub { color: #9db2cc; }
+.dark .app-modal-x { color: #cbd5e1; background: #172c46; border-color: #2b4a6b; }
+.dark .app-modal-x:hover { color: #ffffff; background: #1479bd; border-color: #1479bd; }
+.dark .bg-slate-50\/80,
+.dark .bg-slate-50 {
+  background-color: #172c46;
+}
+.dark kbd {
+  background-color: #112238;
+  border-color: #2b4a6b;
+  color: #9db2cc;
+}
+
+/* The loader's icon orbit, and a short grace period: a request that finishes quickly never flashes a loader. */
+.loader-orbit { animation: loader-sat 18s linear infinite; }
+.loader-orbit-counter { animation: loader-sat 18s linear infinite reverse; }
+@keyframes loader-appear {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.loader-delay { animation: loader-appear 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) 0.05s both; }
+@media (prefers-reduced-motion: reduce) {
+  .loader-orbit, .loader-orbit-counter { animation: none; }
+  .loader-delay { animation-duration: 0.01ms; animation-delay: 0s; }
+}
+
+/* Light gradient strips (toolbars) follow the dark theme too. */
+.dark .from-sky-50 { --tw-gradient-from: #0f2540; }
+.dark .via-white { --tw-gradient-via: #112238; }
+.dark .to-white { --tw-gradient-to: #112238; }
+
+/* ---- Dialog footer: a white bar with a clear top line. ---- */
+.app-modal-footer {
+  background: #ffffff;
+  border-top: 1px solid #b8c4d4;
+  box-shadow: 0 -8px 16px -14px rgba(15, 23, 42, 0.35);
+}
+.dark .app-modal-footer {
+  background: #112238;
+  border-top-color: #2b4a6b;
+  box-shadow: none;
+}
+
+/* ---- Data tables: a proper header band, banded rows and aligned cells. ---- */
+.table-scroll thead th {
+  background: linear-gradient(180deg, #f8fafc, #eaf0f6);
+  color: #475569;
+  font-weight: 700;
+  vertical-align: middle;
+  border-bottom: 2px solid #cbd5e1;
+}
+.table-scroll tbody td {
+  vertical-align: middle;
+}
+.table-scroll tbody tr:nth-child(even) {
+  background-color: rgba(238, 243, 249, 0.6);
+}
+.table-scroll tbody tr:nth-child(n):hover {
+  background-color: #e7f3fc;
+}
+.dark .table-scroll thead th {
+  background: linear-gradient(180deg, #1a3250, #152a45);
+  color: #a9bdd6;
+  border-bottom-color: #2f5075;
+}
+.dark .table-scroll tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+.dark .table-scroll tbody tr:nth-child(n):hover {
+  background-color: #1b3354;
+}
+
+/* Select boxes: a little more presence, and a chevron that turns blue on hover. The list itself is drawn by SelectPopup. */
+select:not([multiple]) {
+  font-weight: 500;
+  cursor: pointer;
+}
+select:not([multiple]):hover:not(:disabled) {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%231479bd' stroke-width='2'%3E%3Cpath d='m5.5 7.5 4.5 4.5 4.5-4.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.dark .select-popup {
+  background-color: #112238;
+  border-color: #2b4a6b;
+}
+.dark .select-popup input {
+  background-color: #172c46;
+  border-color: #2b4a6b;
+  color: #e6eef8;
+}
+.dark .select-popup button {
+  color: #cbd9ea;
+}
+.dark .select-popup button[data-active='true'] {
+  background-color: #1b3354;
+  color: #ffffff;
+}
+
+/* More light surfaces that must follow the dark theme: sky tags and progress tracks. */
+.dark .bg-sky-50,
+.dark .hover\:bg-sky-100:hover {
+  background-color: #14304f;
+}
+.dark .bg-slate-200 {
+  background-color: #2b4a6b;
+}
+
+/* ---- Table heading band: deep navy, white labels, column dividers and a bright accent line. ---- */
+.table-scroll thead th {
+  background: linear-gradient(180deg, #f1f7fd 0%, #dfecf8 100%);
+  color: #0b3b66;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  border-bottom: 3px solid #1479bd;
+  border-right: 1px solid rgba(20, 121, 189, 0.12);
+}
+.table-scroll thead th:last-child {
+  border-right: 0;
+}
+.dark .table-scroll thead th {
+  background: linear-gradient(180deg, #123a63 0%, #0d2d4d 100%);
+  text-shadow: none;
+  color: #e6eef8;
+  border-bottom-color: #2f86c5;
+}
+
+/* Rows slide in one after another when a list appears or changes. */
+@keyframes row-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.table-scroll tbody tr {
+  animation: row-in 0.42s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.table-scroll tbody tr:nth-child(1) { animation-delay: 0.02s; }
+.table-scroll tbody tr:nth-child(2) { animation-delay: 0.06s; }
+.table-scroll tbody tr:nth-child(3) { animation-delay: 0.10s; }
+.table-scroll tbody tr:nth-child(4) { animation-delay: 0.14s; }
+.table-scroll tbody tr:nth-child(5) { animation-delay: 0.18s; }
+.table-scroll tbody tr:nth-child(6) { animation-delay: 0.22s; }
+.table-scroll tbody tr:nth-child(7) { animation-delay: 0.26s; }
+.table-scroll tbody tr:nth-child(8) { animation-delay: 0.30s; }
+.table-scroll tbody tr:nth-child(n+9) { animation-delay: 0.34s; }
+
+.contract-tile:focus-visible {
+  outline: 2px solid #1479bd;
+  outline-offset: 2px;
+}
+.dark .contract-tile {
+  background-color: #112238;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .table-scroll tbody tr { animation: none; }
+}
+
+.dark .bg-amber-50 { background-color: #3a2e12; }
+.dark .text-amber-800 { color: #f6cf76; }
+.dark .bg-red-50 { background-color: #3a1a22; }
+
+/* The light palettes (Sky, Mint, Sand, Lavender) keep a quiet banner without the white rings. */
+:root[data-palette='sky'] .app-banner::after,
+:root[data-palette='mint'] .app-banner::after,
+:root[data-palette='sand'] .app-banner::after,
+:root[data-palette='lavender'] .app-banner::after {
+  display: none;
+}
+:root[data-palette='sky'] .app-banner::before,
+:root[data-palette='mint'] .app-banner::before,
+:root[data-palette='sand'] .app-banner::before,
+:root[data-palette='lavender'] .app-banner::before {
+  background: radial-gradient(420px 170px at 100% 0%, rgba(255, 255, 255, 0.75), transparent 70%);
+}
+
+/* Clear borders and dividers (light theme). Rows, cards, detail lists and table cells all show a visible line. */
+html:not(.dark) .border-slate-100,
+html:not(.dark) .border-slate-200 {
+  border-color: #b8c4d4;
+}
+html:not(.dark) .border-slate-300 {
+  border-color: #94a3b8;
+}
+html:not(.dark) .divide-slate-100 > :not(:last-child),
+html:not(.dark) .divide-slate-200 > :not(:last-child) {
+  border-color: #cbd5e1;
+}
+html:not(.dark) .surface {
+  border-color: #b8c4d4;
+}
+html:not(.dark) .table-scroll {
+  border: 1px solid #b8c4d4;
+}
+html:not(.dark) .table-scroll td,
+html:not(.dark) .table-scroll th {
+  border-bottom: 1px solid #cbd5e1;
+  border-right: 1px solid #dbe3ee;
+}
+html:not(.dark) .table-scroll td:last-child,
+html:not(.dark) .table-scroll th:last-child {
+  border-right: 0;
+}
+
+/* ---- Loader styles chosen in the header menu (Pinwheel, Pulse, Skeleton). ---- */
+@keyframes loader-petal {
+  0%, 100% { opacity: 0.22; transform: scale(0.9); }
+  40% { opacity: 1; transform: scale(1); }
+}
+.loader-petal {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: loader-petal 0.96s ease-in-out infinite;
+}
+.loader-turn { animation: login-orbit 8s linear infinite; }
+
+@keyframes loader-ripple {
+  0% { transform: scale(0.55); opacity: 0.8; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.loader-ripple { animation: loader-ripple 2.1s ease-out infinite; }
+
+@keyframes loader-skeleton {
+  to { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%) 0 0 / 200% 100%;
+  animation: loader-skeleton 1.4s ease-in-out infinite;
+}
+.dark .skeleton {
+  background: linear-gradient(90deg, #172c46 25%, #1f3a5c 50%, #172c46 75%) 0 0 / 200% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-petal, .loader-turn, .loader-ripple, .skeleton { animation: none; }
+  .loader-petal { opacity: 1; }
 }

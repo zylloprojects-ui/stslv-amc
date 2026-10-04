@@ -207,6 +207,7 @@ export function ExpensesPage() {
               canEdit={canEdit}
               canVoid={canVoid}
               onDialog={setDialog}
+              startAt={(data.page - 1) * data.pageSize}
             />
             <Pager page={data.page} pageSize={data.pageSize} shown={data.items.length} total={data.total} onPage={setPage}>
               <p className="font-medium text-slate-900">

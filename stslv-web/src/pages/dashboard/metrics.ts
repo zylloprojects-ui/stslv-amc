@@ -11,8 +11,8 @@ export interface DashboardSummary {
   clients?: { active: number; inactive: number } | null
   /** The AMC module's own summary. */
   amc?: {
-    contracts: { active: number; activePastValidity: number } | null
-    visits: { due: number; overdue: number } | null
+    contracts: { active: number; activePastValidity: number; draft?: number; expired?: number; cancelled?: number } | null
+    visits: { due: number; overdue: number; dueThisMonth?: number; inProgress?: number; completedThisMonth?: number } | null
     invoicing: { readyForInvoice: { count: number; amount: string }; amountRequired: { count: number } } | null
   } | null
   /** The Projects module's own summary. */

@@ -150,6 +150,9 @@ export function ProjectsPage() {
                 <caption className="sr-only">Projects</caption>
                 <thead>
                   <tr>
+                    <th scope="col" className={TABLE.snHead}>
+                      #
+                    </th>
                     <th scope="col" className={TABLE.th}>
                       Job number
                     </th>
@@ -190,8 +193,9 @@ export function ProjectsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {data.items.map((project) => (
+                  {data.items.map((project, index) => (
                     <tr key={project.id} className={TABLE.row}>
+                      <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
                       <td className={`${TABLE.td} whitespace-nowrap font-medium`}>
                         <Link to={`/projects/${project.id}`} className="text-blue-700 hover:underline">
                           {project.jobNumber}

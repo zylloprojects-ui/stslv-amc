@@ -230,7 +230,7 @@ export function ContractFormModal({ contract, onClose, onSaved }: ContractFormMo
       )}
 
       {/* The form stays mounted while the change is reviewed, so Back returns to the entered values. */}
-      {clients.isPending && <Spinner label="Loading clients" />}
+      {clients.isPending && <Spinner size="sm" label="Loading clients" />}
       {clients.isError && <Alert>{errorMessage(clients.error)}</Alert>}
 
       {clients.data && (

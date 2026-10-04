@@ -114,7 +114,7 @@ export function PaletteMenu({ palette, onChoose, dark }: { palette: PaletteId; o
               )
             })}
           </ul>
-          {dark && <p className="border-t border-slate-100 bg-slate-50 px-4 py-2 text-[11px] text-slate-500">Dark mode is on, so palettes show when you switch back to light.</p>}
+          {dark &&<p className="border-t border-slate-100 bg-slate-50 px-4 py-2 text-[11px] text-slate-500">Dark mode is on, so palettes show when you switch back to light.</p>}
         </div>
       )}
     </div>

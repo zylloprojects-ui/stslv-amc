@@ -19,6 +19,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { ExpensesPage } from './pages/expenses/ExpensesPage'
 import { HistoricalDataPage } from './pages/historical/HistoricalDataPage'
 import { AuthLayout, LoginPage } from './pages/LoginPage'
+import { LoaderPreviewPage } from './pages/LoaderPreviewPage'
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProcurementPage } from './pages/procurement/ProcurementPage'
@@ -68,6 +69,8 @@ export function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
+          {/* A developer's page: it exists on a development server only, never in a production build. */}
+          {import.meta.env.DEV && <Route path="/loader-preview" element={<LoaderPreviewPage />} />}
           <Route
             path="/dashboard"
             element={
@@ -164,6 +167,14 @@ export function AppRoutes() {
             element={
               <RequirePermission module="USERS">
                 <UsersPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/admin/roles"
+            element={
+              <RequirePermission module="USERS">
+                <UsersPage key="roles" initialTab="roles" />
               </RequirePermission>
             }
           />

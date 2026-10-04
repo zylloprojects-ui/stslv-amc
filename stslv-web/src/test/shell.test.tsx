@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Alert, Button, Modal } from '../components/ui'
 import { formatCount, initialsOf } from '../lib/format'
 import { ACCOUNTANT, ADMIN, makeClient, mockApi, ok, renderApp, signIn } from './helpers'
@@ -75,12 +75,12 @@ describe('application shell', () => {
     expect(screen.getByRole('main')).toHaveFocus()
   })
 
-  it('shows where the current page sits in the navigation', async () => {
+  it('does not repeat the page name or its section in the header', async () => {
     session(ADMIN)
     renderApp('/clients')
 
     await screen.findByRole('heading', { name: 'Clients' })
-    expect(screen.getByRole('banner')).toHaveTextContent('Operations/Clients')
+    expect(screen.getByRole('banner')).not.toHaveTextContent(/Operations|Clients/)
   })
 
   it('marks the current page in the navigation', async () => {
@@ -91,6 +91,32 @@ describe('application shell', () => {
 
     expect(within(nav).getByRole('link', { name: 'Clients' })).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+  })
+})
+
+describe('parts that are not shown yet', () => {
+  it('leaves Departments out of Settings, and opens the profile when it is asked for by address', async () => {
+    session(ADMIN)
+    renderApp('/settings?section=departments')
+
+    const sections = await screen.findByRole('navigation', { name: 'Settings sections' })
+
+    expect(within(sections).getByText('Holidays')).toBeInTheDocument()
+    expect(within(sections).queryByText('Departments')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Departments' })).not.toBeInTheDocument()
+  })
+
+  it('has the loader preview on a development server only', async () => {
+    session(ADMIN)
+    vi.stubEnv('DEV', false)
+
+    try {
+      renderApp('/loader-preview')
+
+      expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 

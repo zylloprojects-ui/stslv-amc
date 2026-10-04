@@ -28,10 +28,10 @@ type Dialog =
   | { kind: 'toggle'; user: User }
   | { kind: 'reject'; user: User }
 
-export function UsersPage() {
+export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
   const auth = useAuth()
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<Tab>('users')
+  const [tab, setTab] = useState<Tab>(initialTab)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -95,7 +95,7 @@ export function UsersPage() {
   return (
     <>
       <PageHeader
-        title="Users & Access"
+        title={initialTab === 'roles' ? 'Roles & Permissions' : 'Users & Access'}
         description="Who can sign in, and what each role is allowed to do."
         actions={
           canCreate &&
@@ -144,6 +144,9 @@ export function UsersPage() {
                   <caption className="sr-only">Users</caption>
                   <thead>
                     <tr>
+                      <th scope="col" className={TABLE.snHead}>
+                        #
+                      </th>
                       <th scope="col" className={TABLE.th}>
                         Name
                       </th>
@@ -167,11 +170,12 @@ export function UsersPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {users.data.map((user) => {
+                    {users.data.map((user, index) => {
                       const isSelf = user.id === auth.user?.id
 
                       return (
                         <tr key={user.id} className={TABLE.row}>
+                          <td className={TABLE.sn}>{0 + index + 1}</td>
                           <td className={cx(TABLE.td, TABLE.text, 'font-medium text-slate-900')}>
                             {user.fullName}
                             {isSelf && <span className="ml-2 text-xs font-normal text-slate-500">(you)</span>}

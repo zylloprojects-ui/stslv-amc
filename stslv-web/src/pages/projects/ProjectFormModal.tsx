@@ -68,7 +68,7 @@ export function ProjectFormModal({ project, onClose, onSaved }: ProjectFormModal
   if (!clients.data || (project === null && !defaults.data)) {
     return (
       <Modal title={title} onClose={onClose} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
-        {failed ? <Alert>{errorMessage(failed)}</Alert> : <Spinner label="Loading form" />}
+        {failed ? <Alert>{errorMessage(failed)}</Alert> : <Spinner size="sm" label="Loading form" />}
       </Modal>
     )
   }

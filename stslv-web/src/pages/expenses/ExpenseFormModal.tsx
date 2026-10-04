@@ -54,7 +54,7 @@ export function ExpenseFormModal({ expense, fixedProject, onClose, onSaved }: Ex
   if (!categories.data || (needsPicker && !options.data)) {
     return (
       <Modal title={title} onClose={onClose} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
-        {failed ? <Alert>{errorMessage(failed)}</Alert> : <Spinner label="Loading form" />}
+        {failed ? <Alert>{errorMessage(failed)}</Alert> : <Spinner size="sm" label="Loading form" />}
       </Modal>
     )
   }

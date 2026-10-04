@@ -99,10 +99,10 @@ function ExpenseDetailsModal({ expenseId, canEdit, onEdit, onClose }: ExpenseDet
         </>
       }
     >
-      {query.isPending && <Spinner label="Loading expense" />}
+      {query.isPending && <Spinner size="sm" label="Loading expense" />}
       {query.isError && <Alert>{errorMessage(query.error)}</Alert>}
       {expense && (
-        <dl className="divide-y divide-slate-100">
+        <dl>
           <DetailRow label="Project / job">
             {projectLabel({ jobNumber: expense.jobNumber, clientName: expense.clientName, description: expense.projectDescription })}
           </DetailRow>

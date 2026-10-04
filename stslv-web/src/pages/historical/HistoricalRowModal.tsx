@@ -87,7 +87,7 @@ function Values({ rows }: { rows: [string, ReactNode][] }) {
     <dl className="divide-y divide-slate-100">
       {rows.map(([label, value]) => (
         <div key={label} className="gap-4 py-2 sm:grid sm:grid-cols-5">
-          <dt className="break-words text-sm font-medium text-slate-600 sm:col-span-2">{label}</dt>
+          <dt className="break-words text-sm font-bold text-slate-800 sm:col-span-2">{label}</dt>
           <dd className="mt-0.5 whitespace-pre-wrap break-words text-sm text-slate-900 sm:col-span-3 sm:mt-0">{value}</dd>
         </div>
       ))}

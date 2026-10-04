@@ -73,10 +73,10 @@ export function Filter({ label, children, className }: FilterProps) {
 
   return (
     <div className={className}>
-      <label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-700">
+      <label htmlFor={id} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
         {label}
       </label>
-      {children(id, 'block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400')}
+      {children(id, 'block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm shadow-sm placeholder:text-slate-400')}
     </div>
   )
 }
@@ -149,9 +149,9 @@ export function PlannedDate({ visit, format }: { visit: { status: VisitStatus; s
 /** One label/value line of a details view. */
 export function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-3 gap-4 py-2">
-      <dt className="text-sm font-medium text-slate-500">{label}</dt>
-      <dd className="col-span-2 whitespace-pre-wrap break-words text-sm text-slate-900">{children}</dd>
+    <div className="grid min-h-[3.25rem] grid-cols-[10.5rem_minmax(0,1fr)] border border-slate-300! [&:not(:first-child)]:-mt-px">
+      <dt className="flex items-center border-r border-slate-300! bg-slate-100 px-3 py-2.5 text-sm font-bold text-slate-800">{label}</dt>
+      <dd className="flex min-w-0 items-center whitespace-pre-wrap break-words px-3 py-2.5 text-sm text-slate-900">{children}</dd>
     </div>
   )
 }

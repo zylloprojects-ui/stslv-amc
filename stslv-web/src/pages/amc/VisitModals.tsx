@@ -40,7 +40,7 @@ export function VisitDetailsModal({ visitId, canEdit, onEdit, onClose }: VisitDe
         </>
       }
     >
-      {query.isPending && <Spinner label="Loading visit" />}
+      {query.isPending && <Spinner size="sm" label="Loading visit" />}
       {query.isError && <Alert>{errorMessage(query.error)}</Alert>}
       {visit && visit.status === 'HISTORICAL' && (
         <div className="mb-4">
@@ -51,7 +51,7 @@ export function VisitDetailsModal({ visitId, canEdit, onEdit, onClose }: VisitDe
         </div>
       )}
       {visit && (
-        <dl className="divide-y divide-slate-100">
+        <dl>
           <DetailRow label="Client">{visit.client.name}</DetailRow>
           <DetailRow label="System">{visit.contract.systemDescription}</DetailRow>
           <DetailRow label="Visit">

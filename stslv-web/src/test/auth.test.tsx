@@ -183,7 +183,7 @@ describe('permission-based navigation', () => {
       Operations: ['Clients', 'AMC Contracts', 'AMC Schedule', 'AMC Execution', 'Projects', 'Procurement'],
       Finance: ['Expenses', 'Invoice Tracking'],
       Reporting: ['Reports', 'Historical Data'],
-      Administration: ['Users & Access'],
+      Administration: ['Users & Access', 'Roles & Permissions'],
     })
   })
 

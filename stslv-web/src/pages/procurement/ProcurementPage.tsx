@@ -150,6 +150,7 @@ export function ProcurementPage() {
               linkProject={auth.can('PROJECTS', 'VIEW')}
               canEdit={canEdit}
               onDialog={setDialog}
+              startAt={(data.page - 1) * data.pageSize}
             />
             <Pager page={data.page} pageSize={data.pageSize} shown={data.items.length} total={data.total} onPage={setPage} />
           </>

@@ -373,6 +373,15 @@ describe('sign-up requests', () => {
 })
 
 describe('roles and permissions', () => {
+  it('opens straight on the permissions from the Roles & Permissions link in the sidebar', async () => {
+    usersApi()
+    renderApp('/admin/roles')
+
+    expect(await screen.findByRole('heading', { name: 'Roles & Permissions' })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: 'Roles & Permissions' })).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByRole('checkbox', { name: 'Clients: Edit' })).toBeChecked()
+  })
+
   it('shows each role\'s permissions and keeps the Admin role read-only', async () => {
     usersApi()
     renderApp('/admin/users')

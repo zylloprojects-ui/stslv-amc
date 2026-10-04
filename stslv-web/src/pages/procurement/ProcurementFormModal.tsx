@@ -73,7 +73,7 @@ export function ProcurementFormModal({ request, fixedProject, onClose, onSaved }
   if (needsPicker && !options.data) {
     return (
       <Modal title={title} onClose={onClose} size="lg" footer={<Button onClick={onClose}>Close</Button>}>
-        {options.isError ? <Alert>{errorMessage(options.error)}</Alert> : <Spinner label="Loading form" />}
+        {options.isError ? <Alert>{errorMessage(options.error)}</Alert> : <Spinner size="sm" label="Loading form" />}
       </Modal>
     )
   }
