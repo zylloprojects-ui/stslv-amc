@@ -7,11 +7,15 @@ const PALETTE_KEY = 'stslev.palette'
 
 export type Theme = 'light' | 'dark'
 
+// What was chosen in this visit, so a blocked or full browser store still works until the page is closed.
+const remembered: Record<string, string> = {}
+const listeners = new Set<() => void>()
+
 function read(key: string): string | null {
   try {
     return localStorage.getItem(key)
   } catch {
-    return null
+    return remembered[key] ?? null
   }
 }
 
@@ -20,40 +24,59 @@ function write(key: string, value: string) {
     localStorage.setItem(key, value)
   } catch {
     // Storage may be blocked; the preference then lasts for this visit only.
+    remembered[key] = value
   }
+
+  // Tell every part of the page that shows this preference (the header, the sidebar, the Settings page).
+  listeners.forEach((listener) => listener())
 }
 
-export function useTheme(): [Theme, () => void] {
-  const [theme, setTheme] = useState<Theme>(() => (read(THEME_KEY) === 'dark' ? 'dark' : 'light'))
+function useStored<T>(readValue: () => T): [T, (value: T) => void] {
+  const [value, setValue] = useState<T>(readValue)
+
+  useEffect(() => {
+    const update = () => setValue(readValue())
+
+    listeners.add(update)
+    return () => {
+      listeners.delete(update)
+    }
+    // readValue only reads the stored value, so it does not need to be a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  return [value, setValue]
+}
+
+export function useTheme(): [Theme, () => void, (theme: Theme) => void] {
+  const [theme] = useStored<Theme>(() => (read(THEME_KEY) === 'dark' ? 'dark' : 'light'))
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
-  const toggle = useCallback(() => {
-    setTheme((current) => {
-      const next = current === 'dark' ? 'light' : 'dark'
-      write(THEME_KEY, next)
-      return next
-    })
-  }, [])
+  const set = useCallback((next: Theme) => write(THEME_KEY, next), [])
+  const toggle = useCallback(() => write(THEME_KEY, read(THEME_KEY) === 'dark' ? 'light' : 'dark'), [])
 
-  return [theme, toggle]
+  return [theme, toggle, set]
 }
 
+const narrowLaptop = () => window.matchMedia?.('(min-width: 1024px) and (max-width: 1359px)')?.matches ?? false
+
 export function useSidebarCollapsed(): [boolean, () => void, (value: boolean) => void] {
-  const [collapsed, setCollapsed] = useState(() => read(SIDEBAR_KEY) === '1')
+  // Until the person chooses, a laptop-sized window starts with the narrow sidebar, so wide tables have room.
+  const [collapsed] = useStored<boolean>(() => {
+    const saved = read(SIDEBAR_KEY)
 
-  const set = useCallback((value: boolean) => {
-    write(SIDEBAR_KEY, value ? '1' : '0')
-    setCollapsed(value)
-  }, [])
+    return saved !== null ? saved === '1' : narrowLaptop()
+  })
 
+  const set = useCallback((value: boolean) => write(SIDEBAR_KEY, value ? '1' : '0'), [])
   const toggle = useCallback(() => {
-    setCollapsed((current) => {
-      write(SIDEBAR_KEY, current ? '0' : '1')
-      return !current
-    })
+    const saved = read(SIDEBAR_KEY)
+    const current = saved !== null ? saved === '1' : narrowLaptop()
+
+    write(SIDEBAR_KEY, current ? '0' : '1')
   }, [])
 
   return [collapsed, toggle, set]
@@ -70,7 +93,7 @@ export const PALETTES = [
 export type PaletteId = (typeof PALETTES)[number]['id']
 
 export function usePalette(): [PaletteId, (id: PaletteId) => void] {
-  const [palette, setPalette] = useState<PaletteId>(() => {
+  const [palette] = useStored<PaletteId>(() => {
     const saved = read(PALETTE_KEY)
 
     return PALETTES.some((item) => item.id === saved) ? (saved as PaletteId) : 'ocean'
@@ -80,10 +103,7 @@ export function usePalette(): [PaletteId, (id: PaletteId) => void] {
     document.documentElement.dataset.palette = palette
   }, [palette])
 
-  const choose = useCallback((id: PaletteId) => {
-    write(PALETTE_KEY, id)
-    setPalette(id)
-  }, [])
+  const choose = useCallback((id: PaletteId) => write(PALETTE_KEY, id), [])
 
   return [palette, choose]
 }

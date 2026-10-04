@@ -128,7 +128,7 @@ export function FeedbackButton() {
             </div>
           ) : (
             <form id="feedback-form" onSubmit={submit} noValidate className="space-y-4">
-              <p className="text-sm text-slate-600">Report a problem, suggest a feature, or propose an improvement for STSLEV ERP.</p>
+              <p className="text-sm text-slate-600">Report a problem, suggest a feature, or propose an improvement for STSLEV AMC.</p>
 
               <fieldset>
                 <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">Type</legend>

@@ -3,7 +3,15 @@ import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
 import { parseIdParam } from "../../shared/validation";
 import { createUserSchema, resetPasswordSchema, setUserRolesSchema, updateUserSchema } from "./users.schemas";
-import { createUser, listUsers, resetUserPassword, setUserActive, setUserRoles, updateUser } from "./users.service";
+import {
+  createUser,
+  listUsers,
+  rejectRegistration,
+  resetUserPassword,
+  setUserActive,
+  setUserRoles,
+  updateUser,
+} from "./users.service";
 
 export const usersRouter = Router();
 
@@ -31,6 +39,11 @@ usersRouter.post("/:id/activate", authorize("USERS", "EDIT"), async (req, res) =
 
 usersRouter.post("/:id/deactivate", authorize("USERS", "EDIT"), async (req, res) => {
   res.json({ success: true, data: await setUserActive(requireAuth(req), parseIdParam(req.params.id), false) });
+});
+
+// Refuses a pending sign-up request. Approval is the activate route above.
+usersRouter.post("/:id/reject", authorize("USERS", "EDIT"), async (req, res) => {
+  res.json({ success: true, data: await rejectRegistration(requireAuth(req), parseIdParam(req.params.id)) });
 });
 
 usersRouter.put("/:id/roles", authorize("USERS", "EDIT"), async (req, res) => {

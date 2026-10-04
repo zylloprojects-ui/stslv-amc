@@ -4,14 +4,27 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import { ProtectedRoute, RequirePermission } from './auth/guards'
 import { AppLayout } from './layout/AppLayout'
+import { NAVIGATION } from './layout/navigation'
 import { ApiError } from './lib/api'
 import type { Module } from './lib/types'
 import { AccountPage } from './pages/AccountPage'
+import { AmcContractsPage } from './pages/amc/AmcContractsPage'
+import { AmcExecutionPage } from './pages/amc/AmcExecutionPage'
+import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
+import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
+import { SignUpPage } from './pages/auth/SignUpPage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
-import { LoginPage } from './pages/LoginPage'
+import { ExpensesPage } from './pages/expenses/ExpensesPage'
+import { HistoricalDataPage } from './pages/historical/HistoricalDataPage'
+import { AuthLayout, LoginPage } from './pages/LoginPage'
+import { LoaderPreviewPage } from './pages/LoaderPreviewPage'
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { ProcurementPage } from './pages/procurement/ProcurementPage'
+import { ProjectDetailPage } from './pages/projects/ProjectDetailPage'
+import { ProjectsPage } from './pages/projects/ProjectsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { UsersPage } from './pages/users/UsersPage'
 
@@ -37,26 +50,26 @@ export function AppProviders({ children, client }: { children: ReactNode; client
   )
 }
 
-// Modules that exist in the navigation but are not built yet.
-const PENDING_MODULES: { path: string; module: Module; title: string }[] = [
-  { path: '/amc/contracts', module: 'AMC_CONTRACTS', title: 'AMC Contracts' },
-  { path: '/amc/schedule', module: 'AMC_SCHEDULE', title: 'AMC Schedule' },
-  { path: '/amc/execution', module: 'AMC_EXECUTION', title: 'AMC Execution' },
-  { path: '/projects', module: 'PROJECTS', title: 'Projects' },
-  { path: '/procurement', module: 'PROCUREMENT', title: 'Procurement' },
-  { path: '/expenses', module: 'EXPENSES', title: 'Expenses' },
-  { path: '/invoices', module: 'INVOICES', title: 'Invoice Tracking' },
-  { path: '/reports', module: 'REPORTS', title: 'Reports' },
-]
+// Modules that exist in the navigation but are not built yet. The navigation is the one place that says which.
+const PENDING_MODULES: { path: string; module: Module; title: string }[] = NAVIGATION.flatMap((section) => section.items)
+  .filter((item) => item.pending)
+  .map((item) => ({ path: item.path, module: item.module, title: item.label }))
 
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<LoginPage />} />
+      {/* Open to visitors who are not signed in. They share one frame, so moving between them keeps it in place. */}
+      <Route element={<AuthLayout />}>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignUpPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+      </Route>
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route path="/loader-preview" element={<LoaderPreviewPage />} />
           <Route
             path="/dashboard"
             element={
@@ -70,6 +83,70 @@ export function AppRoutes() {
             element={
               <RequirePermission module="CLIENTS">
                 <ClientsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/contracts"
+            element={
+              <RequirePermission module="AMC_CONTRACTS">
+                <AmcContractsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/schedule"
+            element={
+              <RequirePermission module="AMC_SCHEDULE">
+                <AmcSchedulePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/execution"
+            element={
+              <RequirePermission module="AMC_EXECUTION">
+                <AmcExecutionPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/projects"
+            element={
+              <RequirePermission module="PROJECTS">
+                <ProjectsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/projects/:id"
+            element={
+              <RequirePermission module="PROJECTS">
+                <ProjectDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/procurement"
+            element={
+              <RequirePermission module="PROCUREMENT">
+                <ProcurementPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/expenses"
+            element={
+              <RequirePermission module="EXPENSES">
+                <ExpensesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/historical-data"
+            element={
+              <RequirePermission module="HISTORICAL_DATA">
+                <HistoricalDataPage />
               </RequirePermission>
             }
           />
@@ -89,6 +166,14 @@ export function AppRoutes() {
             element={
               <RequirePermission module="USERS">
                 <UsersPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/admin/roles"
+            element={
+              <RequirePermission module="USERS">
+                <UsersPage key="roles" initialTab="roles" />
               </RequirePermission>
             }
           />

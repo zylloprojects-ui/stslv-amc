@@ -4,6 +4,7 @@ import { withTransaction } from "../../shared/db";
 import { AppError, unauthorized, validationError } from "../../shared/errors";
 import { loadUserPermissions, loadUserRoles, toSessionUser, type AuthContext } from "./access";
 import { hashPassword, verifyAgainstDummy, verifyPassword } from "./password";
+import { revokeResetTokens } from "./password-reset.service";
 import { issueToken } from "./token";
 
 // One message for every failure, so the response does not reveal whether the email exists.
@@ -78,6 +79,8 @@ export async function changeOwnPassword(auth: AuthContext, currentPassword: stri
       passwordHash,
       auth.user.id,
     ]);
+    // A reset link requested before this change must not be able to undo it.
+    await revokeResetTokens(client, auth.user.id);
     await logActivity(client, {
       userId: auth.user.id,
       action: "auth.password_changed",

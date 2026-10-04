@@ -5,6 +5,8 @@ export interface NavItem {
   path: string
   /** The item is shown only to users who hold VIEW on this module. */
   module: Module
+  /** The module is in the navigation but its page is not built yet: it opens a placeholder. */
+  pending?: true
 }
 
 export interface NavSection {
@@ -30,14 +32,21 @@ export const NAVIGATION: NavSection[] = [
     title: 'Finance',
     items: [
       { label: 'Expenses', path: '/expenses', module: 'EXPENSES' },
-      { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
+      { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES', pending: true },
     ],
   },
-  { title: 'Reporting', items: [{ label: 'Reports', path: '/reports', module: 'REPORTS' }] },
+  {
+    title: 'Reporting',
+    items: [
+      { label: 'Reports', path: '/reports', module: 'REPORTS', pending: true },
+      { label: 'Historical Data', path: '/historical-data', module: 'HISTORICAL_DATA' },
+    ],
+  },
   {
     title: 'Administration',
     items: [
       { label: 'Users & Access', path: '/admin/users', module: 'USERS' },
+      { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
     ],
   },

@@ -148,7 +148,7 @@ export function CookieNotice() {
         </>
       }
     >
-      <p className="text-sm text-slate-600">STSLEV ERP stores a small amount of information in your browser so the application works properly. This is what we keep:</p>
+      <p className="text-sm text-slate-600">STSLEV AMC stores a small amount of information in your browser so the application works properly. This is what we keep:</p>
 
       <ul className="mt-4 space-y-3">
         {ITEMS.map((item) => (

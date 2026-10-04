@@ -5,9 +5,10 @@ import { cx } from '../lib/format'
 import type { Theme } from '../lib/preferences'
 import { NAVIGATION } from './navigation'
 
-type IconKey = 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Operations' | 'Finance' | 'Reporting' | 'Administration' | 'settings' | 'logout'
+type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Operations' | 'Finance' | 'Reporting' | 'Administration' | 'settings' | 'logout'
 
 const NAV_ICONS: Record<IconKey, ReactNode> = {
+  close: <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />,
   'panel-close': (
     <>
       <rect x="3.5" y="4.5" width="17" height="15" rx="2.5" />
@@ -86,7 +87,9 @@ function Chevron({ open }: { open: boolean }) {
   )
 }
 
-const TOP_LEVEL = 'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200'
+// The focus outline takes the text colour, so it stays visible on every palette, light or dark.
+const FOCUS = 'focus-visible:outline-current'
+const TOP_LEVEL = `flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200 ${FOCUS}`
 const TOP_IDLE = 'sb-idle'
 const TOP_ACTIVE = 'bg-gradient-to-r from-[#1479BD] to-[#0E93B5] text-white shadow-md shadow-sky-900/40'
 
@@ -100,13 +103,32 @@ interface SidebarProps {
   onToggleTheme: () => void
   /** Desktop only: minimise or expand the sidebar. */
   onToggleCollapse?: () => void
+  /** Mobile only: adds a button that closes the slide-over menu. */
+  onClose?: () => void
 }
 
-export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onToggleTheme, onToggleCollapse }: SidebarProps) {
+/** The group that holds the page at this address, if it sits in one. */
+function groupOf(pathname: string): string | null {
+  return NAVIGATION.find((section) => section.title && section.items.some((item) => pathname === item.path || pathname.startsWith(`${item.path}/`)))?.title ?? null
+}
+
+export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onToggleTheme, onToggleCollapse, onClose }: SidebarProps) {
   const auth = useAuth()
   const location = useLocation()
   // One group open at a time (accordion). The group holding the current page starts open.
-  const [openGroup, setOpenGroup] = useState<string | null>(() => NAVIGATION.find((section) => section.title && section.items.some((item) => location.pathname.startsWith(item.path)))?.title ?? null)
+  const [openGroup, setOpenGroup] = useState<string | null>(() => groupOf(location.pathname))
+  const [shownPath, setShownPath] = useState(location.pathname)
+
+  // Arriving on a page by another route (search, a link on a page) opens its group, so the current page stays marked.
+  if (shownPath !== location.pathname) {
+    setShownPath(location.pathname)
+
+    const group = groupOf(location.pathname)
+
+    if (group) {
+      setOpenGroup(group)
+    }
+  }
 
   // Hiding a link is a convenience only; the API enforces every permission.
   // Settings is shown in the footer instead of the Administration group.
@@ -134,7 +156,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
           <img src="/stslv-logo.png" alt="" className="h-9 w-9 object-contain" />
         </span>
         <div className={cx('min-w-0 flex-1 leading-tight', collapsed && 'hidden')}>
-          <span className="block truncate sb-strong text-lg font-bold tracking-wide">STSLEV AMC</span>
+          <span className="block whitespace-nowrap sb-strong text-base font-bold tracking-tight">STSLEV AMC</span>
           <span className="sb-muted block text-xs">ERP System</span>
         </div>
         {onToggleCollapse && (
@@ -144,9 +166,19 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
             aria-pressed={collapsed}
             aria-label={collapsed ? 'Expand sidebar' : 'Minimise sidebar'}
             title={collapsed ? 'Expand sidebar' : 'Minimise sidebar'}
-            className="flex h-8 w-8 shrink-0 items-center justify-center sb-idle rounded-lg transition-colors"
+            className={cx('flex h-8 w-8 shrink-0 items-center justify-center sb-idle rounded-lg transition-colors', FOCUS)}
           >
             <NavIcon name={collapsed ? 'panel-open' : 'panel-close'} />
+          </button>
+        )}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close menu"
+            className={cx('flex h-8 w-8 shrink-0 items-center justify-center sb-idle rounded-lg transition-colors', FOCUS)}
+          >
+            <NavIcon name="close" />
           </button>
         )}
       </div>
@@ -199,6 +231,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
                         className={({ isActive }) =>
                           cx(
                             'block rounded-lg px-3 py-1.5 text-[13px] font-medium transition-all duration-200',
+                            FOCUS,
                             isActive ? TOP_ACTIVE : 'sb-idle hover:translate-x-0.5',
                           )
                         }

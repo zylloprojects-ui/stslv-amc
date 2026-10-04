@@ -1,10 +1,13 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useState } from 'react'
+import { useEffect, useId, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
-import { Alert, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner, StatusBadge } from '../../components/ui'
+import { Pager } from '../../components/records'
+import { Alert, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, StatusBadge, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
+import { formatDate } from '../../lib/format'
 import type { Client, Paged } from '../../lib/types'
+import { ClientAvatar } from './clientAvatar'
 import { ClientDetailsModal } from './ClientDetailsModal'
 import { ClientFormModal } from './ClientFormModal'
 
@@ -18,6 +21,70 @@ type Dialog =
   | { kind: 'edit'; client: Client }
   | { kind: 'view'; clientId: string }
   | { kind: 'toggle'; client: Client }
+
+const ICONS = {
+  search: (
+    <>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m20 20-4.2-4.2" strokeLinecap="round" />
+    </>
+  ),
+  phone: <path d="M6.5 4h3l1.5 4-2 1.2a11 11 0 0 0 5.8 5.8L16 13l4 1.5v3a2 2 0 0 1-2.2 2A15.5 15.5 0 0 1 4.5 6.2 2 2 0 0 1 6.5 4Z" strokeLinejoin="round" />,
+  mail: (
+    <>
+      <rect x="3" y="5" width="18" height="14" rx="2.5" />
+      <path d="m4 7 8 6 8-6" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" />
+    </>
+  ),
+  edit: <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 8l3 3" strokeLinecap="round" strokeLinejoin="round" />,
+  stop: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="m6 6 12 12" strokeLinecap="round" />
+    </>
+  ),
+  restore: <path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4" strokeLinecap="round" strokeLinejoin="round" />,
+  users: (
+    <>
+      <circle cx="9" cy="8" r="3.2" />
+      <path d="M3 19c0-3.2 2.7-5 6-5s6 1.8 6 5" strokeLinecap="round" />
+      <path d="M16 5.2a3 3 0 0 1 0 5.6M18.5 14.4c1.6.7 2.5 2.1 2.5 4.6" strokeLinecap="round" />
+    </>
+  ),
+}
+
+function Icon({ name, className = 'h-4 w-4' }: { name: keyof typeof ICONS; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      {ICONS[name]}
+    </svg>
+  )
+}
+
+const FIELD = 'rounded-lg border border-slate-300 bg-white text-sm shadow-sm transition focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60'
+const ICON_BUTTON =
+  'inline-flex h-8 w-9 items-center justify-center text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10'
+
+/** A small square button with an icon only. The accessible name is given by aria-label; title shows it on hover. */
+function IconButton({ label, onClick, danger = false, children }: { label: string; onClick: () => void; danger?: boolean; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={`${ICON_BUTTON} ${danger ? 'hover:!bg-red-50 hover:!text-red-700' : ''}`}
+    >
+      {children}
+    </button>
+  )
+}
 
 export function ClientsPage() {
   const auth = useAuth()
@@ -76,7 +143,6 @@ export function ClientsPage() {
   const canDeactivate = auth.can('CLIENTS', 'DELETE')
 
   const data = clients.data
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / data.pageSize)) : 1
   const filtered = search !== '' || status !== 'active'
 
   return (
@@ -89,27 +155,46 @@ export function ClientsPage() {
 
       {notice && (
         <div className="mb-4">
-          <Alert tone="success">{notice}</Alert>
+          <Alert tone="success" onDismiss={() => setNotice(null)}>
+            {notice}
+          </Alert>
         </div>
       )}
 
-      <Card>
-        <div className="flex flex-wrap items-end gap-4 border-b border-slate-200 p-4">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4 sm:px-5">
+            <h2 className="text-base font-semibold text-slate-900">Client directory</h2>
+            <p className="text-sm text-slate-500" aria-live="polite">
+              {data ? (
+                <>
+                  <span className="font-semibold tabular-nums text-slate-800">{data.total}</span> {filtered ? 'matching ' : ''}
+                  {data.total === 1 ? 'client' : 'clients'}
+                </>
+              ) : (
+                'Loading…'
+              )}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
           <div className="min-w-56 flex-1">
-            <label htmlFor={searchId} className="mb-1 block text-sm font-medium text-slate-700">
+            <label htmlFor={searchId} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
               Search
             </label>
-            <input
-              id={searchId}
-              type="search"
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              placeholder="Name, contact person, email or phone"
-              className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm placeholder:text-slate-400"
-            />
+            <div className="relative">
+              <Icon name="search" className="pointer-events-none absolute left-3 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-slate-400" />
+              <input
+                id={searchId}
+                type="search"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Name, contact person, email or phone"
+                className={`block w-full py-2.5 pl-10 pr-3 placeholder:text-slate-500 ${FIELD}`}
+              />
+            </div>
           </div>
           <div>
-            <label htmlFor={statusId} className="mb-1 block text-sm font-medium text-slate-700">
+            <label htmlFor={statusId} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
               Status
             </label>
             <select
@@ -119,12 +204,13 @@ export function ClientsPage() {
                 setStatus(event.target.value as StatusFilter)
                 setPage(1)
               }}
-              className="block rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
+              className={`block px-3 py-2.5 ${FIELD}`}
             >
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
               <option value="all">All</option>
             </select>
+          </div>
           </div>
         </div>
 
@@ -155,66 +241,101 @@ export function ClientsPage() {
 
         {data && data.items.length > 0 && (
           <>
-            <div className={TABLE.wrapper}>
+            <TableScroll label="Clients">
               <table className={TABLE.table}>
                 <caption className="sr-only">Clients</caption>
                 <thead>
                   <tr>
-                    <th scope="col" className={TABLE.th}>
-                      Client name
+                    <th scope="col" className={TABLE.snHead}>
+                      #
+                    </th>
+                    <th scope="col" className={`${TABLE.th} pl-5`}>
+                      Client
                     </th>
                     <th scope="col" className={TABLE.th}>
-                      Contact person
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Phone
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Email
+                      Contact details
                     </th>
                     <th scope="col" className={TABLE.th}>
                       Status
                     </th>
-                    <th scope="col" className={`${TABLE.th} text-right`}>
+                    <th scope="col" className={`${TABLE.th} pr-5 text-right`}>
                       Actions
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {data.items.map((client) => (
-                    <tr key={client.id} className={TABLE.row}>
-                      <td className={`${TABLE.td} min-w-48 font-medium text-slate-900`}>{client.name}</td>
-                      <td className={TABLE.td}>{client.contactPerson ?? '—'}</td>
-                      <td className={`${TABLE.td} whitespace-nowrap`}>{client.phone ?? '—'}</td>
-                      <td className={TABLE.td}>{client.email ?? '—'}</td>
+                  {data.items.map((client, index) => (
+                    <tr key={client.id} className={`${TABLE.row} hover:shadow-[inset_3px_0_0_#1479BD]`}>
+                      <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
+                      <td className={`${TABLE.td} min-w-56 py-3 pl-5`}>
+                        <div className="flex items-center gap-3.5">
+                          <ClientAvatar name={client.name} />
+                          <div className="min-w-0">
+                            <span className={`block max-w-64 break-words text-sm font-semibold leading-snug ${client.isActive ? 'text-slate-900' : 'text-slate-500'}`}>{client.name}</span>
+                            <span className="mt-0.5 block text-xs text-slate-500">Added {formatDate(client.createdAt.slice(0, 10))}</span>
+                          </div>
+                        </div>
+                      </td>
+                      {/* Person, phone and email in one cell, as small pills. A client with none of them offers to add them. */}
+                      <td className={`${TABLE.td} min-w-52 py-3`}>
+                        {client.contactPerson || client.phone || client.email ? (
+                          <div className="space-y-1.5">
+                            {client.contactPerson && <span className="block text-sm font-medium text-slate-900">{client.contactPerson}</span>}
+                            <div className="flex flex-wrap gap-1.5">
+                              {client.phone && (
+                                <a
+                                  href={`tel:${client.phone.replace(/[^+\d]/g, '')}`}
+                                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-sky-100 hover:text-[#0b3b66]"
+                                >
+                                  <Icon name="phone" className="h-3.5 w-3.5 shrink-0 text-[#1479BD]" />
+                                  {client.phone}
+                                </a>
+                              )}
+                              {client.email && (
+                                <a
+                                  href={`mailto:${client.email}`}
+                                  className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors [overflow-wrap:anywhere] hover:bg-sky-100 hover:text-[#0b3b66]"
+                                >
+                                  <Icon name="mail" className="h-3.5 w-3.5 shrink-0 text-[#1479BD]" />
+                                  {client.email}
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ) : canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => setDialog({ kind: 'edit', client })}
+                            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:border-[#1479BD] hover:bg-sky-50 hover:text-[#1479BD]"
+                          >
+                            <Icon name="edit" className="h-3.5 w-3.5" />
+                            Add contact details
+                          </button>
+                        ) : (
+                          <span className="text-xs italic text-slate-400">No contact details added</span>
+                        )}
+                      </td>
                       <td className={TABLE.td}>
                         <StatusBadge active={client.isActive} />
                       </td>
-                      <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`View ${client.name}`}
-                            onClick={() => setDialog({ kind: 'view', clientId: client.id })}
-                          >
-                            View
-                          </Button>
+                      <td className={`${TABLE.td} whitespace-nowrap pr-5 text-right`}>
+                        <div className="inline-flex items-center divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                          <IconButton label={`View ${client.name}`} onClick={() => setDialog({ kind: 'view', clientId: client.id })}>
+                            <Icon name="eye" className="h-[18px] w-[18px]" />
+                          </IconButton>
                           {canEdit && (
-                            <Button variant="ghost" size="sm" aria-label={`Edit ${client.name}`} onClick={() => setDialog({ kind: 'edit', client })}>
-                              Edit
-                            </Button>
+                            <IconButton label={`Edit ${client.name}`} onClick={() => setDialog({ kind: 'edit', client })}>
+                              <Icon name="edit" className="h-[18px] w-[18px]" />
+                            </IconButton>
                           )}
                           {canDeactivate && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className={client.isActive ? 'text-red-700 hover:bg-red-50' : undefined}
-                              aria-label={`${client.isActive ? 'Deactivate' : 'Reactivate'} ${client.name}`}
+                            <IconButton
+                              label={`${client.isActive ? 'Deactivate' : 'Reactivate'} ${client.name}`}
+                              danger={client.isActive}
                               onClick={() => setDialog({ kind: 'toggle', client })}
                             >
-                              {client.isActive ? 'Deactivate' : 'Reactivate'}
-                            </Button>
+                              <Icon name={client.isActive ? 'stop' : 'restore'} className="h-[18px] w-[18px]" />
+                            </IconButton>
                           )}
                         </div>
                       </td>
@@ -222,29 +343,12 @@ export function ClientsPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScroll>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
-              <p>
-                Showing {(data.page - 1) * data.pageSize + 1}–{(data.page - 1) * data.pageSize + data.items.length} of {data.total}
-              </p>
-              {totalPages > 1 && (
-                <div className="flex items-center gap-2">
-                  <Button variant="secondary" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-                    Previous
-                  </Button>
-                  <span>
-                    Page {data.page} of {totalPages}
-                  </span>
-                  <Button variant="secondary" size="sm" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
-                    Next
-                  </Button>
-                </div>
-              )}
-            </div>
+            <Pager page={data.page} pageSize={data.pageSize} shown={data.items.length} total={data.total} onPage={setPage} />
           </>
         )}
-      </Card>
+      </div>
 
       {(dialog.kind === 'create' || dialog.kind === 'edit') && (
         <ClientFormModal

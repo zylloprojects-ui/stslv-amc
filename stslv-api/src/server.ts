@@ -7,7 +7,7 @@ const app = createApp();
 const PORT = process.env.PORT || 3001;
 
 app.listen(PORT, () => {
-  console.log(`STSLV AMC API running on http://localhost:${PORT}`);
+  console.log(`STSLEV AMC API running on http://localhost:${PORT}`);
 
   if (!isDatabasePasswordSet) {
     console.warn("DB_PASSWORD is blank in .env. Database connections will fail until it is set.");

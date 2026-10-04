@@ -1,11 +1,13 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useId, useState, type InputHTMLAttributes, type ReactNode, type Ref } from 'react'
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
-import { Navigate, useLocation } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { useAuth } from '../auth/context'
-import { Alert, BrandLoader } from '../components/ui'
+import { usePageTitle } from '../components/hooks'
+import { Alert, Spinner } from '../components/ui'
 import { errorMessage } from '../lib/api'
+import { AuthSubmitButton, LoginField, MailIcon, PasswordField } from './auth/authUi'
 
 const loginSchema = z.object({
   email: z.string().trim().min(1, 'Email is required.').pipe(z.email('Enter a valid email address.')),
@@ -23,10 +25,10 @@ const HEADINGS = {
   signin: {
     eyebrow: 'Secure sign in',
     title: 'Welcome back',
-    text: 'Sign in to STSLEV ERP to manage contracts, projects and invoices.',
+    text: 'Sign in to STSLEV AMC to manage contracts, projects and invoices.',
   },
   signup: {
-    eyebrow: 'New to STSLEV ERP',
+    eyebrow: 'New to STSLEV AMC',
     title: 'Get your account',
     text: 'Access is granted by your administrator so every action stays auditable.',
   },
@@ -35,13 +37,26 @@ const HEADINGS = {
     title: 'Forgot your password?',
     text: 'No problem. Here is how to get back in.',
   },
+  reset: {
+    eyebrow: 'Account recovery',
+    title: 'Choose a new password',
+    text: 'Set a new password for your STSLEV AMC account.',
+  },
 } as const
 
-const SIGNUP_STEPS = [
-  { title: 'Ask your administrator', text: 'Share your name, work email and the role you need.' },
-  { title: 'Receive your credentials', text: 'The administrator creates your account and assigns permissions.' },
-  { title: 'Sign in', text: 'Use the Sign in tab and change your password after first login.' },
-]
+type AuthMode = keyof typeof HEADINGS
+
+// Each mode has its own address, so it can be linked to, bookmarked and reached with Back.
+const MODE_PATHS: Record<AuthMode, string> = {
+  signin: '/login',
+  signup: '/signup',
+  forgot: '/forgot-password',
+  reset: '/reset-password',
+}
+
+function modeOf(pathname: string): AuthMode {
+  return (Object.keys(MODE_PATHS) as AuthMode[]).find((mode) => MODE_PATHS[mode] === pathname) ?? 'signin'
+}
 
 const WORKFLOW = [
   { title: 'AMC contracts & schedules', text: 'Every visit generated from contract frequency and validity.' },
@@ -55,86 +70,6 @@ const ORBS = [
   { color: BRAND[6], className: 'left-1/3 top-1/2 h-72 w-72', delay: '-9s' },
   { color: BRAND[2], className: 'right-1/4 top-[-4rem] h-56 w-56', delay: '-3s' },
 ]
-
-function MailIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-      <rect x="3" y="5" width="18" height="14" rx="2.5" />
-      <path d="m4 7 8 6 8-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
-function LockIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-      <rect x="4.5" y="10.5" width="15" height="10" rx="2.5" />
-      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function EyeIcon({ off }: { off: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" strokeLinejoin="round" />
-      <circle cx="12" cy="12" r="3" />
-      {off && <path d="m4 4 16 16" strokeLinecap="round" />}
-    </svg>
-  )
-}
-
-interface FieldProps extends InputHTMLAttributes<HTMLInputElement> {
-  ref?: Ref<HTMLInputElement>
-  label: string
-  icon: ReactNode
-  error?: string | undefined
-  trailing?: ReactNode
-}
-
-/** A login input with a leading icon and a focus glow. */
-function LoginField({ label, icon, error, trailing, required, ...rest }: FieldProps) {
-  const id = useId()
-
-  return (
-    <div>
-      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-slate-700">
-        {label}
-        {required && (
-          <span className="text-red-600" aria-hidden="true">
-            {' '}
-            *
-          </span>
-        )}
-      </label>
-      <div className="group relative">
-        <span
-          className={`pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 transition-colors duration-200 ${
-            error ? 'text-red-500' : 'text-slate-400 group-focus-within:text-blue-600'
-          }`}
-        >
-          {icon}
-        </span>
-        <input
-          id={id}
-          aria-invalid={error ? true : undefined}
-          aria-required={required || undefined}
-          aria-describedby={error ? `${id}-error` : undefined}
-          className={`block w-full rounded-xl border bg-slate-50/70 py-3 pl-11 text-sm text-slate-900 placeholder:text-slate-400 transition-all duration-200 hover:border-slate-400 focus:bg-white focus:shadow-[0_0_0_4px_rgba(37,99,235,0.12)] focus:outline-none ${
-            trailing ? 'pr-12' : 'pr-4'
-          } ${error ? 'border-red-500 focus:shadow-[0_0_0_4px_rgba(239,68,68,0.12)]' : 'border-slate-300 focus:border-blue-600'}`}
-          {...rest}
-        />
-        {trailing && <span className="absolute inset-y-0 right-0 flex items-center pr-2">{trailing}</span>}
-      </div>
-      {error && (
-        <p id={`${id}-error`} className="mt-1.5 text-xs text-red-600">
-          {error}
-        </p>
-      )}
-    </div>
-  )
-}
 
 /** The logo with a slow pinwheel of rings behind it. */
 function LogoMark() {
@@ -183,35 +118,23 @@ function FlowDiagram() {
   )
 }
 
-export function LoginPage() {
+/**
+ * The frame shared by the sign in, sign up and password recovery pages: the brand
+ * panel, the heading, the card and its Sign in / Sign up tabs. The page for the
+ * current address is shown inside the card.
+ */
+export function AuthLayout() {
   const auth = useAuth()
   const location = useLocation()
-  const [failure, setFailure] = useState<string | null>(null)
-  const [attempts, setAttempts] = useState(0)
-  const [reveal, setReveal] = useState(false)
-  const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin')
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } })
+  const navigate = useNavigate()
+  const mode = modeOf(location.pathname)
 
-  if (auth.status === 'authenticated') {
+  // A reset link must still work for someone who is signed in on this browser.
+  if (auth.status === 'authenticated' && mode !== 'reset') {
     const from = (location.state as { from?: string } | null)?.from
 
     return <Navigate to={from && from !== '/login' ? from : '/dashboard'} replace />
   }
-
-  const onSubmit = handleSubmit(async (values) => {
-    setFailure(null)
-
-    try {
-      await auth.login(values.email, values.password)
-    } catch (error) {
-      setFailure(errorMessage(error))
-      setAttempts((count) => count + 1)
-    }
-  })
 
   return (
     <div className="grid h-dvh overflow-hidden bg-slate-950 lg:grid-cols-[1.1fr_1fr]">
@@ -242,7 +165,7 @@ export function LoginPage() {
                 Smart Technical
                 <span className="block bg-gradient-to-r from-[#4DB8FF] to-[#7ED36B] bg-clip-text text-transparent">Service LLC</span>
               </p>
-              <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.28em] text-sky-200/70">STSLEV ERP · Operations Suite</p>
+              <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.28em] text-sky-200/70">STSLEV AMC · Operations Suite</p>
             </div>
           </div>
 
@@ -284,10 +207,12 @@ export function LoginPage() {
       </section>
 
       {/* Sign-in panel */}
-      <main className="relative flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-100 via-sky-50 to-slate-200 px-5 py-3 sm:px-10">
+      <main className="relative overflow-hidden bg-gradient-to-br from-slate-100 via-sky-50 to-slate-200">
         <span className="login-float absolute -right-24 -top-24 h-80 w-80 rounded-full bg-sky-400/25 blur-3xl" aria-hidden="true" />
         <span className="login-float absolute -bottom-24 -left-16 h-72 w-72 rounded-full bg-emerald-400/20 blur-3xl [animation-delay:-7s]" aria-hidden="true" />
 
+        {/* Centred while it fits; scrolls when a form is taller than the screen ("safe" keeps the top reachable). */}
+        <div className="relative flex h-full items-center-safe justify-center overflow-y-auto px-5 py-3 sm:px-10">
         <div className="login-rise relative w-full max-w-md">
           <div className="mb-4 text-center lg:text-left [@media(max-height:640px)]:mb-2">
             <img src="/stslv-logo.png" alt="" className="mx-auto mb-2 h-11 w-11 object-contain lg:hidden [@media(max-height:720px)]:hidden" />
@@ -301,7 +226,7 @@ export function LoginPage() {
             <span className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-sky-200/50 blur-2xl" aria-hidden="true" />
             <span className="pointer-events-none absolute -bottom-12 -left-10 h-32 w-32 rounded-full bg-emerald-200/40 blur-2xl" aria-hidden="true" />
 
-            <div role="tablist" aria-label="Account" className={`relative mb-4 grid grid-cols-2 rounded-xl bg-slate-100/90 p-1 ring-1 ring-slate-200 ${mode === 'forgot' ? 'hidden' : ''}`}>
+            <div role="tablist" aria-label="Account" className={`relative mb-4 grid grid-cols-2 rounded-xl bg-slate-100/90 p-1 ring-1 ring-slate-200 ${mode === 'forgot' || mode === 'reset' ? 'hidden' : ''}`}>
               <span
                 className={`absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-lg bg-gradient-to-r from-[#0f5f98] to-[#0b7a96] shadow-md shadow-sky-700/30 transition-transform duration-300 ease-out ${
                   mode === 'signup' ? 'translate-x-full' : ''
@@ -314,7 +239,7 @@ export function LoginPage() {
                   type="button"
                   role="tab"
                   aria-selected={mode === tab}
-                  onClick={() => setMode(tab)}
+                  onClick={() => navigate(MODE_PATHS[tab], { state: location.state })}
                   className={`relative rounded-lg py-2 text-sm font-semibold transition-colors duration-200 ${
                     mode === tab ? 'text-white' : 'text-slate-500 hover:text-slate-800'
                   }`}
@@ -324,127 +249,103 @@ export function LoginPage() {
               ))}
             </div>
 
-            {mode === 'forgot' ? (
-              <div key="forgot" className="login-rise space-y-4">
-                <span className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-[#1479BD]" aria-hidden="true">
-                  <LockIcon />
-                </span>
-                <p className="text-sm text-slate-600">
-                  For security, passwords are reset by an administrator. Contact your STSLEV administrator with your work email and ask for a password reset.
-                  You will receive a temporary password to sign in with.
-                </p>
-                <Alert tone="info">Online password reset by email is not available yet.</Alert>
-                <button
-                  type="button"
-                  onClick={() => setMode('signin')}
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:border-[#1479BD] hover:text-[#1479BD]"
-                >
-                  ← Back to sign in
-                </button>
-              </div>
-            ) : mode === 'signup' ? (
-              <div key="signup" className="login-rise space-y-4" role="tabpanel">
-                <ol className="space-y-3">
-                  {SIGNUP_STEPS.map((step, i) => (
-                    <li key={step.title} className="flex items-start gap-3">
-                      <span
-                        className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
-                        style={{ backgroundColor: [BRAND[5], BRAND[6], BRAND[7]][i] }}
-                        aria-hidden="true"
-                      >
-                        {i + 1}
-                      </span>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">{step.title}</p>
-                        <p className="text-sm text-slate-600">{step.text}</p>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-                <Alert tone="info">Self-registration is not available. Please contact your STSLEV administrator to request access.</Alert>
-                <button
-                  type="button"
-                  onClick={() => setMode('signin')}
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition-colors hover:border-[#1479BD] hover:text-[#1479BD]"
-                >
-                  I already have an account
-                </button>
-              </div>
-            ) : auth.status === 'loading' ? (
-              <BrandLoader label="Checking your session" size="sm" />
-            ) : (
-              <form onSubmit={onSubmit} noValidate className="relative space-y-3.5">
-                {failure && (
-                  <div key={attempts} className="login-shake">
-                    <Alert>{failure}</Alert>
-                  </div>
-                )}
-
-                <LoginField
-                  label="Email"
-                  type="email"
-                  autoComplete="username"
-                  placeholder="name@company.com"
-                  icon={<MailIcon />}
-                  required
-                  error={errors.email?.message}
-                  {...register('email')}
-                />
-                <LoginField
-                  label="Password"
-                  type={reveal ? 'text' : 'password'}
-                  autoComplete="current-password"
-                  placeholder="Enter your password"
-                  icon={<LockIcon />}
-                  required
-                  error={errors.password?.message}
-                  trailing={
-                    <button
-                      type="button"
-                      onClick={() => setReveal((value) => !value)}
-                      aria-pressed={reveal}
-                      aria-label="Show or hide characters"
-                      className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-                    >
-                      <EyeIcon off={reveal} />
-                    </button>
-                  }
-                  {...register('password')}
-                />
-
-                <div className="-mt-1 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setMode('forgot')}
-                    className="rounded text-sm font-medium text-[#1479BD] transition-colors hover:text-[#0b3b66] hover:underline"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  aria-busy={isSubmitting || undefined}
-                  className="group relative inline-flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-[#0f5f98] to-[#0b7a96] px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-sky-700/30 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-sky-700/40 active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
-                >
-                  <span className="login-sheen absolute inset-y-0 left-0 w-1/3 bg-white/25" aria-hidden="true" />
-                  {isSubmitting && (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/80 border-t-transparent" aria-hidden="true" />
-                  )}
-                  <span className="relative">{isSubmitting ? 'Signing in' : 'Login'}</span>
-                </button>
-              </form>
-            )}
+            <Outlet />
           </div>
           </div>
 
           <p className="mt-3 text-center text-xs text-slate-500 [@media(max-height:560px)]:hidden">
             <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 align-middle" aria-hidden="true" />
-            Accounts are created by an administrator.
+            Every account is approved by an administrator.
           </p>
+        </div>
         </div>
       </main>
     </div>
+  )
+}
+
+export function LoginPage() {
+  const auth = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
+  // Set by the reset password page once the new password is saved.
+  const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true
+  const [failure, setFailure] = useState<string | null>(null)
+  const [attempts, setAttempts] = useState(0)
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginForm>({ resolver: zodResolver(loginSchema), defaultValues: { email: '', password: '' } })
+
+  usePageTitle('Sign in')
+
+  // Removed from the history entry too, so it does not come back on reload or when switching tabs.
+  const clearPasswordReset = () => {
+    if (passwordReset) {
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }
+
+  const onSubmit = handleSubmit(async (values) => {
+    setFailure(null)
+    clearPasswordReset()
+
+    try {
+      await auth.login(values.email, values.password)
+    } catch (error) {
+      setFailure(errorMessage(error))
+      setAttempts((count) => count + 1)
+    }
+  })
+
+  if (auth.status === 'loading') {
+    return <Spinner label="Checking your session" />
+  }
+
+  return (
+    <form onSubmit={onSubmit} noValidate className="relative space-y-3.5">
+      {passwordReset && (
+        <Alert tone="success" onDismiss={clearPasswordReset}>
+          Your password has been reset successfully. Please sign in again using your new password.
+        </Alert>
+      )}
+      {failure && (
+        <div key={attempts} className="login-shake">
+          <Alert>{failure}</Alert>
+        </div>
+      )}
+
+      <LoginField
+        label="Email"
+        type="email"
+        autoComplete="username"
+        placeholder="name@company.com"
+        icon={<MailIcon />}
+        autoFocus
+        required
+        error={errors.email?.message}
+        {...register('email')}
+      />
+      <PasswordField
+        label="Password"
+        autoComplete="current-password"
+        placeholder="Enter your password"
+        required
+        error={errors.password?.message}
+        {...register('password')}
+      />
+
+      <div className="-mt-1 flex justify-end">
+        <Link
+          to="/forgot-password"
+          className="rounded text-sm font-medium text-[#1479BD] transition-colors hover:text-[#0b3b66] hover:underline"
+        >
+          Forgot password?
+        </Link>
+      </div>
+
+      <AuthSubmitButton busy={isSubmitting}>{isSubmitting ? 'Signing in' : 'Login'}</AuthSubmitButton>
+    </form>
   )
 }

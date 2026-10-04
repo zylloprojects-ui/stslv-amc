@@ -120,8 +120,20 @@ describe('protected routes', () => {
     session(ADMIN)
     renderApp('/dashboard')
 
-    await userEvent.click(await screen.findByRole('button', { name: /Asha Admin/ }))
+    // Sign out sits in the account menu in the header.
+    await userEvent.click(await screen.findByRole('button', { name: /Account menu: Asha Admin/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }))
+
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(localStorage.getItem('stslv-amc.token')).toBeNull()
+  })
+
+  it('also signs out from the sidebar', async () => {
+    session(ADMIN)
+    renderApp('/dashboard')
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    await userEvent.click(within(nav).getByRole('button', { name: 'Sign Out' }))
 
     expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
     expect(localStorage.getItem('stslv-amc.token')).toBeNull()
@@ -140,43 +152,39 @@ describe('protected routes', () => {
 })
 
 describe('permission-based navigation', () => {
-  const NAV_LABELS = [
-    'Dashboard',
-    'Clients',
-    'AMC Contracts',
-    'AMC Schedule',
-    'AMC Execution',
-    'Projects',
-    'Procurement',
-    'Expenses',
-    'Invoice Tracking',
-    'Reports',
-    'Users & Access',
-    'Settings',
-  ]
+  const linkNames = (nav: HTMLElement) =>
+    within(nav)
+      .getAllByRole('link')
+      .map((link) => link.textContent)
 
-  // The sidebar is an accordion: one group is open at a time, so each group is opened in turn.
+  /** The sidebar is an accordion: one group is open at a time, so each group is opened in turn. */
+  async function linksByGroup(nav: HTMLElement): Promise<Record<string, (string | null)[]>> {
+    // Dashboard at the top and Settings at the bottom are always shown; a group adds its own links between them.
+    const always = linkNames(nav)
+    const groups: Record<string, (string | null)[]> = {}
+
+    for (const heading of within(nav).getAllByRole('heading')) {
+      await userEvent.click(within(heading).getByRole('button'))
+      groups[heading.textContent ?? ''] = linkNames(nav).filter((name) => !always.includes(name))
+    }
+
+    return groups
+  }
+
   it('shows every section to an Admin', async () => {
     session(ADMIN)
     renderApp('/dashboard')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    const groups = within(nav)
-      .getAllByRole('heading')
-      .map((heading) => heading.textContent)
-    expect(groups).toEqual(['Operations', 'Finance', 'Reporting', 'Administration'])
-
-    const seen: string[] = []
-    for (const heading of within(nav).getAllByRole('heading')) {
-      await userEvent.click(within(heading).getByRole('button'))
-      within(nav)
-        .getAllByRole('link')
-        .forEach((link) => seen.push(link.textContent ?? ''))
-    }
 
     // Settings sits in the footer, after the groups.
-    expect([...new Set(seen)]).toEqual(expect.arrayContaining(NAV_LABELS.filter((label) => label !== 'Settings')))
-    expect(within(nav).getByRole('link', { name: 'Settings' })).toBeInTheDocument()
+    expect(linkNames(nav)).toEqual(['Dashboard', 'Settings'])
+    expect(await linksByGroup(nav)).toEqual({
+      Operations: ['Clients', 'AMC Contracts', 'AMC Schedule', 'AMC Execution', 'Projects', 'Procurement'],
+      Finance: ['Expenses', 'Invoice Tracking'],
+      Reporting: ['Reports', 'Historical Data'],
+      Administration: ['Users & Access', 'Roles & Permissions'],
+    })
   })
 
   it('opens only one group at a time', async () => {
@@ -187,11 +195,23 @@ describe('permission-based navigation', () => {
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
 
     await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
+    expect(within(nav).getByRole('button', { name: 'Operations' })).toHaveAttribute('aria-expanded', 'true')
     expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
 
     await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
     expect(within(nav).getByRole('link', { name: 'Expenses' })).toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
+    expect(within(nav).getByRole('button', { name: 'Operations' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('starts with the group of the current page open', async () => {
+    session(ADMIN)
+    renderApp('/reports')
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+
+    expect(within(nav).getByRole('button', { name: 'Reporting' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(nav).getByRole('link', { name: 'Reports' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('shows a restricted role only the modules it may view', async () => {
@@ -199,20 +219,10 @@ describe('permission-based navigation', () => {
     renderApp('/dashboard')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    const groups = within(nav)
-      .getAllByRole('heading')
-      .map((heading) => heading.textContent)
-    expect(groups).toEqual(['Operations', 'Finance'])
 
-    const seen: string[] = []
-    for (const heading of within(nav).getAllByRole('heading')) {
-      await userEvent.click(within(heading).getByRole('button'))
-      within(nav)
-        .getAllByRole('link')
-        .forEach((link) => seen.push(link.textContent ?? ''))
-    }
-
-    expect([...new Set(seen)].sort()).toEqual(['Clients', 'Dashboard', 'Expenses', 'Projects'])
+    // No Settings link: the role may not view it.
+    expect(linkNames(nav)).toEqual(['Dashboard'])
+    expect(await linksByGroup(nav)).toEqual({ Operations: ['Clients', 'Projects'], Finance: ['Expenses'] })
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })
 
@@ -227,16 +237,16 @@ describe('permission-based navigation', () => {
 
   it('shows unbuilt modules as in progress, with no data', async () => {
     session(ADMIN)
-    renderApp('/amc/contracts')
+    renderApp('/reports')
 
-    expect(await screen.findByRole('heading', { name: 'AMC Contracts' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument()
     expect(screen.getByText('Module implementation in progress')).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 })
 
 describe('dashboard', () => {
-  it('shows the real client counts and no figures for modules that do not exist yet', async () => {
+  it('shows the real client counts, and no card for a figure the API did not return', async () => {
     session(ADMIN)
     renderApp('/dashboard')
 
@@ -244,11 +254,20 @@ describe('dashboard', () => {
     expect(await within(clientsCard).findByText('4')).toBeInTheDocument()
     expect(within(clientsCard).getByText(/1 inactive/)).toBeInTheDocument()
 
-    for (const label of ['Active AMC Contracts', 'Visits Due', 'Ready for Invoice', 'Active Projects', 'Project Costs', 'Pending Invoices']) {
-      const card = screen.getByText(label).closest('div.border-dashed') as HTMLElement
-      expect(within(card).getByText('Not yet available')).toBeInTheDocument()
-      expect(card.textContent).not.toMatch(/\d/)
+    // The summary above carries client counts only. The other metrics are connected
+    // to the API, so without a figure from it they are left out: no placeholder, no zero.
+    for (const label of [
+      'Active Contracts',
+      'Visits Due',
+      'Ready for Invoice',
+      'Active Projects',
+      'Projects Ready for Invoice',
+      'Tracked Expenses',
+      'Ready-for-Invoice Value',
+    ]) {
+      expect(screen.queryByRole('heading', { name: label, level: 3 })).not.toBeInTheDocument()
     }
+    expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
   })
 })
 
@@ -267,6 +286,7 @@ describe('cookie notice', () => {
     renderApp('/dashboard')
 
     const dialog = await screen.findByRole('dialog', { name: 'Cookie Policy' })
+    expect(dialog).toHaveTextContent('STSLEV AMC stores a small amount of information')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Accept All' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -321,15 +341,53 @@ describe('colour theme', () => {
     expect(document.documentElement.dataset.palette).toBe('sky')
     expect(localStorage.getItem('stslev.palette')).toBe('sky')
   })
+
+  it('switches to dark mode and back, and remembers the choice', async () => {
+    session(ADMIN)
+    renderApp('/dashboard')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Switch to dark mode' }))
+
+    expect(document.documentElement).toHaveClass('dark')
+    expect(localStorage.getItem('stslev.theme')).toBe('dark')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Switch to light mode' }))
+
+    expect(document.documentElement).not.toHaveClass('dark')
+    expect(localStorage.getItem('stslev.theme')).toBe('light')
+  })
+})
+
+describe('sidebar', () => {
+  it('minimises to icons, remembers it, and expands again when a group is chosen', async () => {
+    session(ADMIN)
+    renderApp('/clients')
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
+
+    await userEvent.click(within(nav).getByRole('button', { name: 'Minimise sidebar' }))
+
+    expect(localStorage.getItem('stslev.sidebar-collapsed')).toBe('1')
+    expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
+    // Every control keeps its name for screen readers while only its icon is shown.
+    expect(within(nav).getByRole('link', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(within(nav).getByRole('button', { name: 'Sign Out' })).toBeInTheDocument()
+
+    await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
+
+    expect(localStorage.getItem('stslev.sidebar-collapsed')).toBe('0')
+    expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
+  })
 })
 
 describe('page search', () => {
   it('opens the chosen page and keeps its name in the search box', async () => {
-    session(ADMIN)
+    signIn()
     mockApi((request) => {
       if (request.path === '/auth/me') return ok({ user: ADMIN })
       if (request.path === '/dashboard/summary') return summary
-      if (request.path === '/clients') return ok({ items: [], total: 0 })
+      if (request.path === '/clients') return ok({ items: [], total: 0, page: 1, pageSize: 25 })
       return undefined
     })
     renderApp('/dashboard')
@@ -341,23 +399,46 @@ describe('page search', () => {
     expect(await screen.findByRole('heading', { name: 'Clients' })).toBeInTheDocument()
     expect(box).toHaveValue('Clients')
 
+    // The sidebar follows: the page's group opens and the page is marked as current.
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    expect(within(nav).getByRole('link', { name: 'Clients' })).toHaveAttribute('aria-current', 'page')
+
     // Focusing again lists the pages with the current one marked.
     await userEvent.click(box)
     const options = await screen.findAllByRole('option')
     expect(options.length).toBeGreaterThan(1)
     expect(within(screen.getByRole('option', { name: /Clients/ })).getByLabelText('Selected')).toBeInTheDocument()
   })
-})
 
-describe('loader style', () => {
-  it('lets the user pick a loader design and remembers it', async () => {
-    session(ADMIN)
+  it('offers only the pages the role may view', async () => {
+    session(ACCOUNTANT)
     renderApp('/dashboard')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Colour theme' }))
-    await userEvent.click(screen.getByRole('button', { name: /Skeleton/ }))
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Search pages' }))
 
-    expect(localStorage.getItem('stslev.loader')).toBe('skeleton')
-    expect(screen.getByRole('button', { name: /Skeleton/ })).toHaveAttribute('aria-pressed', 'true')
+    const options = (await screen.findAllByRole('option')).map((option) => option.querySelector('span.font-semibold')?.textContent)
+    expect(options).toEqual(['Dashboard', 'Clients', 'Projects', 'Expenses', 'My Account'])
+  })
+})
+
+describe('suggestions popup', () => {
+  it('opens from the header, asks for enough detail, and says plainly that nothing is sent', async () => {
+    const api = session(ADMIN)
+    renderApp('/dashboard')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Suggestions and improvements' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Suggestions & Improvements' })
+    expect(dialog).toHaveTextContent('propose an improvement for STSLEV AMC.')
+
+    await userEvent.type(within(dialog).getByLabelText('Description'), 'short')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Submit Feedback' }))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('at least 10 characters')
+
+    const before = api.requests.length
+    await userEvent.type(within(dialog).getByLabelText('Description'), ' but now long enough')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Submit Feedback' }))
+
+    expect(dialog).toHaveTextContent('Suggestions are not stored or sent yet.')
+    expect(api.requests).toHaveLength(before)
   })
 })

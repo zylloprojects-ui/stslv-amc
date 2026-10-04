@@ -11,7 +11,9 @@
     "test": "vitest run",
     "migrate": "tsx src/db/migrate-cli.ts",
     "migrate:status": "tsx src/db/migrate-cli.ts --status",
-    "admin:create": "tsx src/scripts/create-admin.ts"
+    "admin:create": "tsx src/scripts/create-admin.ts",
+    "legacy-import:dry-run": "tsx src/scripts/legacy-import.ts",
+    "legacy-import:apply": "tsx src/scripts/legacy-import-apply.ts"
   },
   "keywords": [],
   "author": "",

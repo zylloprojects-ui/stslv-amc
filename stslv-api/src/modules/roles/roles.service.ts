@@ -1,7 +1,7 @@
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
-import { forbidden, notFound } from "../../shared/errors";
+import { conflict, forbidden, notFound } from "../../shared/errors";
 import { ADMIN_ROLE_CODE, permissionKey, type Action, type Module, type PermissionKey } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
 
@@ -127,5 +127,125 @@ export function setRolePermissions(auth: AuthContext, roleId: string, permission
     });
 
     return findRole(client, roleId);
+  });
+}
+
+export interface NewRole {
+  code: string;
+  name: string;
+  description: string | null;
+}
+
+export interface RoleChanges {
+  name?: string;
+  description?: string | null;
+  isActive?: boolean;
+}
+
+/** Adds a department (a role). It starts with no permissions; they are granted separately, so a new department can do nothing until an administrator decides. */
+export function createRole(auth: AuthContext, input: NewRole): Promise<Role> {
+  return withTransaction(async (client) => {
+    const existing = await client.query("SELECT 1 FROM roles WHERE code = $1 OR lower(name) = lower($2)", [input.code, input.name]);
+
+    if ((existing.rowCount ?? 0) > 0) {
+      throw conflict("A department with this code or name already exists.");
+    }
+
+    const inserted = await client.query<{ id: string }>("INSERT INTO roles (code, name, description) VALUES ($1, $2, $3) RETURNING id", [
+      input.code,
+      input.name,
+      input.description,
+    ]);
+    const id = (inserted.rows[0] as { id: string }).id;
+
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: "role.created",
+      module: "USERS",
+      entityType: "roles",
+      entityId: id,
+      description: `Department "${input.name}" (${input.code}) was added.`,
+      metadata: { code: input.code },
+    });
+
+    return findRole(client, id);
+  });
+}
+
+/** Changes a department's name, description or status. Its code never changes: permissions and history refer to it. */
+export function updateRole(auth: AuthContext, roleId: string, changes: RoleChanges): Promise<Role> {
+  return withTransaction(async (client) => {
+    await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
+    const role = await findRole(client, roleId);
+
+    if (changes.isActive === false && role.isActive) {
+      if (role.code === ADMIN_ROLE_CODE) {
+        throw forbidden("The Admin department cannot be deactivated.");
+      }
+      if (role.userCount > 0) {
+        throw conflict(`${role.userCount} ${role.userCount === 1 ? "person still has" : "people still have"} this role. Move them to another role first.`);
+      }
+    }
+    if (changes.name !== undefined && changes.name.toLowerCase() !== role.name.toLowerCase()) {
+      const taken = await client.query("SELECT 1 FROM roles WHERE lower(name) = lower($1) AND id <> $2", [changes.name, roleId]);
+
+      if ((taken.rowCount ?? 0) > 0) {
+        throw conflict("A department with this name already exists.");
+      }
+    }
+
+    const name = changes.name ?? role.name;
+    const description = changes.description === undefined ? role.description : changes.description;
+    const isActive = changes.isActive ?? role.isActive;
+
+    if (name === role.name && description === role.description && isActive === role.isActive) {
+      return role;
+    }
+
+    await client.query("UPDATE roles SET name = $2, description = $3, is_active = $4 WHERE id = $1", [roleId, name, description, isActive]);
+
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: "role.updated",
+      module: "USERS",
+      entityType: "roles",
+      entityId: roleId,
+      description: `Department "${role.name}" was updated.`,
+      metadata: {
+        ...(name !== role.name ? { name: { from: role.name, to: name } } : {}),
+        ...(description !== role.description ? { description: "changed" } : {}),
+        ...(isActive !== role.isActive ? { isActive: { from: role.isActive, to: isActive } } : {}),
+      },
+    });
+
+    return findRole(client, roleId);
+  });
+}
+
+/** Deletes a department that nobody holds. The Admin department can never be deleted. */
+export function deleteRole(auth: AuthContext, roleId: string): Promise<void> {
+  return withTransaction(async (client) => {
+    await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
+    const role = await findRole(client, roleId);
+
+    if (role.code === ADMIN_ROLE_CODE) {
+      throw forbidden("The Admin department cannot be deleted.");
+    }
+    if (role.userCount > 0) {
+      throw conflict(`${role.userCount} ${role.userCount === 1 ? "person still has" : "people still have"} this role. Move them to another role first.`);
+    }
+
+    await client.query("DELETE FROM role_permissions WHERE role_id = $1", [roleId]);
+    await client.query("DELETE FROM roles WHERE id = $1", [roleId]);
+
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: "role.deleted",
+      module: "USERS",
+      entityType: "roles",
+      entityId: roleId,
+      description: `Department "${role.name}" (${role.code}) was deleted.`,
+      metadata: { code: role.code, permissionsRemoved: role.permissions.length },
+    });
   });
 }

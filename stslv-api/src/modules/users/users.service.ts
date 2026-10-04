@@ -5,13 +5,21 @@ import { conflict, forbidden, isUniqueViolation, notFound, validationError } fro
 import { ADMIN_ROLE_CODE, type PermissionKey } from "../../shared/permissions";
 import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth/access";
 import { hashPassword } from "../auth/password";
+import { revokeResetTokens } from "../auth/password-reset.service";
 import type { CreateUserInput } from "./users.schemas";
+
+/**
+ * PENDING: requested from the Sign up page and not yet decided by an administrator.
+ * REJECTED: the request was refused; the account is inactive and holds no role.
+ */
+export type ApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 interface UserRow {
   id: string;
   email: string;
   full_name: string;
   is_active: boolean;
+  approval_status: ApprovalStatus;
   last_login_at: Date | null;
   created_at: Date;
   roles: RoleSummary[];
@@ -22,6 +30,7 @@ export interface User {
   email: string;
   fullName: string;
   isActive: boolean;
+  approvalStatus: ApprovalStatus;
   lastLoginAt: string | null;
   createdAt: string;
   roles: RoleSummary[];
@@ -29,7 +38,7 @@ export interface User {
 
 // password_hash is deliberately never selected here.
 const USER_SELECT = `
-  SELECT u.id, u.email, u.full_name, u.is_active, u.last_login_at, u.created_at,
+  SELECT u.id, u.email, u.full_name, u.is_active, u.approval_status, u.last_login_at, u.created_at,
          COALESCE(
            json_agg(json_build_object('id', r.id::text, 'code', r.code, 'name', r.name) ORDER BY r.name)
              FILTER (WHERE r.id IS NOT NULL),
@@ -45,6 +54,7 @@ function toUser(row: UserRow): User {
     email: row.email,
     fullName: row.full_name,
     isActive: row.is_active,
+    approvalStatus: row.approval_status,
     lastLoginAt: row.last_login_at ? row.last_login_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
     roles: row.roles,
@@ -138,6 +148,11 @@ async function countOtherActiveAdmins(db: Queryable, excludingUserId: string): P
   return result.rows[0]?.count ?? 0;
 }
 
+/** Makes concurrent decisions about one user (approve, reject, change roles) happen one after the other. */
+async function lockUser(db: Queryable, id: string): Promise<void> {
+  await db.query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE", [id]);
+}
+
 const isAdmin = (user: User) => user.roles.some((role) => role.code === ADMIN_ROLE_CODE);
 
 export async function createUser(auth: AuthContext, input: CreateUserInput): Promise<User> {
@@ -208,10 +223,14 @@ export function updateUser(auth: AuthContext, id: string, fullName: string): Pro
 
 export function setUserActive(auth: AuthContext, id: string, isActive: boolean): Promise<User> {
   return withTransaction(async (client) => {
+    await lockUser(client, id);
     const before = await findUser(client, id);
 
     if (!isActive && id === auth.user.id) {
       throw conflict("You cannot deactivate your own account.");
+    }
+    if (isActive && before.approvalStatus === "REJECTED") {
+      throw conflict("This registration was rejected and cannot be activated. The person must submit a new request.");
     }
 
     await assertCanManageUser(auth, client, id);
@@ -224,14 +243,71 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
       throw conflict("This is the only active Admin. Assign the Admin role to another active user first.");
     }
 
-    await client.query("UPDATE users SET is_active = $1 WHERE id = $2", [isActive, id]);
+    // Activating an account requested from the Sign up page is its approval.
+    const approving = isActive && before.approvalStatus === "PENDING";
+
+    await client.query(
+      "UPDATE users SET is_active = $1, approval_status = CASE WHEN $1 THEN 'APPROVED' ELSE approval_status END WHERE id = $2",
+      [isActive, id]
+    );
+
+    if (!isActive) {
+      await revokeResetTokens(client, id);
+    }
+
     await logActivity(client, {
       userId: auth.user.id,
-      action: isActive ? "user.activated" : "user.deactivated",
+      action: approving ? "user.registration_approved" : isActive ? "user.activated" : "user.deactivated",
       module: "USERS",
       entityType: "users",
       entityId: id,
-      description: `User "${before.fullName}" ${isActive ? "activated" : "deactivated"}.`,
+      description: approving
+        ? `Sign-up request of "${before.fullName}" (${before.email}) approved and the account activated.`
+        : `User "${before.fullName}" ${isActive ? "activated" : "deactivated"}.`,
+      ...(approving ? { metadata: { roles: before.roles.map((role) => role.code) } } : {}),
+    });
+
+    return findUser(client, id);
+  });
+}
+
+/**
+ * Refuses a sign-up request. Only a PENDING account can be rejected: an approved
+ * or active account is never touched by this action. The account is kept for the
+ * audit trail, stays inactive, loses any role it was given while pending and has
+ * its reset links cancelled. The same email may submit a new request later.
+ */
+export function rejectRegistration(auth: AuthContext, id: string): Promise<User> {
+  return withTransaction(async (client) => {
+    await lockUser(client, id);
+    const before = await findUser(client, id);
+
+    if (before.approvalStatus !== "PENDING" || before.isActive) {
+      throw conflict("Only a pending sign-up request can be rejected.");
+    }
+
+    await assertCanManageUser(auth, client, id);
+
+    // The status is checked again inside the statement itself.
+    const rejected = await client.query(
+      "UPDATE users SET approval_status = 'REJECTED' WHERE id = $1 AND approval_status = 'PENDING' AND NOT is_active",
+      [id]
+    );
+
+    if (rejected.rowCount !== 1) {
+      throw conflict("Only a pending sign-up request can be rejected.");
+    }
+
+    await client.query("DELETE FROM user_roles WHERE user_id = $1", [id]);
+    await revokeResetTokens(client, id);
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: "user.registration_rejected",
+      module: "USERS",
+      entityType: "users",
+      entityId: id,
+      description: `Sign-up request of "${before.fullName}" (${before.email}) rejected.`,
+      metadata: { removedRoles: before.roles.map((role) => role.code) },
     });
 
     return findUser(client, id);
@@ -240,10 +316,14 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
 
 export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): Promise<User> {
   return withTransaction(async (client) => {
+    await lockUser(client, id);
     const before = await findUser(client, id);
 
     if (id === auth.user.id) {
       throw conflict("You cannot change your own roles. Ask another administrator.");
+    }
+    if (before.approvalStatus === "REJECTED") {
+      throw conflict("This registration was rejected and cannot be given a role.");
     }
 
     await assertCanManageUser(auth, client, id);
@@ -303,6 +383,7 @@ export async function resetUserPassword(auth: AuthContext, id: string, password:
       passwordHash,
       id,
     ]);
+    await revokeResetTokens(client, id);
     await logActivity(client, {
       userId: auth.user.id,
       action: "user.password_reset",

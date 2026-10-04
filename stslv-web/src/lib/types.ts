@@ -11,6 +11,7 @@ export const MODULES = [
   'REPORTS',
   'USERS',
   'SETTINGS',
+  'HISTORICAL_DATA',
 ] as const
 
 export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE', 'EXPORT'] as const
@@ -31,6 +32,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   REPORTS: 'Reports',
   USERS: 'Users & Access',
   SETTINGS: 'Settings',
+  HISTORICAL_DATA: 'Historical Data Review',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -82,6 +84,11 @@ export interface User {
   email: string
   fullName: string
   isActive: boolean
+  /**
+   * PENDING: requested from the Sign up page and not yet decided by an administrator.
+   * REJECTED: the request was refused; the account cannot sign in and holds no role.
+   */
+  approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
   lastLoginAt: string | null
   createdAt: string
   roles: RoleSummary[]

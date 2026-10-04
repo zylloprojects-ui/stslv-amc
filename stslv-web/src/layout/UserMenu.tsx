@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/context'
+import { initialsOf } from '../lib/format'
 
 function MenuIcon({ children }: { children: React.ReactNode }) {
   return (
@@ -46,12 +47,8 @@ export function UserMenu() {
 
   const user = auth.user
   const roles = user?.roles.map((role) => role.name) ?? []
-  const initials = (user?.fullName ?? '')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase())
-    .join('')
+  const fullName = user?.fullName ?? ''
+  const roleNames = roles.join(', ') || 'No role assigned'
 
   return (
     <div ref={wrapperRef} className="relative">
@@ -59,15 +56,17 @@ export function UserMenu() {
         type="button"
         aria-haspopup="true"
         aria-expanded={open}
+        // The name is hidden on narrow screens, so the button is always named in full here.
+        aria-label={`Account menu: ${fullName}, ${roleNames}`}
         onClick={() => setOpen((value) => !value)}
         className="flex min-w-0 items-center gap-3 rounded-xl px-2 py-1 transition-colors hover:bg-sky-50"
       >
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1B8AD3] to-[#5BAF48] text-sm font-bold text-white" aria-hidden="true">
-          {initials}
+          {initialsOf(fullName)}
         </span>
         <span className="hidden min-w-0 text-left sm:block">
-          <span className="block max-w-40 truncate text-sm font-semibold leading-tight text-slate-900">{user?.fullName}</span>
-          <span className="block max-w-40 truncate text-xs leading-tight text-slate-500">{roles.join(', ') || 'No role assigned'}</span>
+          <span className="block max-w-40 truncate text-sm font-semibold leading-tight text-slate-900">{fullName}</span>
+          <span className="block max-w-40 truncate text-xs leading-tight text-slate-500">{roleNames}</span>
         </span>
         <svg viewBox="0 0 20 20" className={`hidden h-4 w-4 text-slate-400 transition-transform duration-200 sm:block ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
           <path d="m5 8 5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />

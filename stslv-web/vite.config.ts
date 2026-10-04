@@ -6,6 +6,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    // Development only: the browser must never keep an old copy of a page's code.
+    headers: { 'Cache-Control': 'no-store' },
     // The browser calls /api on the web origin; Vite forwards it to the API.
     proxy: {
       '/api': {

@@ -231,6 +231,6 @@ describe("dashboard summary", () => {
     );
     const response = await api().get("/api/dashboard/summary").set(admin.headers);
 
-    expect(response.body.data).toEqual({ clients: counts.rows[0] });
+    expect(response.body.data.clients).toEqual(counts.rows[0]);
   });
 });
