@@ -2,10 +2,10 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
-import type { ReviewRow, ReviewSummary } from '../pages/historical/types'
+import type { ReviewRow, ReviewSummary, ReviewTotals } from '../pages/historical/types'
 import { ACCOUNTANT, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
-// The Historical Data Review page. Every name, number and amount is invented.
+// The Historical Data page. Every name, number and amount is invented.
 
 const row = (overrides: Partial<ReviewRow> & Pick<ReviewRow, 'id' | 'kind' | 'identifier'>): ReviewRow => ({
   batchId: '1',
@@ -128,17 +128,13 @@ const SUMMARY: ReviewSummary = {
   },
 }
 
-const EMPTY_SUMMARY: ReviewSummary = {
-  batches: [],
-  totals: { records: 0, imported: 0, provisional: 0 },
-  byKind: SUMMARY.byKind.map((kind) => ({ ...kind, total: 0, imported: 0, provisional: 0, importedAmount: kind.importedAmount === null ? null : '0.000', provisionalAmount: kind.provisionalAmount === null ? null : '0.000', withoutAmount: 0 })),
-  clientNames: { distinct: 0, clients: 0 },
-  holdReasons: [],
-  invoiceReferences: { byClassification: [], numbersMentioned: 0, distinctNumbers: 0 },
-}
+const EMPTY_TOTALS: ReviewTotals = { totals: { records: 0, imported: 0, provisional: 0 } }
+
+// Granted the module, but not the built-in Admin role.
+const REVIEWER: SessionUser = { ...ADMIN, roles: [{ id: '9', code: 'REVIEWER', name: 'Reviewer' }], permissions: ['DASHBOARD:VIEW', 'PROJECTS:VIEW', 'HISTORICAL_DATA:VIEW'] }
 
 /** A stand-in for the review API that applies the kind, status and reason filters it is sent. */
-function reviewApi(user: SessionUser, options: { summary?: ReviewSummary; rows?: ReviewRow[]; override?: (request: MockRequest) => MockReply | undefined } = {}) {
+function reviewApi(user: SessionUser, options: { summary?: ReviewTotals; rows?: ReviewRow[]; override?: (request: MockRequest) => MockReply | undefined } = {}) {
   signIn()
 
   return mockApi((request) => {
@@ -146,7 +142,8 @@ function reviewApi(user: SessionUser, options: { summary?: ReviewSummary; rows?:
     if (overridden) return overridden
 
     if (request.path === '/auth/me') return ok({ user })
-    if (request.method === 'GET' && request.path === '/historical-data/summary') return ok(options.summary ?? SUMMARY)
+    if (request.method === 'GET' && request.path === '/historical-data/summary') return ok(options.summary ?? { totals: SUMMARY.totals })
+    if (request.method === 'GET' && request.path === '/historical-data/audit') return ok(SUMMARY)
     if (request.method === 'GET' && request.path === '/historical-data/rows') {
       const kind = request.query.get('kind')
       const status = request.query.get('status')
@@ -165,7 +162,13 @@ function reviewApi(user: SessionUser, options: { summary?: ReviewSummary; rows?:
   })
 }
 
-const recordsTable = () => screen.findByRole('table', { name: 'Historical source records' })
+const recordsTable = () => screen.findByRole('table', { name: 'Historical records' })
+const openAudit = async () => {
+  await recordsTable()
+  await userEvent.click(screen.getByRole('tab', { name: 'Import Audit' }))
+
+  return screen.findByRole('table', { name: 'Summary of historical records by type' })
+}
 const lastRowsQuery = (api: ReturnType<typeof reviewApi>) => api.find('GET', '/historical-data/rows').at(-1)?.query
 
 describe('access', () => {
@@ -173,7 +176,7 @@ describe('access', () => {
     reviewApi(ADMIN)
     renderApp('/historical-data')
 
-    expect(await screen.findByRole('heading', { name: 'Historical Data Review', level: 1 })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Historical Data', level: 1 })).toBeInTheDocument()
     expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Historical Data' })).toHaveAttribute('aria-current', 'page')
   })
 
@@ -188,40 +191,36 @@ describe('access', () => {
 })
 
 describe('summary', () => {
-  it('shows imported and provisional records by type, with exact amounts', async () => {
-    reviewApi(ADMIN)
+  it('shows the three headline figures and none of the audit detail on the main page', async () => {
+    const api = reviewApi(ADMIN)
     renderApp('/historical-data')
-
-    const table = await screen.findByRole('table', { name: 'Summary of historical records by type' })
-    const cells = (name: RegExp) => within(within(table).getByRole('row', { name })).getAllByRole('cell').map((cell) => cell.textContent)
-
-    expect(cells(/^Projects \/ jobs/)).toEqual(['14', '8', '6', '4,810.609', '6,641.000'])
-    expect(cells(/^AMC visit periods/)).toEqual(['12', '2', '10', '800.000', '15,900.000'])
-    expect(cells(/^AMC contracts/)).toEqual(['3', '2', '1', '4,700.000', '12,000.000'])
-    // Client names carry no amount.
-    expect(cells(/^Client names/)).toEqual(['14', '8', '6', '—', '—'])
-    expect(cells(/^All records/)).toEqual(['43', '20', '23', '', ''])
-    // A missing value is said to be missing, not added as zero.
-    expect(within(table).getByText('1 with no job value in the source (not counted as zero)')).toBeInTheDocument()
-    expect(within(table).getByText('13 different names, leading to 5 client records so far')).toBeInTheDocument()
-  })
-
-  it('says the page is read-only and that provisional records affect nothing', async () => {
-    reviewApi(ADMIN)
-    renderApp('/historical-data')
-
     await recordsTable()
 
-    expect(screen.getByText(/exist only on this page: they are in no dashboard figure, schedule or invoice list\. This page is read-only\./)).toBeInTheDocument()
-    expect(screen.getByText(/9 invoice numbers mentioned, 8 different\. They are kept for reference only: no invoice record has been created from them\./)).toBeInTheDocument()
-    // The same classification of two kinds of record is one line.
-    const invoices = screen.getByRole('heading', { name: 'Invoice references in the Excel files' }).parentElement as HTMLElement
+    expect(screen.getByRole('button', { name: /^Total Records\s*43/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Imported\s*20/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Needs Review\s*23/ })).toBeInTheDocument()
+    // The audit detail is not on the main page, and is not asked for until its tab is opened.
+    expect(screen.queryByRole('table', { name: 'Summary of historical records by type' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/invoice numbers mentioned/)).not.toBeInTheDocument()
+    expect(screen.queryByText('Provisional')).not.toBeInTheDocument()
+    expect(api.find('GET', '/historical-data/audit')).toEqual([])
+  })
 
-    expect(within(invoices).getByText('A word, not an invoice number').nextSibling).toHaveTextContent('3')
+  it('lists the records of a status when its card is chosen', async () => {
+    const api = reviewApi(ADMIN)
+    renderApp('/historical-data')
+    await recordsTable()
+
+    await userEvent.click(screen.getByRole('button', { name: /^Needs Review/ }))
+
+    await waitFor(() => expect(lastRowsQuery(api)?.get('status')).toBe('provisional'))
+    expect(screen.getByLabelText('Status')).toHaveValue('provisional')
+    expect(screen.getByRole('button', { name: /^Needs Review/ })).toHaveAttribute('aria-pressed', 'true')
+    await waitFor(() => expect(screen.queryByText('JOB0102')).not.toBeInTheDocument())
   })
 
   it('shows an empty state before any data is loaded', async () => {
-    const api = reviewApi(ADMIN, { summary: EMPTY_SUMMARY, rows: [] })
+    const api = reviewApi(ADMIN, { summary: EMPTY_TOTALS, rows: [] })
     renderApp('/historical-data')
 
     expect(await screen.findByText('No historical data has been loaded yet')).toBeInTheDocument()
@@ -240,7 +239,82 @@ describe('summary', () => {
     failing = false
     await userEvent.click(screen.getAllByRole('button', { name: 'Try again' })[0] as HTMLElement)
 
-    expect(await screen.findByRole('table', { name: 'Summary of historical records by type' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /^Total Records\s*43/ })).toBeInTheDocument()
+  })
+})
+
+describe('import audit', () => {
+  it('shows imported and needs-review records by type, with exact amounts', async () => {
+    reviewApi(ADMIN)
+    renderApp('/historical-data')
+
+    const table = await openAudit()
+    const cells = (name: RegExp) => within(within(table).getByRole('row', { name })).getAllByRole('cell').map((cell) => cell.textContent)
+
+    expect(cells(/^Projects \/ jobs/)).toEqual(['14', '8', '6', '4,810.609', '6,641.000'])
+    expect(cells(/^AMC visit periods/)).toEqual(['12', '2', '10', '800.000', '15,900.000'])
+    expect(cells(/^AMC contracts/)).toEqual(['3', '2', '1', '4,700.000', '12,000.000'])
+    // Client names carry no amount.
+    expect(cells(/^Client names/)).toEqual(['14', '8', '6', '—', '—'])
+    expect(cells(/^All records/)).toEqual(['43', '20', '23', '', ''])
+    // A missing value is said to be missing, not added as zero.
+    expect(within(table).getByText('1 with no job value in the source (not counted as zero)')).toBeInTheDocument()
+    expect(within(table).getByText('13 different names, leading to 5 client records so far')).toBeInTheDocument()
+  })
+
+  it('shows the batch, its source files and the invoice references', async () => {
+    reviewApi(ADMIN)
+    renderApp('/historical-data')
+    await openAudit()
+
+    const batch = within(screen.getByRole('table', { name: 'Import batches' })).getByRole('row', { name: /Historical Excel import/ })
+
+    expect(within(batch).getByText('Contracts.xlsx, Schedule.xlsx, Jobs.xlsx')).toBeInTheDocument()
+    expect(within(batch).getByText('3 Oct 2026')).toBeInTheDocument()
+    expect(screen.getByText(/9 invoice numbers mentioned, 8 different\. They are kept for reference only: no invoice record has been created from them\./)).toBeInTheDocument()
+    // The same classification of two kinds of record is one line.
+    expect(screen.getByText('A word, not an invoice number').nextSibling).toHaveTextContent('3')
+  })
+
+  it('opens the records behind an open question', async () => {
+    const api = reviewApi(ADMIN)
+    renderApp('/historical-data')
+    await openAudit()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show 1 projects / jobs: Job value is empty' }))
+
+    await recordsTable()
+    await waitFor(() => expect(lastRowsQuery(api)?.get('reason')).toBe('JOB_VALUE_BLANK'))
+    expect(lastRowsQuery(api)?.get('kind')).toBe('PROJECT')
+    expect(screen.getByLabelText('Status')).toHaveValue('provisional')
+    await waitFor(() => expect(screen.queryByText('JOB0102')).not.toBeInTheDocument())
+
+    // The filter set from the audit is named, and can be removed.
+    await userEvent.click(screen.getByRole('button', { name: 'Remove filter: Reason: Job value is empty' }))
+    await waitFor(() => expect(lastRowsQuery(api)?.has('reason')).toBe(false))
+  })
+
+  it('opens the records with a kind of invoice reference', async () => {
+    const api = reviewApi(ADMIN)
+    renderApp('/historical-data')
+    await openAudit()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Show shared or several invoices' }))
+
+    await recordsTable()
+    await waitFor(() => expect(lastRowsQuery(api)?.get('invoice')).toBe('shared'))
+    expect(screen.getByRole('button', { name: 'Remove filter: Invoice reference: Shared or several invoices' })).toBeInTheDocument()
+  })
+
+  it('is not offered to a user who is not an Admin, and is not asked for', async () => {
+    const api = reviewApi(REVIEWER)
+    renderApp('/historical-data')
+    await recordsTable()
+
+    expect(screen.getByRole('button', { name: /^Needs Review\s*23/ })).toBeInTheDocument()
+    expect(screen.queryByRole('tab')).not.toBeInTheDocument()
+    expect(screen.queryByText('Import Audit')).not.toBeInTheDocument()
+    expect(api.find('GET', '/historical-data/audit')).toEqual([])
   })
 })
 
@@ -263,11 +337,11 @@ describe('source records', () => {
     // A job with no value shows that it has none. It is not shown as 0.000.
     expect(within(blank).getByText('Not given')).toBeInTheDocument()
     expect(within(blank).queryByText('0.000')).not.toBeInTheDocument()
-    expect(within(blank).getByText('Provisional')).toBeInTheDocument()
+    expect(within(blank).getByText('Needs Review')).toBeInTheDocument()
     expect(within(blank).getByText('Job value is empty')).toBeInTheDocument()
     // The cell is named where one sheet row holds several records.
     expect(within(visit).getByText('Schedule.xlsx · Schedule · row 6 (cell N6)')).toBeInTheDocument()
-    expect(within(visit).getByText(/Its contract is provisional \(\+1 more\)/)).toBeInTheDocument()
+    expect(within(visit).getByText(/Its contract needs review \(\+1 more\)/)).toBeInTheDocument()
   })
 
   it('links an imported record to its page, and a provisional record to nothing', async () => {
@@ -290,7 +364,7 @@ describe('source records', () => {
     expect(within(within(table).getByRole('row', { name: /JOB0102/ })).getByText('JOB0102', { selector: 'span span' })).toBeInTheDocument()
   })
 
-  it('filters through the API by type, status, open question, invoice reference and text', async () => {
+  it('filters through the API by type, status and text', async () => {
     const api = reviewApi(ADMIN)
     renderApp('/historical-data')
     await recordsTable()
@@ -298,39 +372,23 @@ describe('source records', () => {
     expect(Object.fromEntries(lastRowsQuery(api) ?? [])).toEqual({ kind: 'all', status: 'all', invoice: 'all', page: '1', pageSize: '25' })
 
     await userEvent.selectOptions(screen.getByLabelText('Record type'), 'PROJECT')
-    await userEvent.selectOptions(screen.getByLabelText('Review status'), 'provisional')
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'provisional')
 
     await waitFor(() => expect(screen.queryByText('JOB0102')).not.toBeInTheDocument())
     expect(screen.getByText('JOB0108')).toBeInTheDocument()
     expect(lastRowsQuery(api)?.get('kind')).toBe('PROJECT')
     expect(lastRowsQuery(api)?.get('status')).toBe('provisional')
 
-    await userEvent.selectOptions(screen.getByLabelText('Open question'), 'DUPLICATE_JOB_NUMBER')
-    await userEvent.selectOptions(screen.getByLabelText('Invoice reference'), 'shared')
-    await waitFor(() => expect(lastRowsQuery(api)?.get('invoice')).toBe('shared'))
-    expect(lastRowsQuery(api)?.get('reason')).toBe('DUPLICATE_JOB_NUMBER')
-
     // Nothing matches: the filters can be cleared in one step.
+    await userEvent.type(screen.getByLabelText('Search'), 'no such record')
     await userEvent.click(await screen.findByRole('button', { name: 'Clear filters' }))
     await recordsTable()
     expect(screen.getByLabelText('Record type')).toHaveValue('all')
+    expect(screen.getByLabelText('Status')).toHaveValue('all')
 
     await userEvent.type(screen.getByLabelText('Search'), 'gamma')
     await waitFor(() => expect(lastRowsQuery(api)?.get('search')).toBe('gamma'))
     await waitFor(() => expect(screen.queryByText('JOB0108')).not.toBeInTheDocument())
-  })
-
-  it('opens the records behind an open question from the summary', async () => {
-    const api = reviewApi(ADMIN)
-    renderApp('/historical-data')
-    await recordsTable()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Show 1 projects / jobs: Job value is empty' }))
-
-    await waitFor(() => expect(lastRowsQuery(api)?.get('reason')).toBe('JOB_VALUE_BLANK'))
-    expect(lastRowsQuery(api)?.get('kind')).toBe('PROJECT')
-    expect(screen.getByLabelText('Review status')).toHaveValue('provisional')
-    await waitFor(() => expect(screen.queryByText('JOB0102')).not.toBeInTheDocument())
   })
 })
 
@@ -365,7 +423,7 @@ describe('one record', () => {
     expect(within(dialog).getByRole('link', { name: 'Open project JOB0102' })).toHaveAttribute('href', '/projects/55')
   })
 
-  it('explains why a record is provisional and offers no way to change it', async () => {
+  it('explains why a record needs review and offers no way to change it', async () => {
     const api = reviewApi(ADMIN)
     renderApp('/historical-data')
     await recordsTable()
@@ -374,7 +432,8 @@ describe('one record', () => {
 
     const dialog = await screen.findByRole('dialog', { name: 'Project / job: JOB0108' })
 
-    expect(within(dialog).getByText(/This record is provisional\. It is shown here exactly as it is in the Excel file and has not been added to the application/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/This record needs review\. It is awaiting clarification from the client and cannot be approved through this page\./)).toBeInTheDocument()
+    expect(within(dialog).getByRole('heading', { name: 'Why it needs review' })).toBeInTheDocument()
     expect(within(dialog).getByText('Job value is empty')).toBeInTheDocument()
     expect(within(dialog).getByText(/It is not treated as zero: the client must supply it\./)).toBeInTheDocument()
     expect(within(dialog).getByRole('heading', { name: 'Proposed mapping (not applied)' })).toBeInTheDocument()

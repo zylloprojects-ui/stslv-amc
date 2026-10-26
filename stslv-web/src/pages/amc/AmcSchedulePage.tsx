@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
+import { ExportButtons } from '../../components/ExportButtons'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
@@ -101,6 +102,7 @@ export function AmcSchedulePage() {
   const [page, setPage] = useState(1)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -114,6 +116,7 @@ export function AmcSchedulePage() {
   const canViewClients = auth.can('CLIENTS', 'VIEW')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const canEdit = auth.can('AMC_SCHEDULE', 'EDIT')
+  const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
 
   const clients = useQuery({ queryKey: ['clients', 'all'], queryFn: () => fetchClients('all'), enabled: canViewClients })
   const systems = useQuery({ queryKey: ['amc', 'systems'], queryFn: () => api.get<string[]>('/amc/contracts/systems'), enabled: canViewContracts })
@@ -141,7 +144,24 @@ export function AmcSchedulePage() {
       <PageHeader
         title="AMC Schedule"
         description="Maintenance visits generated from the AMC contracts, by scheduled date."
+        actions={
+          canExport ? (
+            // The export covers every visit that matches the filters below, not only the page shown.
+            <ExportButtons
+              what="AMC schedule"
+              fileStem="amc-schedule"
+              path={(format) => `/amc/visits/export${queryString({ format, from: range.from, to: range.to, clientId, status, system, invoiceEligibility, search })}`}
+              onError={setExportError}
+            />
+          ) : undefined
+        }
       />
+
+      {exportError && (
+        <div className="mb-4">
+          <Alert onDismiss={() => setExportError(null)}>{exportError}</Alert>
+        </div>
+      )}
 
       {notice && (
         <div className="mb-4">

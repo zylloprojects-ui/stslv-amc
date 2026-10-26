@@ -113,6 +113,7 @@ const ELIGIBILITY_TONES: Record<InvoiceEligibility, Tone> = {
   AMOUNT_REQUIRED: 'red',
   NO_INVOICE_REQUIRED: 'slate',
   READY_FOR_INVOICE: 'green',
+  INVOICED: 'blue',
   HISTORICAL: 'slate',
 }
 

@@ -308,8 +308,8 @@ describe('project page', () => {
     // A completed project can only be reopened.
     expect(screen.getByRole('button', { name: 'Reopen project' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Mark completed' })).not.toBeInTheDocument()
-    // No invoice is created anywhere.
-    expect(api.requests.some((request) => request.path.startsWith('/invoices'))).toBe(false)
+    // Completing creates no invoice: the page only reads the invoices recorded for the project.
+    expect(api.requests.some((request) => request.path.startsWith('/invoices') && request.method !== 'GET')).toBe(false)
   })
 
   it('completes a zero-value project without leaving it waiting for an invoice', async () => {

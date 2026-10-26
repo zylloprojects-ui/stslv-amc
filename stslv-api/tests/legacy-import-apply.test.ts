@@ -233,8 +233,8 @@ describe("import", () => {
   });
 
   it("creates no invoice record: the source invoice cells stay in staging", async () => {
-    const tables = await pool.query<{ table_name: string }>(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name ILIKE '%invoice%' AND table_type = 'BASE TABLE'"
+    const records = await one<{ invoices: number; allocations: number }>(
+      "SELECT (SELECT count(*)::int FROM invoices) AS invoices, (SELECT count(*)::int FROM invoice_allocations) AS allocations"
     );
     const columns = await pool.query(
       "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name IN ('projects', 'amc_visits') AND column_name ILIKE '%invoice%'"
@@ -246,7 +246,7 @@ describe("import", () => {
        FROM legacy_import_rows`
     );
 
-    expect(tables.rows).toEqual([]);
+    expect(records).toEqual({ invoices: 0, allocations: 0 });
     expect(columns.rowCount).toBe(0);
     expect(references).toEqual({ with_cell: 11, shared: 2, marker: 3 });
   });

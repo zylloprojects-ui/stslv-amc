@@ -227,7 +227,7 @@ describe('module rollout', () => {
       'ProjectsLive',
       'ProcurementLive',
       'ExpensesLive',
-      'Invoice TrackingPlanned',
+      'Invoice TrackingLive',
       'ReportsPlanned',
       'Historical DataLive',
       'Users & AccessLive',
@@ -238,7 +238,7 @@ describe('module rollout', () => {
 
   it('agrees with the pages: a Planned module opens a placeholder, a Live one opens its page', async () => {
     dashboardApi(ADMIN, () => SUMMARY)
-    const planned = renderApp('/invoices')
+    const planned = renderApp('/reports')
     expect(await screen.findByText('Module implementation in progress')).toBeInTheDocument()
     planned.unmount()
 
@@ -574,12 +574,45 @@ describe('dashboard permissions', () => {
     expect(shownCards()).toEqual([])
   })
 
-  it('does not tie any metric to the Invoice Tracking permission', async () => {
+  it('opens no AMC or project figure to the Invoice Tracking permission', async () => {
     dashboardApi(withPermissions(['DASHBOARD:VIEW', 'INVOICES:VIEW', 'INVOICES:EDIT']), () => SUMMARY)
     renderApp('/dashboard')
 
     expect(await screen.findByText('No figures to show')).toBeInTheDocument()
     expect(shownCards()).toEqual([])
+  })
+
+  it('shows the Invoice Tracking permission only the invoice figure the API returned', async () => {
+    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'INVOICES:VIEW']), () =>
+      ok({ ...FULL, invoices: { issued: { count: 14, amountExclVat: '6120.500', vatAmount: '306.025', totalAmount: '6426.525' }, cancelled: { count: 2 }, amc: null, projects: null } }),
+    )
+    renderApp('/dashboard')
+
+    const card = await cardOf('Invoices Recorded')
+    expect(await within(card).findByText('14')).toBeInTheDocument()
+    expect(within(card).getByText('6,120.500 excl. VAT · 2 cancelled, not counted')).toBeInTheDocument()
+    expect(within(card).getByRole('link', { name: 'View invoices' })).toHaveAttribute('href', '/invoices')
+    expect(shownCards()).toEqual(['Invoices Recorded'])
+  })
+
+  it('states partly invoiced projects beside the projects ready for invoice, and links to Invoice Tracking', async () => {
+    dashboardApi(ADMIN, () =>
+      ok({
+        ...FULL,
+        invoices: {
+          issued: { count: 3, amountExclVat: '900.000', vatAmount: '45.000', totalAmount: '945.000' },
+          cancelled: { count: 0 },
+          amc: { pending: { count: 5, amount: '12345.500' }, invoiced: { count: 2, invoicedAmount: '810.000' } },
+          projects: { pending: { count: 8, uninvoicedValue: '2600.000' }, partlyInvoiced: { count: 2 }, invoiced: { count: 1 }, invoicedValue: '90.000' },
+        },
+      }),
+    )
+    renderApp('/dashboard')
+
+    const projects = await cardOf('Projects Ready for Invoice')
+    expect(await within(projects).findByText('6 completed projects · 2 more partly invoiced')).toBeInTheDocument()
+    expect(within(projects).getByRole('link', { name: 'Record invoices' })).toHaveAttribute('href', '/invoices')
+    expect(within(await cardOf('Invoices Recorded')).getByText('900.000 excl. VAT')).toBeInTheDocument()
   })
 
   it('explains an empty dashboard to a role with no reporting module', async () => {

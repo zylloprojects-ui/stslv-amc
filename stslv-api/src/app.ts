@@ -9,6 +9,7 @@ import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
 import { expensesRouter } from "./modules/expenses/expenses.routes";
 import { historicalDataRouter } from "./modules/historical-data/historical-data.routes";
 import { holidaysRouter } from "./modules/holidays/holidays.routes";
+import { invoicesRouter } from "./modules/invoices/invoices.routes";
 import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
 import { rolesRouter } from "./modules/roles/roles.routes";
@@ -31,7 +32,8 @@ export function createApp() {
     app.set("trust proxy", env.trustProxyHops);
   }
   // Only the configured web origins may call the API from a browser (CORS_ORIGIN in .env).
-  app.use(cors({ origin: env.corsOrigins }));
+  // Content-Disposition carries the file name of an export; a browser on another origin may read it only when it is exposed.
+  app.use(cors({ origin: env.corsOrigins, exposedHeaders: ["Content-Disposition"] }));
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
@@ -70,6 +72,7 @@ export function createApp() {
   app.use("/api/projects", projectsRouter);
   app.use("/api/procurement", procurementRouter);
   app.use("/api/expenses", expensesRouter);
+  app.use("/api/invoices", invoicesRouter);
   app.use("/api/historical-data", historicalDataRouter);
   app.use("/api/holidays", holidaysRouter);
 

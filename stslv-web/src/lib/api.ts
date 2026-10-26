@@ -111,6 +111,52 @@ export const api = {
   delete: <T = null>(path: string) => request<T>('DELETE', path),
 }
 
+export interface DownloadedFile {
+  blob: Blob
+  /** The name the API gave the file, or null when it gave none. */
+  filename: string | null
+}
+
+/** Fetches a file the API produces, such as an export. A refusal arrives as the usual error, never as a file. */
+export async function download(path: string): Promise<DownloadedFile> {
+  const token = getToken()
+  let response: Response
+
+  try {
+    response = await fetch(apiUrl(`/api${path}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection and try again.')
+  }
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null
+    const error = new ApiError(response.status, payload?.error?.code ?? 'UNKNOWN_ERROR', payload?.error?.message ?? 'The file could not be produced. Please try again.')
+
+    if (response.status === 401) {
+      unauthorizedHandler?.()
+    }
+
+    throw error
+  }
+
+  const filename = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? null
+
+  return { blob: await response.blob(), filename }
+}
+
+/** Hands a downloaded file to the browser to save. */
+export function saveFile(file: DownloadedFile, fallbackName: string): void {
+  const url = URL.createObjectURL(file.blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = file.filename ?? fallbackName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
 /** A message suitable for showing to the user, whatever was thrown. */
 export function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'

@@ -23,6 +23,8 @@ describe("migrations", () => {
       "app_settings",
       "clients",
       "expense_categories",
+      "invoice_allocations",
+      "invoices",
       "legacy_import_batches",
       "legacy_import_rows",
       "number_sequences",

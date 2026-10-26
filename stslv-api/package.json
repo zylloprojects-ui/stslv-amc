@@ -13,7 +13,8 @@
     "migrate:status": "tsx src/db/migrate-cli.ts --status",
     "admin:create": "tsx src/scripts/create-admin.ts",
     "legacy-import:dry-run": "tsx src/scripts/legacy-import.ts",
-    "legacy-import:apply": "tsx src/scripts/legacy-import-apply.ts"
+    "legacy-import:apply": "tsx src/scripts/legacy-import-apply.ts",
+    "export:sample": "tsx src/scripts/export-sample.ts"
   },
   "keywords": [],
   "author": "",
@@ -23,8 +24,11 @@
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^18.0.4",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "^3.10.2",
+    "pdfmake": "^0.3.11",
     "pg": "^8.23.0",
     "zod": "^4.6.5"
   },
@@ -33,6 +37,7 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^26.6.3",
+    "@types/pdfmake": "^0.3.3",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
     "supertest": "^7.3.0",

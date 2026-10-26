@@ -2,10 +2,12 @@ import { Router } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
 import { forbidden } from "../../shared/errors";
+import { sendExport } from "../../shared/export/send";
 import { parseIdParam } from "../../shared/validation";
 import {
   changeContractStatusSchema,
   createContractSchema,
+  exportVisitsSchema,
   listContractsSchema,
   listExecutionSchema,
   listVisitsSchema,
@@ -25,6 +27,7 @@ import {
   previewSchedule,
   updateContract,
 } from "./contracts.service";
+import { buildScheduleExport } from "./schedule.export";
 import { canViewSummary, getAmcSummary } from "./summary.service";
 import {
   getExecutionVisit,
@@ -104,6 +107,16 @@ amcRouter.post("/contracts/:id/schedule/generate", authorize("AMC_CONTRACTS", "E
 // --- Schedule ----------------------------------------------------------------
 amcRouter.get("/visits", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
   res.json({ success: true, data: await listVisits(listVisitsSchema.parse(req.query)) });
+});
+
+// The schedule as an Excel workbook or a PDF, with the list's own filters. Exporting needs
+// the EXPORT permission on top of VIEW. Declared before /visits/:id, which would otherwise take it.
+amcRouter.get("/visits/export", authorize("AMC_SCHEDULE", "VIEW"), authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+  const query = exportVisitsSchema.parse(req.query);
+
+  const { report, recordExport } = await buildScheduleExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
 });
 
 amcRouter.get("/visits/:id", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {

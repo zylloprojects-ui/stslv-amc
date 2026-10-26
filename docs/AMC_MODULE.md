@@ -175,9 +175,9 @@ All under `/api/amc`, all authenticated. Responses use the standard `{ success, 
 
 - A visit is invoiceable when `v_amc_visit_billing.invoice_eligibility = 'READY_FOR_INVOICE'`.
 - The list to work from: `GET /api/amc/visits?invoiceEligibility=READY_FOR_INVOICE` (client, contract, period, completion date, `visitAmount`; `totals.visitAmount` is the sum).
-- To add the invoiced state, the Invoice module replaces the view in its own migration (`CREATE OR REPLACE VIEW v_amc_visit_billing`), adding `INVOICED` for visits with an active allocation, and adds `INVOICED` to `INVOICE_ELIGIBILITIES` in `stslv-api/src/modules/amc/amc.constants.ts` and `stslv-web/src/pages/amc/types.ts`. Every AMC list, filter and summary reads the view, so nothing else changes.
-- `invoice_allocations.amc_visit_id` should reference `amc_visits(id)`.
-- Still to be decided by the Invoice module: once a visit is invoiced, its amount should no longer be editable and it should not be reopened. Today both are allowed because no invoice exists.
+- **Done by Invoice Tracking (migration `0060`, see `docs/INVOICE_MODULE.md`).** The view now also returns `INVOICED` for a completed visit that an active invoice covers, and `invoiced_amount`. `INVOICED` is in `INVOICE_ELIGIBILITIES` on both sides. Every AMC list, filter and summary reads the view, so invoiced visits leave "ready for invoice" by themselves.
+- `invoice_allocations.amc_visit_id` references `amc_visits(id)`.
+- While an active invoice covers a visit, its amount cannot be changed and it cannot be reopened; a contract cannot be moved to another client while one of its visits is invoiced. Cancelling the invoice lifts the lock. PROVISIONAL.
 - An allocation rule of `allocated_amount > 0` is compatible with this design: zero-value visits never need an allocation.
 
 ### Dashboard and reports

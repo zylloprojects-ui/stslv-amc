@@ -112,8 +112,8 @@ export function HistoricalRowModal({ row, onClose }: { row: ReviewRow; onClose: 
 
         {provisional ? (
           <Alert tone="info">
-            This record is provisional. It is shown here exactly as it is in the Excel file and has not been added to the application: it is in no
-            dashboard figure, schedule or invoice list. Nothing can be changed on this page.
+            This record needs review. It is awaiting clarification from the client and cannot be approved through this page. It is shown here
+            exactly as it is in the Excel file and has not been added to the application: it is in no dashboard figure, schedule or invoice list.
           </Alert>
         ) : (
           row.link && (
@@ -124,7 +124,7 @@ export function HistoricalRowModal({ row, onClose }: { row: ReviewRow; onClose: 
         )}
 
         {row.holdReasons.length > 0 && (
-          <Section title="Why it is provisional">
+          <Section title="Why it needs review">
             <ul className="space-y-3 py-1">
               {row.holdReasons.map((reason) => (
                 <li key={reason.code} className="text-sm">

@@ -22,6 +22,7 @@ Every figure is read from `GET /api/dashboard/summary`. The dashboard module cal
 | Projects | Active Projects | `projects.counts.active` (`new`, `inProgress`) | Projects that are `NEW` or `IN_PROGRESS`. |
 | Projects | Projects Ready for Invoice | `projects.counts.readyForInvoice` | `v_project_financials`: completed projects with a job value above zero. |
 | Finance | Tracked Expenses | `projects.costs.trackedExpenses` (`trackedExpensesOnCancelledProjects`) | Expenses recorded here and not voided, cancelled projects left out. |
+| Finance | Invoices Recorded | `invoices.issued.count` (`issued.amountExclVat`, `cancelled.count`) | Active invoices recorded in Invoice Tracking; cancelled invoices are not counted. |
 | Finance | Ready-for-Invoice Value | `amc.invoicing.readyForInvoice.amount` and `projects.values.readyForInvoiceValue` | Two separate amounts. See section 1.4. |
 
 No operational figure is hard-coded anywhere in the web application. A card shows a number only when the API returned it.
@@ -51,7 +52,9 @@ The API is the authority. A section the user may not see is returned as `null`.
 | Active Projects, Projects Ready for Invoice, and its value | `PROJECTS:VIEW` |
 | Tracked Expenses | `PROJECTS:VIEW` and `EXPENSES:VIEW` |
 
-These are the checks the AMC and Projects modules already make on their own summaries. No figure is tied to `INVOICES`: that permission will gate the invoice figures when Invoice Tracking exists. The matrix itself is still provisional (open question Q12).
+| Invoices Recorded | `INVOICES:VIEW` |
+
+These are the checks the AMC, Projects and Invoice Tracking modules already make on their own summaries. `INVOICES:VIEW` opens only the invoice figures: the AMC and project figures inside the invoice summary still need `AMC_SCHEDULE:VIEW` and `PROJECTS:VIEW`. The matrix itself is still provisional (open question Q12).
 
 ### 1.4 Rules for money figures
 
@@ -63,7 +66,7 @@ These are the checks the AMC and Projects modules already make on their own summ
 
 | Metric | Open point |
 |---|---|
-| Ready for Invoice (AMC and Projects) | No invoice records exist yet, so completed work stays "ready for invoice". When Invoice Tracking replaces the two views, invoiced work leaves these figures without any change to the dashboard. |
+| Ready for Invoice (AMC and Projects) | Invoiced work leaves these figures once its invoice is recorded in Invoice Tracking. A partly invoiced project is not in the project count; it is stated beside it ("N more partly invoiced"). The invoicing rules are provisional (`docs/INVOICE_MODULE.md`). |
 | Ready-for-Invoice Value | VAT basis of AMC visit amounts (Q11). Until it is confirmed the two amounts stay separate. |
 | Projects Ready for Invoice | Invoicing before completion (Q21). |
 
@@ -98,5 +101,5 @@ The browser check ran against a stand-in API with invented records, outside the 
 ## 4. Work remaining
 
 1. Move the AMC and Projects tables to `TableScroll`, and check their pages at phone and tablet width.
-2. Add the "pending invoices" list that `PHASE1_SYSTEM_DESIGN.md` 16.3 asks to be the most prominent item on the dashboard. It needs Invoice Tracking.
+2. Add the "pending invoices" list that `PHASE1_SYSTEM_DESIGN.md` 16.3 asks to be the most prominent item on the dashboard. The list itself now exists on the Invoice Tracking page ("Waiting for an invoice"); the ready-for-invoice cards link to it.
 3. Update the test count in `docs/FOUNDATION.md` section 7.

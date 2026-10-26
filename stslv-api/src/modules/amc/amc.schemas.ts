@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { exportFormatSchema } from "../../shared/export/report";
 import { idSchema, optionalText, requiredText } from "../../shared/validation";
 import {
   CONTRACT_STATUSES,
@@ -168,6 +169,9 @@ export const listVisitsSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+/** The schedule's own filters, without paging, plus the file format. */
+export const exportVisitsSchema = listVisitsSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+
 export const updateVisitSchema = z
   .strictObject({
     visitAmount: optionalMoney("Visit amount").optional(),
@@ -216,6 +220,7 @@ export type ChangeContractStatusInput = z.infer<typeof changeContractStatusSchem
 export type ListContractsQuery = z.infer<typeof listContractsSchema>;
 export type SchedulePreviewQuery = z.infer<typeof schedulePreviewSchema>;
 export type ListVisitsQuery = z.infer<typeof listVisitsSchema>;
+export type ExportVisitsQuery = z.infer<typeof exportVisitsSchema>;
 export type UpdateVisitInput = z.infer<typeof updateVisitSchema>;
 export type ListExecutionQuery = z.infer<typeof listExecutionSchema>;
 export type UpdateExecutionInput = z.infer<typeof updateExecutionSchema>;

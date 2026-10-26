@@ -581,20 +581,18 @@ describe("ready for invoice", () => {
     expect((await get(`/api/projects/${open.id}`)).body.data.readyForInvoice).toBe(false);
   });
 
-  it("does not create or expose any invoice record", async () => {
+  it("does not create an invoice record or store one on the project", async () => {
     const project = await newProject(admin, clientId);
     const completed = await setStatus(admin, project.id, { status: "COMPLETED" });
 
     expect(completed.body.data).not.toHaveProperty("invoiceNumber");
     expect(completed.body.data).not.toHaveProperty("invoices");
 
-    const invoiceTables = await pool.query(
-      "SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE 'invoice%'"
-    );
+    const allocations = await pool.query("SELECT 1 FROM invoice_allocations WHERE project_id = $1", [project.id]);
     const invoiceColumns = await pool.query(
       "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'projects' AND column_name LIKE '%invoice%'"
     );
-    expect(invoiceTables.rowCount).toBe(0);
+    expect(allocations.rowCount).toBe(0);
     expect(invoiceColumns.rowCount).toBe(0);
   });
 

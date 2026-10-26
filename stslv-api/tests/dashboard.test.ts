@@ -223,7 +223,7 @@ describe("dashboard figures", () => {
     expect(body).toContain('"350.625"');
     expect(body).toContain('"2000.250"');
     expect(body).not.toContain("2350.875");
-    expect(Object.keys((await dashboard()).body.data).sort()).toEqual(["amc", "clients", "projects"]);
+    expect(Object.keys((await dashboard()).body.data).sort()).toEqual(["amc", "clients", "invoices", "projects"]);
   });
 
   it("returns exactly what the AMC and Projects modules report themselves", async () => {
@@ -244,13 +244,20 @@ describe("dashboard permissions", () => {
     const response = await dashboard(await userWith("DASHBOARD_ONLY", ["DASHBOARD:VIEW"]));
 
     expect(response.status).toBe(200);
-    expect(response.body.data).toEqual({ clients: null, amc: null, projects: null });
+    expect(response.body.data).toEqual({ clients: null, amc: null, projects: null, invoices: null });
   });
 
   it("does not open any operational figure to the Invoice Tracking permission", async () => {
     const response = await dashboard(await userWith("INVOICES_ONLY", ["DASHBOARD:VIEW", "INVOICES:VIEW", "INVOICES:EDIT", "REPORTS:VIEW"]));
 
-    expect(response.body.data).toEqual({ clients: null, amc: null, projects: null });
+    // The invoice figures are its own; the AMC and project figures inside them stay closed.
+    expect(response.body.data).toMatchObject({ clients: null, amc: null, projects: null });
+    expect(response.body.data.invoices).toEqual({
+      issued: { count: 0, amountExclVat: "0.000", vatAmount: "0.000", totalAmount: "0.000" },
+      cancelled: { count: 0 },
+      amc: null,
+      projects: null,
+    });
   });
 
   it("returns client counts only with CLIENTS:VIEW", async () => {
@@ -259,7 +266,7 @@ describe("dashboard permissions", () => {
       await userWith("NO_CLIENTS", ["DASHBOARD:VIEW", "AMC_CONTRACTS:VIEW", "AMC_SCHEDULE:VIEW", "PROJECTS:VIEW", "EXPENSES:VIEW"])
     );
 
-    expect(withClients.body.data).toEqual({ clients: { active: 2, inactive: 1 }, amc: null, projects: null });
+    expect(withClients.body.data).toEqual({ clients: { active: 2, inactive: 1 }, amc: null, projects: null, invoices: null });
     expect(withoutClients.body.data.clients).toBeNull();
     expect(withoutClients.body.data.amc).not.toBeNull();
     expect(withoutClients.body.data.projects).not.toBeNull();

@@ -4,6 +4,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
+import { assertContractNotInvoiced } from "../invoices/invoice-locks";
 import {
   CONTRACT_TRANSITIONS,
   MAX_CONTRACT_YEARS,
@@ -617,6 +618,8 @@ export function updateContract(
 
     if ("clientId" in changes) {
       await assertSelectableClient(client, afterValues.clientId as string);
+      // An invoice is issued to the client of the work it covers.
+      await assertContractNotInvoiced(client, id);
     }
     if (termsChanged) {
       assertValidity(validFrom, validTo);

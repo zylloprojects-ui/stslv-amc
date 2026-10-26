@@ -109,7 +109,7 @@ describe("schedule list", () => {
   it("rejects an invalid filter", async () => {
     expect((await list({ from: "2027-02-30" })).status).toBe(400);
     expect((await list({ status: "DONE" })).status).toBe(400);
-    expect((await list({ invoiceEligibility: "INVOICED" })).status).toBe(400);
+    expect((await list({ invoiceEligibility: "PAID" })).status).toBe(400);
     expect((await list({ pageSize: 1000 })).status).toBe(400);
   });
 

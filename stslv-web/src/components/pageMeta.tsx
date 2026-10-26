@@ -108,7 +108,7 @@ const PAGES: { prefix: string; meta: PageMeta }[] = [
   { prefix: '/expenses', meta: { icon: ICON.wallet, from: '#00A6C8', to: '#F5C622', description: 'Project costs recorded against each job' } },
   { prefix: '/invoices', meta: { icon: ICON.invoice, from: '#1B8AD3', to: '#D1428C', description: 'Zoho invoice details tracked against visits and projects' } },
   { prefix: '/reports', meta: { icon: ICON.chart, from: '#7E6FAC', to: '#1B8AD3', description: 'Management reporting across AMC and projects' } },
-  { prefix: '/historical-data', meta: { icon: ICON.archive, from: '#7E6FAC', to: '#5BAF48', description: 'Records from the earlier Excel registers · Imported and provisional · Read-only' } },
+  { prefix: '/historical-data', meta: { icon: ICON.archive, from: '#7E6FAC', to: '#5BAF48', description: 'Records from the earlier Excel registers · Imported and needs review · Read-only' } },
   { prefix: '/admin/users', meta: { icon: ICON.shield, from: '#1B8AD3', to: '#5BAF48', description: 'Users · Roles · Permissions' } },
   { prefix: '/settings', meta: { icon: ICON.settings, from: '#7E6FAC', to: '#00A6C8', description: 'Application settings' } },
   { prefix: '/account', meta: { icon: ICON.person, from: '#1B8AD3', to: '#5BAF48', description: 'Your profile, role and sign-in details' } },

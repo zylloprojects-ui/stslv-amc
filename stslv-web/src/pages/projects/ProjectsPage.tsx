@@ -125,6 +125,8 @@ export function ProjectsPage() {
             >
               <option value="">Any</option>
               <option value="READY_FOR_INVOICE">Ready for invoice</option>
+              <option value="PARTLY_INVOICED">Partly invoiced</option>
+              <option value="INVOICED">Invoiced</option>
               <option value="NO_INVOICE_REQUIRED">No invoice required</option>
             </select>
           </div>

@@ -4,6 +4,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
+import { assertVisitNotInvoiced } from "../invoices/invoice-locks";
 import type {
   ContractStatus,
   InvoiceEligibility,
@@ -190,7 +191,10 @@ function searchCondition(params: unknown[], search: string): string {
 // Schedule
 // ---------------------------------------------------------------------------
 
-export async function listVisits(query: ListVisitsQuery) {
+/** The filters of the schedule, without paging: the list and the export share them, so they always select the same visits. */
+export type VisitFilters = Omit<ListVisitsQuery, "page" | "pageSize">;
+
+function visitFilter(query: VisitFilters): { where: string; params: unknown[] } {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -229,9 +233,13 @@ export async function listVisits(query: ListVisitsQuery) {
     conditions.push(searchCondition(params, query.search));
   }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  return { where: conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "", params };
+}
 
-  // Totals cover every visit that matches the filters, not only the page shown.
+const VISIT_ORDER = "ORDER BY v.scheduled_date, lower(cl.name), v.id";
+
+/** Totals cover every visit that matches the filters, not only the page shown. */
+async function visitTotals(where: string, params: unknown[]) {
   const totals = await pool.query<{ count: number; amount_total: string; amount_missing_count: number }>(
     `SELECT count(*)::int AS count,
             COALESCE(sum(v.visit_amount) FILTER (WHERE v.status <> 'CANCELLED'), 0)::numeric(16,3) AS amount_total,
@@ -239,24 +247,44 @@ export async function listVisits(query: ListVisitsQuery) {
      ${VISIT_FROM} ${where}`,
     params
   );
-  const rows = await pool.query<VisitRow>(
-    `${VISIT_SELECT} ${VISIT_FROM} ${where}
-     ORDER BY v.scheduled_date, lower(cl.name), v.id
-     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
-    [...params, query.pageSize, (query.page - 1) * query.pageSize]
-  );
 
   return {
-    items: rows.rows.map(toScheduleVisit),
     total: totals.rows[0]?.count ?? 0,
-    page: query.page,
-    pageSize: query.pageSize,
     totals: {
       /** Sum of the amounts of the matching visits, cancelled visits excluded. */
       visitAmount: totals.rows[0]?.amount_total ?? "0.000",
       amountMissingCount: totals.rows[0]?.amount_missing_count ?? 0,
     },
   };
+}
+
+export async function listVisits(query: ListVisitsQuery) {
+  const { where, params } = visitFilter(query);
+  const { total, totals } = await visitTotals(where, params);
+  const rows = await pool.query<VisitRow>(
+    `${VISIT_SELECT} ${VISIT_FROM} ${where}
+     ${VISIT_ORDER}
+     LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, query.pageSize, (query.page - 1) * query.pageSize]
+  );
+
+  return { items: rows.rows.map(toScheduleVisit), total, page: query.page, pageSize: query.pageSize, totals };
+}
+
+/**
+ * Every visit that matches the filters, in the order of the schedule, for an
+ * export. `checkSize` is given the number of visits before any is read, and
+ * throws when that is more than the export can hold.
+ */
+export async function listAllVisits(filters: VisitFilters, checkSize: (count: number) => void) {
+  const { where, params } = visitFilter(filters);
+  const { total, totals } = await visitTotals(where, params);
+
+  checkSize(total);
+
+  const rows = await pool.query<VisitRow>(`${VISIT_SELECT} ${VISIT_FROM} ${where} ${VISIT_ORDER}`, params);
+
+  return { items: rows.rows.map(toScheduleVisit), total, totals };
 }
 
 /** Planning changes to one visit: amount, planned date, assignment and office notes. */
@@ -283,6 +311,10 @@ export function updateVisit(auth: AuthContext, id: string, input: UpdateVisitInp
 
     if (Object.keys(changes).length === 0) {
       return toScheduleVisit(row);
+    }
+    // The amount an invoice was recorded against must not change underneath it.
+    if ("visitAmount" in changes) {
+      await assertVisitNotInvoiced(client, id, "given another amount");
     }
     if ("scheduledDate" in changes && (row.status === "COMPLETED" || row.status === "CANCELLED")) {
       throw validationError(`A ${row.status.toLowerCase()} visit cannot be rescheduled.`, [
@@ -378,6 +410,10 @@ export function updateExecution(auth: AuthContext, id: string, input: UpdateExec
     // the APPROVE permission. PROVISIONAL: who may reopen is unconfirmed.
     if (row.status === "COMPLETED" && statusChanged && !auth.permissions.has("AMC_EXECUTION:APPROVE")) {
       throw forbidden("A completed visit can only be reopened by a user with approval permission for AMC Execution.");
+    }
+    // Invoiced work stays completed until its invoice is cancelled.
+    if (row.status === "COMPLETED" && statusChanged) {
+      await assertVisitNotInvoiced(client, id, "reopened");
     }
 
     let completedDate = row.completed_date;

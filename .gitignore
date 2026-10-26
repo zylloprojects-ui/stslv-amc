@@ -98,3 +98,6 @@ desktop.ini
 ~$*
 tmp/
 .tmp/
+
+# --- Sample exports written by "npm run export:sample" ------------------
+export-samples/

@@ -21,6 +21,12 @@ export interface DashboardSummary {
     values: { readyForInvoiceValue: string }
     costs: { trackedExpenses: string; trackedExpensesOnCancelledProjects: string; trackedExpensesOnHistoricalProjects?: string } | null
   } | null
+  /** The Invoice Tracking module's own summary. */
+  invoices?: {
+    issued: { count: number; amountExclVat: string; vatAmount: string; totalAmount: string }
+    cancelled: { count: number }
+    projects: { partlyInvoiced: { count: number } } | null
+  } | null
 }
 
 /** One of several amounts shown side by side in a card, each on its own stated basis. They are never added together. */
@@ -139,7 +145,10 @@ export const METRIC_GROUPS: MetricGroup[] = [
         label: 'Ready for Invoice',
         visible: (canView) => canView('AMC_SCHEDULE'),
         source: 'AMC Execution',
-        links: [{ to: '/amc/schedule', label: 'View schedule', module: 'AMC_SCHEDULE' }],
+        links: [
+          { to: '/invoices', label: 'Record invoices', module: 'INVOICES' },
+          { to: '/amc/schedule', label: 'View schedule', module: 'AMC_SCHEDULE' },
+        ],
         attention: true,
         read: ({ amc }) => {
           const invoicing = amc?.invoicing
@@ -182,15 +191,26 @@ export const METRIC_GROUPS: MetricGroup[] = [
         label: 'Projects Ready for Invoice',
         visible: (canView) => canView('PROJECTS'),
         source: 'Projects',
-        links: [{ to: '/projects', label: 'View projects', module: 'PROJECTS' }],
+        links: [
+          { to: '/invoices', label: 'Record invoices', module: 'INVOICES' },
+          { to: '/projects', label: 'View projects', module: 'PROJECTS' },
+        ],
         attention: true,
-        read: ({ projects }) =>
-          projects
-            ? {
-                value: formatCount(projects.counts.readyForInvoice),
-                detail: plural(projects.counts.readyForInvoice, 'completed project', 'completed projects'),
-              }
-            : null,
+        read: ({ projects, invoices }) => {
+          if (!projects) {
+            return null
+          }
+
+          // A partly invoiced project still has value waiting for an invoice, so it is stated beside the count.
+          const partly = invoices?.projects?.partlyInvoiced.count ?? 0
+
+          return {
+            value: formatCount(projects.counts.readyForInvoice),
+            detail:
+              plural(projects.counts.readyForInvoice, 'completed project', 'completed projects') +
+              (partly > 0 ? ` · ${formatCount(partly)} more partly invoiced` : ''),
+          }
+        },
       },
     ],
   },
@@ -228,6 +248,22 @@ export const METRIC_GROUPS: MetricGroup[] = [
             detail: apart.length > 0 ? `Plus ${apart.join(' and ')}` : 'Cancelled projects left out',
           }
         },
+      },
+      {
+        id: 'finance.invoicesRecorded',
+        label: 'Invoices Recorded',
+        visible: (canView) => canView('INVOICES'),
+        source: 'Invoice Tracking',
+        links: [{ to: '/invoices', label: 'View invoices', module: 'INVOICES' }],
+        read: ({ invoices }) =>
+          invoices
+            ? {
+                value: formatCount(invoices.issued.count),
+                detail:
+                  `${formatMoney(invoices.issued.amountExclVat)} excl. VAT` +
+                  (invoices.cancelled.count > 0 ? ` · ${formatCount(invoices.cancelled.count)} cancelled, not counted` : ''),
+              }
+            : null,
       },
       {
         id: 'finance.readyForInvoiceValue',

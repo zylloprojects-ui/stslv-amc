@@ -31,10 +31,16 @@ export function ProjectStatusBadge({ status, legacyStatus = null }: { status: Pr
   )
 }
 
-/** Shown only for the two states that matter to invoicing. A historical project is waiting for no invoice. */
+/** Shown only for the states that matter to invoicing. A historical project is waiting for no invoice. */
 export function InvoiceStateBadge({ state }: { state: InvoiceState }) {
   if (state === 'READY_FOR_INVOICE') {
     return <Badge tone="amber">Ready for invoice</Badge>
+  }
+  if (state === 'PARTLY_INVOICED') {
+    return <Badge tone="amber">Partly invoiced</Badge>
+  }
+  if (state === 'INVOICED') {
+    return <Badge tone="green">Invoiced</Badge>
   }
   if (state === 'NO_INVOICE_REQUIRED') {
     return <Badge tone="slate">No invoice required</Badge>

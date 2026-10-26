@@ -32,7 +32,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   REPORTS: 'Reports',
   USERS: 'Users & Access',
   SETTINGS: 'Settings',
-  HISTORICAL_DATA: 'Historical Data Review',
+  HISTORICAL_DATA: 'Historical Data',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {

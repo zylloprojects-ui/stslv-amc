@@ -98,31 +98,54 @@ Each row also keeps the column order of the sheet, what the import proposed
 for the record, the reasons it is held (as data), its warnings, and the source
 invoice cell with its classification (migration `0050`).
 
-## Historical Data Review
+## Historical Data page
 
 Page `/historical-data` (Reporting → Historical Data), API
-`GET /api/historical-data/summary`, `/rows`, `/rows/:id`.
+`GET /api/historical-data/summary`, `/audit`, `/rows`, `/rows/:id`.
 
-It shows every staged source record, imported or not:
+It shows every staged source record, imported or not. Records created in the
+application never appear here: the page reads `legacy_import_rows` only.
 
 - **Imported** — the record is in the normal application as a historical
   record (a client, a `DRAFT` contract, a `HISTORICAL` visit or project). The
-  review row links to it.
-- **Provisional** — the record is held. It exists in `legacy_import_rows`
-  only. No client, contract, visit, project or invoice was created for it, so
-  it is in no dashboard figure, schedule, invoice state or margin.
+  row links to it.
+- **Needs Review** — the record is held, awaiting clarification from the
+  client. It exists in `legacy_import_rows` only. No client, contract, visit,
+  project or invoice was created for it, so it is in no dashboard figure,
+  schedule, invoice state or margin. "Needs Review" is the wording of the page
+  only: the stored disposition is still `HELD` and the API status is still
+  `PROVISIONAL`. It cannot be approved through the page.
 
-For each record the page shows the original Excel values in the sheet's column
-order, beside the proposed mapping; the workbook, sheet, row and cell; why it
-is provisional; and the source invoice cell. A value the source does not give
-is shown as not given, never as zero.
+Layout:
+
+- Three summary cards — Total Records, Imported, Needs Review
+  (`/summary`, which returns these three counts and nothing else). Choosing
+  a card lists those records.
+- **Records** — the searchable table, filtered by text, record type and status.
+- **Import Audit** — the import batches and their source files, counts and
+  amounts by record type, the reasons records need review, and the invoice
+  references of the source (`/audit`). Its lines open the matching records in
+  the Records tab.
+
+For each record the detail view shows the original Excel values in the sheet's
+column order, beside the proposed mapping; the workbook, sheet, row and cell;
+why it needs review; and the source invoice cell. A value the source does not
+give is shown as not given, never as zero.
 
 The module is read-only: it has no route that writes, and the page has no
 control that changes anything.
 
 Permission: module `HISTORICAL_DATA`, action `VIEW`. Seeded for Admin only
-(`0051`). The review shows every client's names, values and invoice references,
+(`0051`). The page shows every client's names, values and invoice references,
 so granting it to another role is a business decision, made in Users & Access.
+
+The Import Audit is for the built-in Admin role only. `/audit` requires the
+`ADMIN` role as well as the permission, so a role that is granted the module
+sees the cards and the Records table but not the audit. No new permission was
+added for this.
+
+PDF and Excel export of this page is not built here: it is left to the shared
+export implementation.
 
 ## Not done here
 
@@ -130,6 +153,8 @@ so granting it to another role is a business decision, made in Users & Access.
 - Releasing a provisional record after the client decides (approving an alias,
   supplying a missing value, choosing which row keeps a duplicated job number)
   is not built. The import leaves an already staged record exactly as it is.
-- Invoice Tracking is not part of this change. No invoice record is created
-  from a historical invoice reference.
+- No invoice record is created from a historical invoice reference. Invoice
+  Tracking (`docs/INVOICE_MODULE.md`) leaves the references in the staging
+  rows: they have no date and no amount, and a historical visit or project
+  cannot be put on an invoice.
 - A way to bring a historical record into the live workflow is not provided.

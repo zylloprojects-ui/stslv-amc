@@ -7,10 +7,13 @@ import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../comp
 import { api, ApiError } from '../../lib/api'
 import { formatDate, formatDateTime, formatJobDate } from '../../lib/format'
 import { formatRate } from '../../lib/money'
+import type { PagedInvoices } from '../../lib/invoiceTypes'
 import type { PagedExpenses, ProcurementRequest, Project, ProjectStatus } from '../../lib/projectTypes'
 import type { Paged } from '../../lib/types'
 import { ExpenseDialogs, type ExpenseDialog } from '../expenses/ExpenseDialogs'
 import { ExpensesTable } from '../expenses/ExpensesTable'
+import { InvoiceDialogs, type InvoiceDialog } from '../invoices/InvoiceDialogs'
+import { InvoicesTable } from '../invoices/InvoicesTable'
 import { ProcurementDialogs, type ProcurementDialog } from '../procurement/ProcurementDialogs'
 import { ProcurementTable } from '../procurement/ProcurementTable'
 import { ProjectFormModal } from './ProjectFormModal'
@@ -37,12 +40,14 @@ export function ProjectDetailPage() {
   const [statusTarget, setStatusTarget] = useState<ProjectStatus | null>(null)
   const [procurementDialog, setProcurementDialog] = useState<ProcurementDialog>({ kind: 'none' })
   const [expenseDialog, setExpenseDialog] = useState<ExpenseDialog>({ kind: 'none' })
+  const [invoiceDialog, setInvoiceDialog] = useState<InvoiceDialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
 
   const canEdit = auth.can('PROJECTS', 'EDIT')
   const showProcurement = auth.can('PROCUREMENT', 'VIEW')
   // Recorded costs are returned only to roles that may view expenses.
   const showCosts = auth.can('EXPENSES', 'VIEW')
+  const showInvoices = auth.can('INVOICES', 'VIEW')
 
   const query = useQuery({ queryKey: ['projects', 'detail', id], queryFn: () => api.get<Project>(`/projects/${id}`) })
   const procurement = useQuery({
@@ -54,6 +59,11 @@ export function ProjectDetailPage() {
     queryKey: ['expenses', 'project', id],
     queryFn: () => api.get<PagedExpenses>(`/expenses?projectId=${id}&pageSize=${SECTION_SIZE}`),
     enabled: showCosts && query.isSuccess,
+  })
+  const invoices = useQuery({
+    queryKey: ['invoices', 'project', id],
+    queryFn: () => api.get<PagedInvoices>(`/invoices?projectId=${id}&pageSize=${SECTION_SIZE}`),
+    enabled: showInvoices && query.isSuccess,
   })
 
   const back = (
@@ -88,6 +98,8 @@ export function ProjectDetailPage() {
   // A cancelled or historical project cannot be edited and takes no new records.
   const open = project.status !== 'CANCELLED' && !historical
   const fixedProject = { id: project.id, jobNumber: project.jobNumber, clientName: project.clientName, description: project.description }
+  const awaitingInvoice = project.invoiceState === 'READY_FOR_INVOICE' || project.invoiceState === 'PARTLY_INVOICED'
+  const invoiced = project.invoiceState === 'PARTLY_INVOICED' || project.invoiceState === 'INVOICED'
 
   return (
     <>
@@ -136,8 +148,15 @@ export function ProjectDetailPage() {
       {project.invoiceState === 'READY_FOR_INVOICE' && (
         <div className="mb-4">
           <Alert tone="info">
-            <strong>Ready for invoice.</strong> This project is completed and has a job value. Raise the invoice in Zoho; recording the invoice
-            details here will be possible once Invoice Tracking is available.
+            <strong>Ready for invoice.</strong> This project is completed and has a job value. Raise the invoice in Zoho, then record its
+            details under Invoices below.
+          </Alert>
+        </div>
+      )}
+      {project.invoiceState === 'PARTLY_INVOICED' && (
+        <div className="mb-4">
+          <Alert tone="info">
+            <strong>Partly invoiced.</strong> The invoices recorded for this project cover less than its job value. Both figures exclude VAT.
           </Alert>
         </div>
       )}
@@ -202,6 +221,16 @@ export function ProjectDetailPage() {
                   </Figure>
                   <Figure label="Operational job margin" hint="Job value excluding VAT minus tracked expenses" strong>
                     <Money value={project.operationalJobMargin} />
+                  </Figure>
+                </>
+              )}
+              {invoiced && (
+                <>
+                  <Figure label="Invoiced" hint="Recorded invoices, excluding VAT">
+                    <Money value={project.invoicedValue} />
+                  </Figure>
+                  <Figure label="Not yet invoiced" hint="Job value minus invoiced, excluding VAT" strong>
+                    <Money value={project.uninvoicedValue} />
                   </Figure>
                 </>
               )}
@@ -291,6 +320,53 @@ export function ProjectDetailPage() {
         </Card>
       )}
 
+      {showInvoices && !historical && (
+        <Card className="mt-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
+            <h2 className="text-base font-semibold text-slate-900">Invoices</h2>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link to={`/invoices?projectId=${project.id}`} className="text-sm font-medium text-blue-700 hover:underline">
+                Open in Invoice Tracking
+              </Link>
+              {awaitingInvoice && auth.can('INVOICES', 'CREATE') && (
+                <Button
+                  size="sm"
+                  onClick={() =>
+                    setInvoiceDialog({
+                      kind: 'create',
+                      preset: {
+                        client: { id: project.clientId, name: project.clientName },
+                        key: `project:${project.id}`,
+                        amount: project.uninvoicedValue ?? '',
+                      },
+                    })
+                  }
+                >
+                  Record invoice
+                </Button>
+              )}
+            </div>
+          </div>
+          {invoices.isPending && <Spinner size="sm" label="Loading invoices" />}
+          {invoices.isError && <LoadError error={invoices.error} onRetry={() => void invoices.refetch()} />}
+          {invoices.data && invoices.data.items.length === 0 && (
+            <EmptyState
+              title="No invoices recorded for this project"
+              description={awaitingInvoice ? 'Raise the invoice in Zoho, then record it here.' : 'An invoice can be recorded once the project is completed.'}
+            />
+          )}
+          {invoices.data && invoices.data.items.length > 0 && (
+            <InvoicesTable
+              items={invoices.data.items}
+              showClient={false}
+              linkProject={false}
+              canEdit={auth.can('INVOICES', 'EDIT')}
+              onDialog={setInvoiceDialog}
+            />
+          )}
+        </Card>
+      )}
+
       {editing && (
         <ProjectFormModal
           project={project}
@@ -321,6 +397,7 @@ export function ProjectDetailPage() {
         canEdit={auth.can('PROCUREMENT', 'EDIT')}
         onNotice={setNotice}
       />
+      <InvoiceDialogs dialog={invoiceDialog} setDialog={setInvoiceDialog} canEdit={auth.can('INVOICES', 'EDIT')} onNotice={setNotice} />
       <ExpenseDialogs
         dialog={expenseDialog}
         setDialog={setExpenseDialog}

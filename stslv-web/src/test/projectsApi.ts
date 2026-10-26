@@ -61,6 +61,8 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     allowedStatuses: TRANSITIONS.NEW,
     invoiceState: 'NOT_READY',
     readyForInvoice: false,
+    invoicedValue: '0.000',
+    uninvoicedValue: '1000.000',
     trackedExpenses: '0.000',
     operationalJobMargin: '1000.000',
     budgetRemaining: null,

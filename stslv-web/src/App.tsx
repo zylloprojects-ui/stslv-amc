@@ -18,6 +18,7 @@ import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ExpensesPage } from './pages/expenses/ExpensesPage'
 import { HistoricalDataPage } from './pages/historical/HistoricalDataPage'
+import { InvoicesPage } from './pages/invoices/InvoicesPage'
 import { AuthLayout, LoginPage } from './pages/LoginPage'
 import { LoaderPreviewPage } from './pages/LoaderPreviewPage'
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
@@ -140,6 +141,14 @@ export function AppRoutes() {
             element={
               <RequirePermission module="EXPENSES">
                 <ExpensesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/invoices"
+            element={
+              <RequirePermission module="INVOICES">
+                <InvoicesPage />
               </RequirePermission>
             }
           />

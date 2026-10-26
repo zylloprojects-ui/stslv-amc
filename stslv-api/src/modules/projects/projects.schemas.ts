@@ -12,7 +12,17 @@ export const PROJECT_STATUSES = [...OPERATIONAL_PROJECT_STATUSES, "HISTORICAL"] 
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 
 // Derived by v_project_financials, never stored.
-export const INVOICE_STATES = ["NOT_READY", "READY_FOR_INVOICE", "NO_INVOICE_REQUIRED", "NOT_APPLICABLE", "HISTORICAL"] as const;
+// PARTLY_INVOICED and INVOICED compare what active invoices allocate to the
+// project with its job value, both excluding VAT (migration 0060).
+export const INVOICE_STATES = [
+  "NOT_READY",
+  "READY_FOR_INVOICE",
+  "PARTLY_INVOICED",
+  "INVOICED",
+  "NO_INVOICE_REQUIRED",
+  "NOT_APPLICABLE",
+  "HISTORICAL",
+] as const;
 export type InvoiceState = (typeof INVOICE_STATES)[number];
 
 // Must match projects_job_date_precision_ck. MONTH: the source gave a month
