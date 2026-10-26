@@ -21,6 +21,8 @@ export default defineConfig({
       PASSWORD_RESET_EXPIRES_MINUTES: "30",
       // Every test request comes from one address; the limiter has its own test.
       PUBLIC_AUTH_RATE_LIMIT: "100000",
+      LOGIN_RATE_LIMIT: "100000",
+      LOGIN_FAILURE_LIMIT: "100000",
     },
   },
 });

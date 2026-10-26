@@ -130,6 +130,12 @@ export const env = {
   passwordResetMinutes: readWholeNumber("PASSWORD_RESET_EXPIRES_MINUTES", 30, 5, 1440),
   // Requests one address may make to the public sign-up and password-recovery routes per 15 minutes.
   publicAuthRateLimit: readWholeNumber("PUBLIC_AUTH_RATE_LIMIT", 10, 1, 100_000),
+  // Sign-in requests one address may make per 15 minutes, successful or not. Generous,
+  // because an office's staff may all reach the API from one shared address.
+  loginRateLimit: readWholeNumber("LOGIN_RATE_LIMIT", 50, 1, 100_000),
+  // Failed sign-ins allowed per 15 minutes for one email from one address. Counted per
+  // address as well as email, so a stranger cannot lock a real user out of their own account.
+  loginFailureLimit: readWholeNumber("LOGIN_FAILURE_LIMIT", 5, 1, 100_000),
   // How many reverse proxies stand between the internet and this API. 0 (the default)
   // means none: forwarded-address headers are ignored, which is right for local
   // development. A hosting platform's load balancer counts as one.

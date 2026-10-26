@@ -217,7 +217,10 @@ removes data.
 - Proxy trust: make more than `PUBLIC_AUTH_RATE_LIMIT` password-recovery
   requests from one network and confirm they are refused, while a different
   network (for example a phone on mobile data) is still accepted. If the second
-  network is refused too, `TRUST_PROXY` is too low.
+  network is refused too, `TRUST_PROXY` is too low. The same applies to sign-in:
+  `LOGIN_RATE_LIMIT` and `LOGIN_FAILURE_LIMIT` count per network address, so a
+  wrong `TRUST_PROXY` would make every visitor share one sign-in limit. Check that
+  `metadata.ip` of an `auth.login_failed` activity entry shows the real address.
 - Push a small change to `stslv-web` and to `stslv-api` and confirm each
   redeploys on its own.
 

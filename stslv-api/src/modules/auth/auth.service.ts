@@ -10,7 +10,30 @@ import { issueToken } from "./token";
 // One message for every failure, so the response does not reveal whether the email exists.
 const invalidCredentials = () => new AppError(401, "INVALID_CREDENTIALS", "Incorrect email or password.");
 
-export async function login(email: string, password: string) {
+type LoginFailureReason = "unknown_account" | "wrong_password" | "inactive_account";
+
+/**
+ * Records a failed sign-in. Every failure writes one entry, so the response takes
+ * the same time whether or not the email has an account. An email with no account
+ * is not stored: people sometimes type their password into the email field.
+ */
+async function recordFailedLogin(
+  user: { id: string; full_name: string } | undefined,
+  reason: LoginFailureReason,
+  ip: string | null
+) {
+  await logActivity(pool, {
+    userId: null,
+    action: "auth.login_failed",
+    module: "AUTH",
+    entityType: "users",
+    entityId: user?.id ?? null,
+    description: user ? `Failed sign-in for ${user.full_name}.` : "Failed sign-in for an email with no account.",
+    metadata: { reason, ip },
+  });
+}
+
+export async function login(email: string, password: string, context: { ip: string | null } = { ip: null }) {
   const result = await pool.query<{
     id: string;
     email: string;
@@ -22,12 +45,14 @@ export async function login(email: string, password: string) {
 
   if (!user) {
     await verifyAgainstDummy(password);
+    await recordFailedLogin(undefined, "unknown_account", context.ip);
     throw invalidCredentials();
   }
 
   const passwordMatches = await verifyPassword(password, user.password_hash);
 
   if (!passwordMatches || !user.is_active) {
+    await recordFailedLogin(user, passwordMatches ? "inactive_account" : "wrong_password", context.ip);
     throw invalidCredentials();
   }
 
