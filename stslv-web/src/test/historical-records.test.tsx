@@ -245,8 +245,9 @@ describe('imported contract', () => {
     })
     renderApp('/amc/contracts')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel Two CCTV' }))
-    const dialog = await screen.findByRole('dialog', { name: 'AMC contract details' })
+    await userEvent.click(await screen.findByRole('link', { name: 'View Test Hotel Two CCTV' }))
+    await screen.findByRole('heading', { name: 'Test Hotel Two — CCTV' })
+    const dialog = screen.getByRole('main')
 
     expect(await within(dialog).findByText(/imported from an earlier register/)).toHaveTextContent('starting on or after 01 Oct 2026')
     expect(within(dialog).getByText(/1 historical/)).toBeInTheDocument()
@@ -263,8 +264,9 @@ describe('imported contract', () => {
     amcApi(ADMIN, { contracts: [makeContract()], visits: [makeVisit()] })
     renderApp('/amc/contracts')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel One FIRE' }))
-    const dialog = await screen.findByRole('dialog', { name: 'AMC contract details' })
+    await userEvent.click(await screen.findByRole('link', { name: 'View Test Hotel One FIRE' }))
+    await screen.findByRole('heading', { name: 'Test Hotel One — FIRE' })
+    const dialog = screen.getByRole('main')
     await within(dialog).findByRole('table', { name: 'Visits of this contract' })
 
     expect(within(dialog).queryByText(/imported from an earlier register/)).not.toBeInTheDocument()

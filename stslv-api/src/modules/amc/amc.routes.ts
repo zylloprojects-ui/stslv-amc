@@ -6,6 +6,7 @@ import { sendExport } from "../../shared/export/send";
 import { parseIdParam } from "../../shared/validation";
 import {
   changeContractStatusSchema,
+  contractHistorySchema,
   createContractSchema,
   exportVisitsSchema,
   listContractsSchema,
@@ -22,6 +23,7 @@ import {
   createContract,
   generateSchedule,
   getContract,
+  listContractHistory,
   listContracts,
   listSystems,
   previewSchedule,
@@ -67,6 +69,14 @@ amcRouter.get("/contracts/systems", authorize("AMC_CONTRACTS", "VIEW"), async (_
 
 amcRouter.get("/contracts/:id", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
   res.json({ success: true, data: await getContract(parseIdParam(req.params.id)) });
+});
+
+// Read-only: the activity recorded against one contract (the contract page's history).
+amcRouter.get("/contracts/:id/history", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
+  res.json({
+    success: true,
+    data: await listContractHistory(parseIdParam(req.params.id), contractHistorySchema.parse(req.query)),
+  });
 });
 
 amcRouter.post("/contracts", authorize("AMC_CONTRACTS", "CREATE"), async (req, res) => {

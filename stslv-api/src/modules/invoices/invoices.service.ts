@@ -445,6 +445,13 @@ function invoiceFilter(query: InvoiceFilters): { where: string; params: unknown[
     params.push(query.amcVisitId);
     conditions.push(`EXISTS (SELECT 1 FROM invoice_allocations al WHERE al.invoice_id = i.id AND al.amc_visit_id = $${params.length})`);
   }
+  if (query.amcContractId) {
+    params.push(query.amcContractId);
+    conditions.push(
+      `EXISTS (SELECT 1 FROM invoice_allocations al JOIN amc_visits v ON v.id = al.amc_visit_id
+               WHERE al.invoice_id = i.id AND v.amc_contract_id = $${params.length})`
+    );
+  }
   if (query.dateFrom) {
     params.push(query.dateFrom);
     conditions.push(`i.invoice_date >= $${params.length}`);

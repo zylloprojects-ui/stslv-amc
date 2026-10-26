@@ -79,6 +79,8 @@ export const listInvoicesSchema = z.object({
   // Invoices that cover this project or this AMC visit.
   projectId: idSchema.optional(),
   amcVisitId: idSchema.optional(),
+  // Invoices that cover at least one visit of this AMC contract (the contract page).
+  amcContractId: idSchema.optional(),
   dateFrom: optionalDateSchema("From date").optional(),
   dateTo: optionalDateSchema("To date").optional(),
   ...pagingSchema,
@@ -96,7 +98,10 @@ export const listBillableSchema = z
   });
 
 /** The invoice list's own filters, without paging, plus the file format. */
-export const exportInvoicesSchema = listInvoicesSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+// The contract filter is for the contract page only; the export keeps its own filter set.
+export const exportInvoicesSchema = listInvoicesSchema
+  .omit({ page: true, pageSize: true, amcContractId: true })
+  .extend({ format: exportFormatSchema });
 
 /** The pending report lists waiting work only; work that an invoice already covers cannot be asked for. */
 export const exportBillableSchema = z.strictObject({

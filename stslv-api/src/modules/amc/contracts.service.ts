@@ -22,6 +22,7 @@ import {
 } from "./amc.schedule";
 import type {
   ChangeContractStatusInput,
+  ContractHistoryQuery,
   CreateContractInput,
   ListContractsQuery,
   SchedulePreviewQuery,
@@ -267,6 +268,68 @@ async function findContract(db: Queryable, id: string, lock = false): Promise<Co
 
 export function getContract(id: string): Promise<Contract> {
   return findContract(pool, id);
+}
+
+export interface ContractHistoryEntry {
+  id: string;
+  /** Dotted verb, for example "amc_contract.updated". */
+  action: string;
+  description: string | null;
+  /** Null for an action not made by a signed-in user (for example the historical import). */
+  user: { id: string; fullName: string } | null;
+  /** Field changes recorded with the entry, as { field: { from, to } }. */
+  changes: Record<string, { from: unknown; to: unknown }> | null;
+  /** The reason given for a status change, if any. */
+  reason: string | null;
+  createdAt: string;
+}
+
+/**
+ * The activity log entries recorded against one contract, newest first. Only
+ * the recorded field changes and reason are returned from the entry's details:
+ * other details (for example the ids of removed visits) stay internal.
+ */
+export async function listContractHistory(id: string, query: ContractHistoryQuery) {
+  await findContract(pool, id);
+
+  const total = await pool.query<{ count: number }>(
+    "SELECT count(*)::int AS count FROM activity_logs WHERE entity_type = 'amc_contracts' AND entity_id = $1",
+    [id]
+  );
+  const rows = await pool.query<{
+    id: string;
+    action: string;
+    description: string | null;
+    user_id: string | null;
+    full_name: string | null;
+    changes: unknown;
+    reason: string | null;
+    created_at: Date;
+  }>(
+    `SELECT l.id, l.action, l.description, l.user_id, u.full_name,
+            l.metadata -> 'changes' AS changes, l.metadata ->> 'reason' AS reason, l.created_at
+     FROM activity_logs l
+     LEFT JOIN users u ON u.id = l.user_id
+     WHERE l.entity_type = 'amc_contracts' AND l.entity_id = $1
+     ORDER BY l.created_at DESC, l.id DESC
+     LIMIT $2 OFFSET $3`,
+    [id, query.pageSize, (query.page - 1) * query.pageSize]
+  );
+
+  const items: ContractHistoryEntry[] = rows.rows.map((row) => ({
+    id: row.id,
+    action: row.action,
+    description: row.description,
+    user: row.user_id ? { id: row.user_id, fullName: row.full_name ?? "" } : null,
+    changes:
+      row.changes !== null && typeof row.changes === "object" && !Array.isArray(row.changes)
+        ? (row.changes as Record<string, { from: unknown; to: unknown }>)
+        : null,
+    reason: row.reason,
+    createdAt: row.created_at.toISOString(),
+  }));
+
+  return { items, total: total.rows[0]?.count ?? 0, page: query.page, pageSize: query.pageSize };
 }
 
 export async function listContracts(query: ListContractsQuery) {

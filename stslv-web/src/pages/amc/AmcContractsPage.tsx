@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
@@ -11,10 +12,8 @@ import type { DashboardSummary } from '../dashboard/metrics'
 import { fetchClients, queryString } from './amcApi'
 import { formatDate, formatMoney } from './amcFormat'
 import { ContractStatusPill, Filter, Pager, Pill } from './components'
-import { ContractDetailsModal } from './ContractDetailsModal'
 import { ContractFormModal } from './ContractFormModal'
 import { StatTile } from '../../components/StatTile'
-import { ContractStatusDialog } from './ContractStatusDialog'
 import {
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
@@ -118,12 +117,8 @@ function validityNote(contract: Contract): { text: string; ended: boolean } | nu
   return { text: days === 0 ? 'Ends today' : `${days} day${days === 1 ? '' : 's'} left`, ended: false }
 }
 
-type Dialog =
-  | { kind: 'none' }
-  | { kind: 'create' }
-  | { kind: 'edit'; contract: Contract }
-  | { kind: 'view'; contractId: string }
-  | { kind: 'status'; contract: Contract; status: ContractStatus }
+// A contract's details, schedule, invoices and status changes are on its own page (ContractDetailPage).
+type Dialog = { kind: 'none' } | { kind: 'create' } | { kind: 'edit'; contract: Contract }
 
 function scheduleNote(saved: SavedContract): string {
   const change = saved.scheduleChange
@@ -170,7 +165,6 @@ export function AmcContractsPage() {
 
   const canCreate = auth.can('AMC_CONTRACTS', 'CREATE')
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
-  const canCancel = auth.can('AMC_CONTRACTS', 'DELETE')
 
   const data = contracts.data
   const filtered = search !== '' || status !== 'all' || clientId !== '' || frequency !== ''
@@ -431,14 +425,13 @@ export function AmcContractsPage() {
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                         <div className="inline-flex items-center divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                          <button
-                            type="button"
+                          <Link
+                            to={`/amc/contracts/${contract.id}`}
                             aria-label={`View ${label(contract)}`}
-                            onClick={() => setDialog({ kind: 'view', contractId: contract.id })}
                             className="px-3 py-1.5 text-xs font-semibold text-[#1479BD] transition-colors hover:bg-sky-50 focus-visible:relative focus-visible:z-10"
                           >
                             View
-                          </button>
+                          </Link>
                           {canEdit && (
                             <button
                               type="button"
@@ -468,30 +461,6 @@ export function AmcContractsPage() {
           onSaved={(saved) => {
             setNotice(`The contract for ${label(saved)} was ${dialog.kind === 'edit' ? 'updated' : 'added'}.${scheduleNote(saved)}`)
             closeDialog()
-          }}
-        />
-      )}
-
-      {dialog.kind === 'view' && (
-        <ContractDetailsModal
-          contractId={dialog.contractId}
-          canEdit={canEdit}
-          canCancel={canCancel}
-          canViewSchedule={auth.can('AMC_SCHEDULE', 'VIEW')}
-          onEdit={(contract) => setDialog({ kind: 'edit', contract })}
-          onChangeStatus={(contract, next) => setDialog({ kind: 'status', contract, status: next })}
-          onClose={closeDialog}
-        />
-      )}
-
-      {dialog.kind === 'status' && (
-        <ContractStatusDialog
-          contract={dialog.contract}
-          status={dialog.status}
-          onClose={() => setDialog({ kind: 'view', contractId: dialog.contract.id })}
-          onChanged={(saved) => {
-            setNotice(`The contract for ${label(saved)} is now ${CONTRACT_STATUS_LABELS[saved.status]}.${scheduleNote(saved)}`)
-            setDialog({ kind: 'view', contractId: saved.id })
           }}
         />
       )}

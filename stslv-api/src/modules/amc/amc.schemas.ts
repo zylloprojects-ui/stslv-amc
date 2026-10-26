@@ -136,6 +136,12 @@ export const listContractsSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+/** The activity history of one contract, newest first. */
+export const contractHistorySchema = z.object({
+  page,
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+
 /** Proposed terms for a schedule preview. Anything left out uses the stored value. */
 export const schedulePreviewSchema = z.object({
   validFrom: isoDate("Valid from").optional(),
@@ -218,6 +224,7 @@ export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type UpdateContractInput = z.infer<typeof updateContractSchema>;
 export type ChangeContractStatusInput = z.infer<typeof changeContractStatusSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsSchema>;
+export type ContractHistoryQuery = z.infer<typeof contractHistorySchema>;
 export type SchedulePreviewQuery = z.infer<typeof schedulePreviewSchema>;
 export type ListVisitsQuery = z.infer<typeof listVisitsSchema>;
 export type ExportVisitsQuery = z.infer<typeof exportVisitsSchema>;

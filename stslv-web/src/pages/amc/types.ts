@@ -81,6 +81,25 @@ export interface Contract {
   }
 }
 
+/** One activity entry recorded against a contract (GET /amc/contracts/:id/history). */
+export interface ContractHistoryEntry {
+  id: string
+  action: string
+  description: string | null
+  /** Null for an action not made by a signed-in user, such as the historical import. */
+  user: { id: string; fullName: string } | null
+  changes: Record<string, { from: unknown; to: unknown }> | null
+  reason: string | null
+  createdAt: string
+}
+
+export interface ContractHistory {
+  items: ContractHistoryEntry[]
+  total: number
+  page: number
+  pageSize: number
+}
+
 export interface ScheduleChange {
   created: number
   removed: number

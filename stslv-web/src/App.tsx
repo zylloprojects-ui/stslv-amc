@@ -11,6 +11,7 @@ import { AccountPage } from './pages/AccountPage'
 import { AmcContractsPage } from './pages/amc/AmcContractsPage'
 import { AmcExecutionPage } from './pages/amc/AmcExecutionPage'
 import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
+import { ContractDetailPage } from './pages/amc/ContractDetailPage'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
 import { SignUpPage } from './pages/auth/SignUpPage'
@@ -93,6 +94,14 @@ export function AppRoutes() {
             element={
               <RequirePermission module="AMC_CONTRACTS">
                 <AmcContractsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/contracts/:id"
+            element={
+              <RequirePermission module="AMC_CONTRACTS">
+                <ContractDetailPage />
               </RequirePermission>
             }
           />
