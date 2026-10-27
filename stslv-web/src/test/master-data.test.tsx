@@ -184,7 +184,7 @@ describe('contract master links', () => {
     })
     renderApp('/amc/contracts/100')
 
-    const overview = within(await screen.findByRole('region', { name: 'Contract overview' }))
+    const overview = within(await screen.findByRole('tabpanel'))
     expect(await overview.findAllByText('Not linked')).toHaveLength(2)
 
     await userEvent.click(overview.getByRole('button', { name: 'Link master records' }))
@@ -204,7 +204,7 @@ describe('contract master links', () => {
     })
     renderApp('/amc/contracts/100')
 
-    const overview = within(await screen.findByRole('region', { name: 'Contract overview' }))
+    const overview = within(await screen.findByRole('tabpanel'))
     await waitFor(() => expect(overview.queryByText('Loading master records')).not.toBeInTheDocument())
     expect(overview.queryByText('Master records')).not.toBeInTheDocument()
     expect(overview.getByText('Test Engineer')).toBeInTheDocument()

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { TABLE } from '../../components/table'
-import { cx, formatCount, formatDateTime } from '../../lib/format'
+import { cx, formatCount } from '../../lib/format'
 import { formatDate, monthLabel } from '../amc/amcFormat'
 import { ContractStatusPill } from '../amc/components'
 import { CONTRACT_STATUS_LABELS } from '../amc/types'
-import type { OperationsDashboard, Readiness, Unavailable, WorkloadMonth } from './operationsTypes'
+import type { OperationsDashboard, Unavailable, WorkloadMonth } from './operationsTypes'
 
 const shortMonth = (month: string) => monthLabel(month).slice(0, 3)
 
@@ -17,38 +17,57 @@ export function WorkloadChart({ months }: { months: WorkloadMonth[] }) {
 
   return (
     <div>
-      <div className="relative">
-        <div className="flex h-40 items-end gap-2 border-b border-slate-300" role="img" aria-label="Visits planned per month; the same figures are in the table below.">
-          {months.map((entry) => (
-            <div
-              key={entry.month}
-              className="flex h-full flex-1 flex-col items-center justify-end gap-1 px-1"
-              onMouseEnter={() => setHover(entry.month)}
-              onMouseLeave={() => setHover(null)}
-            >
-              <span className="text-xs font-semibold tabular-nums text-slate-700">{entry.planned}</span>
-              <div
-                className={cx('w-full max-w-12 rounded-t bg-[#1479BD]', hover === entry.month && 'opacity-80')}
-                style={{ height: `${(entry.planned / max) * 100}%`, minHeight: entry.planned > 0 ? 4 : 0 }}
-              />
-            </div>
-          ))}
+      <div className="mb-4 flex flex-wrap gap-2 text-xs font-semibold">
+        <span className="rounded-full bg-sky-50 px-3 py-1 text-[#0b3b66] ring-1 ring-inset ring-sky-200">{`Planned: ${months.reduce((sum, entry) => sum + entry.planned, 0)}`}</span>
+        <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-800 ring-1 ring-inset ring-emerald-200">{`Completed: ${months.reduce((sum, entry) => sum + entry.completed, 0)}`}</span>
+        <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800 ring-1 ring-inset ring-amber-200">{`Open: ${months.reduce((sum, entry) => sum + entry.open, 0)}`}</span>
+      </div>
+
+      <div className="flex gap-3">
+        <div className="relative h-56 w-6 shrink-0 text-right text-[11px] font-medium tabular-nums text-slate-500" aria-hidden="true">
+          <span className="absolute right-0 top-6 -translate-y-1/2">{max}</span>
+          <span className="absolute bottom-0 right-0 translate-y-1/2">0</span>
         </div>
-        {active && (
-          <div className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 rounded-md bg-slate-900 px-2 py-1 text-xs text-white shadow" aria-hidden="true">
-            {monthLabel(active.month)}: {active.planned} planned · {active.completed} completed · {active.open} open
+        <div className="min-w-0 flex-1">
+          <div className="relative h-56">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 top-6 flex flex-col justify-between" aria-hidden="true">
+              <span className="border-t border-dashed border-slate-300" />
+              <span className="border-t border-dashed border-slate-300" />
+              <span className="border-t border-slate-400" />
+            </div>
+            <div className="absolute inset-x-0 bottom-0 top-6 flex items-end gap-3 px-2" role="img" aria-label="Visits planned per month; the same figures are in the table below.">
+              {months.map((entry) => (
+                <div
+                  key={entry.month}
+                  className={cx('flex h-full flex-1 items-end justify-center rounded-t-lg transition-colors', hover === entry.month && 'bg-sky-50')}
+                  onMouseEnter={() => setHover(entry.month)}
+                  onMouseLeave={() => setHover(null)}
+                >
+                  <div
+                    className="relative w-full max-w-10 rounded-t-lg bg-gradient-to-t from-[#0e5a96] to-[#2f9bd8] shadow-sm"
+                    style={{ height: `${(entry.planned / max) * 100}%`, minHeight: entry.planned > 0 ? 6 : 3 }}
+                  >
+                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-bold tabular-nums text-[#0b3b66]">{entry.planned}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        )}
-        <div className="mt-1 flex gap-2">
-          {months.map((entry) => (
-            <span key={entry.month} className="flex-1 text-center text-xs text-slate-600">
-              {shortMonth(entry.month)}
-            </span>
-          ))}
+          <div className="mt-2 flex gap-3 px-2">
+            {months.map((entry) => (
+              <span key={entry.month} className={cx('flex-1 text-center text-xs font-semibold', hover === entry.month ? 'text-[#0b3b66]' : 'text-slate-600')}>
+                {shortMonth(entry.month)}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
+
+      <p className="mt-3 min-h-5 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600 ring-1 ring-inset ring-slate-200" aria-hidden="true">
+        {active ? `${monthLabel(active.month)}: ${active.planned} planned · ${active.completed} completed · ${active.open} open` : 'Point at a bar to see its month in detail.'}
+      </p>
       <details className="mt-3">
-        <summary className="cursor-pointer text-xs font-medium text-[#1479BD]">Show as table</summary>
+        <summary className="inline-block cursor-pointer rounded-lg bg-sky-50 px-3 py-1 text-xs font-semibold text-[#0b3b66] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">Show as table</summary>
         <div className={cx(TABLE.wrapper, 'mt-2')}>
           <table className={TABLE.table}>
             <caption className="sr-only">Visits per month</caption>
@@ -88,12 +107,32 @@ export function WorkloadChart({ months }: { months: WorkloadMonth[] }) {
 /** The payment trend cannot be drawn: STSLV AMC records no payments. Says so instead of drawing zeros. */
 export function PaymentTrend({ payments }: { payments: Unavailable }) {
   return (
-    <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 px-4 text-center">
-      <p className="text-sm font-semibold text-slate-700">Payment data not available</p>
-      <p className="mt-1 max-w-md text-xs text-slate-600">{payments.reason}</p>
-      <p className="mt-2 max-w-md text-xs text-slate-600">Invoice dates are not payment dates, so they are not used for this chart.</p>
+    <div className="relative flex flex-1 min-h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-300 bg-slate-50 p-6">
+      <div className="pointer-events-none absolute inset-x-6 inset-y-8 flex flex-col justify-between" aria-hidden="true">
+        {[0, 1, 2, 3].map((line) => (
+          <span key={line} className="border-t border-dashed border-slate-300" />
+        ))}
+      </div>
+      <div className="relative max-w-md rounded-2xl border border-slate-300 bg-white px-6 py-5 text-center shadow-sm">
+        <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-[#1479BD]" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M4 19V9m6 10V5m6 14v-7m4 7H3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+        <p className="text-sm font-bold text-slate-800">Payment data not available</p>
+        <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{payments.reason}</p>
+        <p className="mt-2 border-t border-slate-200 pt-2 text-xs leading-relaxed text-slate-600">Invoice dates are not payment dates, so they are not used for this chart.</p>
+      </div>
     </div>
   )
+}
+
+// A status keeps its meaning: green for live, amber for ended, red for cancelled, blue otherwise.
+const STATUS_BAR: Record<string, string> = {
+  ACTIVE: 'from-emerald-600 to-emerald-400',
+  DRAFT: 'from-[#0e5a96] to-[#2f9bd8]',
+  EXPIRED: 'from-amber-600 to-amber-400',
+  CANCELLED: 'from-red-600 to-red-400',
 }
 
 export function PortfolioStatus({ portfolio }: { portfolio: NonNullable<OperationsDashboard['portfolio']> }) {
@@ -105,7 +144,7 @@ export function PortfolioStatus({ portfolio }: { portfolio: NonNullable<Operatio
 
   return (
     <div>
-      <p className="mb-3 text-xs text-slate-600">{formatCount(portfolio.total)} contracts in total</p>
+      <p className="mb-3 inline-block rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{formatCount(portfolio.total)} contracts in total</p>
       <table className="w-full text-sm">
         <caption className="sr-only">Contracts by status</caption>
         <thead className="sr-only">
@@ -117,16 +156,16 @@ export function PortfolioStatus({ portfolio }: { portfolio: NonNullable<Operatio
         </thead>
         <tbody>
           {portfolio.statuses.map((entry) => (
-            <tr key={entry.status} className="align-middle">
-              <th scope="row" className="w-28 py-1.5 pr-3 text-left font-normal">
+            <tr key={entry.status} className="border-b border-slate-200 align-middle last:border-0">
+              <th scope="row" className="w-28 py-2 pr-3 text-left font-normal">
                 <ContractStatusPill status={entry.status} />
               </th>
-              <td className="py-1.5" aria-hidden="true">
-                <div className="h-2.5 rounded bg-slate-100">
-                  <div className="h-2.5 rounded bg-[#1479BD]" style={{ width: `${(entry.count / max) * 100}%` }} />
+              <td className="py-2" aria-hidden="true">
+                <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                  <div className={cx('h-3 rounded-full bg-gradient-to-r', STATUS_BAR[entry.status] ?? 'from-[#0e5a96] to-[#2f9bd8]')} style={{ width: `${(entry.count / max) * 100}%` }} />
                 </div>
               </td>
-              <td className="w-32 py-1.5 pl-3 text-right tabular-nums text-slate-700">
+              <td className="w-32 py-2 pl-3 text-right font-semibold tabular-nums text-slate-800">
                 <span className="sr-only">{CONTRACT_STATUS_LABELS[entry.status]}: </span>
                 {formatCount(entry.count)} · {entry.percent ?? '0.0'}%
               </td>
@@ -146,12 +185,12 @@ function daysText(days: number) {
 
 export function ExpiringContracts({ expiring }: { expiring: NonNullable<OperationsDashboard['expiring']> }) {
   if (expiring.total === 0) {
-    return <p className="py-6 text-center text-sm text-slate-600">✓ No active AMC ends in the next {expiring.days} days.</p>
+    return <p className="flex flex-1 min-h-40 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-6 py-8 text-center text-sm font-semibold text-emerald-800">✓ No active AMC ends in the next {expiring.days} days.</p>
   }
 
   return (
     <div>
-      <p className="mb-2 text-xs text-slate-600">
+      <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
         {formatCount(expiring.total)} active {expiring.total === 1 ? 'contract' : 'contracts'}
         {expiring.pastValidity > 0 && `, of which ${formatCount(expiring.pastValidity)} already past validity and still marked Active`}
         {expiring.total > expiring.items.length && ` · showing the first ${expiring.items.length}`}
@@ -209,35 +248,6 @@ export function ExpiringContracts({ expiring }: { expiring: NonNullable<Operatio
           </tbody>
         </table>
       </div>
-    </div>
-  )
-}
-
-const STATE_STYLE = {
-  OK: { dot: 'bg-emerald-500', label: 'OK' },
-  ATTENTION: { dot: 'bg-amber-500', label: 'Needs attention' },
-  UNAVAILABLE: { dot: 'bg-slate-400', label: 'Not available' },
-} as const
-
-/** Each verified check on its own line. There is no overall score. */
-export function ReadinessChecks({ readiness }: { readiness: Readiness }) {
-  return (
-    <div>
-      <ul className="divide-y divide-slate-100">
-        {readiness.checks.map((check) => (
-          <li key={check.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-2.5">
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-slate-900">{check.label}</span>
-              <span className="block text-xs text-slate-600">{check.detail}</span>
-            </span>
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-700">
-              <span className={cx('h-2 w-2 rounded-full', STATE_STYLE[check.state].dot)} aria-hidden="true" />
-              {STATE_STYLE[check.state].label}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-slate-600">Checked {formatDateTime(readiness.checkedAt)}.</p>
     </div>
   )
 }

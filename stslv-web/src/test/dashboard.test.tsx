@@ -192,15 +192,14 @@ describe('KPI cards', () => {
     const active = await kpiCard('Active AMC')
     expect(await within(active).findByText('12')).toBeInTheDocument()
     expect(within(active).getByText(/2 past validity/)).toBeInTheDocument()
-    expect(within(active).getByText('AMC')).toBeInTheDocument()
 
     const value = await kpiCard('Active AMC Value')
     expect(within(value).getByText('8,010.500')).toBeInTheDocument()
-    expect(within(value).getByText(/not annualised/)).toBeInTheDocument()
+    expect(within(value).getByTitle(/not annualised/)).toBeInTheDocument()
 
     const credit = await kpiCard('Total Final Credit')
     expect(within(credit).getByText('300.501')).toBeInTheDocument()
-    expect(within(credit).getByText(/meaning not yet confirmed, not revenue/)).toBeInTheDocument()
+    expect(within(credit).getByTitle(/meaning not yet confirmed, not revenue/)).toBeInTheDocument()
 
     const services = await kpiCard('Services This Month')
     expect(within(services).getByText('9')).toBeInTheDocument()
@@ -236,7 +235,6 @@ describe('KPI cards', () => {
     expect(screen.queryByText('8,010.500')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'AMC Portfolio Status' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Payment Trend' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Production Readiness' })).not.toBeInTheDocument()
   })
 
   it('hides a card whose section the API left out even if the role seems to allow it', async () => {
@@ -316,7 +314,7 @@ describe('maintenance calendar', () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const panel = (await screen.findByRole('heading', { name: 'Daily operations — AMC Maintenance Calendar' })).closest('section') as HTMLElement
+    const panel = (await screen.findByRole('heading', { name: 'AMC Maintenance Calendar' })).closest('section') as HTMLElement
     expect(within(panel).getByText(/Today · 27 Oct 2026/)).toBeInTheDocument()
     expect(within(panel).getByText('City Tower')).toBeInTheDocument()
     expect(within(panel).getByRole('link', { name: 'Open full calendar →' })).toHaveAttribute('href', '/amc/calendar')
@@ -527,22 +525,8 @@ describe('recent invoices', () => {
 })
 
 describe('production readiness', () => {
-  it('shows each verified check to the Admin, with no score, and links to the existing security pages', async () => {
-    dashboardApi(ADMIN)
-    renderApp('/dashboard')
-
-    const panel = (await screen.findByRole('heading', { name: 'Production Readiness' })).closest('section') as HTMLElement
-    expect(await within(panel).findByText('Database updates')).toBeInTheDocument()
-    expect(within(panel).getByText('Needs attention')).toBeInTheDocument()
-    expect(within(panel).getByText('STSLV AMC does not record backups.')).toBeInTheDocument()
-    expect(panel.textContent).not.toMatch(/\/100|score:/i)
-    expect(within(panel).getByRole('link', { name: 'Login History →' })).toHaveAttribute('href', '/admin/login-history')
-    expect(within(panel).queryByRole('link', { name: /Backup|Security Center/ })).not.toBeInTheDocument()
-  })
-
-  it('is not requested for a role other than the built-in Admin', async () => {
-    const all = ADMIN.permissions
-    const api = dashboardApi({ ...ADMIN, roles: [{ id: '5', code: 'MANAGER', name: 'Manager' }], permissions: all })
+  it('is no longer shown, even to the Admin, and its checks are not requested', async () => {
+    const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
     await kpiCard('Active AMC')

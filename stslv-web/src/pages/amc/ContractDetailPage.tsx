@@ -7,12 +7,12 @@ import { LoadError } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError } from '../../lib/api'
-import { formatDateTime } from '../../lib/format'
+import { cx, formatDateTime } from '../../lib/format'
 import type { PagedInvoices } from '../../lib/invoiceTypes'
 import { InvoiceDialogs, type InvoiceDialog } from '../invoices/InvoiceDialogs'
 import { InvoicesTable } from '../invoices/InvoicesTable'
 import { formatDate, formatMoney, isZeroMoney, todayIso } from './amcFormat'
-import { ContractStatusPill, DetailRow, EligibilityPill, OrDash, Pager, Pill, PlannedDate, VisitStatusPill } from './components'
+import { ContractStatusPill, EligibilityPill, OrDash, Pager, Pill, PlannedDate, VisitStatusPill } from './components'
 import { ContractFormModal } from './ContractFormModal'
 import { ContractMastersPanel } from './ContractMastersPanel'
 import { ContractRenewalsPanel } from './ContractRenewalsPanel'
@@ -34,6 +34,14 @@ import {
 const VISIT_LIMIT = 200
 const INVOICE_LIMIT = 50
 const HISTORY_PAGE_SIZE = 20
+
+type TabId = 'overview' | 'validity' | 'commercial'
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'overview', label: 'Contract overview' },
+  { id: 'validity', label: 'Contract validity' },
+  { id: 'commercial', label: 'Commercial details' },
+]
 
 const ACTION_LABELS: Record<string, string> = {
   'amc_contract.created': 'Contract created',
@@ -105,18 +113,46 @@ function changeValue(field: string, value: unknown): string {
 
 function Section({ id, title, actions, children }: { id: string; title: string; actions?: ReactNode; children: ReactNode }) {
   return (
-    <Card>
-      <section aria-labelledby={id}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
-          <h2 id={id} className="text-base font-semibold text-slate-900">
-            {title}
-          </h2>
-          {actions}
-        </div>
-        {children}
-      </section>
-    </Card>
+    <section aria-labelledby={id} className="flex min-w-0 flex-col">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 id={id} className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#0b3b66]">
+          <span className="h-4 w-1 rounded-full bg-[#1479BD]" aria-hidden="true" />
+          {title}
+        </h2>
+        {actions}
+      </div>
+      <Card className="flex-1 rounded-2xl">{children}</Card>
+    </section>
   )
+}
+
+/** One fact of the contract: the caption above, the value below. `inline` puts the value on the right, for short figures. */
+function Fact({ label, inline = false, children }: { label: string; inline?: boolean; children: ReactNode }) {
+  return (
+    <div className={inline ? 'flex items-baseline justify-between gap-4 border-b border-slate-200 py-3 last:border-0' : 'border-b border-slate-200 py-3 last:border-0'}>
+      <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</dt>
+      <dd className={inline ? 'min-w-0 break-words text-right text-sm font-bold tabular-nums text-slate-900' : 'mt-1 min-w-0 break-words whitespace-pre-wrap text-sm font-semibold text-slate-900'}>{children}</dd>
+    </div>
+  )
+}
+
+/** A thin bar showing a share of a whole. Decorative: the dates and counts it pictures are written out beside it. */
+function ShareBar({ share, title }: { share: number; title: string }) {
+  return (
+    <div className="h-2 overflow-hidden rounded-full bg-sky-100" aria-hidden="true" title={title}>
+      <div className="h-2 rounded-full bg-gradient-to-r from-[#0e5a96] to-[#2f9bd8]" style={{ width: `${Math.round(Math.min(Math.max(share, 0), 1) * 100)}%` }} />
+    </div>
+  )
+}
+
+/** The share (0 to 1) of the period from one date to another that has passed by a given day. */
+function elapsedShare(from: string, to: string, today: string): number {
+  const start = Date.parse(from)
+  const end = Date.parse(to)
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return 0
+
+  return (Date.parse(today) - start) / (end - start)
 }
 
 function HistoryEntry({ entry }: { entry: ContractHistoryEntry }) {
@@ -173,6 +209,7 @@ export function ContractDetailPage() {
   const [invoiceDialog, setInvoiceDialog] = useState<InvoiceDialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
   const [historyPage, setHistoryPage] = useState(1)
+  const [activeTab, setActiveTab] = useState<TabId>('overview')
 
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
   // Cancelling a contract needs its own permission.
@@ -199,7 +236,7 @@ export function ContractDetailPage() {
   })
 
   const back = (
-    <Link to="/amc/contracts" className="text-sm font-medium text-blue-700 hover:underline">
+    <Link to="/amc/contracts" className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-[#0b3b66] shadow-sm hover:bg-sky-50">
       ← All contracts
     </Link>
   )
@@ -228,6 +265,79 @@ export function ContractDetailPage() {
   const contract = query.data
   const validity = validityState(contract.validFrom, contract.validTo, todayIso())
   const schedule = contract.schedule
+
+  // The three groups of contract facts, drawn the same way in the cards and in the tabs.
+  const overviewBody = (wide: boolean) => (
+    <>
+      <dl className={wide ? 'grid gap-x-10 px-6 py-1 sm:grid-cols-2 lg:grid-cols-3' : 'px-6 py-1'}>
+        <Fact label="Client">
+          {contract.client.name}
+          {!contract.client.isActive && ' (inactive)'}
+        </Fact>
+        <Fact label="System">{contract.systemDescription}</Fact>
+        <Fact label="Responsible engineer">
+          <OrDash value={contract.responsibleEngineer} />
+        </Fact>
+        <Fact label="Frequency">{FREQUENCY_LABELS[contract.maintenanceFrequency]}</Fact>
+        <Fact label="Status">
+          <span className="inline-flex flex-wrap items-center gap-1">
+            <ContractStatusPill status={contract.status} />
+            {contract.isPastValidity && contract.status === 'ACTIVE' && <Pill tone="amber">Validity ended</Pill>}
+          </span>
+        </Fact>
+        <Fact label="Description">
+          <OrDash value={contract.description} />
+        </Fact>
+        <Fact label="Notes">
+          <OrDash value={contract.notes} />
+        </Fact>
+      </dl>
+      <ContractMastersPanel contractId={contract.id} canEdit={canEdit} />
+    </>
+  )
+  const validityBody = (wide: boolean) => (
+    <>
+      <dl className={wide ? 'grid gap-x-10 px-6 py-1 sm:grid-cols-2 lg:grid-cols-3' : 'px-6 py-1'}>
+        <Fact label="Start date">{formatDate(contract.validFrom)}</Fact>
+        <Fact label="End date">{formatDate(contract.validTo)}</Fact>
+        <Fact label="Duration">
+          {validity ? `${validity.durationDays} calendar days (start and end dates included)` : '—'}
+        </Fact>
+        <Fact label="Time remaining">
+          {validity ? (
+            <span className={validity.phase === 'ended' ? 'font-medium text-amber-700' : undefined}>{validity.text}</span>
+          ) : (
+            '—'
+          )}
+        </Fact>
+        <Fact label="Created">{formatDateTime(contract.createdAt)}</Fact>
+        <Fact label="Last updated">{formatDateTime(contract.updatedAt)}</Fact>
+      </dl>
+      {validity && (
+        <div className="px-6 pb-5 pt-2">
+          <ShareBar share={elapsedShare(contract.validFrom, contract.validTo, todayIso())} title="Share of the validity period that has passed" />
+        </div>
+      )}
+    </>
+  )
+  const commercialBody = (wide: boolean) => (
+    <>
+      <dl className={wide ? 'grid gap-x-10 px-6 py-1 sm:grid-cols-2' : 'px-6 py-1'}>
+        <Fact inline label="Contract value">{formatMoney(contract.contractValue)}</Fact>
+        <Fact inline label="Default visit amount">{formatMoney(contract.defaultVisitAmount)}</Fact>
+        <Fact inline label="Final credit">{formatMoney(contract.finalCredit)}</Fact>
+        <Fact inline label="Total of visit amounts">{formatMoney(schedule.scheduledTotal)}</Fact>
+        <Fact inline label="Contract value less visit amounts">{formatMoney(schedule.valueDifference)}</Fact>
+      </dl>
+      {schedule.visitCount > 0 && (!isZeroMoney(schedule.valueDifference) || schedule.amountMissingCount > 0) && (
+        <p className="px-6 pb-4 text-xs text-slate-500">
+          {!isZeroMoney(schedule.valueDifference) &&
+            'The visit amounts do not add up to the contract value. This is shown for information; it is not treated as an error. '}
+          {schedule.amountMissingCount > 0 && `${schedule.amountMissingCount} visit(s) have no amount yet.`}
+        </p>
+      )}
+    </>
+  )
 
   return (
     <>
@@ -277,74 +387,45 @@ export function ContractDetailPage() {
         </div>
       )}
 
-      <div className="space-y-6">
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Section id="contract-overview-heading" title="Contract overview">
-            <dl className="px-6 py-2">
-              <DetailRow label="Client">
-                {contract.client.name}
-                {!contract.client.isActive && ' (inactive)'}
-              </DetailRow>
-              <DetailRow label="System">{contract.systemDescription}</DetailRow>
-              <DetailRow label="Responsible engineer">
-                <OrDash value={contract.responsibleEngineer} />
-              </DetailRow>
-              <DetailRow label="Frequency">{FREQUENCY_LABELS[contract.maintenanceFrequency]}</DetailRow>
-              <DetailRow label="Status">
-                <span className="inline-flex flex-wrap items-center gap-1">
-                  <ContractStatusPill status={contract.status} />
-                  {contract.isPastValidity && contract.status === 'ACTIVE' && <Pill tone="amber">Validity ended</Pill>}
-                </span>
-              </DetailRow>
-              <DetailRow label="Description">
-                <OrDash value={contract.description} />
-              </DetailRow>
-              <DetailRow label="Notes">
-                <OrDash value={contract.notes} />
-              </DetailRow>
-            </dl>
-            <ContractMastersPanel contractId={contract.id} canEdit={canEdit} />
-          </Section>
-
-          <Section id="contract-validity-heading" title="Contract validity">
-            <dl className="px-6 py-2">
-              <DetailRow label="Start date">{formatDate(contract.validFrom)}</DetailRow>
-              <DetailRow label="End date">{formatDate(contract.validTo)}</DetailRow>
-              <DetailRow label="Duration">
-                {validity ? `${validity.durationDays} calendar days (start and end dates included)` : '—'}
-              </DetailRow>
-              <DetailRow label="Time remaining">
-                {validity ? (
-                  <span className={validity.phase === 'ended' ? 'font-medium text-amber-700' : undefined}>{validity.text}</span>
-                ) : (
-                  '—'
-                )}
-              </DetailRow>
-              <DetailRow label="Created">{formatDateTime(contract.createdAt)}</DetailRow>
-              <DetailRow label="Last updated">{formatDateTime(contract.updatedAt)}</DetailRow>
-            </dl>
-          </Section>
-
-          <Section id="contract-commercial-heading" title="Commercial details">
-            <dl className="px-6 py-2">
-              <DetailRow label="Contract value">{formatMoney(contract.contractValue)}</DetailRow>
-              <DetailRow label="Default visit amount">{formatMoney(contract.defaultVisitAmount)}</DetailRow>
-              <DetailRow label="Final credit">{formatMoney(contract.finalCredit)}</DetailRow>
-              <DetailRow label="Total of visit amounts">{formatMoney(schedule.scheduledTotal)}</DetailRow>
-              <DetailRow label="Contract value less visit amounts">{formatMoney(schedule.valueDifference)}</DetailRow>
-            </dl>
-            {schedule.visitCount > 0 && (!isZeroMoney(schedule.valueDifference) || schedule.amountMissingCount > 0) && (
-              <p className="px-6 pb-4 text-xs text-slate-500">
-                {!isZeroMoney(schedule.valueDifference) &&
-                  'The visit amounts do not add up to the contract value. This is shown for information; it is not treated as an error. '}
-                {schedule.amountMissingCount > 0 && `${schedule.amountMissingCount} visit(s) have no amount yet.`}
-              </p>
-            )}
-          </Section>
+      <div className="space-y-8">
+        <div className="grid items-stretch gap-6 lg:grid-cols-3">
+          <section aria-label="Contract details" className="lg:col-span-3">
+            <div role="tablist" aria-label="Contract details" className="mb-3 flex flex-wrap gap-1 border-b border-slate-300">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`contract-tab-${tab.id}`}
+                  aria-selected={tab.id === activeTab}
+                  aria-controls="contract-tab-panel"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cx(
+                    '-mb-px rounded-t-lg border border-b-0 px-5 py-2.5 text-sm font-bold transition-colors',
+                    tab.id === activeTab ? 'border-slate-300 bg-white text-[#0b3b66]' : 'border-transparent text-slate-600 hover:bg-sky-50 hover:text-[#0b3b66]',
+                  )}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <Card className="rounded-2xl rounded-tl-none">
+              <div role="tabpanel" id="contract-tab-panel" aria-labelledby={`contract-tab-${activeTab}`} className="py-2">
+                {activeTab === 'overview' && overviewBody(true)}
+                {activeTab === 'validity' && validityBody(true)}
+                {activeTab === 'commercial' && commercialBody(true)}
+              </div>
+            </Card>
+          </section>
         </div>
 
         <Section id="contract-schedule-heading" title="Service schedule">
           <div className="px-6 py-4">
+            {schedule.visitCount > 0 && (
+              <div className="mb-3">
+                <ShareBar share={schedule.completedCount / schedule.visitCount} title="Share of the visits that are completed" />
+              </div>
+            )}
             <p className="text-sm text-slate-700">
               {schedule.visitCount} visit{schedule.visitCount === 1 ? '' : 's'}: {schedule.completedCount} completed, {schedule.openCount} open
               {schedule.historicalCount > 0 && `, ${schedule.historicalCount} historical`}

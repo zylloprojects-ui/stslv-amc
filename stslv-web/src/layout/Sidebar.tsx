@@ -220,7 +220,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
               <h2>
                 {section.path ? (
                   // A group with a landing page: the heading opens the page, the chevron shows or hides the group's links.
-                  <span className="flex items-center gap-0.5">
+                  <span className="flex items-center">
                     <NavLink
                       to={section.path}
                       end
@@ -229,7 +229,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
                         onNavigate()
                       }}
                       title={collapsed ? title : undefined}
-                      className={({ isActive }) => topLevel(isActive ? TOP_ACTIVE : TOP_IDLE)}
+                      className={({ isActive }) => cx(topLevel(isActive ? TOP_ACTIVE : TOP_IDLE), 'min-w-0 flex-1 w-auto!')}
                     >
                       <NavIcon name={title as IconKey} />
                       {label(title)}
@@ -240,7 +240,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
                         aria-expanded={open}
                         aria-label={`${title} pages`}
                         onClick={() => setOpenGroup(open ? null : title)}
-                        className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors', TOP_IDLE, FOCUS)}
+                        className={cx('flex h-9 shrink-0 items-center justify-end rounded-lg pl-2 pr-3 transition-colors', TOP_IDLE, FOCUS)}
                       >
                         <Chevron open={open} />
                       </button>
