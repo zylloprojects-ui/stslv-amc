@@ -179,26 +179,13 @@ describe('dashboard', () => {
     })
   }
 
-  const cardOf = async (label: string) => (await screen.findByRole('heading', { name: label, level: 3 })).closest('[data-metric-card]') as HTMLElement
-
-  it('shows the operational figures only: the value of historical projects is in none of them', async () => {
-    dashboardApi(summary({ trackedExpensesOnCancelledProjects: '0.000', trackedExpensesOnHistoricalProjects: '0.000' }))
-    renderApp('/dashboard')
-
-    // The Projects cards left the dashboard with the Projects pages; the project amount waiting for an invoice stays.
-    expect(await within(await cardOf('Ready-for-Invoice Value')).findByText('2,000.250')).toBeInTheDocument()
-    expect(within(await cardOf('Tracked Expenses')).getByText('Cancelled projects left out')).toBeInTheDocument()
-    expect(document.body).not.toHaveTextContent('18,500.000')
-    expect(document.body).not.toHaveTextContent('19,425.000')
-  })
-
-  it('states apart any expense recorded against historical projects, beside those of cancelled projects', async () => {
+  it('shows none of the historical project values, now that the other-figures cards are hidden', async () => {
     dashboardApi(summary({ trackedExpensesOnCancelledProjects: '40.000', trackedExpensesOnHistoricalProjects: '12.500' }))
     renderApp('/dashboard')
 
-    const card = await cardOf('Tracked Expenses')
-
-    expect(await within(card).findByText('350.125')).toBeInTheDocument()
-    expect(within(card).getByText('Plus 40.000 on cancelled projects and 12.500 on historical projects')).toBeInTheDocument()
+    await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
+    expect(screen.queryByRole('heading', { name: 'Tracked Expenses' })).not.toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('18,500.000')
+    expect(document.body).not.toHaveTextContent('19,425.000')
   })
 })
