@@ -5,7 +5,7 @@ import { api, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { formatDate, formatMoney, isZeroMoney } from './amcFormat'
 import { ContractStatusPill, DetailRow, EligibilityPill, OrDash, PlannedDate, VisitStatusPill } from './components'
-import { FREQUENCY_LABELS, type Contract, type ContractStatus, type VisitList } from './types'
+import { frequencyLabel, visitNumberLabel, type Contract, type ContractStatus, type VisitList } from './types'
 
 interface ContractDetailsModalProps {
   contractId: string
@@ -86,7 +86,7 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               <DetailRow label="Validity">
                 {formatDate(contract.validFrom)} to {formatDate(contract.validTo)}
               </DetailRow>
-              <DetailRow label="Frequency">{FREQUENCY_LABELS[contract.maintenanceFrequency]}</DetailRow>
+              <DetailRow label="Frequency">{frequencyLabel(contract.maintenanceFrequency)}</DetailRow>
               <DetailRow label="Description">
                 <OrDash value={contract.description} />
               </DetailRow>
@@ -169,7 +169,7 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
                   <tbody className="divide-y divide-slate-100">
                     {visits.data.items.map((visit) => (
                       <tr key={visit.id}>
-                        <td className={TABLE.td}>{visit.sequenceNo}</td>
+                        <td className={`${TABLE.td} whitespace-nowrap`}>{visitNumberLabel(visit)}</td>
                         <td className={`${TABLE.td} whitespace-nowrap`}>
                           <PlannedDate visit={visit} format={formatDate} />
                         </td>

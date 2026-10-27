@@ -6,7 +6,7 @@ import type { Theme } from '../lib/preferences'
 import { isAdmin } from '../auth/roles'
 import { NAVIGATION, navItemVisible } from './navigation'
 
-type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Master Data Center' | 'Operations' | 'Finance' | 'Reporting' | 'Administration' | 'settings' | 'logout'
+type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Master Data Center' | 'Operations' | 'Finance' | 'Administration' | 'settings' | 'logout'
 
 const NAV_ICONS: Record<IconKey, ReactNode> = {
   close: <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />,
@@ -55,7 +55,6 @@ const NAV_ICONS: Record<IconKey, ReactNode> = {
       strokeLinecap="round"
     />
   ),
-  Reporting: <path d="M4 20V10M10 20V4M16 20v-7M21 20H3" strokeLinecap="round" />,
   Administration: (
     <>
       <path d="M12 3.5 5 6v5.5c0 4.2 2.8 7.2 7 9 4.2-1.8 7-4.8 7-9V6l-7-2.5Z" strokeLinejoin="round" />
@@ -220,7 +219,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
               <h2>
                 {section.path ? (
                   // A group with a landing page: the heading opens the page, the chevron shows or hides the group's links.
-                  <span className="flex items-center gap-0.5">
+                  <span className="flex items-center">
                     <NavLink
                       to={section.path}
                       end
@@ -229,7 +228,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
                         onNavigate()
                       }}
                       title={collapsed ? title : undefined}
-                      className={({ isActive }) => topLevel(isActive ? TOP_ACTIVE : TOP_IDLE)}
+                      className={({ isActive }) => cx(topLevel(isActive ? TOP_ACTIVE : TOP_IDLE), 'min-w-0 flex-1 w-auto!')}
                     >
                       <NavIcon name={title as IconKey} />
                       {label(title)}
@@ -240,7 +239,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
                         aria-expanded={open}
                         aria-label={`${title} pages`}
                         onClick={() => setOpenGroup(open ? null : title)}
-                        className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors', TOP_IDLE, FOCUS)}
+                        className={cx('flex h-9 shrink-0 items-center justify-end rounded-lg pl-2 pr-3 transition-colors', TOP_IDLE, FOCUS)}
                       >
                         <Chevron open={open} />
                       </button>

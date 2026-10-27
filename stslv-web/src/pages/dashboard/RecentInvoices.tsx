@@ -60,7 +60,7 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
 
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-3 pb-3">
+      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-300 bg-slate-50 p-3">
         <div className="min-w-48 flex-1">
           <label htmlFor="recent-invoice-search" className={FILTER_LABEL}>
             Search
@@ -93,7 +93,7 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
           </select>
         </div>
         <details className="relative">
-          <summary className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">Columns</summary>
+          <summary className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#0b3b66] shadow-sm hover:bg-sky-50">Columns</summary>
           <fieldset className="absolute right-0 z-10 mt-1 w-48 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
             <legend className="sr-only">Show or hide columns</legend>
             {COLUMNS.map((column) => (
@@ -175,7 +175,7 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
           </Pager>
         </>
       )}
-      <p className="mt-2 text-xs text-slate-600">Totals include VAT as entered from the Zoho invoice. Payment is not recorded in STSLV AMC.</p>
+      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-inset ring-slate-200">Totals include VAT as entered from the Zoho invoice. Payment is not recorded in STSLV AMC.</p>
     </div>
   )
 }

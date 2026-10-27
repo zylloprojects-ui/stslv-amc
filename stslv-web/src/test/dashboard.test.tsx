@@ -192,15 +192,14 @@ describe('KPI cards', () => {
     const active = await kpiCard('Active AMC')
     expect(await within(active).findByText('12')).toBeInTheDocument()
     expect(within(active).getByText(/2 past validity/)).toBeInTheDocument()
-    expect(within(active).getByText('AMC')).toBeInTheDocument()
 
     const value = await kpiCard('Active AMC Value')
     expect(within(value).getByText('8,010.500')).toBeInTheDocument()
-    expect(within(value).getByText(/not annualised/)).toBeInTheDocument()
+    expect(within(value).getByTitle(/not annualised/)).toBeInTheDocument()
 
     const credit = await kpiCard('Total Final Credit')
     expect(within(credit).getByText('300.501')).toBeInTheDocument()
-    expect(within(credit).getByText(/meaning not yet confirmed, not revenue/)).toBeInTheDocument()
+    expect(within(credit).getByTitle(/meaning not yet confirmed, not revenue/)).toBeInTheDocument()
 
     const services = await kpiCard('Services This Month')
     expect(within(services).getByText('9')).toBeInTheDocument()
@@ -316,7 +315,7 @@ describe('maintenance calendar', () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const panel = (await screen.findByRole('heading', { name: 'Daily operations — AMC Maintenance Calendar' })).closest('section') as HTMLElement
+    const panel = (await screen.findByRole('heading', { name: 'AMC Maintenance Calendar' })).closest('section') as HTMLElement
     expect(within(panel).getByText(/Today · 27 Oct 2026/)).toBeInTheDocument()
     expect(within(panel).getByText('City Tower')).toBeInTheDocument()
     expect(within(panel).getByRole('link', { name: 'Open full calendar →' })).toHaveAttribute('href', '/amc/calendar')
@@ -520,88 +519,47 @@ describe('recent invoices', () => {
     renderApp('/dashboard')
 
     await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
-    await screen.findByText('1,234')
+    await screen.findByText(/Figures as of/)
     expect(screen.queryByRole('heading', { name: 'Recent Invoices' })).not.toBeInTheDocument()
     expect(api.find('GET', '/invoices')).toHaveLength(0)
   })
 })
 
 describe('production readiness', () => {
-  it('shows each verified check to the Admin, with no score, and links to the existing security pages', async () => {
-    dashboardApi(ADMIN)
-    renderApp('/dashboard')
-
-    const panel = (await screen.findByRole('heading', { name: 'Production Readiness' })).closest('section') as HTMLElement
-    expect(await within(panel).findByText('Database updates')).toBeInTheDocument()
-    expect(within(panel).getByText('Needs attention')).toBeInTheDocument()
-    expect(within(panel).getByText('STSLV AMC does not record backups.')).toBeInTheDocument()
-    expect(panel.textContent).not.toMatch(/\/100|score:/i)
-    expect(within(panel).getByRole('link', { name: 'Login History →' })).toHaveAttribute('href', '/admin/login-history')
-    expect(within(panel).queryByRole('link', { name: /Backup|Security Center/ })).not.toBeInTheDocument()
-  })
-
-  it('is not requested for a role other than the built-in Admin', async () => {
-    const all = ADMIN.permissions
-    const api = dashboardApi({ ...ADMIN, roles: [{ id: '5', code: 'MANAGER', name: 'Manager' }], permissions: all })
+  it('is not shown or requested, even for the built-in Admin', async () => {
+    const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
     await kpiCard('Active AMC')
+    await screen.findByRole('heading', { name: 'Recent Invoices' })
     expect(screen.queryByRole('heading', { name: 'Production Readiness' })).not.toBeInTheDocument()
     expect(api.find('GET', '/dashboard/readiness')).toHaveLength(0)
   })
 })
 
 describe('module figures', () => {
-  async function card(label: string) {
-    const region = await screen.findByRole('region', { name: 'Waiting for an invoice and other figures' })
-    const heading = await within(region).findByRole('heading', { name: label, level: 3 })
-
-    return heading.closest('[data-metric-card]') as HTMLElement
-  }
-
-  it('keeps the clients, ready-for-invoice and finance figures, without links to retired pages', async () => {
-    dashboardApi(ADMIN)
+  it('are not shown, and their summary is not requested, even for the built-in Admin', async () => {
+    const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const region = await screen.findByRole('region', { name: 'Waiting for an invoice and other figures' })
-    await within(region).findByText('1,234')
-    expect(within(region).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
-      'Active Clients',
-      'Visits Due',
-      'Ready for Invoice',
-      'Tracked Expenses',
-      'Invoices Recorded',
-      'Ready-for-Invoice Value',
-    ])
-    const hrefs = within(region).queryAllByRole('link').map((link) => link.getAttribute('href'))
-    expect(hrefs).not.toContain('/projects')
-    expect(hrefs).not.toContain('/amc/execution')
-    expect(within(await card('Visits Due')).getByRole('link', { name: 'View schedule' })).toHaveAttribute('href', '/amc/schedule')
-  })
-
-  it('shows the AMC and project amounts waiting for an invoice as two separate values', async () => {
-    dashboardApi(ADMIN)
-    renderApp('/dashboard')
-
-    const value = await card('Ready-for-Invoice Value')
-    const rows = (await within(value).findAllByRole('term')).map((term) => [term.textContent, (term.nextElementSibling as HTMLElement).textContent])
-
-    expect(rows).toEqual([
-      ['AMC As entered', '12,345.500'],
-      ['Projects Excl. VAT', '2,000.250'],
-    ])
-    expect(value.textContent).not.toMatch(/14,?345\.75/)
+    await kpiCard('Active AMC')
+    await screen.findByRole('heading', { name: 'Recent Invoices' })
+    expect(screen.queryByRole('region', { name: 'Waiting for an invoice and other figures' })).not.toBeInTheDocument()
+    for (const label of ['Active Clients', 'Visits Due', 'Ready for Invoice', 'Tracked Expenses', 'Invoices Recorded', 'Ready-for-Invoice Value']) {
+      expect(screen.queryByRole('heading', { name: label, level: 3 })).not.toBeInTheDocument()
+    }
+    expect(document.querySelector('[data-metric-card]')).toBeNull()
+    expect(api.find('GET', '/dashboard/summary')).toHaveLength(0)
   })
 
   it('reads the figures again when Refresh is pressed', async () => {
     const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await card('Active Clients')
+    await kpiCard('Active AMC')
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
 
     await screen.findByRole('button', { name: 'Refresh' })
-    expect(api.find('GET', '/dashboard/summary').length).toBeGreaterThanOrEqual(2)
     expect(api.find('GET', '/dashboard/operations').length).toBeGreaterThanOrEqual(2)
   })
 })

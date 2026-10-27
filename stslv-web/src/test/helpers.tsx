@@ -79,6 +79,7 @@ export const ACCOUNTANT: SessionUser = {
 export function makeClient(overrides: Partial<Client> = {}): Client {
   return {
     id: '10',
+    code: 'CL-00010',
     name: 'Test Client One',
     contactPerson: 'Front Desk',
     email: 'desk@example.com',

@@ -726,6 +726,31 @@ select:not([multiple]) {
   max-width: 16rem;
 }
 
+/* Light theme tables: a framed table with a tinted header, ruled rows, a gentle zebra and a clear row highlight. */
+html:not(.dark) .table-scroll {
+  border: 1px solid #c9d6e4;
+  border-radius: 0.75rem;
+}
+html:not(.dark) .table-scroll th {
+  background: linear-gradient(180deg, #edf5fc, #dfeaf6);
+  color: #0b3b66;
+  font-weight: 700;
+  border-bottom: 2px solid #9db9d3;
+}
+html:not(.dark) .table-scroll td {
+  border-bottom: 1px solid #dde6ef;
+  color: #1e293b;
+}
+html:not(.dark) .table-scroll tbody tr:last-child td {
+  border-bottom: 0;
+}
+html:not(.dark) .table-scroll tbody tr:nth-child(even) td {
+  background-color: #f6f9fd;
+}
+html:not(.dark) .table-scroll tbody tr:hover td {
+  background-color: #e6f2fc;
+}
+
 /* Dialog header: light and clean, with the brand colours as a line along its bottom edge. */
 .app-modal-header {
   background: linear-gradient(180deg, #ffffff 0%, #f1f7fc 100%);

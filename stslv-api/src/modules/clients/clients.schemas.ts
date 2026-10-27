@@ -1,7 +1,13 @@
 import { z } from "zod";
+import { exportFormatSchema } from "../../shared/export/report";
 import { optionalText, requiredText } from "../../shared/validation";
 
 export const CLIENT_TYPES = ["COMPANY", "INDIVIDUAL"] as const;
+
+export const CLIENT_TYPE_LABELS: Record<(typeof CLIENT_TYPES)[number], string> = { COMPANY: "Company", INDIVIDUAL: "Individual" };
+
+/** The stored is_active flag in words. An inactive client is shown as Disabled. */
+export const CLIENT_STATUS_LABELS: Record<"active" | "inactive", string> = { active: "Active", inactive: "Disabled" };
 
 const optionalEmail = z
   .string()
@@ -62,6 +68,13 @@ export const listClientsSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
+/** The list's own filters and order, without paging, plus the file format. */
+export const exportClientsSchema = listClientsSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+
+export const exportClientContractsSchema = z.object({ format: exportFormatSchema });
+
+export type ExportClientsQuery = z.infer<typeof exportClientsSchema>;
+export type ExportClientContractsQuery = z.infer<typeof exportClientContractsSchema>;
 export type CreateClientInput = z.infer<typeof createClientSchema>;
 export type UpdateClientInput = z.infer<typeof updateClientSchema>;
 export type ListClientsQuery = z.infer<typeof listClientsSchema>;

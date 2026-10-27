@@ -5,12 +5,7 @@ import { conflict, forbidden, notFound, validationError } from "../../shared/err
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { assertVisitNotInvoiced } from "../invoices/invoice-locks";
-import type {
-  ContractStatus,
-  InvoiceEligibility,
-  MaintenanceFrequency,
-  VisitStatus,
-} from "./amc.constants";
+import type { ContractStatus, InvoiceEligibility, VisitStatus } from "./amc.constants";
 import type {
   ListExecutionQuery,
   ListVisitsQuery,
@@ -23,10 +18,12 @@ interface VisitRow {
   amc_contract_id: string;
   contract_status: ContractStatus;
   system_description: string;
-  maintenance_frequency: MaintenanceFrequency;
+  maintenance_frequency: string;
   client_id: string;
   client_name: string;
   sequence_no: number;
+  cycle_no: number | null;
+  service_code: string | null;
   period_start: string;
   period_end: string;
   original_scheduled_date: string;
@@ -52,9 +49,12 @@ interface VisitRow {
 /** A visit as the execution screens see it: no amounts and no invoicing state. */
 export interface ExecutionVisit {
   id: string;
-  contract: { id: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: MaintenanceFrequency };
+  contract: { id: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: string };
   client: { id: string; name: string };
   sequenceNo: number;
+  /** Contract year and service code taken when the visit was generated ("Year 2 · Q3"); null on visits generated before migration 0076. */
+  cycleNo: number | null;
+  serviceCode: string | null;
   periodStart: string;
   periodEnd: string;
   originalScheduledDate: string;
@@ -91,6 +91,8 @@ const OVERDUE_SQL = "(v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_dat
 const VISIT_SELECT = `
   SELECT v.id, v.amc_contract_id, c.status AS contract_status, c.system_description, c.maintenance_frequency,
          c.client_id, cl.name AS client_name, v.sequence_no,
+         -- Migration 0076 columns, read so that a database without them still works (they are then null).
+         (to_jsonb(v) ->> 'cycle_no')::int AS cycle_no, to_jsonb(v) ->> 'service_code' AS service_code,
          v.period_start::text AS period_start, v.period_end::text AS period_end,
          v.original_scheduled_date::text AS original_scheduled_date, v.scheduled_date::text AS scheduled_date,
          ${OVERDUE_SQL} AS is_overdue,
@@ -117,6 +119,8 @@ function toExecutionVisit(row: VisitRow): ExecutionVisit {
     },
     client: { id: row.client_id, name: row.client_name },
     sequenceNo: row.sequence_no,
+    cycleNo: row.cycle_no,
+    serviceCode: row.service_code,
     periodStart: row.period_start,
     periodEnd: row.period_end,
     originalScheduledDate: row.original_scheduled_date,

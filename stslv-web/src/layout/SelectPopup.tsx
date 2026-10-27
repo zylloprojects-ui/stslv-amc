@@ -164,15 +164,15 @@ export function SelectPopup() {
   const searchable = choices.length > SEARCH_FROM
   const below = window.innerHeight - rect.bottom
   const flip = below < 220 && rect.top > below
-  const width = Math.max(rect.width, 208)
-  const left = Math.min(rect.left, window.innerWidth - width - 8)
+  const width = Math.max(rect.width, 176)
+  const left = rect.left + width > window.innerWidth - 8 ? rect.right - width : rect.left
   const height = Math.min(MAX_HEIGHT, (flip ? rect.top : below) - 16)
 
   return createPortal(
     <div
       ref={panelRef}
       aria-hidden="true"
-      className="select-popup login-fade fixed z-[300] flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_48px_-12px_rgba(8,32,60,0.45)] ring-1 ring-slate-900/5"
+      className="select-popup login-fade fixed z-[300] flex flex-col overflow-hidden rounded-xl border border-slate-300 bg-white shadow-[0_18px_48px_-12px_rgba(8,32,60,0.45)] ring-1 ring-slate-900/5"
       style={{ left: Math.max(8, left), width, maxHeight: Math.max(160, height), ...(flip ? { bottom: window.innerHeight - rect.top + 6 } : { top: rect.bottom + 6 }) }}
     >
       {searchable && (
@@ -197,7 +197,7 @@ export function SelectPopup() {
           </div>
         </div>
       )}
-      <ul className="min-h-0 flex-1 overflow-y-auto p-1.5">
+      <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5">
         {shown.length === 0 && <li className="px-3 py-6 text-center text-sm text-slate-500">Nothing matches “{query}”</li>}
         {shown.map((choice, index) => {
           const selected = choice.value === select.value
@@ -205,7 +205,7 @@ export function SelectPopup() {
           const clears = index === 0 && !query && (choice.value === '' || choice.value === 'all')
 
           return (
-            <li key={`${choice.value}-${index}`} className={cx(clears && 'mb-1 border-b border-slate-100 pb-1')}>
+            <li key={`${choice.value}-${index}`} className={cx(clears && 'mb-1 border-b border-slate-200 pb-1.5')}>
               <button
                 type="button"
                 tabIndex={-1}
@@ -214,18 +214,21 @@ export function SelectPopup() {
                 onMouseEnter={() => setActive(index)}
                 onClick={() => choose(choice)}
                 className={cx(
-                  'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40',
+                  'relative flex w-full items-center gap-3 rounded-lg py-2 pl-3.5 pr-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40',
                   index === active ? 'bg-sky-50 text-[#0b3b66]' : 'text-slate-700',
-                  selected && 'font-semibold text-[#0b3b66]',
+                  selected && 'bg-sky-50 font-bold text-[#0b3b66]',
                   clears && !selected && 'text-slate-500',
                 )}
               >
+                {selected && <span className="absolute inset-y-1.5 left-0 w-1 rounded-r-full bg-[#1479BD]" aria-hidden="true" />}
                 <span className="min-w-0 flex-1 break-words">{choice.label}</span>
-                {selected && (
-                  <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-[#1479BD]" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
-                    <path d="m4.5 10.5 3.5 3.5 7.5-8" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
+                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                  {selected && (
+                    <svg viewBox="0 0 20 20" className="h-4 w-4 text-[#1479BD]" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+                      <path d="m4.5 10.5 3.5 3.5 7.5-8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </span>
               </button>
             </li>
           )

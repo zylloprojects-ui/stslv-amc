@@ -3,7 +3,7 @@ import { featureUnavailable } from "../../middleware/require-schema";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { listEntityHistory } from "../../shared/entity-history";
-import { conflict, isUniqueViolation, notFound } from "../../shared/errors";
+import { conflict, isUniqueViolation, notFound, validationError } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
@@ -26,6 +26,8 @@ interface ClientRow {
 
 export interface Client {
   id: string;
+  /** The client code shown to users, derived from the id (see clientCode). */
+  code: string;
   name: string;
   contactPerson: string | null;
   email: string | null;
@@ -44,6 +46,21 @@ const BASE_COLUMNS = "id, name, contact_person, email, phone, address, notes, is
 const BASE_FIELDS = ["name", "contactPerson", "email", "phone", "address", "notes"] as const;
 const DETAIL_FIELDS = ["clientType", "vatNumber"] as const;
 
+// The client code is derived from the id, which never changes, so a client
+// keeps its code for good. It is not stored: the legacy workbooks have no
+// client code to preserve, and ids are never reused. Ids are not gapless
+// (an identity skips a value when an insert fails), so neither are codes.
+const CODE_PREFIX = "CL-";
+const CODE_DIGITS = 5;
+
+/** "CL-00042" for id 42. Ids beyond five digits keep every digit: "CL-123456". */
+export function clientCode(id: string): string {
+  return `${CODE_PREFIX}${id.padStart(CODE_DIGITS, "0")}`;
+}
+
+/** The same code in SQL, for search. lpad would cut an id longer than five digits, so the width grows with it. */
+const CODE_SQL = `('${CODE_PREFIX}' || lpad(id::text, greatest(${CODE_DIGITS}, length(id::text)), '0'))`;
+
 /** Whether this database has the client type and VAT number columns (migration 0074). */
 export function hasClientDetails(): Promise<boolean> {
   return schemaHas(["clients.client_type", "clients.vat_number"]);
@@ -58,6 +75,7 @@ async function columns(): Promise<string> {
 function toClient(row: ClientRow): Client {
   return {
     id: row.id,
+    code: clientCode(row.id),
     name: row.name,
     contactPerson: row.contact_person,
     email: row.email,
@@ -86,14 +104,33 @@ async function assertDetailsStorable(input: { clientType?: unknown; vatNumber?: 
   }
 }
 
+const clientTypeRequired = () =>
+  validationError("Some fields are invalid.", [{ field: "clientType", message: "Select Company or Individual." }]);
+
+/**
+ * Client type is required once the database can store it (migration 0074).
+ * A new client must have one, and a stored type cannot be cleared. Clients
+ * recorded before the column existed keep a null type until someone edits
+ * them; an edit that leaves the type out does not change it.
+ */
+function assertClientType(input: { clientType?: unknown }, details: boolean, creating: boolean) {
+  if (!details) {
+    return;
+  }
+  if (creating ? input.clientType === undefined || input.clientType === null : input.clientType === null) {
+    throw clientTypeRequired();
+  }
+}
+
 const SORTS: Record<ListClientsQuery["sort"], string> = {
   name: "lower(name)",
   createdAt: "created_at",
   updatedAt: "updated_at",
 };
 
-export async function listClients(query: ListClientsQuery) {
-  const details = await hasClientDetails();
+type ClientFilters = Pick<ListClientsQuery, "search" | "status" | "clientType">;
+
+function clientConditions(query: ClientFilters, details: boolean) {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
@@ -111,11 +148,16 @@ export async function listClients(query: ListClientsQuery) {
     params.push(`%${escapeLike(query.search)}%`);
     const p = `$${params.length}`;
     conditions.push(
-      `(name ILIKE ${p} OR contact_person ILIKE ${p} OR email ILIKE ${p} OR phone ILIKE ${p}${details ? ` OR vat_number ILIKE ${p}` : ""})`
+      `(name ILIKE ${p} OR ${CODE_SQL} ILIKE ${p} OR contact_person ILIKE ${p} OR email ILIKE ${p} OR phone ILIKE ${p}${details ? ` OR vat_number ILIKE ${p}` : ""})`
     );
   }
 
-  const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+  return { where: conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "", params };
+}
+
+export async function listClients(query: ListClientsQuery) {
+  const details = await hasClientDetails();
+  const { where, params } = clientConditions(query, details);
   const total = await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM clients ${where}`, params);
   const direction = query.direction === "desc" ? "DESC" : "ASC";
 
@@ -132,6 +174,27 @@ export async function listClients(query: ListClientsQuery) {
     page: query.page,
     pageSize: query.pageSize,
   };
+}
+
+/**
+ * Every client that matches the list's filters, in the list's order, for an
+ * export. `checkSize` sees the count first, so an oversized export is refused
+ * before any row is read.
+ */
+export async function listAllClients(
+  query: Omit<ListClientsQuery, "page" | "pageSize">,
+  checkSize: (count: number) => void
+): Promise<{ items: Client[]; total: number }> {
+  const details = await hasClientDetails();
+  const { where, params } = clientConditions(query, details);
+  const total = (await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM clients ${where}`, params)).rows[0]?.count ?? 0;
+
+  checkSize(total);
+
+  const direction = query.direction === "desc" ? "DESC" : "ASC";
+  const rows = await pool.query<ClientRow>(`SELECT ${await columns()} FROM clients ${where} ORDER BY ${SORTS[query.sort]} ${direction}, id ${direction}`, params);
+
+  return { items: rows.rows.map(toClient), total };
 }
 
 async function findClient(db: Queryable, id: string, lock = false): Promise<Client> {
@@ -165,6 +228,7 @@ export async function createClient(auth: AuthContext, input: CreateClientInput):
   const details = await hasClientDetails();
 
   await assertDetailsStorable(input, details);
+  assertClientType(input, details, true);
 
   try {
     return await withTransaction(async (client) => {
@@ -213,6 +277,7 @@ export async function updateClient(auth: AuthContext, id: string, input: UpdateC
   const details = await hasClientDetails();
 
   await assertDetailsStorable(input, details);
+  assertClientType(input, details, false);
 
   const fields = details ? [...BASE_FIELDS, ...DETAIL_FIELDS] : [...BASE_FIELDS];
 

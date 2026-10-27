@@ -15,6 +15,7 @@ import {
   INVOICE_ELIGIBILITY_LABELS,
   VISIT_STATUSES,
   VISIT_STATUS_LABELS,
+  visitNumberLabel,
   type ScheduleVisit,
   type VisitList,
 } from './types'
@@ -353,7 +354,7 @@ export function AmcSchedulePage() {
                         </div>
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap`}>
-                        <span className="text-slate-500">No. {visit.sequenceNo} · </span>
+                        <span className="text-slate-500">{visitNumberLabel(visit)} · </span>
                         {formatDate(visit.periodStart)} – {formatDate(visit.periodEnd)}
                       </td>
                       <td className={TABLE.td}>

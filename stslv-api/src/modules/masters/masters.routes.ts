@@ -5,8 +5,12 @@ import type { AuthContext } from "../auth/access";
 import { requireSchema } from "../../middleware/require-schema";
 import { forbidden } from "../../shared/errors";
 import { parseIdParam } from "../../shared/validation";
+import { sendExport } from "../../shared/export/send";
+import { buildSalesEngineersExport, engineerUserOptions, getEngineerSummary } from "./sales-engineers.service";
 import {
   departmentSchemas,
+  exportSalesEngineersSchema,
+  userOptionsSchema,
   listMastersSchema,
   maintenanceFrequencySchemas,
   masterHistorySchema,
@@ -117,6 +121,31 @@ function mount(path: string, spec: MasterSpec, schemas: Schemas, tables: string[
 
 // Migration 0070. Sales engineers and system types join departments, so all three need it.
 const MASTER_DATA = ["departments", "sales_engineers", "system_types"];
+
+// Sales engineer routes beyond the shared ones. Declared before mount(), so "/:id" does not take "export" or "user-options".
+const engineersReady = requireSchema(MASTER_DATA);
+
+// The list as Excel or PDF, with the list's own filters. Needs SETTINGS:EXPORT on top of read access.
+mastersRouter.get("/sales-engineers/export", engineersReady, canRead, authorize("SETTINGS", "EXPORT"), async (req, res) => {
+  const query = exportSalesEngineersSchema.parse(req.query);
+  const { report, recordExport } = await buildSalesEngineersExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
+});
+
+// The accounts the engineer form may link to. For whoever may add or edit engineers; no USERS permission is needed.
+mastersRouter.get("/sales-engineers/user-options", engineersReady, async (req, res) => {
+  const { permissions } = requireAuth(req);
+
+  if (!permissions.has("SETTINGS:CREATE") && !permissions.has("SETTINGS:EDIT")) throw forbidden();
+
+  res.json({ success: true, data: await engineerUserOptions(userOptionsSchema.parse(req.query).engineerId) });
+});
+
+// Engineer 360 figures. Each section is included only when the role can see that module (checked in the service).
+mastersRouter.get("/sales-engineers/:id/summary", engineersReady, canRead, async (req, res) => {
+  res.json({ success: true, data: await getEngineerSummary(requireAuth(req), parseIdParam(req.params.id)) });
+});
 
 mount("departments", DEPARTMENTS, departmentSchemas, MASTER_DATA);
 mount("sales-engineers", SALES_ENGINEERS, salesEngineerSchemas, MASTER_DATA);

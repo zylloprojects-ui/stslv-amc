@@ -9,21 +9,18 @@ import { featureUnavailable } from "../../middleware/require-schema";
 import { schemaHas } from "../../shared/schema-features";
 import { assertContractNotInvoiced } from "../invoices/invoice-locks";
 import { applyContractMasters } from "./contract-masters.service";
-import {
-  CONTRACT_TRANSITIONS,
-  MAX_CONTRACT_YEARS,
-  type ContractStatus,
-  type MaintenanceFrequency,
-  type VisitStatus,
-} from "./amc.constants";
+import { CONTRACT_TRANSITIONS, MAX_CONTRACT_YEARS, type ContractStatus, type VisitStatus } from "./amc.constants";
 import {
   addMonths,
   buildSchedulePeriods,
   planSchedule,
   type ExistingVisit,
+  type ScheduleRule,
   type SchedulePeriod,
   type SchedulePlan,
+  type ServiceLabel,
 } from "./amc.schedule";
+import { findContractFrequency, hasFrequencyRules, monthsKey, monthsOf, resolveTerms, type ResolvedTerms } from "./contract-frequency.service";
 import type {
   ChangeContractStatusInput,
   ContractHistoryQuery,
@@ -45,7 +42,8 @@ interface ContractRow {
   description: string | null;
   contract_value: string;
   final_credit: string | null;
-  maintenance_frequency: MaintenanceFrequency;
+  maintenance_frequency: string;
+  custom_months: number[] | null;
   default_visit_amount: string | null;
   status: ContractStatus;
   is_past_validity: boolean;
@@ -75,7 +73,10 @@ export interface Contract {
   contractValue: string;
   /** Stored as entered. Its meaning is unconfirmed, so nothing is calculated from it. */
   finalCredit: string | null;
-  maintenanceFrequency: MaintenanceFrequency;
+  /** A maintenance frequency code (migration 0076: the frequency master; before it, one of the four built-in codes). */
+  maintenanceFrequency: string;
+  /** The selected months (1 = January) of a contract on a custom frequency; empty otherwise. PROVISIONAL rule. */
+  customMonths: number[];
   defaultVisitAmount: string | null;
   status: ContractStatus;
   /** The validity period has ended. Information only: the status does not change by itself. */
@@ -116,12 +117,15 @@ export interface ScheduleChange {
 }
 
 // The lateral join keeps the per-contract visit figures in one place for the
-// list and the detail view.
-const CONTRACT_SELECT = `
+// list and the detail view. The custom months come from migration 0076; on a
+// database without it they are empty.
+const contractSelect = (withMonths: boolean) => `
   SELECT c.id, c.client_id, cl.name AS client_name, cl.is_active AS client_is_active,
          c.responsible_engineer, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
          c.system_description, c.description, c.contract_value, c.final_credit,
-         c.maintenance_frequency, c.default_visit_amount, c.status,
+         c.maintenance_frequency,
+         ${withMonths ? "(SELECT array_agg(m.month::int ORDER BY m.month) FROM amc_contract_custom_months m WHERE m.amc_contract_id = c.id)" : "NULL::int[]"} AS custom_months,
+         c.default_visit_amount, c.status,
          (c.valid_to < current_date) AS is_past_validity, c.schedule_cutover_date::text AS schedule_cutover_date,
          c.notes, c.created_at, c.updated_at,
          s.visit_count, s.completed_count, s.open_count, s.historical_count, s.cancelled_count, s.amount_missing_count,
@@ -165,13 +169,14 @@ const EDITABLE_FIELDS = [
   "contractValue",
   "finalCredit",
   "maintenanceFrequency",
+  "customMonths",
   "defaultVisitAmount",
   "notes",
 ] as const;
 
-const SCHEDULE_FIELDS = ["validFrom", "validTo", "maintenanceFrequency"] as const;
+const SCHEDULE_FIELDS = ["validFrom", "validTo", "maintenanceFrequency", "customMonths"] as const;
 
-/** The editable values of a contract, flat, as compared and logged on update. */
+/** The editable values of a contract, flat, as compared and logged on update. Custom months as "2,5,8,11". */
 type ContractValues = { [K in (typeof EDITABLE_FIELDS)[number]]: string | null };
 
 function toContract(row: ContractRow): Contract {
@@ -186,6 +191,7 @@ function toContract(row: ContractRow): Contract {
     contractValue: row.contract_value,
     finalCredit: row.final_credit,
     maintenanceFrequency: row.maintenance_frequency,
+    customMonths: row.custom_months ?? [],
     defaultVisitAmount: row.default_visit_amount,
     status: row.status,
     isPastValidity: row.is_past_validity,
@@ -217,6 +223,7 @@ function valuesOf(contract: Contract): ContractValues {
     contractValue: contract.contractValue,
     finalCredit: contract.finalCredit,
     maintenanceFrequency: contract.maintenanceFrequency,
+    customMonths: monthsKey(contract.customMonths),
     defaultVisitAmount: contract.defaultVisitAmount,
     notes: contract.notes,
   };
@@ -260,7 +267,7 @@ async function findContract(db: Queryable, id: string, lock = false): Promise<Co
     await db.query("SELECT id FROM amc_contracts WHERE id = $1 FOR UPDATE", [id]);
   }
 
-  const result = await db.query<ContractRow>(`${CONTRACT_SELECT} WHERE c.id = $1`, [id]);
+  const result = await db.query<ContractRow>(`${contractSelect(await hasFrequencyRules())} WHERE c.id = $1`, [id]);
   const row = result.rows[0];
 
   if (!row) {
@@ -318,7 +325,7 @@ export async function listContracts(query: ListContractsQuery) {
     params
   );
   const rows = await pool.query<ContractRow>(
-    `${CONTRACT_SELECT} ${where}
+    `${contractSelect(await hasFrequencyRules())} ${where}
      ORDER BY lower(cl.name), c.valid_from DESC, c.id
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
@@ -382,7 +389,8 @@ async function loadExistingVisits(db: Queryable, contractId: string, lock: boole
 interface Terms {
   validFrom: string;
   validTo: string;
-  maintenanceFrequency: MaintenanceFrequency;
+  maintenanceFrequency: string;
+  customMonths: number[];
 }
 
 interface TermsPlan extends SchedulePlan {
@@ -395,8 +403,8 @@ interface TermsPlan extends SchedulePlan {
  * The cutover date is the contract's own (null unless it was imported): it is
  * not one of the terms and cannot be proposed.
  */
-function planForTerms(current: Terms, proposed: Terms, existing: ExistingVisit[], cutoverDate: string | null): TermsPlan {
-  const periods = buildSchedulePeriods(proposed.validFrom, proposed.validTo, proposed.maintenanceFrequency, cutoverDate);
+function planForTerms(current: Terms, proposed: Terms, existing: ExistingVisit[], cutoverDate: string | null, rule: ScheduleRule): TermsPlan {
+  const periods = buildSchedulePeriods(proposed.validFrom, proposed.validTo, rule, cutoverDate);
   const plan = planSchedule(periods, existing, proposed.validFrom, proposed.validTo);
   const acted = existing.filter((visit) => visit.locked && visit.status !== "CANCELLED");
   let blockedReason: string | null = null;
@@ -421,7 +429,8 @@ async function applyPlan(
   db: Queryable,
   auth: AuthContext,
   contract: Contract,
-  plan: SchedulePlan
+  plan: SchedulePlan,
+  label: ResolvedTerms["label"]
 ): Promise<ScheduleChange> {
   if (plan.toRemove.length > 0) {
     // The locked condition is checked again in SQL: only a visit that is still
@@ -444,13 +453,18 @@ async function applyPlan(
     );
     const first = (last.rows[0]?.last ?? 0) + 1;
 
+    // From migration 0076 each new visit also gets its label ("Year 2 · Q3"),
+    // taken now and never recalculated. Visits already stored keep theirs.
+    const labels: ServiceLabel[] | null = label ? plan.toCreate.map((period) => label(contract.validFrom, period.periodStart)) : null;
+
     await db.query(
       `INSERT INTO amc_visits
          (amc_contract_id, sequence_no, period_start, period_end, original_scheduled_date, scheduled_date,
-          visit_amount, created_by, updated_by)
+          visit_amount, created_by, updated_by${labels ? ", cycle_no, service_code" : ""})
        SELECT $1, $2 + p.ordinality - 1, p.period_start, p.period_end, p.scheduled_date, p.scheduled_date,
-              $3::numeric(14,3), $4, $4
-       FROM unnest($5::date[], $6::date[], $7::date[]) WITH ORDINALITY AS p (period_start, period_end, scheduled_date, ordinality)`,
+              $3::numeric(14,3), $4, $4${labels ? ", p.cycle_no, p.service_code" : ""}
+       FROM unnest($5::date[], $6::date[], $7::date[]${labels ? ", $8::int[], $9::text[]" : ""})
+         WITH ORDINALITY AS p (period_start, period_end, scheduled_date${labels ? ", cycle_no, service_code" : ""}, ordinality)`,
       [
         contract.id,
         first,
@@ -459,6 +473,7 @@ async function applyPlan(
         plan.toCreate.map((period) => period.periodStart),
         plan.toCreate.map((period) => period.periodEnd),
         plan.toCreate.map((period) => period.scheduledDate),
+        ...(labels ? [labels.map((item) => item.cycleNo), labels.map((item) => item.serviceCode)] : []),
       ]
     );
   }
@@ -478,6 +493,7 @@ async function applyPlan(
           validFrom: contract.validFrom,
           validTo: contract.validTo,
           maintenanceFrequency: contract.maintenanceFrequency,
+          ...(contract.customMonths.length > 0 ? { customMonths: contract.customMonths } : {}),
         },
         created: plan.toCreate.map((period) => period.periodStart),
         removed: plan.toRemove.map((visit) => ({ id: visit.id, sequenceNo: visit.sequenceNo, periodStart: visit.periodStart })),
@@ -490,23 +506,26 @@ async function applyPlan(
 
 /** Brings an ACTIVE contract's visits in line with its stored terms. */
 async function syncSchedule(db: Queryable, auth: AuthContext, contract: Contract): Promise<ScheduleChange> {
+  // The contract keeps its frequency even when it has since been disabled or archived.
+  const terms = await resolveTerms(db, contract.maintenanceFrequency, contract.customMonths, false);
   const existing = await loadExistingVisits(db, contract.id, true);
-  const plan = planForTerms(contract, contract, existing, contract.scheduleCutoverDate);
+  const plan = planForTerms(contract, contract, existing, contract.scheduleCutoverDate, terms.rule);
 
   if (plan.blockedReason) {
     throw conflict(plan.blockedReason);
   }
 
-  return applyPlan(db, auth, contract, plan);
+  return applyPlan(db, auth, contract, plan, terms.label);
 }
 
 export interface SchedulePreview {
   validFrom: string;
   validTo: string;
-  maintenanceFrequency: MaintenanceFrequency;
+  maintenanceFrequency: string;
+  customMonths: number[];
   canApply: boolean;
   blockedReason: string | null;
-  toCreate: (SchedulePeriod & { visitAmount: string | null })[];
+  toCreate: (SchedulePeriod & { visitAmount: string | null; cycleNo: number | null; serviceCode: string | null })[];
   toRemove: ExistingVisit[];
   keptCount: number;
   blocking: ExistingVisit[];
@@ -515,21 +534,29 @@ export interface SchedulePreview {
 /** What generating the schedule would do, for the stored terms or for proposed ones. Changes nothing. */
 export async function previewSchedule(id: string, query: SchedulePreviewQuery): Promise<SchedulePreview> {
   const contract = await findContract(pool, id);
+  const frequencyChanged = query.maintenanceFrequency !== undefined && query.maintenanceFrequency !== contract.maintenanceFrequency;
   const proposed: Terms = {
     validFrom: query.validFrom ?? contract.validFrom,
     validTo: query.validTo ?? contract.validTo,
     maintenanceFrequency: query.maintenanceFrequency ?? contract.maintenanceFrequency,
+    // A new frequency starts without the months of the one it replaces.
+    customMonths: query.customMonths ?? (frequencyChanged ? [] : contract.customMonths),
   };
 
   assertValidity(proposed.validFrom, proposed.validTo);
 
-  const plan = planForTerms(contract, proposed, await loadExistingVisits(pool, id, false), contract.scheduleCutoverDate);
+  const terms = await resolveTerms(pool, proposed.maintenanceFrequency, proposed.customMonths, frequencyChanged);
+  const plan = planForTerms(contract, proposed, await loadExistingVisits(pool, id, false), contract.scheduleCutoverDate, terms.rule);
 
   return {
     ...proposed,
     canApply: plan.blockedReason === null,
     blockedReason: plan.blockedReason,
-    toCreate: plan.toCreate.map((period) => ({ ...period, visitAmount: contract.defaultVisitAmount })),
+    toCreate: plan.toCreate.map((period) => {
+      const label = terms.label?.(proposed.validFrom, period.periodStart) ?? null;
+
+      return { ...period, visitAmount: contract.defaultVisitAmount, cycleNo: label?.cycleNo ?? null, serviceCode: label?.serviceCode ?? null };
+    }),
     toRemove: plan.toRemove,
     keptCount: plan.kept.length,
     blocking: plan.blocking,
@@ -609,6 +636,18 @@ async function linkRenewal(db: Queryable, auth: AuthContext, source: Contract, r
   });
 }
 
+/** Stores a contract's custom months (migration 0076). Nothing to store for a fixed frequency. */
+async function writeCustomMonths(db: Queryable, auth: AuthContext, contractId: string, months: number[]): Promise<void> {
+  if (months.length === 0) {
+    return;
+  }
+
+  await db.query(
+    "INSERT INTO amc_contract_custom_months (amc_contract_id, month, created_by) SELECT $1, unnest($2::smallint[]), $3",
+    [contractId, months, auth.user.id]
+  );
+}
+
 export function createContract(
   auth: AuthContext,
   input: CreateContractInput,
@@ -624,6 +663,9 @@ export function createContract(
 
     // A renewal (migration 0072): the source is locked and checked before the new contract is added.
     const source = options.renewedFromId ? await assertRenewable(client, options.renewedFromId, input.clientId) : null;
+    // A new contract or renewal may only choose an active frequency; custom months only for a custom one.
+    const months = monthsOf(monthsKey(input.customMonths));
+    await resolveTerms(client, input.maintenanceFrequency, months, true);
 
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO amc_contracts
@@ -649,6 +691,9 @@ export function createContract(
       ]
     );
     const id = (inserted.rows[0] as { id: string }).id;
+
+    await writeCustomMonths(client, auth, id, months);
+
     const created = await findContract(client, id, true);
 
     await logActivity(client, {
@@ -688,10 +733,20 @@ export function updateContract(
     const afterValues: ContractValues = { ...beforeValues };
 
     for (const field of EDITABLE_FIELDS) {
+      if (field === "customMonths") {
+        if (input.customMonths !== undefined) afterValues.customMonths = monthsKey(input.customMonths);
+        continue;
+      }
       const value = input[field];
       if (value !== undefined) {
         afterValues[field] = value;
       }
+    }
+
+    // A change to a fixed frequency drops the months of the custom one it replaces.
+    if (afterValues.maintenanceFrequency !== beforeValues.maintenanceFrequency && input.customMonths === undefined) {
+      const next = await findContractFrequency(client, afterValues.maintenanceFrequency as string);
+      if (next && !next.isCustom) afterValues.customMonths = null;
     }
 
     const changes = diffFields(beforeValues, afterValues, EDITABLE_FIELDS);
@@ -714,8 +769,12 @@ export function updateContract(
       // An invoice is issued to the client of the work it covers.
       await assertContractNotInvoiced(client, id);
     }
+    let terms: ResolvedTerms | null = null;
+
     if (termsChanged) {
       assertValidity(validFrom, validTo);
+      // A newly chosen frequency must be active; an unchanged one is kept even if it has been disabled since.
+      terms = await resolveTerms(client, afterValues.maintenanceFrequency as string, monthsOf(afterValues.customMonths), "maintenanceFrequency" in changes);
 
       if (before.status !== "DRAFT" && before.status !== "ACTIVE") {
         throw conflict(
@@ -747,19 +806,24 @@ export function updateContract(
       ]
     );
 
+    if ("customMonths" in changes) {
+      await client.query("DELETE FROM amc_contract_custom_months WHERE amc_contract_id = $1", [id]);
+      await writeCustomMonths(client, auth, id, monthsOf(afterValues.customMonths));
+    }
+
     const updated = await findContract(client, id);
     let scheduleChange: ScheduleChange | null = null;
 
     // Only the terms drive the schedule. A new default visit amount applies to
     // visits generated from now on; existing visits keep their amounts.
-    if (termsChanged && updated.status === "ACTIVE") {
-      const plan = planForTerms(before, updated, await loadExistingVisits(client, id, true), updated.scheduleCutoverDate);
+    if (termsChanged && terms && updated.status === "ACTIVE") {
+      const plan = planForTerms(before, updated, await loadExistingVisits(client, id, true), updated.scheduleCutoverDate, terms.rule);
 
       if (plan.blockedReason) {
         throw conflict(plan.blockedReason);
       }
 
-      scheduleChange = await applyPlan(client, auth, updated, plan);
+      scheduleChange = await applyPlan(client, auth, updated, plan, terms.label);
     }
 
     await logActivity(client, {

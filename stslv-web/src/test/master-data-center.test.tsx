@@ -104,8 +104,9 @@ describe('clients', () => {
     const table = await screen.findByRole('table', { name: 'Clients' })
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows[0]).toHaveTextContent('Company')
-    expect(rows[0]).toHaveTextContent('VAT OM1100223344')
-    expect(rows[1]).toHaveTextContent('No VAT number')
+    expect(rows[0]).toHaveTextContent('OM1100223344')
+    expect(rows[0]).toHaveTextContent('CL-00010')
+    expect(within(table).getByRole('columnheader', { name: 'VAT number' })).toBeInTheDocument()
 
     await userEvent.selectOptions(screen.getByLabelText('Type'), 'COMPANY')
     await waitFor(() => expect(within(screen.getByRole('table', { name: 'Clients' })).getAllByRole('row')).toHaveLength(2))
@@ -120,7 +121,8 @@ describe('clients', () => {
     renderApp('/clients')
 
     const table = await screen.findByRole('table', { name: 'Clients' })
-    expect(within(table).queryByText('Type and VAT')).not.toBeInTheDocument()
+    expect(within(table).queryByRole('columnheader', { name: 'VAT number' })).not.toBeInTheDocument()
+    expect(within(table).queryByRole('columnheader', { name: 'Type' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Type')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Add Client' }))
@@ -158,7 +160,7 @@ describe('clients', () => {
     await screen.findByRole('heading', { name: 'Beta Test Person', level: 1 })
     await userEvent.click(screen.getByRole('button', { name: 'Edit' }))
     const dialog = await screen.findByRole('dialog', { name: 'Edit Client' })
-    await userEvent.selectOptions(await within(dialog).findByLabelText('Client type'), 'INDIVIDUAL')
+    await userEvent.selectOptions(await within(dialog).findByLabelText(/Client type/), 'INDIVIDUAL')
     await userEvent.type(within(dialog).getByLabelText('VAT number'), 'VAT-77')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 
@@ -167,18 +169,18 @@ describe('clients', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Beta Test Person was updated.')
   })
 
-  it('deactivates a client after confirmation, never deletes it', async () => {
+  it('disables a client after confirmation, never deletes it', async () => {
     const api = masterApi()
     renderApp('/clients/10')
 
     await screen.findByRole('heading', { name: 'Alpha Test Co', level: 1 })
     expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Deactivate' }))
-    const confirm = await screen.findByRole('dialog', { name: 'Deactivate client' })
-    await userEvent.click(within(confirm).getByRole('button', { name: 'Deactivate' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Disable' }))
+    const confirm = await screen.findByRole('dialog', { name: 'Disable client' })
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Disable' }))
 
     await waitFor(() => expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(1))
-    expect(await screen.findByText(/This client is inactive/)).toBeInTheDocument()
+    expect(await screen.findByText(/This client is disabled/)).toBeInTheDocument()
   })
 
   it('shows a not-found page for an unknown client', async () => {
@@ -188,13 +190,13 @@ describe('clients', () => {
     expect(await screen.findByText('Client not found')).toBeInTheDocument()
   })
 
-  it('offers a view-only role no edit or deactivate', async () => {
+  it('offers a view-only role no edit or disable', async () => {
     masterApi({ ...ACCOUNTANT, permissions: [...ACCOUNTANT.permissions] })
     renderApp('/clients/10')
 
     await screen.findByRole('heading', { name: 'Alpha Test Co', level: 1 })
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Deactivate' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: 'AMC contracts' })).getByText('Your role does not include access to AMC contracts.')).toBeInTheDocument()
   })
 })

@@ -105,8 +105,6 @@ const PAGES: { prefix: string; meta: PageMeta }[] = [
   { prefix: '/amc/calendar', meta: { icon: ICON.calendar, from: '#00A6C8', to: '#1B8AD3', description: 'Maintenance visits by date · Month view · Status at a glance' } },
   { prefix: '/expenses', meta: { icon: ICON.wallet, from: '#00A6C8', to: '#F5C622', description: 'Project costs recorded against each job' } },
   { prefix: '/invoices', meta: { icon: ICON.invoice, from: '#1B8AD3', to: '#D1428C', description: 'Zoho invoice details tracked against visits and projects' } },
-  { prefix: '/reports', meta: { icon: ICON.chart, from: '#7E6FAC', to: '#1B8AD3', description: 'Management reporting across AMC and projects' } },
-  { prefix: '/historical-data', meta: { icon: ICON.archive, from: '#7E6FAC', to: '#5BAF48', description: 'Records from the earlier Excel registers · Imported and needs review · Read-only' } },
   { prefix: '/admin/login-history', meta: { icon: ICON.shield, from: '#1B8AD3', to: '#7E6FAC', description: 'Successful and failed sign-ins · Network address · Read-only' } },
   { prefix: '/admin/audit-log', meta: { icon: ICON.archive, from: '#7E6FAC', to: '#1B8AD3', description: 'Activity across every module · Who · What · When · Read-only' } },
   { prefix: '/master-data/sales-engineers', meta: { icon: ICON.users, from: '#5BAF48', to: '#1B8AD3', description: 'Master Data Center · Engineers assigned to AMC contracts' } },

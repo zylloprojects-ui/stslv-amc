@@ -10,8 +10,9 @@ beforeAll(async () => {
 });
 afterAll(closePool);
 
+// Client type is required for a new client; tests that are not about it use Company.
 async function createClient(body: Record<string, unknown>) {
-  return api().post("/api/clients").set(admin.headers).send(body);
+  return api().post("/api/clients").set(admin.headers).send({ clientType: "COMPANY", ...body });
 }
 
 async function logsFor(clientId: string) {
@@ -54,11 +55,11 @@ describe("create client", () => {
     ]);
   });
 
-  it("requires only the name", async () => {
+  it("requires only the name and the client type, and gives the client a code from its id", async () => {
     const response = await createClient({ name: "MERCURE" });
 
     expect(response.status).toBe(201);
-    expect(response.body.data).not.toHaveProperty("clientCode");
+    expect(response.body.data.code).toBe(`CL-${String(response.body.data.id).padStart(5, "0")}`);
   });
 
   it("rejects invalid data with field-level messages", async () => {

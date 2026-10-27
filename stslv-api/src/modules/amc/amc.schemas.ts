@@ -4,7 +4,6 @@ import { idSchema, optionalText, requiredText } from "../../shared/validation";
 import {
   CONTRACT_STATUSES,
   INVOICE_ELIGIBILITIES,
-  MAINTENANCE_FREQUENCIES,
   OPERATIONAL_VISIT_STATUSES,
   VISIT_STATUSES,
 } from "./amc.constants";
@@ -63,7 +62,22 @@ const optionalIsoDate = (label: string) =>
     .transform((value) => (value === "" ? null : value))
     .nullable();
 
-const frequency = z.enum(MAINTENANCE_FREQUENCIES, { error: "Select a maintenance frequency." });
+// A maintenance frequency code. Whether it exists and may be selected is checked
+// in the service, against the frequency master (migration 0076) or, without it,
+// the four built-in codes.
+const frequency = z
+  .string({ error: "Select a maintenance frequency." })
+  .trim()
+  .regex(/^[A-Z][A-Z0-9_]{1,29}$/, "Select a maintenance frequency.");
+
+// The months (1 = January) of a contract on a custom frequency. PROVISIONAL: the
+// custom scheduling rule is not yet confirmed by the client.
+const customMonths = z
+  .array(z.number({ error: "Each month must be a number from 1 to 12." }).int("Each month must be a number from 1 to 12.").min(1, "Each month must be a number from 1 to 12.").max(12, "Each month must be a number from 1 to 12."), {
+    error: "Select the months as a list.",
+  })
+  .max(11, "Select at most 11 months. For a visit every month, choose the monthly frequency.")
+  .refine((months) => new Set(months).size === months.length, "Each month can be selected once.");
 
 const page = z.coerce.number().int().min(1).default(1);
 
@@ -81,6 +95,7 @@ const contractFields = {
   contractValue: requiredMoney("Contract value"),
   finalCredit: optionalMoney("Final credit"),
   maintenanceFrequency: frequency,
+  customMonths,
   defaultVisitAmount: optionalMoney("Default visit amount"),
   notes: optionalText("Notes", 2000),
 };
@@ -95,6 +110,8 @@ export const createContractSchema = z.strictObject({
   contractValue: contractFields.contractValue,
   finalCredit: contractFields.finalCredit.optional(),
   maintenanceFrequency: contractFields.maintenanceFrequency,
+  // Only for a custom frequency; left out or empty otherwise.
+  customMonths: contractFields.customMonths.optional(),
   defaultVisitAmount: contractFields.defaultVisitAmount.optional(),
   notes: contractFields.notes.optional(),
   // Optional link to the Sales Engineer master (migration 0070); null or left out: no link.
@@ -116,6 +133,8 @@ export const updateContractSchema = z
     contractValue: contractFields.contractValue.optional(),
     finalCredit: contractFields.finalCredit.optional(),
     maintenanceFrequency: contractFields.maintenanceFrequency.optional(),
+    // Replaces the selected months. Left out: unchanged (cleared when the frequency changes to a fixed one).
+    customMonths: contractFields.customMonths.optional(),
     defaultVisitAmount: contractFields.defaultVisitAmount.optional(),
     notes: contractFields.notes.optional(),
     salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
@@ -178,6 +197,14 @@ export const schedulePreviewSchema = z.object({
   validFrom: isoDate("Valid from").optional(),
   validTo: isoDate("Valid to").optional(),
   maintenanceFrequency: frequency.optional(),
+  // Comma-separated months for a custom frequency, for example "2,5,8,11".
+  customMonths: z
+    .string()
+    .trim()
+    .regex(/^(\d{1,2}(,\d{1,2})*)?$/, "Give the months as numbers separated by commas.")
+    .transform((value) => (value === "" ? [] : value.split(",").map(Number)))
+    .pipe(customMonths)
+    .optional(),
 });
 
 // ---------------------------------------------------------------------------

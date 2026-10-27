@@ -70,7 +70,7 @@ describe('login', () => {
     expect(api.find('POST', '/auth/login')[0]?.body).toEqual({ email: 'admin@example.com', password: 'a-good-password' })
     expect(localStorage.getItem('stslv-amc.token')).toBe('issued-token')
     // Later requests carry the token.
-    await waitFor(() => expect(api.find('GET', '/dashboard/summary')[0]?.authorization).toBe('Bearer issued-token'))
+    await waitFor(() => expect(api.find('GET', '/dashboard/operations')[0]?.authorization).toBe('Bearer issued-token'))
   })
 
   it('reports an unreachable server', async () => {
@@ -183,7 +183,6 @@ describe('permission-based navigation', () => {
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
       Operations: ['AMC Contracts', 'AMC Schedule', 'AMC Calendar'],
       Finance: ['Expenses', 'Invoice Tracking'],
-      Reporting: ['Reports', 'Historical Data'],
       Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
     })
   })
@@ -207,12 +206,12 @@ describe('permission-based navigation', () => {
 
   it('starts with the group of the current page open', async () => {
     session(ADMIN)
-    renderApp('/reports')
+    renderApp('/invoices')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
 
-    expect(within(nav).getByRole('button', { name: 'Reporting' })).toHaveAttribute('aria-expanded', 'true')
-    expect(within(nav).getByRole('link', { name: 'Reports' })).toHaveAttribute('aria-current', 'page')
+    expect(within(nav).getByRole('button', { name: 'Finance' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(nav).getByRole('link', { name: 'Invoice Tracking' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('shows a restricted role only the modules it may view', async () => {
@@ -236,38 +235,25 @@ describe('permission-based navigation', () => {
     expect(api.find('GET', '/users')).toHaveLength(0)
   })
 
-  it('opens the Reports page itself, not a placeholder', async () => {
+  it.each(['/reports', '/historical-data'])('shows Not Found for the removed page %s', async (path) => {
     session(ADMIN)
-    renderApp('/reports')
+    renderApp(path)
 
-    expect(await screen.findByRole('heading', { name: 'Reports', level: 1 })).toBeInTheDocument()
-    expect(screen.queryByText('Module implementation in progress')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    expect(within(nav).queryByRole('button', { name: 'Reporting' })).not.toBeInTheDocument()
   })
 })
 
 describe('dashboard', () => {
-  it('shows the real client counts, and no card for a figure the API did not return', async () => {
-    session(ADMIN)
+  it('no longer shows the module figure cards, nor requests their summary', async () => {
+    const api = session(ADMIN)
     renderApp('/dashboard')
 
-    const clientsCard = (await screen.findByText('Active Clients')).parentElement as HTMLElement
-    expect(await within(clientsCard).findByText('4')).toBeInTheDocument()
-    expect(within(clientsCard).getByText(/1 inactive/)).toBeInTheDocument()
-
-    // The summary above carries client counts only. The other metrics are connected
-    // to the API, so without a figure from it they are left out: no placeholder, no zero.
-    for (const label of [
-      'Active Contracts',
-      'Visits Due',
-      'Ready for Invoice',
-      'Active Projects',
-      'Projects Ready for Invoice',
-      'Tracked Expenses',
-      'Ready-for-Invoice Value',
-    ]) {
-      expect(screen.queryByRole('heading', { name: label, level: 3 })).not.toBeInTheDocument()
-    }
-    expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
+    await waitFor(() => expect(api.find('GET', '/dashboard/operations').length).toBeGreaterThanOrEqual(1))
+    expect(screen.queryByText('Active Clients')).not.toBeInTheDocument()
+    expect(api.find('GET', '/dashboard/summary')).toHaveLength(0)
   })
 })
 

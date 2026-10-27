@@ -7,7 +7,7 @@ import type { OperationsDashboard } from './operationsTypes'
 // API returned; none is calculated here.
 
 /** What a KPI card shows once the figures have arrived. */
-export type KpiReading = { kind: 'value'; value: string; detail: string } | { kind: 'unavailable'; reason: string }
+export type KpiReading = { kind: 'value'; value: string; detail: string; /** The full wording, shown on hover; the card itself carries a short line. */ hint?: string } | { kind: 'unavailable'; reason: string }
 
 export interface KpiDefinition {
   id: string
@@ -47,7 +47,12 @@ export const KPIS: KpiDefinition[] = [
     link: { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' },
     // The stored contract value, summed. Contracts run for different periods, so it is not an annual figure.
     read: ({ kpis: { contracts } }) =>
-      contracts && { kind: 'value', value: formatMoney(contracts.activeValue), detail: 'Sum of contract values of active contracts · not annualised' },
+      contracts && {
+        kind: 'value',
+        value: formatMoney(contracts.activeValue),
+        detail: 'Sum of active contract values',
+        hint: 'Sum of contract values of active contracts · not annualised',
+      },
   },
   {
     id: 'credit',
@@ -60,7 +65,8 @@ export const KPIS: KpiDefinition[] = [
       contracts && {
         kind: 'value',
         value: formatMoney(contracts.finalCreditTotal),
-        detail: `As entered on ${formatCount(contracts.finalCreditRecorded)} of ${plural(contracts.active, 'active contract', 'active contracts')} · meaning not yet confirmed, not revenue`,
+        detail: 'Final credit as entered',
+        hint: `As entered on ${formatCount(contracts.finalCreditRecorded)} of ${plural(contracts.active, 'active contract', 'active contracts')} · meaning not yet confirmed, not revenue`,
       },
   },
   {
@@ -97,7 +103,7 @@ export const KPIS: KpiDefinition[] = [
     code: 'EXP',
     label: 'Expiring ≤45 Days',
     visible: (canView) => canView('AMC_CONTRACTS'),
-    link: { to: '/reports', label: 'Expiry report', module: 'REPORTS' },
+    link: { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' },
     read: ({ kpis: { contracts } }) =>
       contracts && {
         kind: 'value',
