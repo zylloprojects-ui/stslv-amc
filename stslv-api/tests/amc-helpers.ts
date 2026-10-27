@@ -11,7 +11,7 @@ export async function today(): Promise<string> {
 }
 
 export async function createClient(session: Session, name: string): Promise<string> {
-  const response = await api().post("/api/clients").set(session.headers).send({ name });
+  const response = await api().post("/api/clients").set(session.headers).send({ name, clientType: "COMPANY" });
 
   if (response.status !== 201) {
     throw new Error(`Could not create client ${name}: ${response.status}`);

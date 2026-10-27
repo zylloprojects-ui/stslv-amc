@@ -61,6 +61,8 @@ export interface SessionUser {
 
 export interface Client {
   id: string
+  /** The client code, "CL-00042", derived by the API from the id. */
+  code: string
   name: string
   contactPerson: string | null
   email: string | null
@@ -78,6 +80,34 @@ export interface Client {
 export type ClientType = 'COMPANY' | 'INDIVIDUAL'
 
 export const CLIENT_TYPE_LABELS: Record<ClientType, string> = { COMPANY: 'Company', INDIVIDUAL: 'Individual' }
+
+/** The stored active flag in words. An inactive client is shown as Disabled. */
+export const CLIENT_STATUS_LABELS = { active: 'Active', inactive: 'Disabled' } as const
+
+/** Client 360 figures (GET /clients/:id/summary). A section is null when the role cannot see that module. */
+export interface ClientSummary {
+  asOf: string
+  contracts: {
+    total: number
+    active: number
+    draft: number
+    expired: number
+    cancelled: number
+    activeValue: string
+    nonCancelledValue: string
+    finalCreditTotal: string
+    finalCreditRecorded: number
+  } | null
+  renewals: {
+    windowDays: number
+    total: number
+    items: { id: string; systemDescription: string; validFrom: string; validTo: string; daysLeft: number; contractValue: string }[]
+  } | null
+  visits: { upcoming: number; overdue: number; completed: number; readyForInvoice: number; nextVisitDate: string | null } | null
+  invoices: { issued: number; cancelled: number; issuedExclVat: string; issuedTotal: string; lastInvoiceDate: string | null } | null
+  /** Payments are not recorded, so paid and unpaid cannot be told apart. */
+  paymentTracking: false
+}
 
 /** What the client pages can offer on this database (GET /clients/features). */
 export interface ClientFeatures {

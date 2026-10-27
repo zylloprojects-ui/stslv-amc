@@ -96,38 +96,37 @@ async function openPage(path = '/amc/contracts/100', title = 'Test Hotel One —
   return within(screen.getByRole('main'))
 }
 
-const region = (page: ReturnType<typeof within>, name: string) => within(page.getByRole('region', { name }))
-
-// The overview, validity and commercial details are tabs; the overview is open first.
+// The schedule, invoices, renewals, documents, history and details are tabs; the schedule is open first.
 const openTab = async (page: ReturnType<typeof within>, name: string) => {
-  await userEvent.click(page.getByRole('tab', { name }))
+  await userEvent.click(page.getByRole('tab', { name: new RegExp('^' + name) }))
 
   return within(page.getByRole('tabpanel'))
 }
 
 describe('contract page', () => {
-  it('shows the overview, validity and commercial details from the stored contract', async () => {
+  it('shows the profile, the figures and the details from the stored contract', async () => {
     amcApi(ADMIN, { contracts: [makeContract({ finalCredit: '1500.000', notes: 'Keys at reception' })] })
     const page = await openPage()
 
-    const overview = await openTab(page, 'Contract overview')
-    expect(overview.getByText('Test Hotel One')).toBeInTheDocument()
-    expect(overview.getByText('FIRE')).toBeInTheDocument()
-    expect(overview.getByText('Test Engineer')).toBeInTheDocument()
-    expect(overview.getByText('Quarterly')).toBeInTheDocument()
-    expect(overview.getByText('Active')).toBeInTheDocument()
-    expect(overview.getByText('Keys at reception')).toBeInTheDocument()
+    // The profile bar.
+    expect(page.getByText('Test Hotel One')).toBeInTheDocument()
+    expect(page.getByText('FIRE')).toBeInTheDocument()
+    expect(page.getByText('Test Engineer')).toBeInTheDocument()
+    expect(page.getByText('Quarterly')).toBeInTheDocument()
+    expect(page.getByText('Active')).toBeInTheDocument()
+    expect(page.getByText('01 Jan 2027 – 31 Dec 2027')).toBeInTheDocument()
 
-    const validity = await openTab(page, 'Contract validity')
-    expect(validity.getByText('01 Jan 2027')).toBeInTheDocument()
-    expect(validity.getByText('31 Dec 2027')).toBeInTheDocument()
-    expect(validity.getByText('365 calendar days (start and end dates included)')).toBeInTheDocument()
-
-    const commercial = await openTab(page, 'Commercial details')
-    const row = (label: string) => commercial.getByText(label).parentElement as HTMLElement
+    // The commercial figures.
+    const figures = within(page.getByRole('region', { name: 'Contract figures' }))
+    const row = (label: string) => figures.getByText(label).parentElement as HTMLElement
     expect(row('Contract value')).toHaveTextContent('1,620.000')
     expect(row('Default visit amount')).toHaveTextContent('405.000')
     expect(row('Final credit')).toHaveTextContent('1,500.000')
+
+    // What is left is on the Details tab.
+    const details = await openTab(page, 'Details')
+    expect(details.getByText('Keys at reception')).toBeInTheDocument()
+    expect(details.getByText('365 calendar days (start and end dates included)')).toBeInTheDocument()
   })
 
   it('lists only the visits of this contract, with dates and statuses', async () => {
@@ -155,7 +154,7 @@ describe('contract page', () => {
     const api = amcApi(ADMIN, { contracts: [FIRE], invoices: [makeInvoice(), OTHER_CONTRACT_INVOICE] })
     const page = await openPage()
 
-    const invoices = region(page, 'Invoices')
+    const invoices = (await openTab(page, 'Invoices'))
     const table = await invoices.findByRole('table', { name: 'Invoices' })
     expect(within(table).getByText('3201')).toBeInTheDocument()
     expect(within(table).getByText('Issued')).toBeInTheDocument()
@@ -168,14 +167,14 @@ describe('contract page', () => {
     amcApi(ADMIN, { contracts: [FIRE] })
     const page = await openPage()
 
-    expect(await region(page, 'Invoices').findByText('No invoices recorded for this contract')).toBeInTheDocument()
+    expect(await (await openTab(page, 'Invoices')).findByText('No invoices recorded for this contract')).toBeInTheDocument()
   })
 
   it('shows the history, newest first, with action, user, time, description and changes in plain words', async () => {
     const api = amcApi(ADMIN, { contracts: [FIRE], history: { '100': HISTORY } })
     const page = await openPage()
 
-    const history = region(page, 'Contract history')
+    const history = (await openTab(page, 'Contract history'))
     const entries = within(await history.findByRole('list', { name: 'Contract history, newest first' })).getAllByRole('listitem', { name: undefined })
     const top = entries.filter((item) => item.parentElement?.getAttribute('aria-label') === 'Contract history, newest first')
 
@@ -199,7 +198,7 @@ describe('contract page', () => {
     amcApi(ADMIN, { contracts: [FIRE] })
     const page = await openPage()
 
-    expect(await region(page, 'Contract history').findByText('No history recorded for this contract')).toBeInTheDocument()
+    expect(await (await openTab(page, 'Contract history')).findByText('No history recorded for this contract')).toBeInTheDocument()
   })
 })
 
@@ -209,8 +208,8 @@ describe('contract page permissions', () => {
     const page = await openPage()
 
     expect(page.getByText('Your role does not include access to the AMC schedule.')).toBeInTheDocument()
-    expect(page.queryByRole('region', { name: 'Invoices' })).not.toBeInTheDocument()
-    await region(page, 'Contract history').findByText('No history recorded for this contract')
+    expect(page.queryByRole('tab', { name: /^Invoices/ })).not.toBeInTheDocument()
+    await (await openTab(page, 'Contract history')).findByText('No history recorded for this contract')
     expect(api.find('GET', '/amc/visits')).toHaveLength(0)
     expect(api.find('GET', '/invoices')).toHaveLength(0)
     expect(page.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
@@ -221,7 +220,7 @@ describe('contract page permissions', () => {
     const page = await openPage()
 
     expect(await page.findByRole('table', { name: 'Visits of this contract' })).toBeInTheDocument()
-    expect(page.queryByRole('region', { name: 'Invoices' })).not.toBeInTheDocument()
+    expect(page.queryByRole('tab', { name: /^Invoices/ })).not.toBeInTheDocument()
     expect(api.find('GET', '/invoices')).toHaveLength(0)
   })
 
@@ -269,8 +268,8 @@ describe('contract page states', () => {
     })
     const page = await openPage()
 
-    expect(await region(page, 'Contract history').findByText(/History is unavailable/)).toBeInTheDocument()
-    expect(within(page.getByRole('tabpanel')).getByText('Test Engineer')).toBeInTheDocument()
+    expect(await (await openTab(page, 'Contract history')).findByText(/History is unavailable/)).toBeInTheDocument()
+    expect(page.getByText('Test Engineer')).toBeInTheDocument()
   })
 })
 
@@ -300,7 +299,7 @@ describe('contract page actions', () => {
     await userEvent.click(within(confirm).getByRole('button', { name: 'Mark contract as expired' }))
 
     await waitFor(() => expect(api.find('GET', '/amc/contracts/100').length).toBeGreaterThan(1))
-    expect(await within(page.getByRole('tabpanel')).findByText('Expired')).toBeInTheDocument()
+    expect(await page.findByText('Expired')).toBeInTheDocument()
   })
 })
 

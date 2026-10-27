@@ -27,14 +27,14 @@ async function grant(roleCode: string, permissions: [string, string][]) {
 
 describe("permission enforcement on client routes", () => {
   it("lets a view-only role read clients but not change them", async () => {
-    const created = await api().post("/api/clients").set(admin.headers).send({ name: "IBIS" });
+    const created = await api().post("/api/clients").set(admin.headers).send({ name: "IBIS", clientType: "COMPANY" });
     const id = created.body.data.id;
 
     expect((await api().get("/api/clients").set(accountant.headers)).status).toBe(200);
     expect((await api().get(`/api/clients/${id}`).set(accountant.headers)).status).toBe(200);
 
     const attempts = [
-      await api().post("/api/clients").set(accountant.headers).send({ name: "Not Allowed" }),
+      await api().post("/api/clients").set(accountant.headers).send({ name: "Not Allowed", clientType: "COMPANY" }),
       await api().patch(`/api/clients/${id}`).set(accountant.headers).send({ name: "Renamed" }),
       await api().post(`/api/clients/${id}/deactivate`).set(accountant.headers),
       await api().post(`/api/clients/${id}/reactivate`).set(accountant.headers),
@@ -51,12 +51,12 @@ describe("permission enforcement on client routes", () => {
 
   it("checks each action separately: EDIT does not imply DELETE", async () => {
     await grant("ACCOUNTANT", [["CLIENTS", "EDIT"]]);
-    const created = await api().post("/api/clients").set(admin.headers).send({ name: "IBIS" });
+    const created = await api().post("/api/clients").set(admin.headers).send({ name: "IBIS", clientType: "COMPANY" });
     const id = created.body.data.id;
 
     expect((await api().patch(`/api/clients/${id}`).set(accountant.headers).send({ phone: "123" })).status).toBe(200);
     expect((await api().post(`/api/clients/${id}/deactivate`).set(accountant.headers)).status).toBe(403);
-    expect((await api().post("/api/clients").set(accountant.headers).send({ name: "New" })).status).toBe(403);
+    expect((await api().post("/api/clients").set(accountant.headers).send({ name: "New", clientType: "COMPANY" })).status).toBe(403);
   });
 
   it("gives a user with no role no access at all", async () => {
@@ -127,7 +127,7 @@ describe("role permissions are data", () => {
   it("lets an Admin change a role, and the change applies to existing sessions at once", async () => {
     const id = await roleId("ACCOUNTANT");
 
-    expect((await api().post("/api/clients").set(accountant.headers).send({ name: "Before" })).status).toBe(403);
+    expect((await api().post("/api/clients").set(accountant.headers).send({ name: "Before", clientType: "COMPANY" })).status).toBe(403);
 
     const response = await api()
       .put(`/api/roles/${id}/permissions`)
@@ -146,7 +146,7 @@ describe("role permissions are data", () => {
     ]);
 
     // Same token as before: no new login needed.
-    expect((await api().post("/api/clients").set(accountant.headers).send({ name: "After" })).status).toBe(201);
+    expect((await api().post("/api/clients").set(accountant.headers).send({ name: "After", clientType: "COMPANY" })).status).toBe(201);
     expect((await api().get("/api/dashboard/summary").set(accountant.headers)).status).toBe(403);
 
     const log = await pool.query<{ metadata: { added: string[]; removed: string[] } }>(

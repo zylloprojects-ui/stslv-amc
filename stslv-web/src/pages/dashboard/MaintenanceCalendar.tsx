@@ -10,9 +10,9 @@ import { queryString } from '../amc/amcApi'
 import { formatDate, formatMoney, monthLabel, shiftMonth } from '../amc/amcFormat'
 import { VisitStatusPill } from '../amc/components'
 import {
-  FREQUENCY_LABELS,
   INVOICE_ELIGIBILITY_LABELS,
   OPERATIONAL_VISIT_STATUSES,
+  frequencyLabel,
   type ScheduleVisit,
   type VisitList,
 } from '../amc/types'
@@ -132,14 +132,14 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
             {calendar.isError && <LoadError error={calendar.error} onRetry={() => void calendar.refetch()} />}
             {calendar.isPending && <Spinner size="sm" label="Loading calendar" />}
             {calendar.data && (
-              <div role="grid" aria-label={`Visits in ${monthLabel(month)}`} className="grid grid-cols-7 gap-1 text-center">
+              <div role="grid" aria-label={`Visits in ${monthLabel(month)}`} className="grid grid-cols-7 gap-1.5 text-center">
                 {WEEKDAYS.map((name) => (
                   <span key={name} role="columnheader" className="pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">
                     {name}
                   </span>
                 ))}
                 {monthCells(month).map((date, index) => {
-                  if (!date) return <span key={`blank-${index}`} role="gridcell" />
+                  if (!date) return <span key={`blank-${index}`} role="gridcell" className="rounded-md bg-slate-100/50" />
                   const entry = counts.get(date)
                   const label = `${formatDate(date)}: ${entry ? `${entry.total} ${entry.total === 1 ? 'visit' : 'visits'}${entry.overdue ? `, ${entry.overdue} overdue` : ''}` : 'no visits'}`
 
@@ -152,18 +152,22 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
                         disabled={!canSchedule || !entry}
                         onClick={() => setDay(date)}
                         className={cx(
-                          'flex h-10 w-full flex-col items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors',
-                          date === asOf && 'ring-2 ring-[#1479BD] ring-offset-1',
+                          'flex h-11 w-full flex-col items-center justify-center gap-0.5 rounded-lg border text-xs font-semibold tabular-nums transition-all',
                           day === date
-                            ? 'border-[#1479BD] bg-[#1479BD] text-white shadow-sm'
+                            ? 'border-[#1479BD] bg-white text-[#0b3b66] shadow-md ring-2 ring-[#1479BD]/40'
                             : entry
-                              ? 'border-sky-200 bg-sky-50 text-slate-900 hover:bg-sky-100'
-                              : 'border-transparent text-slate-600',
+                              ? entry.overdue
+                                ? 'border-rose-200 bg-rose-50 text-slate-800 hover:bg-rose-100'
+                                : 'border-sky-200 bg-sky-50 text-slate-800 hover:bg-sky-100'
+                              : 'border-slate-100 bg-slate-50/60 text-slate-400',
                         )}
                       >
-                        <span>{Number(date.slice(8))}</span>
+                        <span className={cx('flex h-5 min-w-5 items-center justify-center rounded-full px-1', date === asOf && 'bg-sky-100 font-bold text-[#0b3b66] ring-1 ring-sky-300')}>
+                          {Number(date.slice(8))}
+                        </span>
                         {entry && (
-                          <span className={cx('min-w-4 rounded-full px-1 text-[10px] font-bold leading-4', day === date ? 'bg-white/25 text-white' : entry.overdue ? 'bg-red-600 text-white' : 'bg-[#1479BD] text-white')}>
+                          <span className={cx('flex items-center gap-1 text-[10px] font-bold leading-3', entry.overdue ? 'text-rose-700' : 'text-sky-800')}>
+                            <span className={cx('h-1.5 w-1.5 rounded-full', entry.overdue ? 'bg-rose-400' : 'bg-sky-500')} aria-hidden="true" />
                             {entry.total}
                           </span>
                         )}
@@ -266,11 +270,11 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
   )
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
+function Field({ label, wide = false, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-slate-200 px-4 py-1.5 text-sm last:border-0 even:bg-slate-50/70">
-      <dt className="shrink-0 font-bold text-slate-800">{label}</dt>
-      <dd className="min-w-0 break-words text-right font-medium text-slate-900">{children}</dd>
+    <div className={cx('min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5', wide && 'col-span-2')}>
+      <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{label}</dt>
+      <dd className="mt-1 min-w-0 break-words text-sm font-semibold text-slate-900">{children}</dd>
     </div>
   )
 }
@@ -296,7 +300,7 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
           Service details
         </h3>
         {visitId && (
-          <button type="button" className="text-xs font-medium text-[#1479BD] hover:underline" onClick={onClear}>
+          <button type="button" className="rounded-full bg-white px-2.5 py-0.5 text-xs font-semibold text-[#1479BD] ring-1 ring-inset ring-sky-200 hover:bg-sky-100" onClick={onClear}>
             Clear
           </button>
         )}
@@ -314,36 +318,51 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
         </div>
       )}
       {data && (
-        <dl>
-          <Field label="AMC reference">
-            {/* STSLV AMC has no contract number yet; the record number identifies the contract. */}
-            <Link to={`/amc/contracts/${data.contract.id}`} className="text-[#1479BD] hover:underline">
-              Contract record {data.contract.id}
-            </Link>
-          </Field>
-          <Field label="Client">{data.client.name}</Field>
-          <Field label="System / service">{data.contract.systemDescription}</Field>
-          <Field label="Engineer">{data.assignedTo ?? '—'}</Field>
-          <Field label="Frequency">{FREQUENCY_LABELS[data.contract.maintenanceFrequency]}</Field>
-          <Field label="Scheduled date">{formatDate(data.scheduledDate)}</Field>
-          <Field label="Status">
-            <VisitStatusPill status={data.status} overdue={data.isOverdue} />
-          </Field>
-          <Field label="Scheduled amount">{data.visitAmount === null ? 'Not set' : formatMoney(data.visitAmount)}</Field>
-          <Field label="Invoice status">{INVOICE_ELIGIBILITY_LABELS[data.invoiceEligibility]}</Field>
-          <Field label="Invoice no.">
-            {!canInvoices
-              ? 'Needs Invoice Tracking access'
-              : invoices.isPending
-                ? '…'
-                : invoices.isError
-                  ? 'Could not be loaded'
-                  : invoices.data && invoices.data.items.length > 0
-                    ? invoices.data.items.map((invoice) => invoice.invoiceNumber).join(', ')
-                    : 'None recorded'}
-          </Field>
-          <Field label="Payment status">Not tracked in STSLV AMC</Field>
-        </dl>
+        <div className="space-y-4 p-4">
+          <div className="flex items-start gap-3">
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0e5a96] to-[#2f9bd8] text-white shadow-sm" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
+                <path d="M3.5 10h17M8 3v4M16 3v4M9 15l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-base font-bold leading-tight text-[#0b3b66]">{data.client.name}</p>
+              <p className="mt-0.5 break-words text-sm text-slate-600">{data.contract.systemDescription}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <VisitStatusPill status={data.status} overdue={data.isOverdue} />
+                {/* STSLV AMC has no contract number yet; the record number identifies the contract. */}
+                <Link to={`/amc/contracts/${data.contract.id}`} className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#1479BD] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
+                  Contract record {data.contract.id}
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <dl className="grid grid-cols-2 gap-2.5">
+            <Field label="Scheduled date">{formatDate(data.scheduledDate)}</Field>
+            <Field label="Frequency">{frequencyLabel(data.contract.maintenanceFrequency)}</Field>
+            <Field label="Engineer">{data.assignedTo ?? '—'}</Field>
+            <Field label="Scheduled amount">
+              <span className="text-base font-bold tabular-nums text-[#0b3b66]">{data.visitAmount === null ? 'Not set' : formatMoney(data.visitAmount)}</span>
+            </Field>
+            <Field label="Invoice status">{INVOICE_ELIGIBILITY_LABELS[data.invoiceEligibility]}</Field>
+            <Field label="Invoice no.">
+              {!canInvoices
+                ? 'Needs Invoice Tracking access'
+                : invoices.isPending
+                  ? '…'
+                  : invoices.isError
+                    ? 'Could not be loaded'
+                    : invoices.data && invoices.data.items.length > 0
+                      ? invoices.data.items.map((invoice) => invoice.invoiceNumber).join(', ')
+                      : 'None recorded'}
+            </Field>
+            <Field label="Payment status" wide>
+              Not tracked in STSLV AMC
+            </Field>
+          </dl>
+        </div>
       )}
     </section>
   )

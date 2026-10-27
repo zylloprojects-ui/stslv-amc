@@ -30,7 +30,7 @@ beforeAll(async () => {
   await api().post("/api/auth/login").send({ email: "staff@example.com", password: PASSWORD });
   await api().post("/api/auth/login").send({ email: "staff@example.com", password: "Wrong-Password-1" });
   await api().post("/api/auth/login").send({ email: "nobody@example.com", password: "Secret-Typed-9" });
-  await api().post("/api/clients").set(admin.headers).send({ name: "Audit Test Client" });
+  await api().post("/api/clients").set(admin.headers).send({ name: "Audit Test Client", clientType: "COMPANY" });
 });
 afterAll(closePool);
 

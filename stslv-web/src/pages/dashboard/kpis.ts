@@ -103,7 +103,7 @@ export const KPIS: KpiDefinition[] = [
     code: 'EXP',
     label: 'Expiring ≤45 Days',
     visible: (canView) => canView('AMC_CONTRACTS'),
-    link: { to: '/reports', label: 'Expiry report', module: 'REPORTS' },
+    link: { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' },
     read: ({ kpis: { contracts } }) =>
       contracts && {
         kind: 'value',

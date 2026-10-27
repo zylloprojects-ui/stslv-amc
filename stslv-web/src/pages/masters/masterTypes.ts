@@ -55,6 +55,35 @@ export interface SalesEngineer {
   updatedAt: string
 }
 
+/** A sales engineer as the Sales Engineers pages read it, with the fields those pages add. */
+export interface EngineerRecord extends SalesEngineer {
+  /** "SE-0042": derived from the id, never stored, so it never changes. */
+  code: string
+  /** Active AMC contracts linked to the engineer: the assignments a disable warns about. */
+  activeContractCount: number
+}
+
+/** The stored active flag in words. Archived needs a database update (not built). */
+export const ENGINEER_STATUS_LABELS = { active: 'Active', inactive: 'Disabled' } as const
+
+/** GET /api/masters/sales-engineers/:id/summary. A section is null when the viewer's role cannot see its module. */
+export interface EngineerSummary {
+  asOf: string
+  contracts: { total: number; active: number; draft: number; expired: number; cancelled: number; activeValue: string } | null
+  visits: { upcoming: number; overdue: number; nextVisitDate: string | null } | null
+  upcoming: {
+    total: number
+    items: { id: string; scheduledDate: string; sequenceNo: number; status: string; assignedTo: string | null; contract: { id: string; systemDescription: string; clientName: string } }[]
+  } | null
+}
+
+/** An account the engineer form may link to (GET /api/masters/sales-engineers/user-options). */
+export interface EngineerUserOption {
+  id: string
+  fullName: string
+  email: string
+}
+
 export interface MasterList<T> {
   items: T[]
   total: number

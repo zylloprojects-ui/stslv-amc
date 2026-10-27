@@ -1,6 +1,7 @@
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Money } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Badge, Button } from '../../components/ui'
+import { Badge } from '../../components/ui'
 import { cx, formatDate } from '../../lib/format'
 import { allocationLabel, INVOICE_STATUS_LABELS, type Invoice } from '../../lib/invoiceTypes'
 import type { InvoiceDialog } from './InvoiceDialogs'
@@ -99,37 +100,15 @@ export function InvoicesTable({ items, showClient, canEdit, onDialog, startAt = 
                   <InvoiceStatusBadge status={invoice.status} />
                 </td>
                 <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                  <div className="flex justify-end gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`View invoice ${invoice.invoiceNumber}`}
-                      onClick={() => onDialog({ kind: 'view', invoiceId: invoice.id })}
-                    >
-                      View
-                    </Button>
+                  <ActionGroup>
+                    <ActionButton label={`View invoice ${invoice.invoiceNumber}`} icon="view" onClick={() => onDialog({ kind: 'view', invoiceId: invoice.id })} />
                     {canEdit && !cancelled && (
                       <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={`Edit invoice ${invoice.invoiceNumber}`}
-                          onClick={() => onDialog({ kind: 'edit', invoice })}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-700 hover:bg-red-50"
-                          aria-label={`Cancel invoice ${invoice.invoiceNumber}`}
-                          onClick={() => onDialog({ kind: 'cancel', invoice })}
-                        >
-                          Cancel
-                        </Button>
+                        <ActionButton label={`Edit invoice ${invoice.invoiceNumber}`} icon="edit" onClick={() => onDialog({ kind: 'edit', invoice })} />
+                        <ActionButton danger label={`Cancel invoice ${invoice.invoiceNumber}`} icon="void" onClick={() => onDialog({ kind: 'cancel', invoice })} />
                       </>
                     )}
-                  </div>
+                  </ActionGroup>
                 </td>
               </tr>
             )

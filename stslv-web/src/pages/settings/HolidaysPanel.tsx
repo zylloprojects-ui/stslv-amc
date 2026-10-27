@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Alert, Badge, Button, ConfirmDialog, EmptyState, Modal, TableScroll, TextField } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, ApiError, errorMessage } from '../../lib/api'
@@ -167,8 +168,6 @@ function HolidayForm({ holiday, date, countries, onClose, onSaved }: { holiday: 
     </Modal>
   )
 }
-
-const iconButton = 'inline-flex h-8 w-9 items-center justify-center text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10'
 
 /** A row of the table: a holiday stored in the calendar, or an official Oman holiday that is shown but not saved yet. */
 interface Row extends Holiday {
@@ -362,32 +361,24 @@ export function HolidaysPanel() {
                             Official
                           </span>
                         ) : (
-                          <div className="inline-flex items-center divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                            {canEdit && (
-                              <button type="button" aria-label={`Edit ${holiday.name}`} title={`Edit ${holiday.name}`} onClick={() => setDialog({ kind: 'edit', holiday })} className={iconButton}>
-                                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                                  <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 8l3 3" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              </button>
-                            )}
-                            {canDelete && (
-                              <button
-                                type="button"
-                                aria-label={`Delete ${holiday.name}`}
-                                title={`Delete ${holiday.name}`}
-                                onClick={() => {
-                                  setDeleteError(null)
-                                  setDialog({ kind: 'delete', holiday })
-                                }}
-                                className={`${iconButton} hover:!bg-red-50 hover:!text-red-700`}
-                              >
-                                <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-                                  <path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l.8 12.5h9.4L17.5 7M10 11v5M14 11v5" strokeLinecap="round" strokeLinejoin="round" />
-                                </svg>
-                              </button>
-                            )}
-                            {!canEdit && !canDelete && <span className="px-3 py-1.5 text-xs text-slate-400">—</span>}
-                          </div>
+                          canEdit || canDelete ? (
+                            <ActionGroup>
+                              {canEdit && <ActionButton label={`Edit ${holiday.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', holiday })} />}
+                              {canDelete && (
+                                <ActionButton
+                                  danger
+                                  label={`Delete ${holiday.name}`}
+                                  icon="delete"
+                                  onClick={() => {
+                                    setDeleteError(null)
+                                    setDialog({ kind: 'delete', holiday })
+                                  }}
+                                />
+                              )}
+                            </ActionGroup>
+                          ) : (
+                            <span className="px-3 py-1.5 text-xs text-slate-400">—</span>
+                          )
                         )}
                       </td>
                     </tr>,

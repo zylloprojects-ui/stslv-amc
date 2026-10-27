@@ -42,7 +42,6 @@ const GROUP_STYLE: Record<string, { from: string; to: string; icon: ReactNode }>
     to: '#F5C622',
     icon: <path d="M12 3v18M16.5 7.5c-.6-1.4-2.3-2.2-4.5-2.2-2.5 0-4 1.1-4 2.8 0 4 9 1.7 9 6 0 1.8-1.7 3-4.5 3-2.3 0-4.1-.9-4.7-2.5" strokeLinecap="round" />,
   },
-  Reporting: { from: '#D1428C', to: '#FF8212', icon: <path d="M4 20V10M10 20V4M16 20v-7M21 20H3" strokeLinecap="round" /> },
   Administration: {
     from: '#7E6FAC',
     to: '#1B8AD3',

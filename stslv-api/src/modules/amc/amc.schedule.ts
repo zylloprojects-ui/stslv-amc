@@ -66,10 +66,53 @@ export interface SchedulePeriod {
 }
 
 /**
+ * How a contract's visits are spaced (migration 0076).
+ * - interval: one visit every `intervalMonths` months from the contract start.
+ * - months: PROVISIONAL (custom frequency; the client has not confirmed the
+ *   rule): one visit in each selected calendar month (1 = January) of every
+ *   contract year, on the contract start's day of the month (clamped to the
+ *   month end). Months before the first selected month get no visit.
+ */
+export type ScheduleRule = { kind: "interval"; intervalMonths: number } | { kind: "months"; months: readonly number[] };
+
+/** One of the four built-in codes, or a rule from the frequency master. */
+export function toScheduleRule(frequency: MaintenanceFrequency | ScheduleRule): ScheduleRule {
+  return typeof frequency === "string" ? { kind: "interval", intervalMonths: FREQUENCY_MONTHS[frequency] } : frequency;
+}
+
+/** The months after the contract start month at which each visit of a contract year falls, ascending (0-11). */
+function monthOffsets(validFrom: string, months: readonly number[]): number[] {
+  const startMonth = parts(validFrom).month;
+  const offsets = [...new Set(months.map((month) => (((month - startMonth) % 12) + 12) % 12))].sort((a, b) => a - b);
+
+  if (offsets.length === 0 || months.some((month) => !Number.isInteger(month) || month < 1 || month > 12)) {
+    throw new Error("A custom schedule needs at least one month from 1 to 12.");
+  }
+
+  return offsets;
+}
+
+/** Months from the contract start to the visit with this index (0, 1, 2, ...). */
+function offsetFn(validFrom: string, rule: ScheduleRule): (index: number) => number {
+  if (rule.kind === "interval") {
+    if (!Number.isInteger(rule.intervalMonths) || rule.intervalMonths < 1) {
+      throw new Error("A schedule interval must be a whole number of months.");
+    }
+
+    return (index) => index * rule.intervalMonths;
+  }
+
+  const offsets = monthOffsets(validFrom, rule.months);
+
+  return (index) => 12 * Math.floor(index / offsets.length) + (offsets[index % offsets.length] as number);
+}
+
+/**
  * The maintenance periods of a contract.
  *
  * - Every period start is calculated from the contract start, not from the
  *   previous period, so month-end dates do not drift (31 Jan, 28 Feb, 31 Mar).
+ * - A period runs to the day before the next visit's period starts.
  * - A period starts only on or before validTo: nothing is scheduled after the
  *   validity ends.
  * - The last period ends on validTo even when that makes it shorter than the
@@ -83,14 +126,14 @@ export interface SchedulePeriod {
 export function buildSchedulePeriods(
   validFrom: string,
   validTo: string,
-  frequency: MaintenanceFrequency,
+  frequency: MaintenanceFrequency | ScheduleRule,
   cutoverDate: string | null = null
 ): SchedulePeriod[] {
-  const interval = FREQUENCY_MONTHS[frequency];
+  const offsetAt = offsetFn(validFrom, toScheduleRule(frequency));
   const periods: SchedulePeriod[] = [];
 
   for (let index = 0; ; index += 1) {
-    const periodStart = addMonths(validFrom, index * interval);
+    const periodStart = addMonths(validFrom, offsetAt(index));
 
     if (periodStart > validTo) {
       break;
@@ -99,7 +142,7 @@ export function buildSchedulePeriods(
       continue;
     }
 
-    const naturalEnd = addDays(addMonths(validFrom, (index + 1) * interval), -1);
+    const naturalEnd = addDays(addMonths(validFrom, offsetAt(index + 1)), -1);
 
     periods.push({
       periodStart,
@@ -109,6 +152,34 @@ export function buildSchedulePeriods(
   }
 
   return periods;
+}
+
+export interface ServiceLabel {
+  /** Contract year, counted from the contract start: 1, 2, ... */
+  cycleNo: number;
+  /** Prefix and service number within that year, for example "Q3". */
+  serviceCode: string;
+}
+
+/**
+ * The label of the visit whose period starts on `periodStart`: its contract
+ * year and its number within that year, after the frequency's prefix
+ * ("Year 2 · Q3"). Taken once, when the visit is generated, and stored.
+ */
+export function serviceLabel(validFrom: string, rule: ScheduleRule, prefix: string, periodStart: string): ServiceLabel {
+  const from = parts(validFrom);
+  const at = parts(periodStart);
+  const months = (at.year - from.year) * 12 + (at.month - from.month);
+  const cycleNo = Math.floor(months / 12) + 1;
+  let serviceNo: number;
+
+  if (rule.kind === "interval") {
+    serviceNo = (Math.floor(months / rule.intervalMonths) % Math.max(1, Math.round(12 / rule.intervalMonths))) + 1;
+  } else {
+    serviceNo = monthOffsets(validFrom, rule.months).indexOf(months % 12) + 1;
+  }
+
+  return { cycleNo, serviceCode: `${prefix}${Math.max(1, serviceNo)}` };
 }
 
 export interface ExistingVisit {

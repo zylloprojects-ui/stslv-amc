@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
@@ -18,7 +18,7 @@ import {
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
   FREQUENCY_LABELS,
-  MAINTENANCE_FREQUENCIES,
+  frequencyLabel,
   type Contract,
   type ContractStatus,
   type SavedContract,
@@ -274,9 +274,9 @@ export function AmcContractsPage() {
                 className={className}
               >
                 <option value="">All frequencies</option>
-                {MAINTENANCE_FREQUENCIES.map((value) => (
+                {Object.keys(FREQUENCY_LABELS).map((value) => (
                   <option key={value} value={value}>
-                    {FREQUENCY_LABELS[value]}
+                    {frequencyLabel(value)}
                   </option>
                 ))}
               </select>
@@ -390,7 +390,7 @@ export function AmcContractsPage() {
                           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-[#1479BD]" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                             <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
-                          {FREQUENCY_LABELS[contract.maintenanceFrequency]}
+                          {frequencyLabel(contract.maintenanceFrequency)}
                         </span>
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
@@ -424,25 +424,10 @@ export function AmcContractsPage() {
                         </span>
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                        <div className="inline-flex items-center divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                          <Link
-                            to={`/amc/contracts/${contract.id}`}
-                            aria-label={`View ${label(contract)}`}
-                            className="px-3 py-1.5 text-xs font-semibold text-[#1479BD] transition-colors hover:bg-sky-50 focus-visible:relative focus-visible:z-10"
-                          >
-                            View
-                          </Link>
-                          {canEdit && (
-                            <button
-                              type="button"
-                              aria-label={`Edit ${label(contract)}`}
-                              onClick={() => setDialog({ kind: 'edit', contract })}
-                              className="px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10"
-                            >
-                              Edit
-                            </button>
-                          )}
-                        </div>
+                        <ActionGroup>
+                          <ActionLink to={`/amc/contracts/${contract.id}`} label={`View ${label(contract)}`} icon="view" />
+                          {canEdit && <ActionButton label={`Edit ${label(contract)}`} icon="edit" onClick={() => setDialog({ kind: 'edit', contract })} />}
+                        </ActionGroup>
                       </td>
                     </tr>
                   ))}

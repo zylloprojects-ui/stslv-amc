@@ -6,7 +6,7 @@ import type { Paged } from '../lib/types'
 import { queryString } from '../pages/amc/amcApi'
 import { formatDate, formatMoney } from '../pages/amc/amcFormat'
 import { ContractStatusPill } from '../pages/amc/components'
-import { FREQUENCY_LABELS, type Contract } from '../pages/amc/types'
+import { frequencyLabel, type Contract } from '../pages/amc/types'
 import { LoadError } from './records'
 import { TABLE } from './table'
 import { EmptyState, Spinner } from './ui'
@@ -68,16 +68,18 @@ export function LinkedContracts({ filter, emptyTitle }: { filter: { clientId: st
             {data.items.map((contract) => (
               <tr key={contract.id}>
                 <td className={TABLE.td}>
-                  <Link to={`/amc/contracts/${contract.id}`} className="font-medium text-blue-700 hover:underline">
+                  <Link to={`/amc/contracts/${contract.id}`} className="font-semibold text-[#0b3b66] hover:text-[#1479BD] hover:underline">
                     {contract.client.name} — {contract.systemDescription}
                   </Link>
-                  {contract.responsibleEngineer && <span className="block text-xs text-slate-500">Engineer: {contract.responsibleEngineer}</span>}
+                  {contract.responsibleEngineer && <span className="mt-0.5 block text-xs text-slate-500">Engineer: {contract.responsibleEngineer}</span>}
                 </td>
-                <td className={`${TABLE.td} whitespace-nowrap`}>
+                <td className={`${TABLE.td} whitespace-nowrap text-slate-700`}>
                   {formatDate(contract.validFrom)} – {formatDate(contract.validTo)}
                 </td>
-                <td className={TABLE.td}>{FREQUENCY_LABELS[contract.maintenanceFrequency]}</td>
-                <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(contract.contractValue)}</td>
+                <td className={TABLE.td}>
+                  <span className="inline-flex rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{frequencyLabel(contract.maintenanceFrequency)}</span>
+                </td>
+                <td className={`${TABLE.td} whitespace-nowrap text-right font-bold tabular-nums text-[#0b3b66]`}>{formatMoney(contract.contractValue)}</td>
                 <td className={TABLE.td}>
                   <ContractStatusPill status={contract.status} />
                 </td>

@@ -54,7 +54,7 @@ function Panel({ id, icon, eyebrow, title, description, link, className, childre
                       </div>
         </div>
         {link && (
-          <Link to={link.to} className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-[#0b3b66] shadow-sm hover:bg-sky-50">
+          <Link to={link.to} className="shrink-0 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-bold text-[#0b3b66] hover:border-[#1479BD] hover:bg-white">
             {link.label} →
           </Link>
         )}
@@ -81,18 +81,16 @@ export function DashboardPage() {
 
   const operations = useQuery({ queryKey: ['dashboard', 'operations'], queryFn: () => api.get<OperationsDashboard>('/dashboard/operations') })
 
-
   const kpiOrder = useKpiOrder(userId, DEFAULT_KPI_ORDER)
   const [arranging, setArranging] = useState(false)
   const [calendarOpen, setCalendarOpen] = useStoredFlag(userId, 'calendar-open', true)
 
   const data = operations.data
   const refreshing = operations.isFetching
-  const refresh = () => {
-    void operations.refetch()
-  }
+  const refresh = () => void operations.refetch()
 
   const online = operations.isSuccess && !operations.isError
+
   return (
     <>
       <div className="login-rise relative mb-7 overflow-hidden rounded-2xl app-banner shadow-lg shadow-sky-900/10">
@@ -241,7 +239,7 @@ export function DashboardPage() {
               eyebrow="Renewals"
               title="Expiring Contracts"
               description={`Active contracts ending in the next ${data.expiring.days} days. Nothing is renewed or expired automatically.`}
-              link={canView('REPORTS') ? { to: '/reports', label: 'Expiry and renewal reports' } : null}
+              link={{ to: '/amc/contracts', label: 'AMC Contracts' }}
             >
               <ExpiringContracts expiring={data.expiring} />
             </Panel>

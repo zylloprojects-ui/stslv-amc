@@ -2,7 +2,8 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
-import type { Department, MaintenanceFrequency, MasterSummary, SystemType } from '../pages/masters/masterTypes'
+import type { MaintenanceFrequencyRule } from '../pages/masters/maintenanceFrequencyTypes'
+import type { Department, MasterSummary, SystemType } from '../pages/masters/masterTypes'
 import { ACCOUNTANT, ADMIN, fail, makeClient, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
 // Master Data Center hub, its navigation and the three list pages it adds
@@ -14,15 +15,25 @@ const NO_MASTERS: SessionUser = { ...ADMIN, id: '8', roles: [{ id: '8', code: 'C
 const stamp = { createdAt: '2026-10-20T08:00:00.000Z', updatedAt: '2026-10-20T08:00:00.000Z' }
 const TYPE: SystemType = { id: '7', code: 'FA', name: 'Fire alarm', description: null, sortOrder: 1, contractCount: 0, isActive: true, ...stamp }
 const DEPARTMENT: Department = { id: '1', code: 'AMC', name: 'AMC Team', description: null, engineerCount: 1, isActive: true, ...stamp }
-const frequency = (id: string, code: string, label: string, intervalMonths: number, contractCount = 0, isActive = true): MaintenanceFrequency => ({
+// As GET /api/masters/maintenance-frequencies returns them (migration 0076).
+const frequency = (id: string, code: string, label: string, intervalMonths: number, contractCount = 0, isActive = true): MaintenanceFrequencyRule => ({
   id,
   code,
   label,
   name: label,
+  isCustom: false,
+  serviceCount: 12 / intervalMonths,
   intervalMonths,
+  codePrefix: code.slice(0, 1),
+  ruleSummary: `${12 / intervalMonths} services · every ${intervalMonths} months`,
   sortOrder: Number(id),
-  contractCount,
+  status: isActive ? 'active' : 'disabled',
   isActive,
+  archivedAt: null,
+  ruleLocked: contractCount > 0,
+  engineSupported: true,
+  contractCount,
+  activeContractCount: contractCount,
   ...stamp,
 })
 const FREQUENCIES = [frequency('1', 'MONTHLY', 'Monthly', 1), frequency('2', 'QUARTERLY', 'Quarterly', 3, 4), frequency('3', 'HALF_YEARLY', 'Half-yearly', 6), frequency('4', 'ANNUALLY', 'Annually', 12, 0, false)]
@@ -56,8 +67,10 @@ function hubApi(user: SessionUser = ADMIN, override?: (request: MockRequest) => 
     const one = /^\/masters\/maintenance-frequencies\/(\d+)(\/status)?$/.exec(path)
     if (one) {
       const index = frequencies.findIndex((item) => item.id === one[1])
-      const found = frequencies[index] as MaintenanceFrequency
-      const saved = one[2] ? { ...found, isActive: (body as { isActive: boolean }).isActive } : { ...found, label: (body as { label: string }).label, name: (body as { label: string }).label }
+      const found = frequencies[index] as MaintenanceFrequencyRule
+      const status = (body as { status?: MaintenanceFrequencyRule['status'] }).status ?? found.status
+      const name = (body as { name?: string }).name ?? found.name
+      const saved = one[2] ? { ...found, status, isActive: status === 'active' } : { ...found, label: name, name }
       frequencies[index] = saved
 
       return ok(saved)
@@ -224,8 +237,8 @@ describe('master list pages', () => {
     renderApp('/master-data/system-types')
 
     expect(await screen.findByRole('heading', { name: 'System Types', level: 1 })).toBeInTheDocument()
-    expect(within(await screen.findByRole('table', { name: 'System Types' })).getByText('Fire alarm')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Add system type' })).toBeInTheDocument()
+    expect(within(await screen.findByRole('table', { name: 'System types' })).getByText('Fire alarm')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Add System Type' })).toBeInTheDocument()
     expect(screen.queryByRole('tab')).not.toBeInTheDocument()
   })
 
@@ -238,48 +251,45 @@ describe('master list pages', () => {
     expect(within(await screen.findByRole('table', { name: 'Departments' })).getByText('AMC Team')).toBeInTheDocument()
   })
 
-  it('lists the four frequencies with code and interval, and offers no way to add one', async () => {
+  it('opens the dedicated Maintenance Frequencies page with each rule', async () => {
     hubApi()
     renderApp('/master-data/maintenance-frequencies')
 
-    const table = await screen.findByRole('table', { name: 'Maintenance Frequencies' })
+    expect(await screen.findByRole('heading', { name: 'Maintenance Frequencies', level: 1 })).toBeInTheDocument()
+    const table = await screen.findByRole('table', { name: 'Maintenance frequencies' })
     const rows = within(table).getAllByRole('row').slice(1)
-    expect(rows.map((row) => row.textContent)).toEqual([
-      expect.stringContaining('MonthlyMONTHLYEvery month0Active'),
-      expect.stringContaining('QuarterlyQUARTERLYEvery 3 months4Active'),
-      expect.stringContaining('Half-yearlyHALF_YEARLYEvery 6 months0Active'),
-      expect.stringContaining('AnnuallyANNUALLYEvery 12 months0Inactive'),
-    ])
-    expect(screen.queryByRole('button', { name: /^Add/ })).not.toBeInTheDocument()
+    expect(rows).toHaveLength(4)
+    expect(within(rows[1] as HTMLElement).getByText('QUARTERLY')).toBeInTheDocument()
+    expect(within(rows[1] as HTMLElement).getByText('4 services · every 3 months')).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Add Frequency' }).length).toBeGreaterThan(0)
   })
 
-  it('edits only the label of a frequency', async () => {
+  it('edits the name of a frequency', async () => {
     const api = hubApi()
     renderApp('/master-data/maintenance-frequencies')
 
-    await screen.findByRole('table', { name: 'Maintenance Frequencies' })
+    await screen.findByRole('table', { name: 'Maintenance frequencies' })
     await userEvent.click(screen.getByRole('button', { name: 'Edit Quarterly' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Edit maintenance frequency' })
-    expect(within(dialog).getAllByRole('textbox')).toHaveLength(1)
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Quarterly' })
 
-    await userEvent.clear(within(dialog).getByLabelText(/Label/))
-    await userEvent.type(within(dialog).getByLabelText(/Label/), 'Every quarter')
+    await userEvent.clear(within(dialog).getByLabelText(/Frequency name/))
+    await userEvent.type(within(dialog).getByLabelText(/Frequency name/), 'Every quarter')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(api.find('PATCH', '/masters/maintenance-frequencies/2')).toHaveLength(1))
-    expect(api.find('PATCH', '/masters/maintenance-frequencies/2')[0]?.body).toEqual({ label: 'Every quarter' })
-    expect(await screen.findByRole('status')).toHaveTextContent('The maintenance frequency "Every quarter" was updated.')
+    expect(api.find('PATCH', '/masters/maintenance-frequencies/2')[0]?.body).toEqual({ name: 'Every quarter' })
+    expect(await screen.findByRole('status')).toHaveTextContent('Every quarter was updated.')
   })
 
-  it('reactivates an inactive frequency', async () => {
+  it('reactivates a disabled frequency from its row action', async () => {
     const api = hubApi()
     renderApp('/master-data/maintenance-frequencies')
 
-    await screen.findByRole('table', { name: 'Maintenance Frequencies' })
+    await screen.findByRole('table', { name: 'Maintenance frequencies' })
     await userEvent.click(screen.getByRole('button', { name: 'Reactivate Annually' }))
 
     await waitFor(() => expect(api.find('POST', '/masters/maintenance-frequencies/4/status')).toHaveLength(1))
-    expect(api.find('POST', '/masters/maintenance-frequencies/4/status')[0]?.body).toEqual({ isActive: true })
+    expect(api.find('POST', '/masters/maintenance-frequencies/4/status')[0]?.body).toEqual({ status: 'active' })
   })
 
   it('says which database update a list needs before it is applied', async () => {
@@ -288,7 +298,7 @@ describe('master list pages', () => {
     )
     renderApp('/master-data/maintenance-frequencies')
 
-    expect(await screen.findByText(/Database update required: Maintenance Frequencies needs migration 0075/)).toBeInTheDocument()
+    expect(await screen.findByText(/Database update required: Maintenance Frequencies needs migration 0076/)).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
@@ -297,7 +307,7 @@ describe('master list pages', () => {
     renderApp('/master-data/system-types')
 
     expect(await screen.findByText('No system types yet')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Add system type' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add System Type' })).not.toBeInTheDocument()
   })
 
   it('refuses the list pages to a role without Settings access', async () => {

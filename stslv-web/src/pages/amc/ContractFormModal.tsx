@@ -8,7 +8,8 @@ import { api, ApiError, errorMessage } from '../../lib/api'
 import { fetchClients, queryString } from './amcApi'
 import { formatDate, MONEY_PATTERN } from './amcFormat'
 import { SelectField } from './components'
-import { FREQUENCY_LABELS, MAINTENANCE_FREQUENCIES, type Contract, type SavedContract, type SchedulePreview } from './types'
+import { MONTH_NAMES, useFrequencyOptions } from './frequencyOptions'
+import { frequencyLabel, type Contract, type SavedContract, type SchedulePreview } from './types'
 
 // Mirrors the API's rules so most problems are caught before a request is sent.
 // The API validates again and remains the authority.
@@ -25,7 +26,9 @@ const contractSchema = z
     responsibleEngineer: z.string().trim().max(200, 'Responsible engineer must be at most 200 characters.'),
     validFrom: z.string().min(1, 'Valid from is required.'),
     validTo: z.string().min(1, 'Valid to is required.'),
-    maintenanceFrequency: z.enum(MAINTENANCE_FREQUENCIES, { error: 'Select a maintenance frequency.' }),
+    maintenanceFrequency: z.string().min(1, 'Select a maintenance frequency.'),
+    // Months (1 = January) of a custom frequency; checked against the chosen frequency on submit.
+    customMonths: z.array(z.number()),
     contractValue: z.string().trim().min(1, 'Contract value is required.').regex(MONEY_PATTERN, MONEY_MESSAGE),
     defaultVisitAmount: optionalMoney,
     finalCredit: optionalMoney,
@@ -49,6 +52,7 @@ const FIELDS = [
   'validFrom',
   'validTo',
   'maintenanceFrequency',
+  'customMonths',
   'contractValue',
   'defaultVisitAmount',
   'finalCredit',
@@ -97,7 +101,8 @@ export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: Con
       responsibleEngineer: start?.responsibleEngineer ?? '',
       validFrom: contract?.validFrom ?? '',
       validTo: contract?.validTo ?? '',
-      maintenanceFrequency: start?.maintenanceFrequency ?? ('' as ContractForm['maintenanceFrequency']),
+      maintenanceFrequency: start?.maintenanceFrequency ?? '',
+      customMonths: start?.customMonths ?? [],
       contractValue: start?.contractValue ?? '',
       defaultVisitAmount: start?.defaultVisitAmount ?? '',
       finalCredit: start?.finalCredit ?? '',
@@ -134,9 +139,24 @@ export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: Con
     }
   }
 
+  // The frequencies a contract can choose (frequency master, or the four built-in ones).
+  const frequencies = useFrequencyOptions()
+  const chosenFrequency = useWatch({ control, name: 'maintenanceFrequency' })
+  const chosenMonths = useWatch({ control, name: 'customMonths' })
+  const isCustom = (code: string) => frequencies.options.some((option) => option.code === code && option.isCustom) || (code === contract?.maintenanceFrequency && (contract.customMonths ?? []).length > 0)
+  const customChosen = isCustom(chosenFrequency)
+  // A contract keeps a frequency that has since been disabled; it stays selectable on that contract.
+  const currentFrequencyMissing = start !== null && start.maintenanceFrequency !== '' && !frequencies.options.some((option) => option.code === start.maintenanceFrequency)
+  const toggleMonth = (month: number) => {
+    const next = chosenMonths.includes(month) ? chosenMonths.filter((item) => item !== month) : [...chosenMonths, month].sort((a, b) => a - b)
+    setValue('customMonths', next, { shouldValidate: false })
+  }
+
   const save = useMutation({
     mutationFn: (values: ContractForm) => {
-      const { status, ...fields } = values
+      const { status, customMonths, ...rest } = values
+      // Months are sent only for a custom frequency; for a fixed one the API clears them.
+      const fields = isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest
 
       // The Sales Engineer master link is sent only when the picker is offered and its value changed.
       const link = engineerPicker && engineerId !== currentEngineerId ? { salesEngineerId: engineerId || null } : {}
@@ -178,6 +198,7 @@ export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: Con
           validFrom: values.validFrom,
           validTo: values.validTo,
           maintenanceFrequency: values.maintenanceFrequency,
+          customMonths: isCustom(values.maintenanceFrequency) ? values.customMonths.join(',') : undefined,
         })}`,
       ),
     onSuccess: (result, values) => {
@@ -195,11 +216,19 @@ export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: Con
   const onSubmit = handleSubmit((values) => {
     setFailure(null)
 
+    if (isCustom(values.maintenanceFrequency) && (values.customMonths.length === 0 || values.customMonths.length > 11)) {
+      setError('customMonths', {
+        message: values.customMonths.length === 0 ? 'Select the months in which visits take place.' : 'Select at most 11 months. For a visit every month, choose the monthly frequency.',
+      })
+      return
+    }
+
     const termsChanged =
       contract !== null &&
       (values.validFrom !== contract.validFrom ||
         values.validTo !== contract.validTo ||
-        values.maintenanceFrequency !== contract.maintenanceFrequency)
+        values.maintenanceFrequency !== contract.maintenanceFrequency ||
+        (isCustom(values.maintenanceFrequency) && values.customMonths.join(',') !== (contract.customMonths ?? []).join(',')))
 
     // Changing the terms of an active contract changes its schedule: show what will happen first.
     if (contract?.status === 'ACTIVE' && termsChanged) {
@@ -248,13 +277,16 @@ export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: Con
       {plan && (
         <div className="space-y-4 text-sm text-slate-700">
           <p>
-            The new terms ({formatDate(plan.validFrom)} to {formatDate(plan.validTo)}, {FREQUENCY_LABELS[plan.maintenanceFrequency].toLowerCase()}) change this
+            The new terms ({formatDate(plan.validFrom)} to {formatDate(plan.validTo)}, {frequencyLabel(plan.maintenanceFrequency).toLowerCase()}
+            {plan.customMonths && plan.customMonths.length > 0 ? ` (${plan.customMonths.map((month) => MONTH_NAMES[month - 1]).join(', ')})` : ''}) change this
             contract&apos;s schedule:
           </p>
           <ul className="list-disc space-y-1 pl-5">
             <li>
               <strong>{plan.toCreate.length}</strong> visit(s) will be added
-              {plan.toCreate.length > 0 && <>: {plan.toCreate.map((period) => formatDate(period.scheduledDate)).join(', ')}</>}
+              {plan.toCreate.length > 0 && (
+                <>: {plan.toCreate.map((period) => `${formatDate(period.scheduledDate)}${period.serviceCode ? ` (${period.serviceCode})` : ''}`).join(', ')}</>
+              )}
             </li>
             <li>
               <strong>{plan.toRemove.length}</strong> untouched visit(s) will be removed
@@ -339,16 +371,49 @@ export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: Con
               required
               disabled={termsLocked}
               error={errors.maintenanceFrequency?.message}
+              hint="Only active frequencies are offered."
               {...register('maintenanceFrequency')}
             >
               <option value="">Select a frequency…</option>
-              {MAINTENANCE_FREQUENCIES.map((frequency) => (
-                <option key={frequency} value={frequency}>
-                  {FREQUENCY_LABELS[frequency]}
+              {currentFrequencyMissing && start && <option value={start.maintenanceFrequency}>{frequencyLabel(start.maintenanceFrequency)} (not active)</option>}
+              {frequencies.options.map((option) => (
+                <option key={option.code} value={option.code}>
+                  {option.name}
+                  {option.ruleSummary ? ` — ${option.ruleSummary}` : ''}
                 </option>
               ))}
             </SelectField>
           </div>
+
+          {customChosen && (
+            <fieldset className="rounded-xl border border-slate-200 p-4" aria-describedby="custom-months-help">
+              <legend className="px-1 text-sm font-semibold text-slate-800">
+                Service months <span className="text-red-600" aria-hidden="true">*</span>
+              </legend>
+              <p id="custom-months-help" className="mb-3 text-xs text-slate-500">
+                One visit in each selected month of every contract year, on the contract start&apos;s day of the month. Select 1 to 11 months.
+              </p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                {MONTH_NAMES.map((name, index) => (
+                  <label key={name} className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={chosenMonths.includes(index + 1)}
+                      disabled={termsLocked}
+                      onChange={() => toggleMonth(index + 1)}
+                      className="h-4 w-4 rounded border-slate-300 accent-[#1479BD]"
+                    />
+                    {name}
+                  </label>
+                ))}
+              </div>
+              {errors.customMonths?.message && (
+                <p role="alert" className="mt-2 text-xs font-medium text-red-700">
+                  {errors.customMonths.message}
+                </p>
+              )}
+            </fieldset>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField label="Valid from" type="date" required disabled={termsLocked} error={errors.validFrom?.message} {...register('validFrom')} />

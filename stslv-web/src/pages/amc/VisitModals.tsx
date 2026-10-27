@@ -10,7 +10,7 @@ import { formatDateTime } from '../../lib/format'
 import type { PagedInvoices } from '../../lib/invoiceTypes'
 import { formatDate, formatMoney, MONEY_PATTERN } from './amcFormat'
 import { DetailRow, EligibilityPill, OrDash, PlannedDate, VisitStatusPill } from './components'
-import { FREQUENCY_LABELS, type ScheduleVisit } from './types'
+import { frequencyLabel, visitNumberLabel, type ScheduleVisit } from './types'
 
 const visitLabel = (visit: ScheduleVisit) => `${visit.client.name} – ${visit.contract.systemDescription}, visit ${visit.sequenceNo}`
 
@@ -77,7 +77,7 @@ export function VisitDetailsModal({ visitId, canEdit, onEdit, onClose }: VisitDe
           <DetailRow label="Client">{visit.client.name}</DetailRow>
           <DetailRow label="System">{visit.contract.systemDescription}</DetailRow>
           <DetailRow label="Visit">
-            No. {visit.sequenceNo} · {FREQUENCY_LABELS[visit.contract.maintenanceFrequency]}
+            {visitNumberLabel(visit)} · {frequencyLabel(visit.contract.maintenanceFrequency)}
           </DetailRow>
           <DetailRow label="Period">
             {formatDate(visit.periodStart)} to {formatDate(visit.periodEnd)}

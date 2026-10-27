@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner, StatusBadge, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
@@ -206,48 +207,25 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                               {isRejected(user) ? (
                                 <span className="text-xs text-slate-500">No actions</span>
                               ) : (
-                              <div className="flex justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
+                              <ActionGroup>
+                                <ActionButton
+                                  label={`Change roles of ${user.fullName}`}
+                                  icon="roles"
                                   disabled={isSelf || !roles.data}
-                                  title={isSelf ? 'You cannot change your own roles.' : undefined}
-                                  aria-label={`Change roles of ${user.fullName}`}
+                                  hint={isSelf ? 'You cannot change your own roles.' : undefined}
                                   onClick={() => setDialog({ kind: 'roles', user })}
-                                >
-                                  Roles
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  aria-label={`Reset password of ${user.fullName}`}
-                                  onClick={() => setDialog({ kind: 'confirm-password', user })}
-                                >
-                                  Reset password
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
+                                />
+                                <ActionButton label={`Reset password of ${user.fullName}`} icon="key" onClick={() => setDialog({ kind: 'confirm-password', user })} />
+                                <ActionButton
+                                  danger={user.isActive && !isSelf}
+                                  label={`${toggleLabel(user)} ${user.fullName}`}
+                                  icon={user.isActive ? 'deactivate' : isPending(user) ? 'approve' : 'reactivate'}
                                   disabled={isSelf}
-                                  title={isSelf ? 'You cannot deactivate your own account.' : undefined}
-                                  className={user.isActive && !isSelf ? 'text-red-700 hover:bg-red-50' : undefined}
-                                  aria-label={`${toggleLabel(user)} ${user.fullName}`}
+                                  hint={isSelf ? 'You cannot deactivate your own account.' : undefined}
                                   onClick={() => setDialog({ kind: 'toggle', user })}
-                                >
-                                  {toggleLabel(user)}
-                                </Button>
-                                {isPending(user) && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-red-700 hover:bg-red-50"
-                                    aria-label={`Reject ${user.fullName}`}
-                                    onClick={() => setDialog({ kind: 'reject', user })}
-                                  >
-                                    Reject
-                                  </Button>
-                                )}
-                              </div>
+                                />
+                                {isPending(user) && <ActionButton danger label={`Reject ${user.fullName}`} icon="reject" onClick={() => setDialog({ kind: 'reject', user })} />}
+                              </ActionGroup>
                               )}
                             </td>
                           )}
