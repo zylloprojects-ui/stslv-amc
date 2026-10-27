@@ -63,6 +63,11 @@ export const salesEngineerSchemas = shapes(
   ["name"]
 );
 
+// The code of a frequency is fixed; only its label can be changed (there is no create).
+export const maintenanceFrequencySchemas = {
+  update: z.strictObject({ label: requiredText("Label", 50) }),
+};
+
 export const masterStatusSchema = z.strictObject({
   isActive: z.boolean({ error: "Say whether the record is active." }),
 });

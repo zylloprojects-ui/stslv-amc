@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
-import { ProtectedRoute, RequireAdmin, RequirePermission } from './auth/guards'
+import { ProtectedRoute, RequireAdmin, RequireAnyPermission, RequirePermission } from './auth/guards'
 import { AppLayout } from './layout/AppLayout'
 import { NAVIGATION } from './layout/navigation'
 import { ApiError } from './lib/api'
@@ -14,7 +14,8 @@ import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
 import { ContractDetailPage } from './pages/amc/ContractDetailPage'
 import { AuditLogPage } from './pages/admin/AuditLogPage'
 import { LoginHistoryPage } from './pages/admin/LoginHistoryPage'
-import { MasterDataPage } from './pages/masters/MasterDataPage'
+import { MasterDataCenterPage } from './pages/masters/MasterDataCenterPage'
+import { MasterListPage } from './pages/masters/MasterDataPage'
 import { SalesEngineerDetailPage } from './pages/masters/SalesEngineerDetailPage'
 import { SalesEngineersPage } from './pages/masters/SalesEngineersPage'
 import { ClientDetailPage } from './pages/clients/ClientDetailPage'
@@ -102,6 +103,26 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          <Route
+            path="/master-data"
+            element={
+              <RequireAnyPermission modules={['CLIENTS', 'SETTINGS']}>
+                <MasterDataCenterPage />
+              </RequireAnyPermission>
+            }
+          />
+          {/* One route per list. The key gives each list its own search and paging state. */}
+          {(['system-types', 'maintenance-frequencies', 'departments'] as const).map((tab) => (
+            <Route
+              key={tab}
+              path={`/master-data/${tab}`}
+              element={
+                <RequirePermission module="SETTINGS">
+                  <MasterListPage key={tab} tab={tab} />
+                </RequirePermission>
+              }
+            />
+          ))}
           <Route
             path="/master-data/sales-engineers"
             element={
@@ -226,14 +247,8 @@ export function AppRoutes() {
             }
           />
           <Route path="/notifications" element={<NotificationsPage />} />
-          <Route
-            path="/admin/master-data"
-            element={
-              <RequirePermission module="SETTINGS">
-                <MasterDataPage />
-              </RequirePermission>
-            }
-          />
+          {/* The former combined System Types & Departments page. */}
+          <Route path="/admin/master-data" element={<Navigate to="/master-data" replace />} />
           <Route
             path="/settings"
             element={

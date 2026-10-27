@@ -72,16 +72,17 @@ describe('Master Data page', () => {
     expect(row).toHaveTextContent('Active')
   })
 
-  it('keeps system types and departments on their own page', async () => {
+  it('gives system types and departments a page each in the Master Data Center', async () => {
     mastersApi(ADMIN)
-    renderApp('/admin/master-data')
+    renderApp('/master-data/system-types')
 
-    expect(await screen.findByRole('heading', { name: 'System Types & Departments', level: 1 })).toBeInTheDocument()
-    expect(screen.queryByRole('tab', { name: 'Sales Engineers' })).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'System Types', level: 1 })).toBeInTheDocument()
     expect(within(await screen.findByRole('table', { name: 'System Types' })).getByText('Fire alarm')).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('tab', { name: 'Departments' }))
+
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    await userEvent.click(within(nav).getByRole('link', { name: 'Departments' }))
+    expect(await screen.findByRole('heading', { name: 'Departments', level: 1 })).toBeInTheDocument()
     expect(within(await screen.findByRole('table', { name: 'Departments' })).getByText('AMC Team')).toBeInTheDocument()
-    expect(screen.getByRole('tab', { name: 'Departments' })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('adds a sales engineer, requiring a name first', async () => {

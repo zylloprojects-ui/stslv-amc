@@ -3,10 +3,10 @@ import type { ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
 import { Badge, Card } from '../../components/ui'
 import { api } from '../../lib/api'
-import { DepartmentsPanel } from './DepartmentsPanel'
+import { RoleListPanel } from './RoleListPanel'
 import { HolidaysPanel } from './HolidaysPanel'
 
-export type OrganizationSection = 'company' | 'divisions' | 'departments' | 'holidays' | 'tax'
+export type OrganizationSection = 'company' | 'divisions' | 'roles' | 'holidays' | 'tax'
 
 function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
@@ -95,10 +95,10 @@ export function OrganizationPanel({ section }: { section: OrganizationSection })
     )
   }
 
-  if (section === 'departments') {
+  if (section === 'roles') {
     return (
-      <Panel title="Departments" subtitle="The departments of the business: add, edit or delete them. They are the same as the roles in Users & Access.">
-        <DepartmentsPanel />
+      <Panel title="Role list" subtitle="The sign-in roles of Users & Access: add, edit or delete them. Departments are a separate master list in the Master Data Center.">
+        <RoleListPanel />
       </Panel>
     )
   }

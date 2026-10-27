@@ -9,7 +9,7 @@ import { TABLE } from '../../components/table'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import type { Role, RolesResponse } from '../../lib/types'
 
-const FORM_ID = 'department-form'
+const FORM_ID = 'role-form'
 
 const codeRule = z
   .string()
@@ -28,7 +28,7 @@ type Values = z.infer<typeof schema>
 
 type Dialog = { kind: 'none' } | { kind: 'add' } | { kind: 'edit'; role: Role } | { kind: 'delete'; role: Role }
 
-function DepartmentForm({ role, onClose, onSaved }: { role: Role | null; onClose: () => void; onSaved: (message: string) => void }) {
+function RoleForm({ role, onClose, onSaved }: { role: Role | null; onClose: () => void; onSaved: (message: string) => void }) {
   const queryClient = useQueryClient()
   const editing = role !== null
   const {
@@ -69,7 +69,7 @@ function DepartmentForm({ role, onClose, onSaved }: { role: Role | null; onClose
 
   return (
     <Modal
-      title={editing ? 'Edit department' : 'Add department'}
+      title={editing ? 'Edit role' : 'Add role'}
       onClose={onClose}
       footer={
         <>
@@ -77,7 +77,7 @@ function DepartmentForm({ role, onClose, onSaved }: { role: Role | null; onClose
             Cancel
           </Button>
           <Button type="submit" form={FORM_ID} loading={save.isPending}>
-            {editing ? 'Save changes' : 'Add department'}
+            {editing ? 'Save changes' : 'Add role'}
           </Button>
         </>
       }
@@ -105,7 +105,7 @@ function DepartmentForm({ role, onClose, onSaved }: { role: Role | null; onClose
       >
         {failure && <Alert>{failure}</Alert>}
         <TextField
-          label="Department code"
+          label="Role code"
           required={!editing}
           disabled={editing}
           autoCapitalize="characters"
@@ -113,10 +113,10 @@ function DepartmentForm({ role, onClose, onSaved }: { role: Role | null; onClose
           error={errors.code?.message}
           {...register('code')}
         />
-        <TextField label="Department name" required error={errors.name?.message} {...register('name')} />
-        <TextAreaField label="Description" hint="What this department does." error={errors.description?.message} {...register('description')} />
+        <TextField label="Role name" required error={errors.name?.message} {...register('name')} />
+        <TextAreaField label="Description" hint="What people with this role do." error={errors.description?.message} {...register('description')} />
         {editing && (
-          <SelectField label="Status" hint="An inactive department cannot be given to new users. A department that still has people cannot be made inactive." {...register('status')}>
+          <SelectField label="Status" hint="An inactive role cannot be given to new users. A role that still has people cannot be made inactive." {...register('status')}>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </SelectField>
@@ -128,8 +128,11 @@ function DepartmentForm({ role, onClose, onSaved }: { role: Role | null; onClose
 
 const iconButton = 'inline-flex h-8 w-9 items-center justify-center text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10'
 
-/** The departments of the business. They are the roles of Users & Access, so adding one here adds a role, and its permissions are set under Roles & access. */
-export function DepartmentsPanel() {
+/**
+ * The sign-in roles of Users & Access, as a simple list: adding one here adds a role, and its permissions are set
+ * under Roles & access. Not the Roles master list (Master Data Center → Roles), which is a separate table.
+ */
+export function RoleListPanel() {
   const auth = useAuth()
   const queryClient = useQueryClient()
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
@@ -153,12 +156,12 @@ export function DepartmentsPanel() {
   })
 
   if (!allowed) {
-    return <p className="text-sm text-slate-600">The list of departments is visible to people who may view Users &amp; Access.</p>
+    return <p className="text-sm text-slate-600">The list of roles is visible to people who may view Users &amp; Access.</p>
   }
   if (roles.isPending) {
     return (
       <p className="text-sm text-slate-500" role="status">
-        Loading departments…
+        Loading roles…
       </p>
     )
   }
@@ -176,14 +179,14 @@ export function DepartmentsPanel() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-slate-600">
-          <span className="font-semibold tabular-nums text-slate-900">{items.length}</span> {items.length === 1 ? 'department' : 'departments'}
+          <span className="font-semibold tabular-nums text-slate-900">{items.length}</span> {items.length === 1 ? 'role' : 'roles'}
         </p>
         {canAdd && (
           <Button onClick={() => setDialog({ kind: 'add' })}>
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
               <path d="M10 4v12M4 10h12" strokeLinecap="round" />
             </svg>
-            Add department
+            Add role
           </Button>
         )}
       </div>
@@ -196,11 +199,11 @@ export function DepartmentsPanel() {
 
       <div className="overflow-hidden rounded-xl border border-slate-200">
         {items.length === 0 ? (
-          <EmptyState title="No departments yet" description="Add the first department to get started." />
+          <EmptyState title="No roles yet" description="Add the first role to get started." />
         ) : (
-          <TableScroll label="Departments">
+          <TableScroll label="Roles">
             <table className={TABLE.table}>
-              <caption className="sr-only">Departments</caption>
+              <caption className="sr-only">Roles</caption>
               <thead>
                 <tr>
                   <th scope="col" className={TABLE.snHead}>
@@ -210,7 +213,7 @@ export function DepartmentsPanel() {
                     Code
                   </th>
                   <th scope="col" className={TABLE.th}>
-                    Department
+                    Role
                   </th>
                   <th scope="col" className={TABLE.th}>
                     Status
@@ -273,11 +276,11 @@ export function DepartmentsPanel() {
       </div>
 
       <p className="text-xs text-slate-500">
-        A department is a role. What it may do is set under Roles &amp; access. A new department starts with no permissions. A department that still has people, and the Admin department, cannot be deleted.
+        What a role may do is set under Roles &amp; access. A new role starts with no permissions. A role that still has people, and the Admin role, cannot be deleted.
       </p>
 
       {dialog.kind === 'add' && (
-        <DepartmentForm
+        <RoleForm
           role={null}
           onClose={close}
           onSaved={(message) => {
@@ -287,7 +290,7 @@ export function DepartmentsPanel() {
         />
       )}
       {dialog.kind === 'edit' && (
-        <DepartmentForm
+        <RoleForm
           role={dialog.role}
           onClose={close}
           onSaved={(message) => {
@@ -298,13 +301,13 @@ export function DepartmentsPanel() {
       )}
       {dialog.kind === 'delete' && (
         <ConfirmDialog
-          title="Delete department"
+          title="Delete role"
           message={
             <>
               Delete <strong>{dialog.role.name}</strong> ({dialog.role.code})? Its permissions are removed with it. This cannot be undone.
             </>
           }
-          confirmLabel="Delete department"
+          confirmLabel="Delete role"
           danger
           loading={remove.isPending}
           error={deleteError}

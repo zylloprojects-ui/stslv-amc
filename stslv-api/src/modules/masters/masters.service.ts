@@ -1,14 +1,17 @@
 import { pool } from "../../config/database";
+import { schemaHas } from "../../shared/schema-features";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { listEntityHistory } from "../../shared/entity-history";
 import { conflict, isUniqueViolation, notFound, validationError } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
+import { FREQUENCY_MONTHS, type MaintenanceFrequency } from "../amc/amc.constants";
 import type { AuthContext } from "../auth/access";
 import type { ListMastersQuery } from "./masters.schemas";
 
-// Master lists (departments, sales engineers, system types). Records are
-// deactivated, never deleted, so contracts that refer to them stay intact.
+// Master lists (departments, sales engineers, system types, maintenance
+// frequencies). Records are deactivated, never deleted, so contracts that refer
+// to them stay intact.
 
 interface Field {
   /** Name in the API. */
@@ -159,6 +162,37 @@ export const SALES_ENGINEERS: MasterSpec = {
       }
     }
   },
+};
+
+// The four frequencies are fixed (migration 0075): only the label and the
+// active flag change. A contract keeps its own frequency code, so neither
+// change touches an existing contract or its visits.
+export const MAINTENANCE_FREQUENCIES: MasterSpec = {
+  table: "maintenance_frequencies",
+  entityType: "maintenance_frequencies",
+  actionPrefix: "maintenance_frequency",
+  label: "Maintenance frequency",
+  fields: [{ name: "label", column: "label" }],
+  select: `m.id, m.code, m.label, m.sort_order, ${AUDIT_SELECT},
+           (SELECT count(*)::int FROM amc_contracts c WHERE c.maintenance_frequency = m.code) AS contract_count`,
+  joins: "",
+  order: "m.sort_order, m.id",
+  sorts: { sortOrder: "m.sort_order", label: "lower(m.label)" },
+  search: ["m.code", "m.label"],
+  unique: { maintenance_frequencies_label_uq: { field: "label", message: (input) => `A maintenance frequency labelled "${String(input.label)}" already exists.` } },
+  toItem: (row) => ({
+    id: row.id,
+    code: row.code,
+    label: row.label,
+    // Messages and the activity log name a record by "name".
+    name: row.label,
+    intervalMonths: FREQUENCY_MONTHS[row.code as MaintenanceFrequency] ?? null,
+    sortOrder: row.sort_order,
+    contractCount: row.contract_count,
+    isActive: row.is_active,
+    createdAt: iso(row.created_at),
+    updatedAt: iso(row.updated_at),
+  }),
 };
 
 async function findOne(db: Queryable, spec: MasterSpec, id: string, lock = false) {
@@ -350,4 +384,36 @@ export async function masterOptions(spec: MasterSpec) {
   const rows = await pool.query<Record<string, unknown>>(`SELECT ${spec.select} FROM ${spec.table} m ${spec.joins} WHERE m.is_active ORDER BY ${spec.order}`);
 
   return rows.rows.map(spec.toItem);
+}
+
+export type MasterCategory = "clients" | "sales-engineers" | "system-types" | "maintenance-frequencies" | "departments";
+
+/** Tables each category needs; a category whose tables are missing reports that a database update is required. */
+const CATEGORY_TABLES: Record<MasterCategory, { table: string; requires: string[] }> = {
+  clients: { table: "clients", requires: ["clients"] },
+  "sales-engineers": { table: "sales_engineers", requires: ["sales_engineers"] },
+  "system-types": { table: "system_types", requires: ["system_types"] },
+  "maintenance-frequencies": { table: "maintenance_frequencies", requires: ["maintenance_frequencies"] },
+  departments: { table: "departments", requires: ["departments"] },
+};
+
+/**
+ * Active-record counts for the Master Data Center, for the given categories only
+ * (the caller passes those the user may read). activeCount is null when the
+ * category's database update has not been applied.
+ */
+export async function masterSummary(categories: MasterCategory[]) {
+  return Promise.all(
+    categories.map(async (key) => {
+      const { table, requires } = CATEGORY_TABLES[key];
+
+      if (!(await schemaHas(requires))) {
+        return { key, available: false, activeCount: null };
+      }
+
+      const result = await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM ${table} WHERE is_active`);
+
+      return { key, available: true, activeCount: result.rows[0]?.count ?? 0 };
+    })
+  );
 }

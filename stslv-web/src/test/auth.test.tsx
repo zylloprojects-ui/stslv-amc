@@ -177,14 +177,14 @@ describe('permission-based navigation', () => {
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
 
-    // Settings sits in the footer, after the groups.
-    expect(linkNames(nav)).toEqual(['Dashboard', 'Settings'])
+    // Settings sits in the footer, after the groups. The Master Data Center heading is itself a link, to its hub.
+    expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center', 'Settings'])
     expect(await linksByGroup(nav)).toEqual({
-      'Master Data Center': ['Clients', 'Sales Engineers'],
+      'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
       Operations: ['AMC Contracts', 'AMC Schedule', 'AMC Calendar'],
       Finance: ['Expenses', 'Invoice Tracking'],
       Reporting: ['Reports', 'Historical Data'],
-      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log', 'System Types & Departments'],
+      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
     })
   })
 
@@ -195,14 +195,14 @@ describe('permission-based navigation', () => {
     const nav = await screen.findByRole('navigation', { name: 'Main' })
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
 
-    await userEvent.click(within(nav).getByRole('button', { name: 'Master Data Center' }))
-    expect(within(nav).getByRole('button', { name: 'Master Data Center' })).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(within(nav).getByRole('button', { name: 'Master Data Center pages' }))
+    expect(within(nav).getByRole('button', { name: 'Master Data Center pages' })).toHaveAttribute('aria-expanded', 'true')
     expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
 
     await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
     expect(within(nav).getByRole('link', { name: 'Expenses' })).toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
-    expect(within(nav).getByRole('button', { name: 'Master Data Center' })).toHaveAttribute('aria-expanded', 'false')
+    expect(within(nav).getByRole('button', { name: 'Master Data Center pages' })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('starts with the group of the current page open', async () => {
@@ -221,8 +221,8 @@ describe('permission-based navigation', () => {
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
 
-    // No Settings link: the role may not view it.
-    expect(linkNames(nav)).toEqual(['Dashboard'])
+    // No Settings link: the role may not view it. Clients makes the Master Data Center hub available.
+    expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center'])
     expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'], Finance: ['Expenses'] })
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })
@@ -417,7 +417,7 @@ describe('page search', () => {
     await userEvent.click(await screen.findByRole('combobox', { name: 'Search pages' }))
 
     const options = (await screen.findAllByRole('option')).map((option) => option.querySelector('span.font-semibold')?.textContent)
-    expect(options).toEqual(['Dashboard', 'Clients', 'Expenses', 'My Account'])
+    expect(options).toEqual(['Dashboard', 'Master Data Center', 'Clients', 'Expenses', 'My Account'])
   })
 })
 

@@ -19,6 +19,8 @@ export function navItemVisible(item: NavItem, can: (module: Module, action: 'VIE
 export interface NavSection {
   /** Null for the ungrouped items at the top. */
   title: string | null
+  /** A landing page for the group: its heading links there. Shown when any of its items is. */
+  path?: string
   items: NavItem[]
 }
 
@@ -26,9 +28,13 @@ export const NAVIGATION: NavSection[] = [
   { title: null, items: [{ label: 'Dashboard', path: '/dashboard', module: 'DASHBOARD' }] },
   {
     title: 'Master Data Center',
+    path: '/master-data',
     items: [
       { label: 'Clients', path: '/clients', module: 'CLIENTS' },
       { label: 'Sales Engineers', path: '/master-data/sales-engineers', module: 'SETTINGS' },
+      { label: 'System Types', path: '/master-data/system-types', module: 'SETTINGS' },
+      { label: 'Maintenance Frequencies', path: '/master-data/maintenance-frequencies', module: 'SETTINGS' },
+      { label: 'Departments', path: '/master-data/departments', module: 'SETTINGS' },
     ],
   },
   {
@@ -60,7 +66,6 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Login History', path: '/admin/login-history', module: 'USERS' },
       { label: 'Audit Log', path: '/admin/audit-log', module: 'USERS', adminOnly: true },
-      { label: 'System Types & Departments', path: '/admin/master-data', module: 'SETTINGS' },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
     ],
   },

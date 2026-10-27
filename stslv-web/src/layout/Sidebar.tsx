@@ -116,7 +116,9 @@ interface SidebarProps {
 
 /** The group that holds the page at this address, if it sits in one. */
 function groupOf(pathname: string): string | null {
-  return NAVIGATION.find((section) => section.title && section.items.some((item) => pathname === item.path || pathname.startsWith(`${item.path}/`)))?.title ?? null
+  const within = (path: string) => pathname === path || pathname.startsWith(`${path}/`)
+
+  return NAVIGATION.find((section) => section.title && ((section.path && within(section.path)) || section.items.some((item) => within(item.path))))?.title ?? null
 }
 
 export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onToggleTheme, onToggleCollapse, onClose }: SidebarProps) {
@@ -216,17 +218,47 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
           return (
             <div key={title} className="mb-1">
               <h2>
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  onClick={() => (collapsed ? onExpand?.() : setOpenGroup(open ? null : title))}
-                  title={collapsed ? title : undefined}
-                  className={topLevel(TOP_IDLE)}
-                >
-                  <NavIcon name={title as IconKey} />
-                  {label(title)}
-                  {!collapsed && <Chevron open={open} />}
-                </button>
+                {section.path ? (
+                  // A group with a landing page: the heading opens the page, the chevron shows or hides the group's links.
+                  <span className="flex items-center gap-0.5">
+                    <NavLink
+                      to={section.path}
+                      end
+                      onClick={() => {
+                        setOpenGroup(title)
+                        onNavigate()
+                      }}
+                      title={collapsed ? title : undefined}
+                      className={({ isActive }) => topLevel(isActive ? TOP_ACTIVE : TOP_IDLE)}
+                    >
+                      <NavIcon name={title as IconKey} />
+                      {label(title)}
+                    </NavLink>
+                    {!collapsed && (
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-label={`${title} pages`}
+                        onClick={() => setOpenGroup(open ? null : title)}
+                        className={cx('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors', TOP_IDLE, FOCUS)}
+                      >
+                        <Chevron open={open} />
+                      </button>
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => (collapsed ? onExpand?.() : setOpenGroup(open ? null : title))}
+                    title={collapsed ? title : undefined}
+                    className={topLevel(TOP_IDLE)}
+                  >
+                    <NavIcon name={title as IconKey} />
+                    {label(title)}
+                    {!collapsed && <Chevron open={open} />}
+                  </button>
+                )}
               </h2>
               {open && !collapsed && (
                 <ul className="login-rise ml-[1.35rem] mt-0.5 space-y-0.5 sb-line-l pl-3">

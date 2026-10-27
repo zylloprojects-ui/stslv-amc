@@ -8,24 +8,70 @@ import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
 import { Filter } from '../amc/components'
-import { isFeatureUnavailable, type Department, type MasterList, type SalesEngineer, type SystemType } from './masterTypes'
+import { isFeatureUnavailable, type Department, type MaintenanceFrequency, type MasterList, type SalesEngineer, type SystemType } from './masterTypes'
 
-// Master Data: departments, sales engineers and system types. Records are
-// deactivated, never deleted, so the contracts that refer to them stay intact.
+// Master lists of the Master Data Center: departments, sales engineers, system
+// types and maintenance frequencies. Records are deactivated, never deleted, so
+// the contracts that refer to them stay intact.
 
 const PAGE_SIZE = 25
 
-export type Tab = 'sales-engineers' | 'system-types' | 'departments'
+export type Tab = 'sales-engineers' | 'system-types' | 'departments' | 'maintenance-frequencies'
 
-// Sales engineers have their own pages in the Master Data Center; this page keeps the lookup lists.
-type ListTab = Exclude<Tab, 'sales-engineers'>
+// Sales engineers have their own pages; this page serves the other lists, one route each.
+export type ListTab = Exclude<Tab, 'sales-engineers'>
 
-const ALL_TABS: { key: Tab; label: string; singular: string }[] = [
-  { key: 'sales-engineers', label: 'Sales Engineers', singular: 'sales engineer' },
-  { key: 'system-types', label: 'System Types', singular: 'system type' },
-  { key: 'departments', label: 'Departments', singular: 'department' },
+interface TabSpec {
+  key: Tab
+  label: string
+  singular: string
+  description: string
+  /** The migration that creates the list's table. */
+  migration: string
+  /** False for a fixed list: records can be edited and deactivated, never added. */
+  canAdd: boolean
+  searchHint: string
+}
+
+const ALL_TABS: TabSpec[] = [
+  {
+    key: 'sales-engineers',
+    label: 'Sales Engineers',
+    singular: 'sales engineer',
+    description: 'Engineers assigned to AMC contracts.',
+    migration: '0070',
+    canAdd: true,
+    searchHint: 'Name, employee no., email or phone',
+  },
+  {
+    key: 'system-types',
+    label: 'System Types',
+    singular: 'system type',
+    description: 'The kinds of system an AMC contract covers. Records are deactivated, never deleted, so the contracts that use them stay intact.',
+    migration: '0070',
+    canAdd: true,
+    searchHint: 'Code or name',
+  },
+  {
+    key: 'maintenance-frequencies',
+    label: 'Maintenance Frequencies',
+    singular: 'maintenance frequency',
+    description:
+      'The four scheduling frequencies. Only the label and status can change: the code and interval used by the schedule stay fixed, and existing contracts and their visits are never changed. An inactive frequency is not offered for new contracts.',
+    migration: '0075',
+    canAdd: false,
+    searchHint: 'Code or label',
+  },
+  {
+    key: 'departments',
+    label: 'Departments',
+    singular: 'department',
+    description: 'The departments sales engineers belong to. Not the same as user roles, which are managed in Roles & Permissions.',
+    migration: '0070',
+    canAdd: true,
+    searchHint: 'Code or name',
+  },
 ]
-const TABS = ALL_TABS.filter((item): item is { key: ListTab; label: string; singular: string } => item.key !== 'sales-engineers')
 
 interface FieldSpec {
   name: string
@@ -51,6 +97,7 @@ const FIELDS: Record<Tab, FieldSpec[]> = {
     { name: 'sortOrder', label: 'Sort order', kind: 'number', hint: 'Lower numbers are listed first.' },
     { name: 'description', label: 'Description', kind: 'textarea' },
   ],
+  'maintenance-frequencies': [{ name: 'label', label: 'Label', kind: 'text', required: true, hint: 'How the frequency is shown. Its code and interval never change.' }],
   departments: [
     { name: 'code', label: 'Code', kind: 'text', required: true },
     { name: 'name', label: 'Name', kind: 'text', required: true },
@@ -58,7 +105,7 @@ const FIELDS: Record<Tab, FieldSpec[]> = {
   ],
 }
 
-export type AnyRecord = (SalesEngineer | SystemType | Department) & Record<string, unknown>
+export type AnyRecord = (SalesEngineer | SystemType | Department | MaintenanceFrequency) & Record<string, unknown>
 
 /** The form's starting values for a record (empty for a new one). */
 function initialValues(tab: Tab, record: AnyRecord | null): Record<string, string> {
@@ -76,7 +123,7 @@ function initialValues(tab: Tab, record: AnyRecord | null): Record<string, strin
 export function MasterFormModal({ tab, record, onClose, onSaved }: { tab: Tab; record: AnyRecord | null; onClose: () => void; onSaved: (message: string) => void }) {
   const queryClient = useQueryClient()
   const auth = useAuth()
-  const spec = ALL_TABS.find((item) => item.key === tab) as (typeof ALL_TABS)[number]
+  const spec = ALL_TABS.find((item) => item.key === tab) as TabSpec
   const [values, setValues] = useState(() => initialValues(tab, record))
   const [errors, setErrors] = useState<Record<string, string>>({})
   const needsDepartments = FIELDS[tab].some((field) => field.kind === 'department')
@@ -101,7 +148,7 @@ export function MasterFormModal({ tab, record, onClose, onSaved }: { tab: Tab; r
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['masters'] })
-      onSaved(`The ${spec.singular} "${values.name ?? ''}" was ${record ? 'updated' : 'added'}.`)
+      onSaved(`The ${spec.singular} "${values.name ?? values.label ?? ''}" was ${record ? 'updated' : 'added'}.`)
     },
     onError: (error) => {
       if (error instanceof ApiError) {
@@ -177,6 +224,11 @@ export function MasterFormModal({ tab, record, onClose, onSaved }: { tab: Tab; r
   )
 }
 
+function intervalText(months: number | null): string {
+  if (months === null) return '—'
+  return months === 1 ? 'Every month' : `Every ${months} months`
+}
+
 function Cell({ children, className }: { children: ReactNode; className?: string }) {
   return <td className={cx(TABLE.td, className)}>{children}</td>
 }
@@ -214,11 +266,12 @@ function MasterTable({ tab, items, canEdit, onEdit, onToggle }: { tab: Tab; item
   return (
     <div className={TABLE.wrapper}>
       <table className={TABLE.table}>
-        <caption className="sr-only">{TABS.find((item) => item.key === tab)?.label}</caption>
+        <caption className="sr-only">{ALL_TABS.find((item) => item.key === tab)?.label}</caption>
         <thead>
           {tab === 'sales-engineers' && head(['Name', 'Employee no.', 'Department', 'Contact', 'Sign-in account', 'Contracts', 'Status', 'Actions'])}
           {tab === 'system-types' && head(['Code', 'Name', 'Description', 'Order', 'Contracts', 'Status', 'Actions'])}
           {tab === 'departments' && head(['Code', 'Name', 'Description', 'Engineers', 'Status', 'Actions'])}
+          {tab === 'maintenance-frequencies' && head(['Label', 'Code', 'Interval', 'Contracts', 'Status', 'Actions'])}
         </thead>
         <tbody className="divide-y divide-slate-100">
           {items.map((record) => (
@@ -265,6 +318,18 @@ function MasterTable({ tab, items, canEdit, onEdit, onToggle }: { tab: Tab; item
                     </>
                   )
                 })()}
+              {tab === 'maintenance-frequencies' &&
+                (() => {
+                  const frequency = record as MaintenanceFrequency
+                  return (
+                    <>
+                      <Cell className="font-medium text-slate-900">{frequency.label}</Cell>
+                      <Cell className="font-mono text-xs">{frequency.code}</Cell>
+                      <Cell>{intervalText(frequency.intervalMonths)}</Cell>
+                      <Cell className="tabular-nums">{frequency.contractCount}</Cell>
+                    </>
+                  )
+                })()}
               {status(record)}
               {actions(record)}
             </tr>
@@ -275,11 +340,10 @@ function MasterTable({ tab, items, canEdit, onEdit, onToggle }: { tab: Tab; item
   )
 }
 
-/** Master Data: one tab per list, each with search, status filter, paging and add / edit / deactivate. */
-export function MasterDataPage() {
+/** One master list of the Master Data Center: search, status filter, paging, and add / edit / deactivate / reactivate. */
+export function MasterListPage({ tab }: { tab: ListTab }) {
   const auth = useAuth()
   const queryClient = useQueryClient()
-  const [tab, setTab] = useState<ListTab>('system-types')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('all')
@@ -296,13 +360,14 @@ export function MasterDataPage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const canCreate = auth.can('SETTINGS', 'CREATE')
+  const spec = ALL_TABS.find((item) => item.key === tab) as TabSpec
+  const canCreate = spec.canAdd && auth.can('SETTINGS', 'CREATE')
   const canEdit = auth.can('SETTINGS', 'EDIT')
-  const spec = TABS.find((item) => item.key === tab) as (typeof TABS)[number]
   const list = useQuery({
     queryKey: ['masters', tab, { search, status, page }],
     queryFn: () => api.get<MasterList<AnyRecord>>(`/masters/${tab}${queryString({ search, status, page, pageSize: PAGE_SIZE })}`),
     placeholderData: keepPreviousData,
+    retry: false,
   })
   const toggle = useMutation({
     mutationFn: (record: AnyRecord) => api.post<AnyRecord>(`/masters/${tab}/${record.id}/status`, { isActive: !record.isActive }),
@@ -315,20 +380,11 @@ export function MasterDataPage() {
   const unavailable = list.isError && isFeatureUnavailable(list.error)
   const data = list.data
   const filtered = search !== '' || status !== 'all'
-  const switchTab = (next: ListTab) => {
-    setTab(next)
-    setPage(1)
-    setSearchInput('')
-    setSearch('')
-    setStatus('all')
-    setNotice(null)
-  }
-
   return (
     <>
       <PageHeader
-        title="System Types & Departments"
-        description="Lookup lists used on AMC contracts and sales engineers. Records are deactivated, never deleted. Sales engineers are in the Master Data Center."
+        title={spec.label}
+        description={spec.description}
         actions={canCreate && !unavailable && <Button onClick={() => setEditing({ record: null })}>Add {spec.singular}</Button>}
       />
 
@@ -345,34 +401,18 @@ export function MasterDataPage() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap gap-2" role="tablist" aria-label="Master lists">
-        {TABS.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.key}
-            onClick={() => switchTab(item.key)}
-            className={cx(
-              'rounded-full px-4 py-1.5 text-sm font-medium ring-1 ring-inset',
-              tab === item.key ? 'bg-[#1479BD] text-white ring-[#1479BD]' : 'bg-white text-slate-700 ring-slate-300 hover:bg-slate-50',
-            )}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
       <Card>
         {unavailable ? (
           <div className="p-5">
-            <Alert tone="info">Master data needs a database update that has not been applied to this database yet (migration 0070).</Alert>
+            <Alert tone="info">
+              Database update required: {spec.label} needs migration {spec.migration}, which has not been applied to this database yet.
+            </Alert>
           </div>
         ) : (
           <>
             <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5">
               <Filter label="Search">
-                {(id, className) => <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Code or name" className={className} />}
+                {(id, className) => <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={spec.searchHint} className={className} />}
               </Filter>
               <Filter label="Status">
                 {(id, className) => (

@@ -5,7 +5,7 @@ import { ACTIONS, MODULES, type Role, type SessionUser } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn } from './helpers'
 
 // The panel is hidden in the application for now (lib/features.ts). It is switched on here so it stays tested.
-vi.mock('../lib/features', () => ({ DEPARTMENTS_ENABLED: true }))
+vi.mock('../lib/features', () => ({ ROLE_LIST_ENABLED: true }))
 
 const role = (id: string, code: string, name: string, userCount: number, isActive = true): Role => ({
   id,
@@ -18,7 +18,7 @@ const role = (id: string, code: string, name: string, userCount: number, isActiv
   permissionsEditable: code !== 'ADMIN',
 })
 
-function departmentsApi(user: SessionUser = ADMIN) {
+function roleListApi(user: SessionUser = ADMIN) {
   const roles: Role[] = [role('1', 'ADMIN', 'Admin', 1), role('2', 'EXECUTION', 'Execution', 3), role('3', 'WORKSHOP', 'Workshop', 0)]
 
   signIn()
@@ -30,7 +30,7 @@ function departmentsApi(user: SessionUser = ADMIN) {
     if (path === '/auth/me') return ok({ user })
     if (method === 'GET' && path === '/roles') return ok({ roles, modules: MODULES, actions: ACTIONS })
     if (method === 'POST' && path === '/roles') {
-      if (body.code === 'DUPLICATE') return fail(409, 'CONFLICT', 'A department with this code or name already exists.')
+      if (body.code === 'DUPLICATE') return fail(409, 'CONFLICT', 'A role with this code or name already exists.')
       const created = role(String(roles.length + 1), String(body.code), String(body.name), 0)
       roles.push(created)
       return ok(created, 201)
@@ -56,13 +56,13 @@ function departmentsApi(user: SessionUser = ADMIN) {
 }
 
 const open = async () => {
-  renderApp('/settings?section=departments')
-  return screen.findByRole('table', { name: 'Departments' })
+  renderApp('/settings?section=roles')
+  return screen.findByRole('table', { name: 'Roles' })
 }
 
-describe('departments', () => {
-  it('lists every department with its code, status and number of people', async () => {
-    departmentsApi()
+describe('roles', () => {
+  it('lists every role with its code, status and number of people', async () => {
+    roleListApi()
     const table = await open()
     const rows = within(table).getAllByRole('row').slice(1)
 
@@ -73,15 +73,15 @@ describe('departments', () => {
     expect(within(rows[1] as HTMLElement).getByText('3')).toBeInTheDocument()
   })
 
-  it('adds a department with an upper-case code', async () => {
-    const api = departmentsApi()
+  it('adds a role with an upper-case code', async () => {
+    const api = roleListApi()
     await open()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Add department' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Add department' })
-    await userEvent.type(within(dialog).getByLabelText(/Department code/), 'site_ops')
-    await userEvent.type(within(dialog).getByLabelText(/Department name/), 'Site operations')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add department' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add role' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add role' })
+    await userEvent.type(within(dialog).getByLabelText(/Role code/), 'site_ops')
+    await userEvent.type(within(dialog).getByLabelText(/Role name/), 'Site operations')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add role' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('Site operations was added.')
     expect(api.find('POST', '/roles')[0]?.body).toMatchObject({ code: 'SITE_OPS', name: 'Site operations' })
@@ -89,41 +89,41 @@ describe('departments', () => {
   })
 
   it('asks for a valid code and a name before sending anything', async () => {
-    const api = departmentsApi()
+    const api = roleListApi()
     await open()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Add department' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Add department' })
-    await userEvent.type(within(dialog).getByLabelText(/Department code/), '1 bad')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add department' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add role' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add role' })
+    await userEvent.type(within(dialog).getByLabelText(/Role code/), '1 bad')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add role' }))
 
     expect(await within(dialog).findByText('Name is required.')).toBeInTheDocument()
     expect(api.find('POST', '/roles')).toHaveLength(0)
   })
 
-  it('shows the server message when the department already exists', async () => {
-    departmentsApi()
+  it('shows the server message when the role already exists', async () => {
+    roleListApi()
     await open()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Add department' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Add department' })
-    await userEvent.type(within(dialog).getByLabelText(/Department code/), 'duplicate')
-    await userEvent.type(within(dialog).getByLabelText(/Department name/), 'Copy')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add department' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Add role' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add role' })
+    await userEvent.type(within(dialog).getByLabelText(/Role code/), 'duplicate')
+    await userEvent.type(within(dialog).getByLabelText(/Role name/), 'Copy')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add role' }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('already exists')
   })
 
   it('edits the name and status, with the code locked', async () => {
-    const api = departmentsApi()
+    const api = roleListApi()
     await open()
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit Workshop' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Edit department' })
+    const dialog = await screen.findByRole('dialog', { name: 'Edit role' })
 
-    expect(within(dialog).getByLabelText(/Department code/)).toBeDisabled()
-    await userEvent.clear(within(dialog).getByLabelText(/Department name/))
-    await userEvent.type(within(dialog).getByLabelText(/Department name/), 'Workshop team')
+    expect(within(dialog).getByLabelText(/Role code/)).toBeDisabled()
+    await userEvent.clear(within(dialog).getByLabelText(/Role name/))
+    await userEvent.type(within(dialog).getByLabelText(/Role name/), 'Workshop team')
     await userEvent.selectOptions(within(dialog).getByLabelText('Status'), 'inactive')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 
@@ -131,35 +131,35 @@ describe('departments', () => {
     expect(api.find('PATCH', '/roles/3')[0]?.body).toMatchObject({ name: 'Workshop team', isActive: false })
   })
 
-  it('deletes an unused department after a confirmation', async () => {
-    const api = departmentsApi()
+  it('deletes an unused role after a confirmation', async () => {
+    const api = roleListApi()
     await open()
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Workshop' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete department' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete department' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete role' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete role' }))
 
     expect(await screen.findByRole('status')).toHaveTextContent('Workshop was deleted.')
     expect(api.find('DELETE', '/roles/3')).toHaveLength(1)
   })
 
-  it('keeps the dialog open and says why when people still hold the department', async () => {
-    departmentsApi()
+  it('keeps the dialog open and says why when people still hold the role', async () => {
+    roleListApi()
     await open()
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Execution' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete department' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete department' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete role' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete role' }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('3 people still have this role')
-    expect(screen.getByRole('dialog', { name: 'Delete department' })).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Delete role' })).toBeInTheDocument()
   })
 
   it('shows the buttons only to people who hold the matching permission', async () => {
-    departmentsApi({ ...ADMIN, permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW'] })
+    roleListApi({ ...ADMIN, permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW'] })
     await open()
 
-    expect(screen.queryByRole('button', { name: 'Add department' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add role' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument()
   })

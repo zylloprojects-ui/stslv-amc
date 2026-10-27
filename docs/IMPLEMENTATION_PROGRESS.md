@@ -67,6 +67,26 @@ Endpoints added: `GET /api/clients/features`, `GET /api/clients/:id/history`, li
 
 On a database without 0074 the Clients module works as before and only a type or VAT value is refused ("database update not applied"); without 0070 the Sales Engineers pages say so and the contract form shows no engineer picker.
 
+### Hub and five modules (2026-10-27, uncommitted)
+
+The sidebar heading **Master Data Center** now opens a landing page; a separate chevron button shows or hides its five links.
+
+| Route | Page | Permission |
+|---|---|---|
+| `/master-data` | Hub: one card per module with its live active count | CLIENTS:VIEW or SETTINGS:VIEW (cards filtered per module) |
+| `/clients` | Clients (unchanged) | CLIENTS:VIEW |
+| `/master-data/sales-engineers` | Sales Engineers (unchanged) | SETTINGS:VIEW |
+| `/master-data/system-types` | System Types | SETTINGS:VIEW |
+| `/master-data/maintenance-frequencies` | Maintenance Frequencies | SETTINGS:VIEW |
+| `/master-data/departments` | Departments (master list, migration 0070) | SETTINGS:VIEW |
+| `/admin/master-data` | Redirects to `/master-data` (the former combined page) | — |
+
+- `GET /api/masters/summary`: active counts for the categories the user may read (clients: CLIENTS:VIEW; the four lists: SETTINGS:VIEW or AMC_CONTRACTS:VIEW). A category whose migration is missing is returned as `available: false, activeCount: null`; the hub shows "Database update required", never a misleading zero.
+- Maintenance frequencies (migration **0075**, pending): the four fixed codes MONTHLY / QUARTERLY / HALF_YEARLY / ANNUALLY with their schedule interval. Only the label and active flag can change; there is no create or delete. Contracts keep their own `maintenance_frequency` code, so a label change or deactivation never changes a contract or its visits. Endpoints: `GET /api/masters/maintenance-frequencies[/options|/:id|/:id/history]`, `PATCH /:id` (label only), `POST /:id/status`.
+- The schema gate moved from the whole `/api/masters` router to each list, so the hub works before 0070 / 0075.
+- Settings → "Departments" was a list of **sign-in roles**, not departments. Renamed to "Role list" (`RoleListPanel`, flag `ROLE_LIST_ENABLED`, still hidden).
+- Not yet done: the AMC contract form still offers the frequencies from its fixed list and does not yet use the frequency labels or refuse an inactive frequency on a new contract (needs 0075 applied and a change to the contract form and contract service).
+
 ## API endpoints added
 
 | Endpoint | Permission |
@@ -97,6 +117,7 @@ isolated `stslv_amc_dev_projects` / `stslv_test` schema only.
 | `0072_contract_renewals.sql` | nullable `amc_contracts.renewed_from_id`; at most one open renewal per contract |
 | `0073_notification_reads.sql` | `notification_reads` (per-user read marks) |
 | `0074_client_details.sql` | nullable `clients.client_type` (COMPANY/INDIVIDUAL) and `clients.vat_number` |
+| `0075_maintenance_frequencies.sql` | table `maintenance_frequencies` holding the four fixed codes (labels Monthly, Quarterly, Half-yearly, Annually; all active). No existing table changed |
 
 Until a migration is applied, its features answer `503 FEATURE_UNAVAILABLE`
 and the pages say so; every existing page keeps working.

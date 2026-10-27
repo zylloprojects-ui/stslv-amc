@@ -89,7 +89,8 @@ describe('Master Data Center navigation', () => {
     renderApp('/clients')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    expect(within(nav).getByRole('button', { name: 'Master Data Center' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(nav).getByRole('link', { name: 'Master Data Center' })).toHaveAttribute('href', '/master-data')
+    expect(within(nav).getByRole('button', { name: 'Master Data Center pages' })).toHaveAttribute('aria-expanded', 'true')
     expect(within(nav).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/clients')
     expect(within(nav).getByRole('link', { name: 'Sales Engineers' })).toHaveAttribute('href', '/master-data/sales-engineers')
   })

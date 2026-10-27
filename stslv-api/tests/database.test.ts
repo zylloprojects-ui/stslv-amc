@@ -29,6 +29,7 @@ describe("migrations", () => {
       "invoices",
       "legacy_import_batches",
       "legacy_import_rows",
+      "maintenance_frequencies",
       "notification_reads",
       "number_sequences",
       "password_reset_tokens",

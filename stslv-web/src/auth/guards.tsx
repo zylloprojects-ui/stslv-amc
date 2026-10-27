@@ -52,6 +52,17 @@ export function RequirePermission({ module, action = 'VIEW', children }: { modul
   return <>{children}</>
 }
 
+/** Shows its children to users who may view at least one of the modules (a hub of several modules). */
+export function RequireAnyPermission({ modules, children }: { modules: Module[]; children: ReactNode }) {
+  const auth = useAuth()
+
+  if (!modules.some((module) => auth.can(module, 'VIEW'))) {
+    return <AccessDenied />
+  }
+
+  return <>{children}</>
+}
+
 /** For pages reserved to the built-in Admin role. The API enforces the same rule. */
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const auth = useAuth()
