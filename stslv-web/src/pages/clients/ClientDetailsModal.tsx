@@ -57,23 +57,16 @@ function Icon({ name, className = 'h-5 w-5' }: { name: keyof typeof ICONS; class
 const NOT_PROVIDED = <span className="font-normal italic text-slate-500">Not provided</span>
 const LINK = 'text-[#1479BD] underline-offset-2 hover:underline'
 
-/** One detail as a card: an icon tile, the label, and the value. A missing value is shown quietly, so what is known stands out. */
+/** One detail as a compact card: a small icon, the label, and the value. A missing value is shown quietly, so what is known stands out. */
 function Field({ icon, label, empty = false, children }: { icon: keyof typeof ICONS; label: string; empty?: boolean; children: ReactNode }) {
   return (
-    <div
-      className={`flex items-start gap-3 rounded-2xl border p-4 transition-colors ${
-        empty ? 'border-dashed border-slate-200 bg-slate-50/60' : 'border-slate-200 bg-white shadow-sm hover:border-sky-300'
-      }`}
-    >
-      <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${empty ? 'bg-slate-100 text-slate-400' : 'bg-sky-100 text-[#1479BD]'}`}
-        aria-hidden="true"
-      >
-        <Icon name={icon} className="h-5 w-5" />
+    <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-2 ${empty ? 'border-dashed border-slate-300 bg-slate-50/60' : 'border-slate-300 bg-white'}`}>
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${empty ? 'bg-slate-100 text-slate-400' : 'bg-sky-100 text-[#1479BD]'}`} aria-hidden="true">
+        <Icon name={icon} className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</dt>
-        <dd className="mt-0.5 whitespace-pre-wrap break-words text-[15px] font-semibold text-slate-900">{children}</dd>
+        <dt className="text-[11px] font-bold uppercase tracking-wider text-slate-600">{label}</dt>
+        <dd className="whitespace-pre-wrap break-words text-sm font-semibold text-slate-900">{children}</dd>
       </div>
     </div>
   )
@@ -96,21 +89,8 @@ export function ClientDetailsModal({ clientId, canEdit, onEdit, onClose }: Clien
     <Modal
       title="Client details"
       onClose={onClose}
-      size="lg"
       footer={
         <>
-          {client && (
-            <p className="mr-auto hidden flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 sm:flex">
-              <span className="flex items-center gap-1.5">
-                <Icon name="calendar" className="h-4 w-4" />
-                Created <span className="font-medium text-slate-700">{formatDateTime(client.createdAt)}</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                <Icon name="clock" className="h-4 w-4" />
-                Updated <span className="font-medium text-slate-700">{formatDateTime(client.updatedAt)}</span>
-              </span>
-            </p>
-          )}
           {canEdit && client && (
             <Button variant="secondary" onClick={() => onEdit(client)}>
               Edit
@@ -123,61 +103,51 @@ export function ClientDetailsModal({ clientId, canEdit, onEdit, onClose }: Clien
       {query.isPending && <Spinner size="sm" label="Loading client" />}
       {query.isError && <Alert>{errorMessage(query.error)}</Alert>}
       {client && (
-        <div className="space-y-5">
-          <div className="relative overflow-hidden rounded-2xl border border-sky-100 bg-white shadow-sm">
-            <span className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#4aa3df] via-[#1479BD] to-[#4aa3df]" aria-hidden="true" />
-            <div className="flex flex-wrap items-center gap-4 p-5 sm:gap-5">
-              <span
-                className="flex h-[4.5rem] w-[4.5rem] shrink-0 items-center justify-center rounded-2xl text-2xl font-bold tracking-wide text-white shadow-lg shadow-sky-900/20 ring-4 ring-sky-100"
-                style={{ backgroundImage: `linear-gradient(135deg, ${from}, ${to})` }}
-                aria-hidden="true"
-              >
-                {initialsOf(client.name)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#1479BD]">Client</p>
-                <p className="break-words text-2xl font-bold leading-tight tracking-tight text-[#0b3b66]">{client.name}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2.5">
-                  <StatusBadge active={client.isActive} />
-                  <span className="text-xs text-slate-500">Client since {formatDateTime(client.createdAt).split(',')[0]}</span>
-                </div>
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-300 bg-gradient-to-r from-sky-50 to-white p-3.5">
+            <span
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-base font-bold tracking-wide text-white shadow-sm"
+              style={{ backgroundImage: `linear-gradient(135deg, ${from}, ${to})` }}
+              aria-hidden="true"
+            >
+              {initialsOf(client.name)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="break-words text-lg font-bold leading-tight text-[#0b3b66]">{client.name}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <StatusBadge active={client.isActive} />
+                <span className="text-xs text-slate-600">Client since {formatDateTime(client.createdAt).split(',')[0]}</span>
               </div>
-              {(client.phone || client.email) && (
-                <div className="flex flex-wrap gap-2">
-                  {client.phone && (
-                    <a
-                      href={`tel:${client.phone.replace(/[^+\d]/g, '')}`}
-                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-b from-[#1a7fc4] to-[#0f62a3] px-4 py-2 text-sm font-semibold text-white shadow-sm shadow-blue-900/25 transition-all hover:from-[#1673b3] hover:to-[#0c5590] active:translate-y-px"
-                    >
-                      <Icon name="phone" className="h-4 w-4" />
-                      Call
-                    </a>
-                  )}
-                  {client.email && (
-                    <a
-                      href={`mailto:${client.email}`}
-                      className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm font-semibold text-[#0b3b66] transition-colors hover:bg-sky-100"
-                    >
-                      <Icon name="mail" className="h-4 w-4 text-[#1479BD]" />
-                      Send email
-                    </a>
-                  )}
-                </div>
-              )}
             </div>
+            {(client.phone || client.email) && (
+              <div className="flex flex-wrap gap-2">
+                {client.phone && (
+                  <a
+                    href={`tel:${client.phone.replace(/[^+\d]/g, '')}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-b from-[#1a7fc4] to-[#0f62a3] px-3 py-1.5 text-sm font-semibold text-white shadow-sm hover:from-[#1673b3] hover:to-[#0c5590]"
+                  >
+                    <Icon name="phone" className="h-4 w-4" />
+                    Call
+                  </a>
+                )}
+                {client.email && (
+                  <a
+                    href={`mailto:${client.email}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-[#0b3b66] hover:bg-sky-50"
+                  >
+                    <Icon name="mail" className="h-4 w-4 text-[#1479BD]" />
+                    Send email
+                  </a>
+                )}
+              </div>
+            )}
           </div>
 
           {!client.contactPerson && !client.phone && !client.email && !client.address && (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-sky-300 bg-sky-50/60 p-4">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#1479BD] shadow-sm ring-1 ring-sky-100" aria-hidden="true">
-                  <Icon name="person" className="h-5 w-5" />
-                </span>
-                <div>
-                  <p className="text-sm font-semibold text-[#0b3b66]">No contact details yet</p>
-                  <p className="text-xs text-slate-600">Add a contact person, phone or email so the team can reach this client.</p>
-                </div>
-              </div>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50/60 px-3.5 py-2.5">
+              <p className="text-sm text-slate-700">
+                <span className="font-bold text-[#0b3b66]">No contact details yet.</span> Add a contact person, phone or email.
+              </p>
               {canEdit && (
                 <Button size="sm" onClick={() => onEdit(client)}>
                   Add contact details
@@ -187,7 +157,7 @@ export function ClientDetailsModal({ clientId, canEdit, onEdit, onClose }: Clien
           )}
 
           {(client.contactPerson || client.phone || client.email || client.address) && (
-            <dl className="grid gap-3 sm:grid-cols-2">
+            <dl className="grid gap-2.5 sm:grid-cols-2">
               <Field icon="person" label="Contact person" empty={!client.contactPerson}>
                 {client.contactPerson ?? NOT_PROVIDED}
               </Field>
@@ -215,13 +185,21 @@ export function ClientDetailsModal({ clientId, canEdit, onEdit, onClose }: Clien
             </dl>
           )}
 
-          <div className={`rounded-2xl border p-4 ${client.notes ? 'border-amber-200 bg-amber-50/50' : 'border-dashed border-slate-200 bg-slate-50/60'}`}>
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-              <Icon name="note" className={`h-4 w-4 ${client.notes ? 'text-amber-600' : 'text-slate-400'}`} />
-              Notes
-            </p>
-            <p className="mt-1.5 whitespace-pre-wrap break-words text-sm text-slate-900">{client.notes ?? NOT_PROVIDED}</p>
+          <div className={`rounded-xl border px-3.5 py-2.5 ${client.notes ? 'border-amber-300 bg-amber-50/60' : 'border-dashed border-slate-300 bg-slate-50/60'}`}>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-600">Notes</p>
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-slate-900">{client.notes ?? NOT_PROVIDED}</p>
           </div>
+
+          <p className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1 text-xs text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <Icon name="calendar" className="h-3.5 w-3.5" />
+              Created <span className="font-semibold text-slate-700">{formatDateTime(client.createdAt)}</span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Icon name="clock" className="h-3.5 w-3.5" />
+              Updated <span className="font-semibold text-slate-700">{formatDateTime(client.updatedAt)}</span>
+            </span>
+          </p>
         </div>
       )}
     </Modal>

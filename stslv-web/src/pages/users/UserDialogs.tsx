@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Alert, Button, Modal, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
+import { cx } from '../../lib/format'
 import { passwordRule } from '../../lib/password'
 import type { Role, User } from '../../lib/types'
 
@@ -13,25 +14,32 @@ const PASSWORD_HINT = 'At least 10 characters. Give it to the user privately; th
 function RoleCheckboxes({ roles, selected, onChange }: { roles: Role[]; selected: string[]; onChange: (ids: string[]) => void }) {
   return (
     <fieldset>
-      <legend className="mb-1 block text-sm font-medium text-slate-700">Roles</legend>
-      <div className="space-y-2 rounded-md border border-slate-200 p-3">
-        {roles.map((role) => (
-          <label key={role.id} className="flex items-start gap-3 text-sm">
-            <input
-              type="checkbox"
-              className="mt-0.5 h-4 w-4 rounded border-slate-300"
-              checked={selected.includes(role.id)}
-              disabled={!role.isActive}
-              onChange={(event) =>
-                onChange(event.target.checked ? [...selected, role.id] : selected.filter((id) => id !== role.id))
-              }
-            />
-            <span>
-              <span className="font-medium text-slate-900">{role.name}</span>
-              {role.description && <span className="block text-xs text-slate-500">{role.description}</span>}
-            </span>
-          </label>
-        ))}
+      <legend className="mb-1.5 text-sm font-bold text-slate-800">Roles</legend>
+      <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-300">
+        {roles.map((role) => {
+          const on = selected.includes(role.id)
+
+          return (
+            <label
+              key={role.id}
+              title={role.description ?? undefined}
+              className={cx(
+                'flex items-center gap-3 px-3.5 py-2',
+                role.isActive ? 'cursor-pointer hover:bg-sky-50/60' : 'cursor-not-allowed opacity-60',
+                on && 'bg-sky-50',
+              )}
+            >
+              <input
+                type="checkbox"
+                className="h-[18px] w-[18px] shrink-0 cursor-pointer rounded border-slate-300 accent-[#1479BD]"
+                checked={on}
+                disabled={!role.isActive}
+                onChange={(event) => onChange(event.target.checked ? [...selected, role.id] : selected.filter((id) => id !== role.id))}
+              />
+              <span className="text-sm font-semibold text-slate-900">{role.name}</span>
+            </label>
+          )
+        })}
       </div>
     </fieldset>
   )
@@ -154,10 +162,8 @@ export function EditRolesModal({ user, roles, onClose, onSaved }: { user: User; 
     >
       <div className="space-y-4">
         {save.isError && <Alert>{errorMessage(save.error)}</Alert>}
-        <p className="text-sm text-slate-600">
-          A user's access is the combination of all their roles. Changes apply immediately, without a new login.
-        </p>
         <RoleCheckboxes roles={roles} selected={roleIds} onChange={setRoleIds} />
+        <p className="text-xs text-slate-500">Changes apply immediately.</p>
       </div>
     </Modal>
   )
