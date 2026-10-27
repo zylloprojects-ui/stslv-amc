@@ -6,7 +6,7 @@ import type { Paged } from '../lib/types'
 import { queryString } from '../pages/amc/amcApi'
 import { formatDate, formatMoney } from '../pages/amc/amcFormat'
 import { ContractStatusPill } from '../pages/amc/components'
-import { FREQUENCY_LABELS, type Contract } from '../pages/amc/types'
+import { frequencyLabel, type Contract } from '../pages/amc/types'
 import { LoadError } from './records'
 import { TABLE } from './table'
 import { EmptyState, Spinner } from './ui'
@@ -76,7 +76,7 @@ export function LinkedContracts({ filter, emptyTitle }: { filter: { clientId: st
                 <td className={`${TABLE.td} whitespace-nowrap`}>
                   {formatDate(contract.validFrom)} – {formatDate(contract.validTo)}
                 </td>
-                <td className={TABLE.td}>{FREQUENCY_LABELS[contract.maintenanceFrequency]}</td>
+                <td className={TABLE.td}>{frequencyLabel(contract.maintenanceFrequency)}</td>
                 <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(contract.contractValue)}</td>
                 <td className={TABLE.td}>
                   <ContractStatusPill status={contract.status} />

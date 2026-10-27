@@ -18,6 +18,7 @@ describe("migrations", () => {
 
     expect(result.rows.map((row) => row.table_name)).toEqual([
       "activity_logs",
+      "amc_contract_custom_months",
       "amc_contracts",
       "amc_visits",
       "app_settings",

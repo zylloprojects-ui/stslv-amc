@@ -3,6 +3,7 @@ import { createApp } from "../src/app";
 import { pool } from "../src/config/database";
 import { loadMigrationFiles } from "../src/db/migrate";
 import { hashPassword } from "../src/modules/auth/password";
+import { restoreSeededFrequencies } from "./frequency-fixtures";
 
 export const app = createApp();
 export const api = () => request(app);
@@ -27,6 +28,9 @@ export async function resetData(): Promise<void> {
   await pool.query("DELETE FROM roles WHERE code NOT IN ('ADMIN', 'ACCOUNTANT', 'PROCUREMENT', 'EXECUTION', 'INVOICING')");
   await pool.query("UPDATE roles SET is_active = true");
   await pool.query(seedSql);
+  // The TRUNCATE above also empties maintenance_frequencies (its created_by refers to users).
+  // From migration 0076 contracts refer to its codes, so the seeded rows are put back.
+  await restoreSeededFrequencies();
 }
 
 /** Inserts a user directly, bypassing the API. Returns the new id. */

@@ -77,7 +77,7 @@ describe('Master Data page', () => {
     renderApp('/master-data/system-types')
 
     expect(await screen.findByRole('heading', { name: 'System Types', level: 1 })).toBeInTheDocument()
-    expect(within(await screen.findByRole('table', { name: 'System Types' })).getByText('Fire alarm')).toBeInTheDocument()
+    expect(within(await screen.findByRole('table', { name: 'System types' })).getByText('Fire alarm')).toBeInTheDocument()
 
     const nav = screen.getByRole('navigation', { name: 'Main' })
     await userEvent.click(within(nav).getByRole('link', { name: 'Departments' }))
@@ -85,57 +85,7 @@ describe('Master Data page', () => {
     expect(within(await screen.findByRole('table', { name: 'Departments' })).getByText('AMC Team')).toBeInTheDocument()
   })
 
-  it('adds a sales engineer, requiring a name first', async () => {
-    const api = mastersApi(ADMIN)
-    renderApp('/master-data/sales-engineers')
-
-    await screen.findByRole('table', { name: 'Sales engineers' })
-    await userEvent.click(screen.getByRole('button', { name: 'Add sales engineer' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Add sales engineer' })
-
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add sales engineer' }))
-    expect(await within(dialog).findByText('Name is required.')).toBeInTheDocument()
-    expect(api.find('POST', '/masters/sales-engineers')).toHaveLength(0)
-
-    await userEvent.type(within(dialog).getByLabelText(/Name/), 'New Engineer')
-    await userEvent.type(within(dialog).getByLabelText('Employee number'), 'E-009')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add sales engineer' }))
-
-    await waitFor(() => expect(api.find('POST', '/masters/sales-engineers')).toHaveLength(1))
-    expect(api.find('POST', '/masters/sales-engineers')[0]?.body).toMatchObject({ name: 'New Engineer', employeeNo: 'E-009', departmentId: '' })
-    expect(await screen.findByRole('status')).toHaveTextContent('The sales engineer "New Engineer" was added.')
-  })
-
-  it('shows the field message from the API when a value is refused', async () => {
-    mastersApi(ADMIN, (request) =>
-      request.method === 'POST' && request.path === '/masters/sales-engineers'
-        ? fail(409, 'CONFLICT', 'A sales engineer named "Test Engineer" already exists.', [{ field: 'name', message: 'A sales engineer named "Test Engineer" already exists.' }])
-        : undefined,
-    )
-    renderApp('/master-data/sales-engineers')
-
-    await screen.findByRole('table', { name: 'Sales engineers' })
-    await userEvent.click(screen.getByRole('button', { name: 'Add sales engineer' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Add sales engineer' })
-    await userEvent.type(within(dialog).getByLabelText(/Name/), 'Test Engineer')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add sales engineer' }))
-
-    expect(await within(dialog).findByText('A sales engineer named "Test Engineer" already exists.')).toBeInTheDocument()
-  })
-
-  it('deactivates a record instead of deleting it', async () => {
-    const api = mastersApi(ADMIN)
-    renderApp('/master-data/sales-engineers')
-
-    await screen.findByRole('table', { name: 'Sales engineers' })
-    expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Engineer' }))
-    const confirm = await screen.findByRole('dialog', { name: 'Deactivate sales engineer' })
-    await userEvent.click(within(confirm).getByRole('button', { name: 'Deactivate' }))
-
-    await waitFor(() => expect(api.find('POST', '/masters/sales-engineers/5/status')[0]?.body).toEqual({ isActive: false }))
-    expect(await screen.findByRole('status')).toHaveTextContent('Test Engineer is now inactive.')
-  })
+  // Adding, editing and disabling sales engineers: see sales-engineers.test.tsx.
 
   it('offers a view-only Settings role no add, edit or deactivate', async () => {
     mastersApi(SETTINGS_VIEWER)

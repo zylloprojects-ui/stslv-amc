@@ -238,7 +238,8 @@ describe("validation", () => {
 
     await expect(insert("'2027-06-01', '2027-05-31', 'FIRE', 100, 'QUARTERLY'")).rejects.toMatchObject({ code: "23514" });
     await expect(insert("'2027-01-01', '2027-12-31', 'FIRE', -1, 'QUARTERLY'")).rejects.toMatchObject({ code: "23514" });
-    await expect(insert("'2027-01-01', '2027-12-31', 'FIRE', 100, 'WEEKLY'")).rejects.toMatchObject({ code: "23514" });
+    // An unknown frequency is refused by the foreign key to maintenance_frequencies (migration 0076).
+    await expect(insert("'2027-01-01', '2027-12-31', 'FIRE', 100, 'WEEKLY'")).rejects.toMatchObject({ code: "23503" });
     await expect(insert("'2027-01-01', '2027-12-31', '  ', 100, 'QUARTERLY'")).rejects.toMatchObject({ code: "23514" });
     await expect(
       pool.query(
@@ -378,6 +379,9 @@ describe("schedule generation", () => {
       periodEnd: "2027-03-31",
       scheduledDate: "2027-01-01",
       visitAmount: "405.000",
+      // The label the visit would get (migration 0076).
+      cycleNo: 1,
+      serviceCode: "Q1",
     });
     expect(proposed.body.data.toCreate).toHaveLength(6);
     expect(await visitsOf(id)).toEqual([]);

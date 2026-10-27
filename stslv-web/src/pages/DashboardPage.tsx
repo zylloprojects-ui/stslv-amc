@@ -81,18 +81,16 @@ export function DashboardPage() {
 
   const operations = useQuery({ queryKey: ['dashboard', 'operations'], queryFn: () => api.get<OperationsDashboard>('/dashboard/operations') })
 
-
   const kpiOrder = useKpiOrder(userId, DEFAULT_KPI_ORDER)
   const [arranging, setArranging] = useState(false)
   const [calendarOpen, setCalendarOpen] = useStoredFlag(userId, 'calendar-open', true)
 
   const data = operations.data
   const refreshing = operations.isFetching
-  const refresh = () => {
-    void operations.refetch()
-  }
+  const refresh = () => void operations.refetch()
 
   const online = operations.isSuccess && !operations.isError
+
   return (
     <>
       <div className="login-rise relative mb-7 overflow-hidden rounded-2xl app-banner shadow-lg shadow-sky-900/10">
@@ -241,7 +239,7 @@ export function DashboardPage() {
               eyebrow="Renewals"
               title="Expiring Contracts"
               description={`Active contracts ending in the next ${data.expiring.days} days. Nothing is renewed or expired automatically.`}
-              link={canView('REPORTS') ? { to: '/reports', label: 'Expiry and renewal reports' } : null}
+              link={{ to: '/amc/contracts', label: 'AMC Contracts' }}
             >
               <ExpiringContracts expiring={data.expiring} />
             </Panel>

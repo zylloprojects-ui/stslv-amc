@@ -12,7 +12,10 @@ import { expensesRouter } from "./modules/expenses/expenses.routes";
 import { historicalDataRouter } from "./modules/historical-data/historical-data.routes";
 import { holidaysRouter } from "./modules/holidays/holidays.routes";
 import { invoicesRouter } from "./modules/invoices/invoices.routes";
+import { departmentsRouter } from "./modules/masters/departments.routes";
+import { maintenanceFrequenciesRouter } from "./modules/masters/maintenance-frequencies.routes";
 import { mastersRouter } from "./modules/masters/masters.routes";
+import { systemTypesRouter } from "./modules/masters/system-types.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
@@ -80,6 +83,12 @@ export function createApp() {
   app.use("/api/historical-data", historicalDataRouter);
   app.use("/api/holidays", holidaysRouter);
   app.use("/api/audit", auditRouter);
+  // System type export, linked contracts and delete; anything else falls through to the shared master-list routes.
+  app.use("/api/masters/system-types", systemTypesRouter);
+  // Department list (description search, name order) and export; anything else falls through to the shared master-list routes.
+  app.use("/api/masters/departments", departmentsRouter);
+  // Maintenance frequencies (migration 0076): answers every frequency route itself, so the shared master-list routes for frequencies are no longer reached.
+  app.use("/api/masters/maintenance-frequencies", maintenanceFrequenciesRouter);
   app.use("/api/masters", mastersRouter);
   app.use("/api/attachments", attachmentsRouter);
   app.use("/api/notifications", notificationsRouter);

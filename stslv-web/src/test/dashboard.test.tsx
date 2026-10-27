@@ -518,30 +518,48 @@ describe('recent invoices', () => {
     renderApp('/dashboard')
 
     await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
+    await screen.findByText(/Figures as of/)
     expect(screen.queryByRole('heading', { name: 'Recent Invoices' })).not.toBeInTheDocument()
     expect(api.find('GET', '/invoices')).toHaveLength(0)
   })
 })
 
 describe('production readiness', () => {
-  it('is no longer shown, even to the Admin, and its checks are not requested', async () => {
+  it('is not shown or requested, even for the built-in Admin', async () => {
     const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
     await kpiCard('Active AMC')
+    await screen.findByRole('heading', { name: 'Recent Invoices' })
     expect(screen.queryByRole('heading', { name: 'Production Readiness' })).not.toBeInTheDocument()
     expect(api.find('GET', '/dashboard/readiness')).toHaveLength(0)
   })
 })
 
 describe('module figures', () => {
-  it('are not shown on the dashboard, and their summary is not requested', async () => {
+  it('are not shown, and their summary is not requested, even for the built-in Admin', async () => {
     const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
     await kpiCard('Active AMC')
+    await screen.findByRole('heading', { name: 'Recent Invoices' })
     expect(screen.queryByRole('region', { name: 'Waiting for an invoice and other figures' })).not.toBeInTheDocument()
+    for (const label of ['Active Clients', 'Visits Due', 'Ready for Invoice', 'Tracked Expenses', 'Invoices Recorded', 'Ready-for-Invoice Value']) {
+      expect(screen.queryByRole('heading', { name: label, level: 3 })).not.toBeInTheDocument()
+    }
+    expect(document.querySelector('[data-metric-card]')).toBeNull()
     expect(api.find('GET', '/dashboard/summary')).toHaveLength(0)
+  })
+
+  it('reads the figures again when Refresh is pressed', async () => {
+    const api = dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    await kpiCard('Active AMC')
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+
+    await screen.findByRole('button', { name: 'Refresh' })
+    expect(api.find('GET', '/dashboard/operations').length).toBeGreaterThanOrEqual(2)
   })
 })
 

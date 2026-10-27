@@ -39,17 +39,37 @@ describe("client details", () => {
     expect(fetched).toMatchObject({ clientType: "COMPANY", vatNumber: "OM1100223344", contactPerson: "Front Desk" });
   });
 
-  it("leaves both fields empty when they are not given, and accepts an empty type as none", async () => {
-    const plain = await postClient({ name: "Beta Test Person", clientType: "" });
+  it("requires a client type for a new client and leaves an omitted VAT number empty", async () => {
+    for (const clientType of [undefined, "", null]) {
+      const refused = await postClient({ name: "Beta Test Person", ...(clientType === undefined ? {} : { clientType }) });
 
-    expect(plain.status).toBe(201);
-    expect(plain.body.data).toMatchObject({ clientType: null, vatNumber: null });
+      expect(refused.status).toBe(400);
+      expect(refused.body.error.details).toEqual([{ field: "clientType", message: "Select Company or Individual." }]);
+    }
+
+    const created = await postClient({ name: "Delta Test Co", clientType: "COMPANY" });
+    expect(created.body.data).toMatchObject({ clientType: "COMPANY", vatNumber: null });
+  });
+
+  it("keeps a client recorded without a type editable, and does not let a stored type be cleared", async () => {
+    // A client recorded before the type existed (an import, or a database before migration 0074).
+    await pool.query("INSERT INTO clients (name) VALUES ('Beta Test Person')");
+    const id = (await listClients({ search: "Beta Test" })).body.data.items[0].id as string;
+
+    const edited = await api().patch(`/api/clients/${id}`).set(admin.headers).send({ phone: "333" });
+    expect(edited.status).toBe(200);
+    expect(edited.body.data).toMatchObject({ phone: "333", clientType: null });
+
+    const typed = (await listClients({ search: "Delta Test" })).body.data.items[0].id as string;
+    const cleared = await api().patch(`/api/clients/${typed}`).set(admin.headers).send({ clientType: null });
+    expect(cleared.status).toBe(400);
+    expect(cleared.body.error.details).toEqual([{ field: "clientType", message: "Select Company or Individual." }]);
   });
 
   it("rejects an unknown type and a duplicate name in any letter case", async () => {
     expect((await postClient({ name: "Gamma", clientType: "PARTNERSHIP" })).status).toBe(400);
 
-    const duplicate = await postClient({ name: "alpha test co " });
+    const duplicate = await postClient({ name: "alpha test co ", clientType: "COMPANY" });
     expect(duplicate.status).toBe(409);
     expect(duplicate.body.error.details).toEqual([{ field: "name", message: "A client with this name already exists." }]);
   });
@@ -61,7 +81,7 @@ describe("client details", () => {
     expect(updated.body.data).toMatchObject({ clientType: "INDIVIDUAL", vatNumber: "VAT-77" });
 
     const history = (await api().get(`/api/clients/${id}/history`).set(admin.headers)).body.data;
-    expect(history.items.map((item: { action: string }) => item.action)).toEqual(["client.updated", "client.created"]);
+    expect(history.items.map((item: { action: string }) => item.action)).toEqual(["client.updated", "client.updated"]);
     expect(history.items[0].changes).toEqual({ clientType: { from: null, to: "INDIVIDUAL" }, vatNumber: { from: null, to: "VAT-77" } });
     expect((await api().get("/api/clients/999999/history").set(admin.headers)).status).toBe(404);
   });

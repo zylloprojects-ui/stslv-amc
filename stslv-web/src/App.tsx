@@ -14,20 +14,20 @@ import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
 import { ContractDetailPage } from './pages/amc/ContractDetailPage'
 import { AuditLogPage } from './pages/admin/AuditLogPage'
 import { LoginHistoryPage } from './pages/admin/LoginHistoryPage'
+import { DepartmentsPage } from './pages/masters/DepartmentsPage'
 import { MasterDataCenterPage } from './pages/masters/MasterDataCenterPage'
-import { MasterListPage } from './pages/masters/MasterDataPage'
+import { MaintenanceFrequenciesPage } from './pages/masters/MaintenanceFrequenciesPage'
 import { SalesEngineerDetailPage } from './pages/masters/SalesEngineerDetailPage'
 import { SalesEngineersPage } from './pages/masters/SalesEngineersPage'
+import { SystemTypesPage } from './pages/masters/SystemTypesPage'
 import { ClientDetailPage } from './pages/clients/ClientDetailPage'
 import { NotificationsPage } from './pages/notifications/NotificationsPage'
-import { ReportsPage } from './pages/reports/ReportsPage'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
 import { SignUpPage } from './pages/auth/SignUpPage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ExpensesPage } from './pages/expenses/ExpensesPage'
-import { HistoricalDataPage } from './pages/historical/HistoricalDataPage'
 import { InvoicesPage } from './pages/invoices/InvoicesPage'
 import { AuthLayout, LoginPage } from './pages/LoginPage'
 import { LoaderPreviewPage } from './pages/LoaderPreviewPage'
@@ -111,18 +111,30 @@ export function AppRoutes() {
               </RequireAnyPermission>
             }
           />
-          {/* One route per list. The key gives each list its own search and paging state. */}
-          {(['system-types', 'maintenance-frequencies', 'departments'] as const).map((tab) => (
-            <Route
-              key={tab}
-              path={`/master-data/${tab}`}
-              element={
-                <RequirePermission module="SETTINGS">
-                  <MasterListPage key={tab} tab={tab} />
-                </RequirePermission>
-              }
-            />
-          ))}
+          <Route
+            path="/master-data/maintenance-frequencies"
+            element={
+              <RequirePermission module="SETTINGS">
+                <MaintenanceFrequenciesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/master-data/system-types"
+            element={
+              <RequirePermission module="SETTINGS">
+                <SystemTypesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/master-data/departments"
+            element={
+              <RequirePermission module="SETTINGS">
+                <DepartmentsPage />
+              </RequirePermission>
+            }
+          />
           <Route
             path="/master-data/sales-engineers"
             element={
@@ -184,22 +196,6 @@ export function AppRoutes() {
             element={
               <RequirePermission module="INVOICES">
                 <InvoicesPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="/reports"
-            element={
-              <RequirePermission module="REPORTS">
-                <ReportsPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="/historical-data"
-            element={
-              <RequirePermission module="HISTORICAL_DATA">
-                <HistoricalDataPage />
               </RequirePermission>
             }
           />

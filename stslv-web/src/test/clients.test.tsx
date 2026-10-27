@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
-import type { Client, SessionUser } from '../lib/types'
+import { describe, expect, it, vi } from 'vitest'
+import type { Client, ClientSummary, SessionUser } from '../lib/types'
 import { ACCOUNTANT, ADMIN, fail, makeClient, mockApi, ok, renderApp, signIn, type MockRequest } from './helpers'
 
 /** A small in-memory stand-in for the client API, so add/edit/deactivate are reflected in later list requests. */
@@ -100,8 +100,8 @@ describe('client list', () => {
 
     expect(await screen.findByText('Old Test Client')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText('Test Client One')).not.toBeInTheDocument())
-    expect(screen.getByText('Inactive', { selector: 'span' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Reactivate Old Test Client' })).toBeInTheDocument()
+    expect(screen.getByLabelText('Status of Old Test Client')).toHaveValue('inactive')
+    expect(within(screen.getByLabelText('Status of Old Test Client')).getByRole('option', { name: 'Disabled' })).toBeInTheDocument()
     expect(api.find('GET', '/clients').at(-1)?.query.get('status')).toBe('inactive')
   })
 
@@ -194,6 +194,31 @@ describe('add client', () => {
     expect(await within(dialog).findByText('A client with this name already exists.')).toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Add Client' })).toBeInTheDocument()
   })
+
+  it('shows an API error for a field the form is not showing, and checks again for that field', async () => {
+    // The form believes client type is unavailable; the API (now updated) requires it.
+    let refusals = 0
+    const api = clientApi(ADMIN, [], (request) => {
+      if (request.path === '/clients/features') return ok({ clientDetails: false })
+      if (request.method === 'POST' && request.path === '/clients') {
+        refusals += 1
+        return fail(400, 'VALIDATION_ERROR', 'Some fields are invalid.', [{ field: 'clientType', message: 'Select Company or Individual.' }])
+      }
+      return undefined
+    })
+    renderApp('/clients')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Client' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add Client' })
+    expect(within(dialog).queryByLabelText(/Client type/)).not.toBeInTheDocument()
+    await userEvent.type(within(dialog).getByLabelText(/Client name/), 'Hidden Field Client')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add client' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Client type: Select Company or Individual.')
+    expect(refusals).toBe(1)
+    // The features check is made again, so an updated database shows the field.
+    await waitFor(() => expect(api.find('GET', '/clients/features').length).toBeGreaterThan(1))
+  })
 })
 
 describe('edit client', () => {
@@ -220,47 +245,166 @@ describe('edit client', () => {
   })
 })
 
-describe('deactivate client', () => {
-  it('asks for confirmation and does nothing when cancelled', async () => {
+describe('change client status inline', () => {
+  it('saves nothing until Apply, and Cancel puts the status back', async () => {
     const api = clientApi(ADMIN, [ONE])
     renderApp('/clients')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
+    const select = await screen.findByLabelText('Status of Test Client One')
+    expect(screen.queryByRole('button', { name: /^Apply / })).not.toBeInTheDocument()
 
-    expect(dialog).toHaveTextContent('Deactivate Test Client One?')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await userEvent.selectOptions(select, 'inactive')
+    expect(screen.getByRole('button', { name: 'Apply Disabled to Test Client One' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Keep Test Client One Active' }))
 
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(select).toHaveValue('active')
+    expect(screen.queryByRole('button', { name: /^Apply / })).not.toBeInTheDocument()
     expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(0)
-    expect(screen.getByText('Test Client One')).toBeInTheDocument()
   })
 
-  it('deactivates after confirmation and removes the client from the active list', async () => {
+  it('disables on Apply and removes the client from the active list', async () => {
     const api = clientApi(ADMIN, [ONE, TWO])
     renderApp('/clients')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
+    await userEvent.selectOptions(await screen.findByLabelText('Status of Test Client One'), 'inactive')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Test Client One' }))
 
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(1)
-    expect(screen.getByRole('status')).toHaveTextContent('Test Client One was deactivated.')
+    await waitFor(() => expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(1))
+    expect(await screen.findByRole('status')).toHaveTextContent('Test Client One is now Disabled.')
     await waitFor(() => expect(screen.queryByRole('button', { name: 'View Test Client One' })).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'View Test Client Two' })).toBeInTheDocument()
   })
 })
 
+describe('list tools', () => {
+  it('hides and shows optional columns, never the client name', async () => {
+    clientApi(ADMIN, [ONE])
+    renderApp('/clients')
+
+    const table = await screen.findByRole('table', { name: 'Clients' })
+    expect(within(table).getByRole('columnheader', { name: 'Phone' })).toBeInTheDocument()
+    expect(within(table).getByText('CL-00010')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: /Columns/ }))
+    expect(screen.queryByRole('checkbox', { name: 'Client name' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Phone' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Client code' }))
+
+    expect(within(table).queryByRole('columnheader', { name: 'Phone' })).not.toBeInTheDocument()
+    expect(within(table).queryByText('CL-00010')).not.toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Client name' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Phone' }))
+    expect(within(table).getByRole('columnheader', { name: 'Phone' })).toBeInTheDocument()
+  })
+
+  it('exports the list with its current filters, for a role that may export', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined }))
+    const api = clientApi(ADMIN, [ONE, OLD], (request) => (request.path === '/clients/export' ? ok('file') : undefined))
+    renderApp('/clients')
+    await screen.findByRole('table', { name: 'Clients' })
+
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'all')
+    await userEvent.type(screen.getByLabelText('Search'), 'old')
+    await waitFor(() => expect(api.find('GET', '/clients').at(-1)?.query.get('search')).toBe('old'))
+    await userEvent.click(screen.getByRole('button', { name: 'Export clients to Excel' }))
+
+    await waitFor(() => expect(api.find('GET', '/clients/export')).toHaveLength(1))
+    const query = api.find('GET', '/clients/export')[0]?.query
+    expect(query?.get('format')).toBe('xlsx')
+    expect(query?.get('status')).toBe('all')
+    expect(query?.get('search')).toBe('old')
+  })
+})
+
+describe('client type', () => {
+  it('is required on a database that stores it', async () => {
+    const api = clientApi(ADMIN, [], (request) => (request.path === '/clients/features' ? ok({ clientDetails: true }) : undefined))
+    renderApp('/clients')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Client' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add Client' })
+    await userEvent.type(within(dialog).getByLabelText(/Client name/), 'Typed Test Client')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add client' }))
+
+    expect(await within(dialog).findByText('Select Company or Individual.')).toBeInTheDocument()
+    expect(api.find('POST', '/clients')).toHaveLength(0)
+
+    await userEvent.selectOptions(within(dialog).getByLabelText(/Client type/), 'COMPANY')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add client' }))
+
+    await waitFor(() => expect(api.find('POST', '/clients')).toHaveLength(1))
+    expect(api.find('POST', '/clients')[0]?.body).toMatchObject({ name: 'Typed Test Client', clientType: 'COMPANY', vatNumber: '' })
+  })
+})
+
+const SUMMARY: ClientSummary = {
+  asOf: '2026-10-27',
+  contracts: { total: 4, active: 2, draft: 1, expired: 0, cancelled: 1, activeValue: '6480.000', nonCancelledValue: '6980.000', finalCreditTotal: '100.000', finalCreditRecorded: 1 },
+  renewals: { windowDays: 90, total: 1, items: [{ id: '100', systemDescription: 'FIRE ALARM', validFrom: '2025-01-01', validTo: '2025-12-31', daysLeft: -300, contractValue: '4860.000' }] },
+  visits: { upcoming: 4, overdue: 9, completed: 3, readyForInvoice: 2, nextVisitDate: '2030-02-15' },
+  invoices: { issued: 1, cancelled: 1, issuedExclVat: '405.000', issuedTotal: '425.250', lastInvoiceDate: '2026-09-01' },
+  paymentTracking: false,
+}
+
+/** The Client 360 page's requests; the summary leaves out what the role cannot see, as the API does. */
+function client360(user: SessionUser, summary: ClientSummary) {
+  return clientApi(user, [ONE], (request) => {
+    if (request.path === '/clients/10/summary') return ok(summary)
+    if (request.path === '/clients/10/history') return ok({ items: [], total: 0, page: 1, pageSize: 20 })
+    if (request.path === '/amc/visits') return ok({ items: [], total: 0, page: 1, pageSize: 10, totals: { visitAmount: '0.000', amountMissingCount: 0 } })
+    if (request.path === '/amc/contracts') return ok({ items: [], total: 0, page: 1, pageSize: 50 })
+    if (request.path === '/invoices') return ok({ items: [], total: 0, page: 1, pageSize: 10 })
+    return undefined
+  })
+}
+
+describe('Client 360', () => {
+  it('shows the figures from the API and says what is not available', async () => {
+    const api = client360(ADMIN, SUMMARY)
+    renderApp('/clients/10')
+
+    expect(await screen.findByRole('heading', { name: 'Test Client One', level: 1 })).toBeInTheDocument()
+    const figures = within(await screen.findByRole('region', { name: 'Client figures' }))
+
+    expect(await figures.findByText('6,480.000')).toBeInTheDocument()
+    expect(figures.getByText('All contracts except cancelled: 6,980.000')).toBeInTheDocument()
+    expect(figures.getByText('Payments are not recorded in STSLV AMC.')).toBeInTheDocument()
+    expect(figures.getByText('Next on 15 Feb 2030')).toBeInTheDocument()
+    expect(screen.getByText('Ended 300 days ago')).toBeInTheDocument()
+    expect(screen.getByText('CL-00010', { selector: 'span' })).toBeInTheDocument()
+
+    // Upcoming visits are asked for from the API's current date, open statuses only.
+    await waitFor(() => expect(api.find('GET', '/amc/visits')).toHaveLength(1))
+    expect(api.find('GET', '/amc/visits')[0]?.query.get('from')).toBe('2026-10-27')
+    expect(api.find('GET', '/amc/visits')[0]?.query.get('status')).toBe('SCHEDULED,IN_PROGRESS,POSTPONED')
+    expect(api.find('GET', '/invoices')[0]?.query.get('clientId')).toBe('10')
+    expect(screen.getByRole('button', { name: 'Export AMC contracts to Excel' })).toBeInTheDocument()
+  })
+
+  it('shows "Not available" for sections the role cannot see, and no exports', async () => {
+    client360(ACCOUNTANT, { ...SUMMARY, contracts: null, renewals: null, visits: null, invoices: null })
+    renderApp('/clients/10')
+
+    const figures = within(await screen.findByRole('region', { name: 'Client figures' }))
+    await waitFor(() => expect(figures.getAllByText('Not available')).toHaveLength(8))
+    expect(within(screen.getByRole('region', { name: 'Invoices' })).getByText('Your role does not include invoices.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Export / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument()
+  })
+})
+
 describe('client permissions', () => {
-  it('offers a view-only role no way to add, edit or deactivate', async () => {
+  it('offers a view-only role no way to add, edit, change status or export', async () => {
     clientApi(ACCOUNTANT, [ONE])
     renderApp('/clients')
 
     expect(await screen.findByRole('button', { name: 'View Test Client One' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add Client' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Deactivate / })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Status of /)).not.toBeInTheDocument()
+    expect(screen.getByText('Active', { selector: 'span' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Export clients/ })).not.toBeInTheDocument()
 
     // The details dialog has no Edit button either.
     await userEvent.click(screen.getByRole('button', { name: 'View Test Client One' }))
@@ -276,11 +420,10 @@ describe('client permissions', () => {
     )
     renderApp('/clients')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
+    await userEvent.selectOptions(await screen.findByLabelText('Status of Test Client One'), 'inactive')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Test Client One' }))
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
+    expect(await screen.findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
     expect(screen.getByRole('button', { name: 'View Test Client One' })).toBeInTheDocument()
   })
 })

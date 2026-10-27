@@ -179,13 +179,13 @@ describe('dashboard', () => {
     })
   }
 
-  it('shows none of the historical project values, now that the other-figures cards are hidden', async () => {
-    dashboardApi(summary({ trackedExpensesOnCancelledProjects: '40.000', trackedExpensesOnHistoricalProjects: '12.500' }))
+  it('shows no project figure, historical or otherwise, now the module figure cards are gone', async () => {
+    const api = dashboardApi(summary({ trackedExpensesOnCancelledProjects: '40.000', trackedExpensesOnHistoricalProjects: '12.500' }))
     renderApp('/dashboard')
 
-    await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
-    expect(screen.queryByRole('heading', { name: 'Tracked Expenses' })).not.toBeInTheDocument()
-    expect(document.body).not.toHaveTextContent('18,500.000')
-    expect(document.body).not.toHaveTextContent('19,425.000')
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
+    await waitFor(() => expect(api.find('GET', '/dashboard/operations').length).toBeGreaterThanOrEqual(1))
+    for (const figure of ['2,000.250', '350.125', '18,500.000', '19,425.000']) expect(document.body).not.toHaveTextContent(figure)
+    expect(api.find('GET', '/dashboard/summary')).toHaveLength(0)
   })
 })

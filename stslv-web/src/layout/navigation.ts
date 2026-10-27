@@ -53,13 +53,6 @@ export const NAVIGATION: NavSection[] = [
     ],
   },
   {
-    title: 'Reporting',
-    items: [
-      { label: 'Reports', path: '/reports', module: 'REPORTS' },
-      { label: 'Historical Data', path: '/historical-data', module: 'HISTORICAL_DATA' },
-    ],
-  },
-  {
     title: 'Administration',
     items: [
       { label: 'Users & Access', path: '/admin/users', module: 'USERS' },

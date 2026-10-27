@@ -20,12 +20,12 @@ import { ContractStatusDialog } from './ContractStatusDialog'
 import { validityState } from './contractValidity'
 import {
   CONTRACT_STATUS_LABELS,
-  FREQUENCY_LABELS,
+  frequencyLabel,
+  visitNumberLabel,
   type Contract,
   type ContractHistory,
   type ContractHistoryEntry,
   type ContractStatus,
-  type MaintenanceFrequency,
   type SavedContract,
   type VisitList,
 } from './types'
@@ -98,8 +98,8 @@ function changeValue(field: string, value: unknown): string {
   if (field === 'status' && value in CONTRACT_STATUS_LABELS) {
     return CONTRACT_STATUS_LABELS[value as ContractStatus]
   }
-  if (field === 'maintenanceFrequency' && value in FREQUENCY_LABELS) {
-    return FREQUENCY_LABELS[value as MaintenanceFrequency]
+  if (field === 'maintenanceFrequency') {
+    return frequencyLabel(value)
   }
   if (MONEY_FIELDS.has(field)) {
     return formatMoney(value)
@@ -278,7 +278,7 @@ export function ContractDetailPage() {
         <Fact label="Responsible engineer">
           <OrDash value={contract.responsibleEngineer} />
         </Fact>
-        <Fact label="Frequency">{FREQUENCY_LABELS[contract.maintenanceFrequency]}</Fact>
+        <Fact label="Frequency">{frequencyLabel(contract.maintenanceFrequency)}</Fact>
         <Fact label="Status">
           <span className="inline-flex flex-wrap items-center gap-1">
             <ContractStatusPill status={contract.status} />
@@ -489,7 +489,7 @@ export function ContractDetailPage() {
                   <tbody className="divide-y divide-slate-100">
                     {visits.data.items.map((visit) => (
                       <tr key={visit.id}>
-                        <td className={TABLE.td}>{visit.sequenceNo}</td>
+                        <td className={`${TABLE.td} whitespace-nowrap`}>{visitNumberLabel(visit)}</td>
                         <td className={`${TABLE.td} whitespace-nowrap`}>
                           <PlannedDate visit={visit} format={formatDate} />
                         </td>

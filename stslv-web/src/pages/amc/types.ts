@@ -1,14 +1,31 @@
 // Shapes returned by the AMC API (/api/amc). Money is text with three decimals
 // ("405.000") and is never converted to a JavaScript number. Dates are "YYYY-MM-DD".
 
+/** The four built-in frequencies, offered when the frequency master (migration 0076) is not available. */
 export const MAINTENANCE_FREQUENCIES = ['MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUALLY'] as const
-export type MaintenanceFrequency = (typeof MAINTENANCE_FREQUENCIES)[number]
 
-export const FREQUENCY_LABELS: Record<MaintenanceFrequency, string> = {
+/** A maintenance frequency code. From migration 0076 any code in the frequency master. */
+export type MaintenanceFrequency = string
+
+/** Display names of the seeded frequencies (migrations 0075 and 0076), for lists and filters. */
+export const FREQUENCY_LABELS: Record<string, string> = {
   MONTHLY: 'Monthly',
   QUARTERLY: 'Quarterly',
   HALF_YEARLY: 'Half-yearly',
   ANNUALLY: 'Annually',
+  BI_MONTHLY: 'Bi-Monthly / Every 2 Months',
+  EVERY_4_MONTHS: 'Every 4 Months',
+  CUSTOM: 'Custom',
+}
+
+/** A frequency's display name; an unknown code (one added in the frequency master) shows as itself. */
+export function frequencyLabel(code: string): string {
+  return FREQUENCY_LABELS[code] ?? code
+}
+
+/** "Year 2 · Q3" for a visit labelled at generation (migration 0076), otherwise "No. 7". */
+export function visitNumberLabel(visit: { sequenceNo: number; cycleNo?: number | null; serviceCode?: string | null }): string {
+  return visit.serviceCode && visit.cycleNo ? `Year ${visit.cycleNo} · ${visit.serviceCode}` : `No. ${visit.sequenceNo}`
 }
 
 export const CONTRACT_STATUSES = ['DRAFT', 'ACTIVE', 'EXPIRED', 'CANCELLED'] as const
@@ -61,6 +78,8 @@ export interface Contract {
   contractValue: string
   finalCredit: string | null
   maintenanceFrequency: MaintenanceFrequency
+  /** Months (1 = January) of a contract on a custom frequency; empty or absent otherwise. */
+  customMonths?: number[]
   defaultVisitAmount: string | null
   status: ContractStatus
   isPastValidity: boolean
@@ -112,9 +131,10 @@ export interface SchedulePreview {
   validFrom: string
   validTo: string
   maintenanceFrequency: MaintenanceFrequency
+  customMonths?: number[]
   canApply: boolean
   blockedReason: string | null
-  toCreate: { periodStart: string; periodEnd: string; scheduledDate: string; visitAmount: string | null }[]
+  toCreate: { periodStart: string; periodEnd: string; scheduledDate: string; visitAmount: string | null; cycleNo?: number | null; serviceCode?: string | null }[]
   toRemove: { id: string; sequenceNo: number; periodStart: string; periodEnd: string }[]
   keptCount: number
   blocking: { id: string; sequenceNo: number; periodStart: string; periodEnd: string }[]
@@ -126,6 +146,9 @@ export interface ExecutionVisit {
   contract: { id: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: MaintenanceFrequency }
   client: { id: string; name: string }
   sequenceNo: number
+  /** Taken when the visit was generated (migration 0076); null on older visits. */
+  cycleNo?: number | null
+  serviceCode?: string | null
   periodStart: string
   periodEnd: string
   originalScheduledDate: string

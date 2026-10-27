@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { exportFormatSchema } from "../../shared/export/report";
 import { pagingSchema } from "../../shared/money";
 import { idSchema, optionalText, requiredText } from "../../shared/validation";
 
@@ -50,7 +51,7 @@ export const systemTypeSchemas = shapes(
   ["code", "name"]
 );
 
-export const salesEngineerSchemas = shapes(
+const salesEngineerShapes = shapes(
   {
     name: requiredText("Name", 150),
     employeeNo: optionalText("Employee number", 50),
@@ -62,6 +63,12 @@ export const salesEngineerSchemas = shapes(
   },
   ["name"]
 );
+
+// A new engineer may be added already disabled. Later status changes go through the status route, which records them.
+export const salesEngineerSchemas = {
+  create: salesEngineerShapes.create.extend({ isActive: z.boolean({ error: "Say whether the engineer is active." }).optional() }),
+  update: salesEngineerShapes.update,
+};
 
 // The code of a frequency is fixed; only its label can be changed (there is no create).
 export const maintenanceFrequencySchemas = {
@@ -75,12 +82,21 @@ export const masterStatusSchema = z.strictObject({
 export const listMastersSchema = z.object({
   search: z.string().trim().max(200).optional(),
   status: z.enum(["active", "inactive", "all"]).default("all"),
+  // Sales engineers only: one department, or "none" for engineers without one. Other lists ignore it.
+  departmentId: z.union([idSchema, z.literal("none")], { error: "Select a valid department." }).optional(),
   // Checked against the list's own sortable columns in the service.
   sort: z.string().trim().regex(/^[a-zA-Z]{1,30}$/, "Unknown sort.").optional(),
   direction: z.enum(["asc", "desc"]).default("asc"),
   ...pagingSchema,
 });
 
+// The list's own filters and order, without paging.
+export const exportSalesEngineersSchema = listMastersSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+
+// The engineer being edited, whose own linked account stays offered.
+export const userOptionsSchema = z.object({ engineerId: idSchema.optional() });
+
 export const masterHistorySchema = z.object(pagingSchema);
 
 export type ListMastersQuery = z.infer<typeof listMastersSchema>;
+export type ExportSalesEngineersQuery = z.infer<typeof exportSalesEngineersSchema>;

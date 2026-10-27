@@ -4,7 +4,10 @@ import { authorize } from "../../middleware/authorize";
 import { parseIdParam } from "../../shared/validation";
 import { z } from "zod";
 import { pagingSchema } from "../../shared/money";
-import { createClientSchema, listClientsSchema, updateClientSchema } from "./clients.schemas";
+import { sendExport } from "../../shared/export/send";
+import { getClientSummary } from "./client-summary.service";
+import { buildClientContractsExport, buildClientsExport } from "./clients.export";
+import { createClientSchema, exportClientContractsSchema, exportClientsSchema, listClientsSchema, updateClientSchema } from "./clients.schemas";
 import { clientFeatures, createClient, getClient, listClientHistory, listClients, setClientActive, updateClient } from "./clients.service";
 
 export const clientsRouter = Router();
@@ -20,7 +23,34 @@ clientsRouter.get("/features", authorize("CLIENTS", "VIEW"), async (_req, res) =
   res.json({ success: true, data: await clientFeatures() });
 });
 
+// The list as Excel or PDF, with the list's own filters. Needs EXPORT on top of VIEW. Declared before "/:id".
+clientsRouter.get("/export", authorize("CLIENTS", "VIEW"), authorize("CLIENTS", "EXPORT"), async (req, res) => {
+  const query = exportClientsSchema.parse(req.query);
+  const { report, recordExport } = await buildClientsExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
+});
+
 const historySchema = z.object(pagingSchema);
+
+// Client 360 figures. Each section is included only when the role can see that module (checked in the service).
+clientsRouter.get("/:id/summary", authorize("CLIENTS", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getClientSummary(requireAuth(req), parseIdParam(req.params.id)) });
+});
+
+// One client's AMC contracts as a report: contract data, so the AMC contract permissions apply as well.
+clientsRouter.get(
+  "/:id/contracts/export",
+  authorize("CLIENTS", "VIEW"),
+  authorize("AMC_CONTRACTS", "VIEW"),
+  authorize("AMC_CONTRACTS", "EXPORT"),
+  async (req, res) => {
+    const query = exportClientContractsSchema.parse(req.query);
+    const { report, recordExport } = await buildClientContractsExport(requireAuth(req), parseIdParam(req.params.id), query);
+
+    await sendExport(res, report, query.format, recordExport);
+  }
+);
 
 clientsRouter.get("/:id/history", authorize("CLIENTS", "VIEW"), async (req, res) => {
   const { page, pageSize } = historySchema.parse(req.query);

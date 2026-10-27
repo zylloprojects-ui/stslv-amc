@@ -183,7 +183,6 @@ describe('permission-based navigation', () => {
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
       Operations: ['AMC Contracts', 'AMC Schedule', 'AMC Calendar'],
       Finance: ['Expenses', 'Invoice Tracking'],
-      Reporting: ['Reports', 'Historical Data'],
       Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
     })
   })
@@ -207,12 +206,12 @@ describe('permission-based navigation', () => {
 
   it('starts with the group of the current page open', async () => {
     session(ADMIN)
-    renderApp('/reports')
+    renderApp('/invoices')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
 
-    expect(within(nav).getByRole('button', { name: 'Reporting' })).toHaveAttribute('aria-expanded', 'true')
-    expect(within(nav).getByRole('link', { name: 'Reports' })).toHaveAttribute('aria-current', 'page')
+    expect(within(nav).getByRole('button', { name: 'Finance' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(nav).getByRole('link', { name: 'Invoice Tracking' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('shows a restricted role only the modules it may view', async () => {
@@ -236,23 +235,25 @@ describe('permission-based navigation', () => {
     expect(api.find('GET', '/users')).toHaveLength(0)
   })
 
-  it('opens the Reports page itself, not a placeholder', async () => {
+  it.each(['/reports', '/historical-data'])('shows Not Found for the removed page %s', async (path) => {
     session(ADMIN)
-    renderApp('/reports')
+    renderApp(path)
 
-    expect(await screen.findByRole('heading', { name: 'Reports', level: 1 })).toBeInTheDocument()
-    expect(screen.queryByText('Module implementation in progress')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    const nav = screen.getByRole('navigation', { name: 'Main' })
+    expect(within(nav).queryByRole('button', { name: 'Reporting' })).not.toBeInTheDocument()
   })
 })
 
 describe('dashboard', () => {
-  it('no longer shows the other-figures cards, whatever the summary holds', async () => {
-    session(ADMIN)
+  it('no longer shows the module figure cards, nor requests their summary', async () => {
+    const api = session(ADMIN)
     renderApp('/dashboard')
 
     expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
+    await waitFor(() => expect(api.find('GET', '/dashboard/operations').length).toBeGreaterThanOrEqual(1))
     expect(screen.queryByText('Active Clients')).not.toBeInTheDocument()
-    expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
+    expect(api.find('GET', '/dashboard/summary')).toHaveLength(0)
   })
 })
 

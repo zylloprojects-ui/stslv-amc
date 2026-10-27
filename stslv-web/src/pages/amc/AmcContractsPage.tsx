@@ -18,7 +18,7 @@ import {
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
   FREQUENCY_LABELS,
-  MAINTENANCE_FREQUENCIES,
+  frequencyLabel,
   type Contract,
   type ContractStatus,
   type SavedContract,
@@ -274,9 +274,9 @@ export function AmcContractsPage() {
                 className={className}
               >
                 <option value="">All frequencies</option>
-                {MAINTENANCE_FREQUENCIES.map((value) => (
+                {Object.keys(FREQUENCY_LABELS).map((value) => (
                   <option key={value} value={value}>
-                    {FREQUENCY_LABELS[value]}
+                    {frequencyLabel(value)}
                   </option>
                 ))}
               </select>
@@ -390,7 +390,7 @@ export function AmcContractsPage() {
                           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-[#1479BD]" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                             <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
-                          {FREQUENCY_LABELS[contract.maintenanceFrequency]}
+                          {frequencyLabel(contract.maintenanceFrequency)}
                         </span>
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>

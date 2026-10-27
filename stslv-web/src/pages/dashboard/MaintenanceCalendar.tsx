@@ -10,9 +10,9 @@ import { queryString } from '../amc/amcApi'
 import { formatDate, formatMoney, monthLabel, shiftMonth } from '../amc/amcFormat'
 import { VisitStatusPill } from '../amc/components'
 import {
-  FREQUENCY_LABELS,
   INVOICE_ELIGIBILITY_LABELS,
   OPERATIONAL_VISIT_STATUSES,
+  frequencyLabel,
   type ScheduleVisit,
   type VisitList,
 } from '../amc/types'
@@ -324,7 +324,7 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
           <Field label="Client">{data.client.name}</Field>
           <Field label="System / service">{data.contract.systemDescription}</Field>
           <Field label="Engineer">{data.assignedTo ?? '—'}</Field>
-          <Field label="Frequency">{FREQUENCY_LABELS[data.contract.maintenanceFrequency]}</Field>
+          <Field label="Frequency">{frequencyLabel(data.contract.maintenanceFrequency)}</Field>
           <Field label="Scheduled date">{formatDate(data.scheduledDate)}</Field>
           <Field label="Status">
             <VisitStatusPill status={data.status} overdue={data.isOverdue} />
