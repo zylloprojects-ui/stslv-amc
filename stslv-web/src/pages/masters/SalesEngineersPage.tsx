@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { LoadError, Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
@@ -181,25 +182,18 @@ export function SalesEngineersPage() {
                             <Badge tone={engineer.isActive ? 'green' : 'slate'}>{engineer.isActive ? 'Active' : 'Inactive'}</Badge>
                           </td>
                           <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                            <span className="inline-flex gap-2">
-                              <Link
-                                to={`/master-data/sales-engineers/${engineer.id}`}
-                                aria-label={`View ${engineer.name}`}
-                                className="rounded-md px-3 py-1.5 text-sm font-medium text-blue-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50"
-                              >
-                                View
-                              </Link>
+                            <ActionGroup>
+                              <ActionLink label={`View ${engineer.name}`} icon="eye" to={`/master-data/sales-engineers/${engineer.id}`} />
+                              {canEdit && <ActionButton label={`Edit ${engineer.name}`} icon="edit" onClick={() => setEditing({ record: engineer })} />}
                               {canEdit && (
-                                <>
-                                  <Button size="sm" variant="secondary" onClick={() => setEditing({ record: engineer })} aria-label={`Edit ${engineer.name}`}>
-                                    Edit
-                                  </Button>
-                                  <Button size="sm" variant="secondary" onClick={() => setToggling(engineer)} aria-label={`${engineer.isActive ? 'Deactivate' : 'Reactivate'} ${engineer.name}`}>
-                                    {engineer.isActive ? 'Deactivate' : 'Reactivate'}
-                                  </Button>
-                                </>
+                                <ActionButton
+                                  label={`${engineer.isActive ? 'Deactivate' : 'Reactivate'} ${engineer.name}`}
+                                  icon={engineer.isActive ? 'stop' : 'restore'}
+                                  danger={engineer.isActive}
+                                  onClick={() => setToggling(engineer)}
+                                />
                               )}
-                            </span>
+                            </ActionGroup>
                           </td>
                         </tr>
                       ))}

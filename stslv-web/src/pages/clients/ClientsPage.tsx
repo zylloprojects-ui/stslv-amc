@@ -349,7 +349,7 @@ export function ClientsPage() {
                       </td>
                       {withDetails && (
                         <td className={`${TABLE.td} whitespace-nowrap`}>
-                          <span className="block text-sm text-slate-900">{client.clientType ? CLIENT_TYPE_LABELS[client.clientType] : '—'}</span>
+                          {client.clientType && <span className="block text-sm text-slate-900">{CLIENT_TYPE_LABELS[client.clientType]}</span>}
                           <span className="block text-xs text-slate-500">{client.vatNumber ? `VAT ${client.vatNumber}` : 'No VAT number'}</span>
                         </td>
                       )}
