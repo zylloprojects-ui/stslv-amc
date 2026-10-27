@@ -12,8 +12,6 @@ import { Icon, type IconName } from './dashboard/icons'
 import { DEFAULT_KPI_ORDER } from './dashboard/kpis'
 import { KpiStrip } from './dashboard/KpiStrip'
 import { MaintenanceCalendar } from './dashboard/MaintenanceCalendar'
-import { MetricCard, type MetricState } from './dashboard/MetricCard'
-import { METRIC_GROUPS, type DashboardSummary, type MetricDefinition } from './dashboard/metrics'
 import type { OperationsDashboard } from './dashboard/operationsTypes'
 import { RecentInvoices } from './dashboard/RecentInvoices'
 import { ExpiringContracts, PaymentTrend, PortfolioStatus, WorkloadChart } from './dashboard/Widgets'
@@ -61,7 +59,7 @@ function Panel({ id, icon, eyebrow, title, description, link, className, childre
           </Link>
         )}
       </div>
-      <div className="surface flex flex-1 flex-col rounded-2xl p-5 sm:p-6">{children}</div>
+      <div className="surface flex flex-1 flex-col rounded-2xl p-4 sm:p-5">{children}</div>
     </section>
   )
 }
@@ -82,7 +80,6 @@ export function DashboardPage() {
   usePageTitle('Dashboard')
 
   const operations = useQuery({ queryKey: ['dashboard', 'operations'], queryFn: () => api.get<OperationsDashboard>('/dashboard/operations') })
-  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
 
 
   const kpiOrder = useKpiOrder(userId, DEFAULT_KPI_ORDER)
@@ -90,30 +87,10 @@ export function DashboardPage() {
   const [calendarOpen, setCalendarOpen] = useStoredFlag(userId, 'calendar-open', true)
 
   const data = operations.data
-  const refreshing = operations.isFetching || summary.isFetching
+  const refreshing = operations.isFetching
   const refresh = () => {
     void operations.refetch()
-    void summary.refetch()
   }
-
-  // The other modules' figures, under the permission each module already requires.
-  const stateOf = (metric: MetricDefinition): MetricState | null => {
-    if (!metric.read) return { kind: 'unavailable' }
-    if (summary.data) {
-      const reading = metric.read(summary.data, canView)
-
-      return reading ? { kind: 'ready', reading } : null
-    }
-
-    return summary.isError ? { kind: 'failed' } : { kind: 'loading' }
-  }
-  const moreCards = METRIC_GROUPS.flatMap((group) => group.metrics)
-    .filter((metric) => metric.visible(canView))
-    .flatMap((metric) => {
-      const state = stateOf(metric)
-
-      return state ? [{ metric, state, link: metric.links?.find((link) => canView(link.module)) ?? null }] : []
-    })
 
   const online = operations.isSuccess && !operations.isError
   return (
@@ -277,17 +254,6 @@ export function DashboardPage() {
           eyebrow="Finance" title="Recent Invoices" description="Latest invoices recorded from Zoho, newest invoice date first." link={{ to: '/invoices', label: 'Invoice Tracking' }} className="mb-6">
           <RecentInvoices userId={userId} canExport={auth.can('INVOICES', 'EXPORT')} />
         </Panel>
-      )}
-
-      {moreCards.length > 0 && (
-        <section aria-labelledby="dashboard-more" className="mb-6">
-          <SectionHeading id="dashboard-more">Waiting for an invoice and other figures</SectionHeading>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {moreCards.map(({ metric, state, link }, index) => (
-              <MetricCard key={metric.id} metric={metric} state={state} link={link} index={index} />
-            ))}
-          </div>
-        </section>
       )}
 
       {data && (

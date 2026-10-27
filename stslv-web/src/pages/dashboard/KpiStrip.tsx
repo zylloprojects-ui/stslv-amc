@@ -3,20 +3,22 @@ import { Link } from 'react-router-dom'
 import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
 import { KPIS, type KpiDefinition, type KpiReading } from './kpis'
-import { Icon, type IconName } from './icons'
+import { Icon, IconTile, type IconName } from './icons'
+import { ACCENTS, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
 import type { OperationsDashboard } from './operationsTypes'
 
-// The icon and the colour of each figure. A figure keeps its colour wherever it is moved.
-const KPI_STYLE: Record<string, { icon: IconName; main: string; soft: string }> = {
-  active: { icon: 'contract', main: '#1479BD', soft: '#EAF3FB' },
-  value: { icon: 'wallet', main: '#1479BD', soft: '#EAF3FB' },
-  credit: { icon: 'chart', main: '#1479BD', soft: '#EAF3FB' },
-  services: { icon: 'calendar', main: '#1479BD', soft: '#EAF3FB' },
-  unpaid: { icon: 'invoice', main: '#1479BD', soft: '#EAF3FB' },
-  paid: { icon: 'invoice', main: '#1479BD', soft: '#EAF3FB' },
-  expiring: { icon: 'shield', main: '#1479BD', soft: '#EAF3FB' },
+// The icon of each figure, the same family as the other dashboard figure cards.
+const KPI_ICONS: Record<string, IconName> = {
+  active: 'contract',
+  value: 'wallet',
+  credit: 'chart',
+  services: 'calendar',
+  unpaid: 'invoice',
+  paid: 'invoice',
+  expiring: 'shield',
 }
-const FALLBACK_STYLE = { icon: 'pulse' as IconName, main: '#1479BD', soft: '#EAF3FB' }
+
+const FIGURE = 'break-words font-bold tabular-nums text-[#0b3b66]'
 
 type CardState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; reading: KpiReading }
 
@@ -29,7 +31,7 @@ interface KpiStripProps {
   onReorder: (order: string[]) => void
 }
 
-/** The key figures: one card each, with its own colour edge, icon tile and code tag, the figure, and a line saying what it is. */
+/** The key figures, drawn exactly like the dashboard's other figure cards: label and icon on top, the figure, and one line with its link. */
 export function KpiStrip({ data, failed, canView, order, arranging, onReorder }: KpiStripProps) {
   const [dragging, setDragging] = useState<string | null>(null)
 
@@ -64,19 +66,18 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder }:
   }
 
   return (
-    <ul aria-label="Key figures" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <ul aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
       {cards.map(({ kpi, state }, index) => {
         const link = kpi.link && canView(kpi.link.module) ? kpi.link : null
-        const style = KPI_STYLE[kpi.id] ?? FALLBACK_STYLE
+        const icon = KPI_ICONS[kpi.id] ?? 'pulse'
+        const from = ACCENTS[index % ACCENTS.length] as string
+        const to = ACCENTS[(index + 1) % ACCENTS.length] as string
         const reading = state.kind === 'ready' ? state.reading : null
         const value = reading?.kind === 'value' ? reading.value : null
         // A short line on the card; the full wording is on hover.
         const note = reading ? (reading.kind === 'value' ? reading.detail : (reading.reason.split(/(?<=\.)\s/)[0] ?? reading.reason)) : null
         const hint = reading ? (reading.kind === 'value' ? reading.hint : reading.reason) : undefined
-        const card: CSSProperties = {
-          animationDelay: `${Math.min(index, 8) * 0.06}s`,
-          backgroundImage: `radial-gradient(circle at 100% 100%, ${style.soft}, transparent 50%)`,
-        }
+        const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s` }
 
         return (
           <li
@@ -86,58 +87,40 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder }:
             onDragStart={() => setDragging(kpi.id)}
             onDragOver={(event) => arranging && event.preventDefault()}
             onDrop={(event) => drop(event, kpi.id)}
-            style={card}
-            className={cx(
-              'login-rise group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-4 pl-5 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg',
-              arranging && 'cursor-move ring-2 ring-dashed ring-sky-300',
-              dragging === kpi.id && 'opacity-60',
-            )}
+            style={entrance}
+            className={cx(DASHBOARD_CARD, arranging && 'cursor-move ring-2 ring-dashed ring-sky-300', dragging === kpi.id && 'opacity-60')}
           >
-            <span className="absolute inset-y-0 left-0 w-1" style={{ backgroundColor: style.main }} aria-hidden="true" />
-            <span className="absolute inset-x-0 top-0 h-[3px] opacity-70" style={{ backgroundImage: `linear-gradient(90deg, ${style.main}, transparent 70%)` }} aria-hidden="true" />
-
-            <div className="relative flex items-center gap-2.5">
-              <span
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-transform duration-300 group-hover:scale-105"
-                style={{ backgroundColor: style.soft, color: style.main, boxShadow: `inset 0 0 0 1px ${style.main}26` }}
-                aria-hidden="true"
-              >
-                <Icon name={style.icon} className="h-[18px] w-[18px]" />
-              </span>
-              <h3 className="min-w-0 flex-1 text-xs font-bold uppercase leading-tight tracking-wide text-[#0b3b66]">{kpi.label}</h3>
-              <span
-                className="shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-bold tracking-wider"
-                style={{ backgroundColor: style.soft, color: style.main, borderColor: style.main + '40' }}
-                aria-hidden="true"
-              >
-                {kpi.code}
-              </span>
-            </div>
+            <span className="card-dots" aria-hidden="true" />
+            <Icon name={icon} className="card-watermark" />
+            <IconTile icon={icon} from={from} to={to} className="absolute right-5 top-5" />
+            <h3 className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')}>{kpi.label}</h3>
 
             {state.kind === 'loading' && (
-              <div role="status" className="mt-3">
+              <div role="status" className="mt-4">
                 <span className="sr-only">Loading {kpi.label}</span>
-                <span className="skeleton block h-8 w-24 rounded-lg" aria-hidden="true" />
-                <span className="skeleton mt-3 block h-3 w-32 rounded" aria-hidden="true" />
+                <span className="skeleton block h-9 w-24 rounded-lg" aria-hidden="true" />
+                <span className="skeleton mt-4 block h-3.5 w-32 rounded" aria-hidden="true" />
               </div>
             )}
             {state.kind === 'failed' && <p className="mt-3 text-sm font-medium text-red-700">Could not be loaded</p>}
             {state.kind === 'ready' && (
               <>
                 {value !== null ? (
-                  <p className={cx('relative mt-3 break-words font-extrabold tabular-nums leading-none text-[#0f2a43]', value.length > 9 ? 'text-2xl' : 'text-3xl')}>{value}</p>
+                  <p className={cx(FIGURE, 'mt-3', value.length > 9 ? 'text-3xl' : 'text-4xl')}>{value}</p>
                 ) : (
-                  <p className="relative mt-3 text-xl font-extrabold leading-none text-slate-400">Not available</p>
+                  <p className="mt-3 text-3xl font-bold text-slate-300">Not available</p>
                 )}
-                <p className="relative mt-1.5 break-words text-xs leading-snug text-slate-600" title={hint}>
-                  {note}
+                <p className="mt-3 break-words text-sm text-slate-600" title={hint}>
+                  <span>{note}</span>
+                  {link && !arranging && (
+                    <>
+                      <span aria-hidden="true"> · </span>
+                      <Link to={link.to} className="font-medium text-[#1479BD] hover:underline">
+                        {link.label}
+                      </Link>
+                    </>
+                  )}
                 </p>
-                {link && !arranging && (
-                  <Link to={link.to} className="relative mt-auto inline-flex items-center gap-1 pt-2 text-xs font-semibold hover:underline" style={{ color: style.main }}>
-                    {link.label}
-                    <span aria-hidden="true">→</span>
-                  </Link>
-                )}
               </>
             )}
 

@@ -518,7 +518,6 @@ describe('recent invoices', () => {
     renderApp('/dashboard')
 
     await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
-    await screen.findByText('1,234')
     expect(screen.queryByRole('heading', { name: 'Recent Invoices' })).not.toBeInTheDocument()
     expect(api.find('GET', '/invoices')).toHaveLength(0)
   })
@@ -536,57 +535,13 @@ describe('production readiness', () => {
 })
 
 describe('module figures', () => {
-  async function card(label: string) {
-    const region = await screen.findByRole('region', { name: 'Waiting for an invoice and other figures' })
-    const heading = await within(region).findByRole('heading', { name: label, level: 3 })
-
-    return heading.closest('[data-metric-card]') as HTMLElement
-  }
-
-  it('keeps the clients, ready-for-invoice and finance figures, without links to retired pages', async () => {
-    dashboardApi(ADMIN)
-    renderApp('/dashboard')
-
-    const region = await screen.findByRole('region', { name: 'Waiting for an invoice and other figures' })
-    await within(region).findByText('1,234')
-    expect(within(region).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
-      'Active Clients',
-      'Visits Due',
-      'Ready for Invoice',
-      'Tracked Expenses',
-      'Invoices Recorded',
-      'Ready-for-Invoice Value',
-    ])
-    const hrefs = within(region).queryAllByRole('link').map((link) => link.getAttribute('href'))
-    expect(hrefs).not.toContain('/projects')
-    expect(hrefs).not.toContain('/amc/execution')
-    expect(within(await card('Visits Due')).getByRole('link', { name: 'View schedule' })).toHaveAttribute('href', '/amc/schedule')
-  })
-
-  it('shows the AMC and project amounts waiting for an invoice as two separate values', async () => {
-    dashboardApi(ADMIN)
-    renderApp('/dashboard')
-
-    const value = await card('Ready-for-Invoice Value')
-    const rows = (await within(value).findAllByRole('term')).map((term) => [term.textContent, (term.nextElementSibling as HTMLElement).textContent])
-
-    expect(rows).toEqual([
-      ['AMC As entered', '12,345.500'],
-      ['Projects Excl. VAT', '2,000.250'],
-    ])
-    expect(value.textContent).not.toMatch(/14,?345\.75/)
-  })
-
-  it('reads the figures again when Refresh is pressed', async () => {
+  it('are not shown on the dashboard, and their summary is not requested', async () => {
     const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await card('Active Clients')
-    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-
-    await screen.findByRole('button', { name: 'Refresh' })
-    expect(api.find('GET', '/dashboard/summary').length).toBeGreaterThanOrEqual(2)
-    expect(api.find('GET', '/dashboard/operations').length).toBeGreaterThanOrEqual(2)
+    await kpiCard('Active AMC')
+    expect(screen.queryByRole('region', { name: 'Waiting for an invoice and other figures' })).not.toBeInTheDocument()
+    expect(api.find('GET', '/dashboard/summary')).toHaveLength(0)
   })
 })
 

@@ -70,7 +70,7 @@ describe('login', () => {
     expect(api.find('POST', '/auth/login')[0]?.body).toEqual({ email: 'admin@example.com', password: 'a-good-password' })
     expect(localStorage.getItem('stslv-amc.token')).toBe('issued-token')
     // Later requests carry the token.
-    await waitFor(() => expect(api.find('GET', '/dashboard/summary')[0]?.authorization).toBe('Bearer issued-token'))
+    await waitFor(() => expect(api.find('GET', '/dashboard/operations')[0]?.authorization).toBe('Bearer issued-token'))
   })
 
   it('reports an unreachable server', async () => {
@@ -246,27 +246,12 @@ describe('permission-based navigation', () => {
 })
 
 describe('dashboard', () => {
-  it('shows the real client counts, and no card for a figure the API did not return', async () => {
+  it('no longer shows the other-figures cards, whatever the summary holds', async () => {
     session(ADMIN)
     renderApp('/dashboard')
 
-    const clientsCard = (await screen.findByText('Active Clients')).parentElement as HTMLElement
-    expect(await within(clientsCard).findByText('4')).toBeInTheDocument()
-    expect(within(clientsCard).getByText(/1 inactive/)).toBeInTheDocument()
-
-    // The summary above carries client counts only. The other metrics are connected
-    // to the API, so without a figure from it they are left out: no placeholder, no zero.
-    for (const label of [
-      'Active Contracts',
-      'Visits Due',
-      'Ready for Invoice',
-      'Active Projects',
-      'Projects Ready for Invoice',
-      'Tracked Expenses',
-      'Ready-for-Invoice Value',
-    ]) {
-      expect(screen.queryByRole('heading', { name: label, level: 3 })).not.toBeInTheDocument()
-    }
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
+    expect(screen.queryByText('Active Clients')).not.toBeInTheDocument()
     expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
   })
 })

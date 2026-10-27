@@ -113,28 +113,28 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
         </p>
       </div>
 
-    <div className={cx('grid min-w-0 items-stretch gap-6', expanded && 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]')}>
+    <div className={cx('grid min-w-0 items-stretch gap-4', expanded && 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]')}>
       <div className={cx('min-w-0 flex-col', expanded ? 'flex' : 'hidden')}>
         {expanded && (
           <div id="dashboard-mini-calendar" className="flex-1 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
-            <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-3 py-2">
               <Button variant="secondary" size="sm" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>
                 ←
               </Button>
-              <h3 className="text-base font-bold text-[#0b3b66]" aria-live="polite">
+              <h3 className="text-sm font-bold text-[#0b3b66]" aria-live="polite">
                 {monthLabel(month)}
               </h3>
               <Button variant="secondary" size="sm" aria-label="Next month" onClick={() => setMonth(shiftMonth(month, 1))}>
                 →
               </Button>
             </div>
-            <div className="p-4 pb-5">
+            <div className="p-3">
             {calendar.isError && <LoadError error={calendar.error} onRetry={() => void calendar.refetch()} />}
             {calendar.isPending && <Spinner size="sm" label="Loading calendar" />}
             {calendar.data && (
-              <div role="grid" aria-label={`Visits in ${monthLabel(month)}`} className="grid grid-cols-7 gap-2 text-center">
+              <div role="grid" aria-label={`Visits in ${monthLabel(month)}`} className="grid grid-cols-7 gap-1 text-center">
                 {WEEKDAYS.map((name) => (
-                  <span key={name} role="columnheader" className="pb-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">
+                  <span key={name} role="columnheader" className="pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">
                     {name}
                   </span>
                 ))}
@@ -152,7 +152,7 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
                         disabled={!canSchedule || !entry}
                         onClick={() => setDay(date)}
                         className={cx(
-                          'flex h-14 w-full flex-col items-center justify-center rounded-lg border text-sm font-semibold tabular-nums transition-colors',
+                          'flex h-10 w-full flex-col items-center justify-center rounded-md border text-xs font-semibold tabular-nums transition-colors',
                           date === asOf && 'ring-2 ring-[#1479BD] ring-offset-1',
                           day === date
                             ? 'border-[#1479BD] bg-[#1479BD] text-white shadow-sm'
@@ -163,7 +163,7 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
                       >
                         <span>{Number(date.slice(8))}</span>
                         {entry && (
-                          <span className={cx('mt-0.5 min-w-5 rounded-full px-1.5 text-[11px] font-bold leading-4', day === date ? 'bg-white/25 text-white' : entry.overdue ? 'bg-red-600 text-white' : 'bg-[#1479BD] text-white')}>
+                          <span className={cx('min-w-4 rounded-full px-1 text-[10px] font-bold leading-4', day === date ? 'bg-white/25 text-white' : entry.overdue ? 'bg-red-600 text-white' : 'bg-[#1479BD] text-white')}>
                             {entry.total}
                           </span>
                         )}
@@ -205,16 +205,16 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
         )}
       </div>
 
-      <div className="flex min-w-0 flex-col gap-5">
+      <div className="flex min-w-0 flex-col gap-3">
           <div className="space-y-4">
             <div className="min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
-              <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-5 py-3 text-sm font-bold text-[#0b3b66]">
+              <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-4 py-2 text-sm font-bold text-[#0b3b66]">
                 <span>Today · {formatDate(asOf)}</span>
                 <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-inset ring-sky-200">{formatCount(schedule.todayTotal)}</span>
               </h3>
               {schedule.today.length === 0 ? (
-                <p className="flex items-center gap-3 px-5 py-6 text-sm text-slate-600">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+                <p className="flex items-center gap-2.5 px-4 py-3.5 text-sm text-slate-600">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
                     ✓
                   </span>
                   No maintenance planned today.
@@ -233,13 +233,13 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
               )}
             </div>
             <div className="min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
-              <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-5 py-3 text-sm font-bold text-[#0b3b66]">
+              <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-4 py-2 text-sm font-bold text-[#0b3b66]">
                 <span>Next {schedule.upcomingDays} days</span>
                 <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-inset ring-sky-200">{formatCount(schedule.upcomingTotal)} open</span>
               </h3>
               {schedule.upcoming.length === 0 ? (
-                <p className="flex items-center gap-3 px-5 py-6 text-sm text-slate-600">
-                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+                <p className="flex items-center gap-2.5 px-4 py-3.5 text-sm text-slate-600">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
                     ✓
                   </span>
                   No open service obligations in the next {schedule.upcomingDays} days.
@@ -268,7 +268,7 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
 
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex justify-between gap-4 border-b border-slate-200 px-5 py-2.5 text-sm last:border-0 even:bg-slate-50/70">
+    <div className="flex justify-between gap-4 border-b border-slate-200 px-4 py-1.5 text-sm last:border-0 even:bg-slate-50/70">
       <dt className="shrink-0 font-bold text-slate-800">{label}</dt>
       <dd className="min-w-0 break-words text-right font-medium text-slate-900">{children}</dd>
     </div>
@@ -291,7 +291,7 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
 
   return (
     <section aria-labelledby="service-details" className="min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm" aria-live="polite">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-5 py-3">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-4 py-2">
         <h3 id="service-details" className="text-sm font-bold text-[#0b3b66]">
           Service details
         </h3>
@@ -301,8 +301,8 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
           </button>
         )}
       </div>
-      {!canSchedule && <p className="px-5 py-6 text-sm text-slate-600">Service details need the AMC Schedule view permission.</p>}
-      {canSchedule && !visitId && <p className="px-5 py-6 text-sm text-slate-600">Select a service from today’s work, the next days or the calendar.</p>}
+      {!canSchedule && <p className="px-4 py-3.5 text-sm text-slate-600">Service details need the AMC Schedule view permission.</p>}
+      {canSchedule && !visitId && <p className="px-4 py-3.5 text-sm text-slate-600">Select a service from today’s work, the next days or the calendar.</p>}
       {canSchedule && visitId && visit.isPending && (
         <div className="p-4">
           <Spinner size="sm" label="Loading service" />
