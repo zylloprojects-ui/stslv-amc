@@ -3,6 +3,8 @@ import cors from "cors";
 import { checkDatabaseHealth } from "./config/database";
 import { env } from "./config/env";
 import { amcRouter } from "./modules/amc/amc.routes";
+import { attachmentsRouter } from "./modules/attachments/attachments.routes";
+import { auditRouter } from "./modules/audit/audit.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { clientsRouter } from "./modules/clients/clients.routes";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
@@ -10,6 +12,8 @@ import { expensesRouter } from "./modules/expenses/expenses.routes";
 import { historicalDataRouter } from "./modules/historical-data/historical-data.routes";
 import { holidaysRouter } from "./modules/holidays/holidays.routes";
 import { invoicesRouter } from "./modules/invoices/invoices.routes";
+import { mastersRouter } from "./modules/masters/masters.routes";
+import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
 import { rolesRouter } from "./modules/roles/roles.routes";
@@ -75,6 +79,10 @@ export function createApp() {
   app.use("/api/invoices", invoicesRouter);
   app.use("/api/historical-data", historicalDataRouter);
   app.use("/api/holidays", holidaysRouter);
+  app.use("/api/audit", auditRouter);
+  app.use("/api/masters", mastersRouter);
+  app.use("/api/attachments", attachmentsRouter);
+  app.use("/api/notifications", notificationsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

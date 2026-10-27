@@ -34,7 +34,7 @@ describe('application shell', () => {
     session(ADMIN)
     renderApp('/dashboard')
 
-    await screen.findByRole('heading', { name: 'Dashboard' })
+    await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
     expect(document.title).toBe('Dashboard · STSLEV AMC')
 
     const nav = screen.getByRole('navigation', { name: 'Main' })
@@ -68,7 +68,7 @@ describe('application shell', () => {
     renderApp('/dashboard')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
+    await userEvent.click(within(nav).getByRole('button', { name: 'Master Data Center' }))
     await userEvent.click(within(nav).getByRole('link', { name: 'Clients' }))
 
     await screen.findByRole('heading', { name: 'Clients' })
@@ -186,11 +186,11 @@ describe('mobile menu', () => {
         .map((link) => link.textContent)
 
     // One group is open at a time; the role has no Administration group and no Settings link.
-    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Operations', 'Finance'])
+    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Master Data Center', 'Finance'])
     await userEvent.click(within(menu).getByRole('button', { name: 'Finance' }))
     expect(links()).toEqual(['Dashboard', 'Expenses'])
-    await userEvent.click(within(menu).getByRole('button', { name: 'Operations' }))
-    expect(links()).toEqual(['Dashboard', 'Clients', 'Projects'])
+    await userEvent.click(within(menu).getByRole('button', { name: 'Master Data Center' }))
+    expect(links()).toEqual(['Dashboard', 'Clients'])
 
     await userEvent.click(within(menu).getByRole('link', { name: 'Clients' }))
 

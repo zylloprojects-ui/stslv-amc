@@ -58,14 +58,22 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/** A file sent as the raw request body, with its own headers (see api.upload). */
+interface RawBody {
+  data: Blob
+  headers: Record<string, string>
+}
+
+async function request<T>(method: string, path: string, body?: unknown, raw?: RawBody): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const token = getToken()
 
   if (token) {
     headers.Authorization = `Bearer ${token}`
   }
-  if (body !== undefined) {
+  if (raw) {
+    Object.assign(headers, raw.headers)
+  } else if (body !== undefined) {
     headers['Content-Type'] = 'application/json'
   }
 
@@ -75,7 +83,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     response = await fetch(apiUrl(`/api${path}`), {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: raw ? raw.data : body === undefined ? undefined : JSON.stringify(body),
     })
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection and try again.')
@@ -109,6 +117,12 @@ export const api = {
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   delete: <T = null>(path: string) => request<T>('DELETE', path),
+  /** Sends one file as the raw body; its name travels URI-encoded in X-File-Name. */
+  upload: <T>(path: string, file: File) =>
+    request<T>('POST', path, undefined, {
+      data: file,
+      headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+    }),
 }
 
 export interface DownloadedFile {

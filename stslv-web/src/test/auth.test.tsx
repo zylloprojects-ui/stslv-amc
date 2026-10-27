@@ -66,7 +66,7 @@ describe('login', () => {
 
     release(ok({ token: 'issued-token', expiresAt: '2026-10-01T18:00:00.000Z', user: ADMIN }))
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
     expect(api.find('POST', '/auth/login')[0]?.body).toEqual({ email: 'admin@example.com', password: 'a-good-password' })
     expect(localStorage.getItem('stslv-amc.token')).toBe('issued-token')
     // Later requests carry the token.
@@ -110,7 +110,7 @@ describe('protected routes', () => {
     session(ADMIN)
     renderApp('/dashboard')
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
     const header = screen.getByRole('banner')
     expect(within(header).getByText('Asha Admin')).toBeInTheDocument()
     expect(within(header).getByText('Admin')).toBeInTheDocument()
@@ -180,10 +180,11 @@ describe('permission-based navigation', () => {
     // Settings sits in the footer, after the groups.
     expect(linkNames(nav)).toEqual(['Dashboard', 'Settings'])
     expect(await linksByGroup(nav)).toEqual({
-      Operations: ['Clients', 'AMC Contracts', 'AMC Schedule', 'AMC Execution', 'Projects', 'Procurement'],
+      'Master Data Center': ['Clients', 'Sales Engineers'],
+      Operations: ['AMC Contracts', 'AMC Schedule', 'AMC Calendar'],
       Finance: ['Expenses', 'Invoice Tracking'],
       Reporting: ['Reports', 'Historical Data'],
-      Administration: ['Users & Access', 'Roles & Permissions'],
+      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log', 'System Types & Departments'],
     })
   })
 
@@ -194,14 +195,14 @@ describe('permission-based navigation', () => {
     const nav = await screen.findByRole('navigation', { name: 'Main' })
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
 
-    await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
-    expect(within(nav).getByRole('button', { name: 'Operations' })).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(within(nav).getByRole('button', { name: 'Master Data Center' }))
+    expect(within(nav).getByRole('button', { name: 'Master Data Center' })).toHaveAttribute('aria-expanded', 'true')
     expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
 
     await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
     expect(within(nav).getByRole('link', { name: 'Expenses' })).toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
-    expect(within(nav).getByRole('button', { name: 'Operations' })).toHaveAttribute('aria-expanded', 'false')
+    expect(within(nav).getByRole('button', { name: 'Master Data Center' })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('starts with the group of the current page open', async () => {
@@ -222,7 +223,7 @@ describe('permission-based navigation', () => {
 
     // No Settings link: the role may not view it.
     expect(linkNames(nav)).toEqual(['Dashboard'])
-    expect(await linksByGroup(nav)).toEqual({ Operations: ['Clients', 'Projects'], Finance: ['Expenses'] })
+    expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'], Finance: ['Expenses'] })
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })
 
@@ -235,13 +236,12 @@ describe('permission-based navigation', () => {
     expect(api.find('GET', '/users')).toHaveLength(0)
   })
 
-  it('shows unbuilt modules as in progress, with no data', async () => {
+  it('opens the Reports page itself, not a placeholder', async () => {
     session(ADMIN)
     renderApp('/reports')
 
-    expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument()
-    expect(screen.getByText('Module implementation in progress')).toBeInTheDocument()
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Reports', level: 1 })).toBeInTheDocument()
+    expect(screen.queryByText('Module implementation in progress')).not.toBeInTheDocument()
   })
 })
 
@@ -417,7 +417,7 @@ describe('page search', () => {
     await userEvent.click(await screen.findByRole('combobox', { name: 'Search pages' }))
 
     const options = (await screen.findAllByRole('option')).map((option) => option.querySelector('span.font-semibold')?.textContent)
-    expect(options).toEqual(['Dashboard', 'Clients', 'Projects', 'Expenses', 'My Account'])
+    expect(options).toEqual(['Dashboard', 'Clients', 'Expenses', 'My Account'])
   })
 })
 

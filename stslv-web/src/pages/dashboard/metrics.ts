@@ -85,7 +85,10 @@ export interface MetricGroup {
 const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`
 
 // Each metric belongs to the module that owns its data, and is shown under the
-// same permission that module's own pages and summary require.
+// same permission that module's own pages and summary require. The Projects
+// pages are retired from the web application, so no card links to them; the
+// project amount still waiting for an invoice stays visible beside the AMC one.
+// Active contracts are the Active AMC KPI and are not repeated here.
 export const METRIC_GROUPS: MetricGroup[] = [
   {
     id: 'clients',
@@ -107,33 +110,11 @@ export const METRIC_GROUPS: MetricGroup[] = [
     title: 'AMC',
     metrics: [
       {
-        id: 'amc.activeContracts',
-        label: 'Active Contracts',
-        visible: (canView) => canView('AMC_CONTRACTS'),
-        source: 'AMC Contracts',
-        links: [{ to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' }],
-        read: ({ amc }) => {
-          const contracts = amc?.contracts
-
-          if (!contracts) {
-            return null
-          }
-
-          return {
-            value: formatCount(contracts.active),
-            ...(contracts.activePastValidity > 0 ? { detail: `${formatCount(contracts.activePastValidity)} past validity` } : {}),
-          }
-        },
-      },
-      {
         id: 'amc.visitsDue',
         label: 'Visits Due',
         visible: (canView) => canView('AMC_SCHEDULE') || canView('AMC_EXECUTION'),
         source: 'AMC Schedule',
-        links: [
-          { to: '/amc/execution', label: 'View work list', module: 'AMC_EXECUTION' },
-          { to: '/amc/schedule', label: 'View schedule', module: 'AMC_SCHEDULE' },
-        ],
+        links: [{ to: '/amc/schedule', label: 'View schedule', module: 'AMC_SCHEDULE' }],
         read: ({ amc }) => {
           const visits = amc?.visits
 
@@ -163,52 +144,6 @@ export const METRIC_GROUPS: MetricGroup[] = [
               invoicing.amountRequired.count > 0
                 ? `${plural(invoicing.readyForInvoice.count, 'visit', 'visits')} · ${plural(invoicing.amountRequired.count, 'completed visit needs', 'completed visits need')} an amount`
                 : plural(invoicing.readyForInvoice.count, 'completed visit', 'completed visits'),
-          }
-        },
-      },
-    ],
-  },
-  {
-    id: 'projects',
-    title: 'Projects',
-    metrics: [
-      {
-        id: 'projects.active',
-        label: 'Active Projects',
-        visible: (canView) => canView('PROJECTS'),
-        source: 'Projects',
-        links: [{ to: '/projects', label: 'View projects', module: 'PROJECTS' }],
-        read: ({ projects }) =>
-          projects
-            ? {
-                value: formatCount(projects.counts.active),
-                detail: `${formatCount(projects.counts.new)} new, ${formatCount(projects.counts.inProgress)} in progress`,
-              }
-            : null,
-      },
-      {
-        id: 'projects.readyForInvoice',
-        label: 'Projects Ready for Invoice',
-        visible: (canView) => canView('PROJECTS'),
-        source: 'Projects',
-        links: [
-          { to: '/invoices', label: 'Record invoices', module: 'INVOICES' },
-          { to: '/projects', label: 'View projects', module: 'PROJECTS' },
-        ],
-        attention: true,
-        read: ({ projects, invoices }) => {
-          if (!projects) {
-            return null
-          }
-
-          // A partly invoiced project still has value waiting for an invoice, so it is stated beside the count.
-          const partly = invoices?.projects?.partlyInvoiced.count ?? 0
-
-          return {
-            value: formatCount(projects.counts.readyForInvoice),
-            detail:
-              plural(projects.counts.readyForInvoice, 'completed project', 'completed projects') +
-              (partly > 0 ? ` · ${formatCount(partly)} more partly invoiced` : ''),
           }
         },
       },

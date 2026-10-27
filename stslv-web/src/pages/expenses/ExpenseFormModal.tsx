@@ -10,8 +10,7 @@ import { applyApiErrors } from '../../lib/formErrors'
 import { todayIso } from '../../lib/format'
 import { isMoney, isZeroAmount, MONEY_MESSAGE } from '../../lib/money'
 import { projectLabel, useProjectOptions } from '../../lib/projectOptions'
-import type { Expense, ExpenseCategory, ProjectOption } from '../../lib/projectTypes'
-import type { FixedProject } from '../procurement/ProcurementFormModal'
+import type { Expense, ExpenseCategory, FixedProject, ProjectOption } from '../../lib/projectTypes'
 
 // Mirrors the API's rules so most problems are caught before a request is sent.
 // The API validates again and remains the authority.

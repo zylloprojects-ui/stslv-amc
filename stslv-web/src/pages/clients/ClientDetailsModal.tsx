@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import { Alert, Button, Modal, Spinner, StatusBadge } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
-import type { Client } from '../../lib/types'
+import { Link } from 'react-router-dom'
+import { CLIENT_TYPE_LABELS, type Client } from '../../lib/types'
 import { avatarColors, initialsOf } from './clientAvatarHelpers'
 
 const ICONS = {
@@ -111,6 +112,11 @@ export function ClientDetailsModal({ clientId, canEdit, onEdit, onClose }: Clien
               </span>
             </p>
           )}
+          {client && (
+            <Link to={`/clients/${client.id}`} className="rounded-md px-3 py-2 text-sm font-medium text-blue-700 hover:bg-sky-50 hover:underline">
+              Open client page
+            </Link>
+          )}
           {canEdit && client && (
             <Button variant="secondary" onClick={() => onEdit(client)}>
               Edit
@@ -212,6 +218,11 @@ export function ClientDetailsModal({ clientId, canEdit, onEdit, onClose }: Clien
               <Field icon="pin" label="Address" empty={!client.address}>
                 {client.address ?? NOT_PROVIDED}
               </Field>
+              {(client.clientType || client.vatNumber) && (
+                <Field icon="note" label="Type and VAT">
+                  {[client.clientType ? CLIENT_TYPE_LABELS[client.clientType] : null, client.vatNumber ? `VAT ${client.vatNumber}` : null].filter(Boolean).join(' · ')}
+                </Field>
+              )}
             </dl>
           )}
 

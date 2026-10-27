@@ -350,7 +350,8 @@ describe('source records', () => {
 
     const table = await recordsTable()
 
-    expect(within(table).getByRole('link', { name: 'Open project JOB0102' })).toHaveAttribute('href', '/projects/55')
+    // Projects have no page of their own, so an imported project is named, not linked.
+    expect(within(within(table).getByRole('row', { name: /JOB0102/ })).queryByRole('link')).not.toBeInTheDocument()
     expect(within(within(table).getByRole('row', { name: /JOB0108/ })).queryByRole('link')).not.toBeInTheDocument()
   })
 
@@ -420,7 +421,7 @@ describe('one record', () => {
     expect(within(dialog).getByText(/Jobs\.xlsx · Register · row 6/)).toBeInTheDocument()
     expect(value(section('Invoice reference in the source'), 'Invoice numbers')).toHaveTextContent('9002, 9003')
     expect(within(dialog).getByText('Kept for reference only. No invoice record has been created from it.')).toBeInTheDocument()
-    expect(within(dialog).getByRole('link', { name: 'Open project JOB0102' })).toHaveAttribute('href', '/projects/55')
+    expect(within(dialog).queryByRole('link', { name: /Open project/ })).not.toBeInTheDocument()
   })
 
   it('explains why a record needs review and offers no way to change it', async () => {

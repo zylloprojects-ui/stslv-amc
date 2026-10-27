@@ -70,6 +70,14 @@ export interface ProjectOption {
   status: ProjectStatus
 }
 
+/** A project a form is opened for, so the project picker is not shown. */
+export interface FixedProject {
+  id: string
+  jobNumber: string
+  clientName: string
+  description: string
+}
+
 export interface ProjectDefaults {
   defaultVatRate: string
   nextJobNumber: string

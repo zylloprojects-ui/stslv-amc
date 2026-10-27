@@ -64,6 +64,7 @@ export async function login(email: string, password: string, context: { ip: stri
     entityType: "users",
     entityId: user.id,
     description: `${user.full_name} signed in.`,
+    metadata: { ip: context.ip },
   });
 
   const [roles, permissions] = await Promise.all([loadUserRoles(pool, user.id), loadUserPermissions(pool, user.id)]);

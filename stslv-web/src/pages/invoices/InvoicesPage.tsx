@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
 import { FILTER_INPUT, FILTER_LABEL, InvoiceStateBadge, LoadError, Money, Pager } from '../../components/records'
@@ -64,7 +64,6 @@ export function InvoicesPage() {
   // Invoices are never deleted; changing and cancelling one need the same permission.
   const canEdit = auth.can('INVOICES', 'EDIT')
   const canExport = auth.can('INVOICES', 'EXPORT')
-  const linkProject = auth.can('PROJECTS', 'VIEW')
   const work = pending.data
   const visits = work?.amcVisits ?? null
   const projects = work?.projects ?? null
@@ -238,13 +237,7 @@ export function InvoicesPage() {
                   {projects.items.map((project) => (
                     <tr key={project.id} className={TABLE.row}>
                       <td className={`${TABLE.td} whitespace-nowrap font-medium`}>
-                        {linkProject ? (
-                          <Link to={`/projects/${project.id}`} className="text-blue-700 hover:underline">
-                            {project.jobNumber}
-                          </Link>
-                        ) : (
-                          project.jobNumber
-                        )}
+                        {project.jobNumber}
                         {project.invoiceState === 'PARTLY_INVOICED' && (
                           <div className="mt-1">
                             <InvoiceStateBadge state={project.invoiceState} />
@@ -387,7 +380,6 @@ export function InvoicesPage() {
             <InvoicesTable
               items={data.items}
               showClient
-              linkProject={linkProject}
               canEdit={canEdit}
               onDialog={setDialog}
               startAt={(data.page - 1) * data.pageSize}

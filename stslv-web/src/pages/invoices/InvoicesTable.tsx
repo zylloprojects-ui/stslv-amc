@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { Money } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Badge, Button } from '../../components/ui'
@@ -10,8 +9,6 @@ interface InvoicesTableProps {
   items: Invoice[]
   /** Hidden on a project's own page, where every row belongs to that project's client. */
   showClient: boolean
-  /** Whether a job number links to the project page. */
-  linkProject: boolean
   canEdit: boolean
   onDialog: (dialog: InvoiceDialog) => void
   /** How many rows come before the first one shown (earlier pages), so the serial numbers carry on. */
@@ -22,7 +19,7 @@ export function InvoiceStatusBadge({ status }: { status: Invoice['status'] }) {
   return <Badge tone={status === 'ISSUED' ? 'green' : 'slate'}>{INVOICE_STATUS_LABELS[status]}</Badge>
 }
 
-export function InvoicesTable({ items, showClient, linkProject, canEdit, onDialog, startAt = 0 }: InvoicesTableProps) {
+export function InvoicesTable({ items, showClient, canEdit, onDialog, startAt = 0 }: InvoicesTableProps) {
   return (
     <div className={TABLE.wrapper}>
       <table className={TABLE.table}>
@@ -77,16 +74,7 @@ export function InvoicesTable({ items, showClient, linkProject, canEdit, onDialo
                   <ul className="space-y-1">
                     {invoice.allocations.map((allocation) => (
                       <li key={allocation.id}>
-                        {allocation.project && linkProject ? (
-                          <>
-                            <Link to={`/projects/${allocation.project.id}`} className="font-medium text-blue-700 hover:underline">
-                              {allocation.project.jobNumber}
-                            </Link>{' '}
-                            — {allocation.project.description}
-                          </>
-                        ) : (
-                          allocationLabel(allocation, formatDate)
-                        )}
+                        {allocationLabel(allocation, formatDate)}
                         {invoice.allocations.length > 1 && (
                           <span className="text-slate-500">
                             {' '}

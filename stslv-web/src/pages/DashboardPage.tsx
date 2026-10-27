@@ -1,68 +1,91 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/context'
+import { isAdmin } from '../auth/roles'
 import { usePageTitle } from '../components/hooks'
-import { Alert, Card, EmptyState } from '../components/ui'
-import { NAVIGATION } from '../layout/navigation'
+import { LoadError } from '../components/records'
+import { Alert, Button, Spinner } from '../components/ui'
 import { api, errorMessage } from '../lib/api'
-import { cx, formatCount, formatTime } from '../lib/format'
+import { cx, formatTime } from '../lib/format'
+import { NAVIGATION, navItemVisible } from '../layout/navigation'
 import type { Module } from '../lib/types'
-import { IconTile, type IconName } from './dashboard/icons'
+import { formatDate } from './amc/amcFormat'
+import { DEFAULT_KPI_ORDER } from './dashboard/kpis'
+import { KpiStrip } from './dashboard/KpiStrip'
+import { MaintenanceCalendar } from './dashboard/MaintenanceCalendar'
 import { MetricCard, type MetricState } from './dashboard/MetricCard'
 import { METRIC_GROUPS, type DashboardSummary, type MetricDefinition } from './dashboard/metrics'
-import { DASHBOARD_CARD, DASHBOARD_LABEL } from './dashboard/style'
+import type { OperationsDashboard, Readiness } from './dashboard/operationsTypes'
+import { RecentInvoices } from './dashboard/RecentInvoices'
+import { ExpiringContracts, PaymentTrend, PortfolioStatus, ReadinessChecks, WorkloadChart } from './dashboard/Widgets'
+import { useKpiOrder, useStoredFlag } from './dashboard/dashboardPreferences'
+
+// STSLV has no Security Center or Backup & Restore module; these are the security views it does have.
+const SECURITY_PAGES = ['Login History', 'Audit Log']
 
 const SECTION_HEADING = 'mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#0b3b66]'
 
-// One accent for every section heading: structure, not meaning.
-const SECTION_ACCENTS = ['#1479BD']
-
-const MODULE_ICONS: Record<Module, IconName> = {
-  DASHBOARD: 'pulse',
-  CLIENTS: 'users',
-  AMC_CONTRACTS: 'contract',
-  AMC_SCHEDULE: 'calendar',
-  AMC_EXECUTION: 'execution',
-  PROJECTS: 'project',
-  PROCUREMENT: 'cart',
-  EXPENSES: 'wallet',
-  INVOICES: 'invoice',
-  REPORTS: 'chart',
-  USERS: 'shield',
-  SETTINGS: 'settings',
-  HISTORICAL_DATA: 'contract',
-}
-
-function greeting(date: Date) {
-  const hour = date.getHours()
-
-  return hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
-}
-
-function SectionHeading({ id, accent, children }: { id: string; accent: string; children: string }) {
+function SectionHeading({ id, children }: { id: string; children: string }) {
   return (
     <h2 id={id} className={SECTION_HEADING}>
-      <span className="h-4 w-1 rounded-full" style={{ backgroundColor: accent }} aria-hidden="true" />
+      <span className="h-4 w-1 rounded-full bg-[#1479BD]" aria-hidden="true" />
       {children}
     </h2>
   )
 }
 
+/** A dashboard widget: title, what it measures, an optional link to the module behind it. */
+function Panel({ id, title, description, link, className, children }: { id: string; title: string; description: string; link?: { to: string; label: string } | null; className?: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby={id} className={cx('surface min-w-0 rounded-2xl p-4 sm:p-5', className)}>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 id={id} className="text-base font-semibold text-slate-900">
+            {title}
+          </h2>
+          <p className="text-xs text-slate-600">{description}</p>
+        </div>
+        {link && (
+          <Link to={link.to} className="shrink-0 text-sm font-medium text-[#1479BD] hover:underline">
+            {link.label} →
+          </Link>
+        )}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** The AMC Operations Dashboard. Every figure comes from the API, which leaves out what the user may not see. */
 export function DashboardPage() {
   const auth = useAuth()
-  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
-  const [now] = useState(() => new Date())
+  const userId = auth.user?.id ?? 'anonymous'
+  const admin = isAdmin(auth.user)
+  const canView = (module: Module) => auth.can(module, 'VIEW')
+  const canSchedule = canView('AMC_SCHEDULE')
 
   usePageTitle('Dashboard')
 
-  const canView = (module: Module) => auth.can(module, 'VIEW')
+  const operations = useQuery({ queryKey: ['dashboard', 'operations'], queryFn: () => api.get<OperationsDashboard>('/dashboard/operations') })
+  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
+  const readiness = useQuery({ queryKey: ['dashboard', 'readiness'], queryFn: () => api.get<Readiness>('/dashboard/readiness'), enabled: admin })
 
-  /** Null when the API left the figure out: the card is then not shown at all, never as a zero. */
+  const kpiOrder = useKpiOrder(userId, DEFAULT_KPI_ORDER)
+  const [arranging, setArranging] = useState(false)
+  const [calendarOpen, setCalendarOpen] = useStoredFlag(userId, 'calendar-open', true)
+
+  const data = operations.data
+  const refreshing = operations.isFetching || summary.isFetching
+  const refresh = () => {
+    void operations.refetch()
+    void summary.refetch()
+    if (admin) void readiness.refetch()
+  }
+
+  // The other modules' figures, under the permission each module already requires.
   const stateOf = (metric: MetricDefinition): MetricState | null => {
-    if (!metric.read) {
-      return { kind: 'unavailable' }
-    }
+    if (!metric.read) return { kind: 'unavailable' }
     if (summary.data) {
       const reading = metric.read(summary.data, canView)
 
@@ -71,223 +94,188 @@ export function DashboardPage() {
 
     return summary.isError ? { kind: 'failed' } : { kind: 'loading' }
   }
+  const moreCards = METRIC_GROUPS.flatMap((group) => group.metrics)
+    .filter((metric) => metric.visible(canView))
+    .flatMap((metric) => {
+      const state = stateOf(metric)
 
-  // A user sees a figure only where their role includes it, and only if the API returned it.
-  const groups = METRIC_GROUPS.map((group) => ({
-    ...group,
-    cards: group.metrics
-      .filter((metric) => metric.visible(canView))
-      .flatMap((metric) => {
-        const state = stateOf(metric)
+      return state ? [{ metric, state, link: metric.links?.find((link) => canView(link.module)) ?? null }] : []
+    })
 
-        return state ? [{ metric, state, link: metric.links?.find((link) => canView(link.module)) ?? null }] : []
-      }),
-  })).filter((group) => group.cards.length > 0)
-
-  const pending = groups.flatMap((group) => group.cards).filter((card) => card.state.kind === 'unavailable').length
-
-  // The share of clients that are active, for the ring on that card. Drawn only from what the API returned.
-  const clients = summary.data?.clients
-  const activeShare = clients && clients.active + clients.inactive > 0 ? clients.active / (clients.active + clients.inactive) : clients ? 0 : null
-  const ringOf = (metric: MetricDefinition) => (metric.id === 'clients.active' ? activeShare : undefined)
-
-  // The modules this user may open, straight from the navigation: nothing here is a fixed number or a fixed list.
-  const modules = NAVIGATION.flatMap((section) => section.items).filter((item) => canView(item.module))
-  const rollout = modules.filter((item) => item.module !== 'DASHBOARD')
-  const roleNames = auth.user?.roles.map((role) => role.name).join(', ') || 'No role assigned'
-
-  const quickLinks = [
-    { label: 'Clients', to: '/clients', show: canView('CLIENTS') },
-    { label: 'Users & Access', to: '/admin/users', show: canView('USERS') },
-  ].filter((link) => link.show)
-
-  // The Clients section holds a single card, so it sits beside the workspace cards as one row of three.
-  // Only that section moves: the others keep their place whatever the API returns, so no card jumps when the figures arrive.
-  const lead = groups.find((group) => group.id === 'clients' && group.cards.length === 1) ?? null
-  const sections = groups.filter((group) => group !== lead)
-  // Cards are numbered across the whole page, so their accent colours and entrance follow one sequence.
-  const offsetOf = (position: number) => (lead ? 3 : 2) + sections.slice(0, position).reduce((count, group) => count + group.cards.length, 0)
-
-  const workspace = (
-    <section aria-labelledby="dashboard-workspace" className={cx('flex flex-col', lead && 'xl:col-span-2')}>
-      <SectionHeading id="dashboard-workspace" accent={SECTION_ACCENTS[0] as string}>
-        Workspace
-      </SectionHeading>
-      <div className="grid flex-1 gap-4 sm:grid-cols-2">
-        <div className={DASHBOARD_CARD} style={{ animationDelay: '0.06s' }}>
-          <span className="card-dots" aria-hidden="true" />
-          <IconTile icon="shield" from="#1479BD" to="#4aa3df" className="absolute right-5 top-5" />
-          <p className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')}>Modules Available</p>
-          <p className="mt-3 text-4xl font-bold tabular-nums text-[#0b3b66]">{formatCount(modules.length)}</p>
-          <p className="mt-3 truncate text-sm text-slate-600">{roleNames}</p>
-        </div>
-
-        <div className={DASHBOARD_CARD} style={{ animationDelay: '0.12s' }}>
-          <span className="card-dots" aria-hidden="true" />
-          <IconTile icon="pulse" from="#1479BD" to="#4aa3df" className="absolute right-5 top-5" />
-          <p className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')}>System Status</p>
-          {/* Says only whether the dashboard's own request to the API succeeded. */}
-          <p className="mt-3 flex items-center gap-2 text-xl font-bold text-[#0b3b66]">
-            <span
-              className={cx('h-2.5 w-2.5 rounded-full', summary.isError ? 'bg-red-500' : summary.isSuccess ? 'bg-emerald-500' : 'bg-amber-400')}
-              aria-hidden="true"
-            />
-            {summary.isError ? 'Unreachable' : summary.isSuccess ? 'Connected' : 'Checking…'}
-          </p>
-          <p className="mt-3 text-sm text-slate-600">API and database</p>
-        </div>
-      </div>
-    </section>
+  const online = operations.isSuccess && !operations.isError
+  // The security pages that exist, taken from the navigation so a link is offered only where the page is.
+  const securityLinks = NAVIGATION.flatMap((section) => section.items).filter(
+    (item) => SECURITY_PAGES.includes(item.label) && navItemVisible(item, canView, admin),
   )
 
   return (
     <>
-      <div className="login-rise relative mb-7 overflow-hidden rounded-2xl app-banner shadow-lg shadow-sky-900/10">
-        <div className="flex flex-wrap items-center justify-between gap-6 px-6 py-6 sm:px-8">
+      <div className="login-rise relative mb-6 overflow-hidden rounded-2xl app-banner shadow-lg shadow-sky-900/10">
+        <div className="flex flex-wrap items-center justify-between gap-4 px-6 py-5 sm:px-8">
           <div className="min-w-0">
-            <p className="bn-eyebrow text-xs font-semibold uppercase tracking-[0.2em]">
-              {now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-            </p>
-            <h1 className="bn-strong mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Dashboard</h1>
-            <p className="bn-sub mt-1 break-words text-sm">{`${greeting(now)}, ${auth.user?.fullName ?? ''}.`}</p>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              {quickLinks.map((link) => (
-                <Link key={link.to} to={link.to} className="bn-chip rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors">
-                  {link.label}
-                </Link>
-              ))}
-              <button
-                type="button"
-                onClick={() => void summary.refetch()}
-                disabled={summary.isFetching}
-                aria-busy={summary.isFetching || undefined}
-                className="bn-chip inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className={cx('h-4 w-4', summary.isFetching && 'animate-spin motion-reduce:animate-none')}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  aria-hidden="true"
-                >
-                  <path d="M20 11a8 8 0 0 0-14.3-4.5M4 13a8 8 0 0 0 14.3 4.5M5 3.5v3.5h3.5M19 20.5V17h-3.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                Refresh
-              </button>
-            </div>
+            <p className="bn-eyebrow text-xs font-semibold uppercase tracking-[0.2em]">{data ? formatDate(data.asOf) : 'Smart Technical Service LLC'}</p>
+            <h1 className="bn-strong mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">AMC Operations Dashboard</h1>
+            <p className="bn-sub mt-1 text-sm">Contracts, scheduled maintenance, invoicing and renewals at a glance.</p>
           </div>
-
-          <div className="bn-panel flex items-center gap-4 rounded-xl px-5 py-4">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-white shadow-md">
-              <img src="/stslv-logo.png" alt="" className="h-10 w-10 object-contain" />
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Says only whether the dashboard's own request to the API succeeded. */}
+            <span className="bn-chip inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium" role="status">
+              <span
+                className={cx('h-2.5 w-2.5 rounded-full', operations.isError ? 'bg-red-500' : online ? 'bg-emerald-500' : 'bg-amber-400')}
+                aria-hidden="true"
+              />
+              {operations.isError ? 'System unreachable' : online ? 'System online' : 'Checking…'}
             </span>
-            <div className="leading-tight">
-              <p className="bn-strong text-base font-semibold">Smart Technical Service LLC</p>
-              <p className="bn-sub mt-1 text-xs">STSLEV AMC · Operations Suite</p>
-            </div>
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={refreshing}
+              aria-busy={refreshing || undefined}
+              className="bn-chip rounded-lg px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
+            {auth.can('AMC_CONTRACTS', 'CREATE') && (
+              <Link to="/amc/contracts" className="bn-chip rounded-lg px-3 py-1.5 text-sm font-semibold">
+                + New AMC
+              </Link>
+            )}
           </div>
-        </div>
-        <div className="flex h-[3px]" aria-hidden="true">
-          <span className="flex-1 bg-gradient-to-r from-white/30 via-white/80 to-white/30" />
         </div>
       </div>
 
-      {summary.isError && (
-        <div className="mb-6">
+      {operations.isError && (
+        <div className="mb-5">
           <Alert>
-            The dashboard figures could not be loaded. {errorMessage(summary.error)}{' '}
-            <button type="button" className="font-medium underline" onClick={() => void summary.refetch()}>
+            The dashboard figures could not be loaded. {errorMessage(operations.error)}{' '}
+            <button type="button" className="font-medium underline" onClick={() => void operations.refetch()}>
               Try again
             </button>
           </Alert>
         </div>
       )}
 
-      {lead ? (
-        <div className="mb-8 grid gap-x-4 gap-y-8 xl:grid-cols-3">
-          <section aria-labelledby={`dashboard-${lead.id}`} className="flex flex-col">
-            <SectionHeading id={`dashboard-${lead.id}`} accent={SECTION_ACCENTS[0] as string}>
-              {lead.title}
-            </SectionHeading>
-            <div className="grid flex-1 gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              {lead.cards.map(({ metric, state, link }) => (
-                <MetricCard key={metric.id} metric={metric} state={state} link={link} index={0} ring={ringOf(metric)} />
-              ))}
-            </div>
-          </section>
-          {workspace}
-        </div>
-      ) : (
-        <div className="mb-8">{workspace}</div>
-      )}
-
-      {rollout.length > 0 && (
-        <section aria-labelledby="dashboard-rollout" className="mb-8">
-          <SectionHeading id="dashboard-rollout" accent={SECTION_ACCENTS[0] as string}>
-            Module rollout
-          </SectionHeading>
-          <div className="surface login-rise rounded-2xl p-4 sm:p-5">
-            <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {rollout.map((item) => {
-                const live = !item.pending
-
-                return (
-                  <li
-                    key={item.path}
-                    className={cx(
-                      'flex items-center gap-3 rounded-xl border p-3 transition-colors',
-                      live ? 'border-slate-200 bg-slate-50/70 hover:border-sky-300 hover:bg-sky-50' : 'border-dashed border-slate-300',
-                    )}
-                  >
-                    <IconTile icon={MODULE_ICONS[item.module]} from={live ? '#1479BD' : '#94A3B8'} to={live ? '#4aa3df' : '#CBD5E1'} />
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900">{item.label}</p>
-                      <p className={cx('flex items-center gap-1.5 text-xs font-medium', live ? 'text-emerald-700' : 'text-slate-600')}>
-                        <span className={cx('h-1.5 w-1.5 rounded-full', live ? 'bg-emerald-500' : 'bg-slate-400')} aria-hidden="true" />
-                        {live ? 'Live' : 'Planned'}
-                      </p>
-                    </div>
-                  </li>
-                )
-              })}
-            </ul>
+      <section aria-labelledby="dashboard-kpis" className="mb-7">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <SectionHeading id="dashboard-kpis">Key figures</SectionHeading>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" aria-pressed={arranging} onClick={() => setArranging(!arranging)}>
+              {arranging ? 'Done arranging' : 'Arrange KPIs'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={kpiOrder.reset}>
+              Reset KPI Layout
+            </Button>
           </div>
-        </section>
-      )}
+        </div>
+        {arranging && <p className="mb-2 text-xs text-slate-600">Drag a card, or use its arrow buttons. The order is remembered in this browser for your account.</p>}
+        <KpiStrip data={data} failed={operations.isError} canView={canView} order={kpiOrder.order} arranging={arranging} onReorder={kpiOrder.setOrder} />
+      </section>
 
-      {groups.length === 0 && (
-        <Card className="mb-8 rounded-2xl">
-          <EmptyState
-            title="No figures to show"
-            description="Your role does not include any module that reports to the dashboard. If you need one, ask an administrator to update your role."
+      {operations.isPending && <Spinner label="Loading dashboard" />}
+
+      {data?.schedule && (
+        <Panel
+          id="dashboard-calendar"
+          title="Daily operations — AMC Maintenance Calendar"
+          description={`Today’s scheduled work and the open service obligations ahead. Dates are counted in the server time zone (${data.timeZone}).`}
+          className="mb-6"
+        >
+          <MaintenanceCalendar
+            schedule={data.schedule}
+            asOf={data.asOf}
+            canSchedule={canSchedule}
+            canInvoices={canView('INVOICES')}
+            expanded={calendarOpen}
+            onToggle={setCalendarOpen}
           />
-        </Card>
+        </Panel>
       )}
 
-      {sections.map((group, position) => (
-        <section key={group.id} aria-labelledby={`dashboard-${group.id}`} className="mb-8">
-          <SectionHeading id={`dashboard-${group.id}`} accent={SECTION_ACCENTS[0] as string}>
-            {group.title}
-          </SectionHeading>
+      {data && (data.workload || data.payments) && (
+        <div className="mb-6 grid gap-6 lg:grid-cols-2">
+          {data.workload && (
+            <Panel
+              id="dashboard-workload"
+              title="Upcoming Service Workload"
+              description="Visits planned per month from this month. Cancelled visits and cancelled contracts are not counted."
+              link={canSchedule ? { to: '/amc/schedule', label: 'Schedule' } : null}
+            >
+              <WorkloadChart months={data.workload.months} />
+            </Panel>
+          )}
+          {data.payments && (
+            <Panel
+              id="dashboard-payments"
+              title="Payment Trend"
+              description="Paid invoice value · last six months"
+              link={{ to: '/invoices', label: 'Invoice Tracking' }}
+            >
+              <PaymentTrend payments={data.payments} />
+            </Panel>
+          )}
+        </div>
+      )}
+
+      {data && (data.portfolio || data.expiring) && (
+        <div className="mb-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+          {data.portfolio && (
+            <Panel id="dashboard-portfolio" title="AMC Portfolio Status" description="Contracts by status, all statuses STSLV supports." link={{ to: '/amc/contracts', label: 'AMC Contracts' }}>
+              <PortfolioStatus portfolio={data.portfolio} />
+            </Panel>
+          )}
+          {data.expiring && (
+            <Panel
+              id="dashboard-expiring"
+              title="Expiring Contracts"
+              description={`Active contracts ending in the next ${data.expiring.days} days. Nothing is renewed or expired automatically.`}
+              link={canView('REPORTS') ? { to: '/reports', label: 'Expiry and renewal reports' } : null}
+            >
+              <ExpiringContracts expiring={data.expiring} />
+            </Panel>
+          )}
+        </div>
+      )}
+
+      {canView('INVOICES') && (
+        <Panel id="dashboard-invoices" title="Recent Invoices" description="Latest invoices recorded from Zoho, newest invoice date first." link={{ to: '/invoices', label: 'Invoice Tracking' }} className="mb-6">
+          <RecentInvoices userId={userId} canExport={auth.can('INVOICES', 'EXPORT')} />
+        </Panel>
+      )}
+
+      {moreCards.length > 0 && (
+        <section aria-labelledby="dashboard-more" className="mb-6">
+          <SectionHeading id="dashboard-more">Waiting for an invoice and other figures</SectionHeading>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {group.cards.map(({ metric, state, link }, index) => (
-              <MetricCard key={metric.id} metric={metric} state={state} link={link} index={offsetOf(position) + index} ring={ringOf(metric)} />
+            {moreCards.map(({ metric, state, link }, index) => (
+              <MetricCard key={metric.id} metric={metric} state={state} link={link} index={index} />
             ))}
           </div>
         </section>
-      ))}
+      )}
 
-      {groups.length > 0 && (
+      {admin && (
+        <Panel
+          id="dashboard-readiness"
+          title="Production Readiness"
+          description="Checks the API can verify itself. There is no overall score."
+          className="mb-6"
+        >
+          {readiness.isPending && <Spinner size="sm" label="Checking" />}
+          {readiness.isError && <LoadError error={readiness.error} onRetry={() => void readiness.refetch()} />}
+          {readiness.data && <ReadinessChecks readiness={readiness.data} />}
+          <div className="mt-3 flex flex-wrap gap-4 text-sm">
+            {securityLinks.map((item) => (
+              <Link key={item.path} to={item.path} className="font-medium text-[#1479BD] hover:underline">
+                {item.label} →
+              </Link>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {data && (
         <p className="text-xs text-slate-600">
-          {summary.data && !summary.isError && <>Figures as of {formatTime(summary.dataUpdatedAt)}. </>}
-          {pending > 0 && (
-            <>
-              Figures marked “Not yet available” have no data source yet. They are left empty on purpose, so nothing here can be mistaken
-              for real operational data.
-            </>
-          )}
+          Figures as of {formatTime(operations.dataUpdatedAt)}, for {formatDate(data.asOf)} ({data.timeZone}).
         </p>
       )}
     </>

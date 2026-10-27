@@ -1,10 +1,14 @@
 import { pool } from "../../config/database";
 import { diffFields, logActivity } from "../../shared/activity-log";
+import { listEntityHistory, type HistoryEntry } from "../../shared/entity-history";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
+import { featureUnavailable } from "../../middleware/require-schema";
+import { schemaHas } from "../../shared/schema-features";
 import { assertContractNotInvoiced } from "../invoices/invoice-locks";
+import { applyContractMasters } from "./contract-masters.service";
 import {
   CONTRACT_TRANSITIONS,
   MAX_CONTRACT_YEARS,
@@ -270,66 +274,13 @@ export function getContract(id: string): Promise<Contract> {
   return findContract(pool, id);
 }
 
-export interface ContractHistoryEntry {
-  id: string;
-  /** Dotted verb, for example "amc_contract.updated". */
-  action: string;
-  description: string | null;
-  /** Null for an action not made by a signed-in user (for example the historical import). */
-  user: { id: string; fullName: string } | null;
-  /** Field changes recorded with the entry, as { field: { from, to } }. */
-  changes: Record<string, { from: unknown; to: unknown }> | null;
-  /** The reason given for a status change, if any. */
-  reason: string | null;
-  createdAt: string;
-}
+export type ContractHistoryEntry = HistoryEntry;
 
-/**
- * The activity log entries recorded against one contract, newest first. Only
- * the recorded field changes and reason are returned from the entry's details:
- * other details (for example the ids of removed visits) stay internal.
- */
+/** The activity log entries recorded against one contract, newest first (only field changes and reason from the details). */
 export async function listContractHistory(id: string, query: ContractHistoryQuery) {
   await findContract(pool, id);
 
-  const total = await pool.query<{ count: number }>(
-    "SELECT count(*)::int AS count FROM activity_logs WHERE entity_type = 'amc_contracts' AND entity_id = $1",
-    [id]
-  );
-  const rows = await pool.query<{
-    id: string;
-    action: string;
-    description: string | null;
-    user_id: string | null;
-    full_name: string | null;
-    changes: unknown;
-    reason: string | null;
-    created_at: Date;
-  }>(
-    `SELECT l.id, l.action, l.description, l.user_id, u.full_name,
-            l.metadata -> 'changes' AS changes, l.metadata ->> 'reason' AS reason, l.created_at
-     FROM activity_logs l
-     LEFT JOIN users u ON u.id = l.user_id
-     WHERE l.entity_type = 'amc_contracts' AND l.entity_id = $1
-     ORDER BY l.created_at DESC, l.id DESC
-     LIMIT $2 OFFSET $3`,
-    [id, query.pageSize, (query.page - 1) * query.pageSize]
-  );
-
-  const items: ContractHistoryEntry[] = rows.rows.map((row) => ({
-    id: row.id,
-    action: row.action,
-    description: row.description,
-    user: row.user_id ? { id: row.user_id, fullName: row.full_name ?? "" } : null,
-    changes:
-      row.changes !== null && typeof row.changes === "object" && !Array.isArray(row.changes)
-        ? (row.changes as Record<string, { from: unknown; to: unknown }>)
-        : null,
-    reason: row.reason,
-    createdAt: row.created_at.toISOString(),
-  }));
-
-  return { items, total: total.rows[0]?.count ?? 0, page: query.page, pageSize: query.pageSize };
+  return listEntityHistory("amc_contracts", id, query.page, query.pageSize);
 }
 
 export async function listContracts(query: ListContractsQuery) {
@@ -347,6 +298,11 @@ export async function listContracts(query: ListContractsQuery) {
   if (query.frequency) {
     params.push(query.frequency);
     conditions.push(`c.maintenance_frequency = $${params.length}`);
+  }
+  if (query.salesEngineerId) {
+    await assertEngineerLinksAvailable();
+    params.push(query.salesEngineerId);
+    conditions.push(`c.sales_engineer_id = $${params.length}`);
   }
   if (query.search) {
     params.push(`%${escapeLike(query.search)}%`);
@@ -602,14 +558,72 @@ export function generateSchedule(
 // Create, update, status
 // ---------------------------------------------------------------------------
 
+/** The Sales Engineer link needs migration 0070 on this database. */
+async function assertEngineerLinksAvailable(): Promise<void> {
+  if (!(await schemaHas(["amc_contracts.sales_engineer_id", "sales_engineers"]))) {
+    throw featureUnavailable();
+  }
+}
+
+/** The source of a renewal must exist, be for the same client and have no renewal that is still open. */
+async function assertRenewable(db: Queryable, sourceId: string, clientId: string): Promise<Contract> {
+  const source = await findContract(db, sourceId, true);
+
+  if (source.client.id !== clientId) {
+    throw validationError("A renewal is for the same client as the contract it renews.", [
+      { field: "clientId", message: `Select ${source.client.name}, the client of the contract being renewed.` },
+    ]);
+  }
+
+  const open = await db.query<{ id: string }>(
+    "SELECT id FROM amc_contracts WHERE renewed_from_id = $1 AND status <> 'CANCELLED' LIMIT 1",
+    [sourceId]
+  );
+
+  if (open.rows[0]) {
+    throw conflict("This contract already has a renewal. Open that renewal instead, or cancel it first.");
+  }
+
+  return source;
+}
+
+async function linkRenewal(db: Queryable, auth: AuthContext, source: Contract, renewal: Contract): Promise<void> {
+  await db.query("UPDATE amc_contracts SET renewed_from_id = $1 WHERE id = $2", [source.id, renewal.id]);
+  await logActivity(db, {
+    userId: auth.user.id,
+    action: "amc_contract.renewal_created",
+    module: "AMC_CONTRACTS",
+    entityType: "amc_contracts",
+    entityId: source.id,
+    description: `Renewal created: a new contract (${renewal.validFrom} to ${renewal.validTo}) as ${renewal.status}. This contract is unchanged.`,
+    metadata: { renewalId: renewal.id },
+  });
+  await logActivity(db, {
+    userId: auth.user.id,
+    action: "amc_contract.renewal_of",
+    module: "AMC_CONTRACTS",
+    entityType: "amc_contracts",
+    entityId: renewal.id,
+    description: `Created as the renewal of the contract valid ${source.validFrom} to ${source.validTo}.`,
+    metadata: { renewedFromId: source.id },
+  });
+}
+
 export function createContract(
   auth: AuthContext,
-  input: CreateContractInput
+  input: CreateContractInput,
+  options: { renewedFromId?: string } = {}
 ): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
   assertValidity(input.validFrom, input.validTo);
 
   return withTransaction(async (client) => {
+    if (input.salesEngineerId) {
+      await assertEngineerLinksAvailable();
+    }
     await assertSelectableClient(client, input.clientId);
+
+    // A renewal (migration 0072): the source is locked and checked before the new contract is added.
+    const source = options.renewedFromId ? await assertRenewable(client, options.renewedFromId, input.clientId) : null;
 
     const inserted = await client.query<{ id: string }>(
       `INSERT INTO amc_contracts
@@ -646,6 +660,13 @@ export function createContract(
       description: `AMC contract for "${created.client.name}" (${created.systemDescription}) created as ${created.status}.`,
     });
 
+    if (source) {
+      await linkRenewal(client, auth, source, created);
+    }
+    if (input.salesEngineerId) {
+      await applyContractMasters(client, auth, id, { salesEngineerId: input.salesEngineerId });
+    }
+
     const scheduleChange = created.status === "ACTIVE" ? await syncSchedule(client, auth, created) : null;
 
     return { ...(await findContract(client, id)), scheduleChange };
@@ -658,6 +679,10 @@ export function updateContract(
   input: UpdateContractInput
 ): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
   return withTransaction(async (client) => {
+    if (input.salesEngineerId !== undefined) {
+      await assertEngineerLinksAvailable();
+    }
+
     const before = await findContract(client, id, true);
     const beforeValues = valuesOf(before);
     const afterValues: ContractValues = { ...beforeValues };
@@ -671,8 +696,13 @@ export function updateContract(
 
     const changes = diffFields(beforeValues, afterValues, EDITABLE_FIELDS);
 
+    // The engineer link is recorded on its own (amc_contract.masters_linked); it never touches the schedule.
+    if (input.salesEngineerId !== undefined) {
+      await applyContractMasters(client, auth, id, { salesEngineerId: input.salesEngineerId });
+    }
+
     if (Object.keys(changes).length === 0) {
-      return { ...before, scheduleChange: null };
+      return { ...(await findContract(client, id)), scheduleChange: null };
     }
 
     const validFrom = afterValues.validFrom as string;

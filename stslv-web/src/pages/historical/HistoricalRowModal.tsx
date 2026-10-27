@@ -23,8 +23,9 @@ export function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
 }
 
 // Where each kind of imported record is found in the normal application, and the permission that page needs.
-const DESTINATIONS: Record<ReviewLink['type'], { module: Module; path: (id: string) => string; text: (label: string) => string }> = {
-  project: { module: 'PROJECTS', path: (id) => `/projects/${id}`, text: (label) => `Open project ${label}` },
+// Projects no longer have a page of their own, so an imported project shows its job number only.
+const DESTINATIONS: Record<ReviewLink['type'], { module: Module; path: (id: string) => string; text: (label: string) => string } | null> = {
+  project: null,
   client: { module: 'CLIENTS', path: () => '/clients', text: (label) => `Open Clients (${label})` },
   contract: { module: 'AMC_CONTRACTS', path: () => '/amc/contracts', text: (label) => `Open AMC Contracts (${label})` },
   visit: { module: 'AMC_SCHEDULE', path: () => '/amc/schedule', text: (label) => `Open AMC Schedule (${label})` },
@@ -35,7 +36,7 @@ export function RecordLink({ link }: { link: ReviewLink }) {
   const auth = useAuth()
   const destination = DESTINATIONS[link.type]
 
-  if (!auth.can(destination.module, 'VIEW')) {
+  if (!destination || !auth.can(destination.module, 'VIEW')) {
     return <span>{link.label}</span>
   }
 

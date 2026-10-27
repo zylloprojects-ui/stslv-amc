@@ -124,6 +124,8 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
     const body = (request.body ?? {}) as Record<string, unknown>
 
     if (path === '/auth/me') return ok({ user })
+    // Documents attached to a record: none unless a test says otherwise.
+    if (method === 'GET' && path === '/attachments') return ok([])
     if (method === 'GET' && path === '/clients') return ok({ items: CLIENTS, total: CLIENTS.length, page: 1, pageSize: 100 })
     if (method === 'GET' && path === '/amc/contracts/systems') return ok([...new Set(contracts.map((contract) => contract.systemDescription))])
 
@@ -161,6 +163,8 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
 
       if (!contract) return fail(404, 'NOT_FOUND', 'AMC contract not found.')
       if (method === 'GET' && rest === '') return ok(contract)
+      if (method === 'GET' && rest === '/masters') return ok({ salesEngineer: null, systemType: null })
+      if (method === 'GET' && rest === '/renewals') return ok({ renewedFrom: null, renewals: [] })
       if (method === 'GET' && rest === '/history') {
         const items = options.history?.[contract.id] ?? []
 
@@ -201,7 +205,7 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
         .filter((visit) => (!from || visit.scheduledDate >= from) && (!to || visit.scheduledDate <= to))
         .filter((visit) => !query.get('clientId') || visit.client.id === query.get('clientId'))
         .filter((visit) => !query.get('contractId') || visit.contract.id === query.get('contractId'))
-        .filter((visit) => !query.get('status') || visit.status === query.get('status'))
+        .filter((visit) => !query.get('status') || (query.get('status') ?? '').split(',').includes(visit.status))
         .filter((visit) => !query.get('invoiceEligibility') || visit.invoiceEligibility === query.get('invoiceEligibility'))
 
       return ok({ items, total: items.length, page: 1, pageSize: 50, totals: { visitAmount: '810.000', amountMissingCount: 0 } })

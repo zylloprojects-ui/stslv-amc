@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { AttachmentsPanel } from '../../components/AttachmentsPanel'
 import { LoadError } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
@@ -13,6 +14,8 @@ import { InvoicesTable } from '../invoices/InvoicesTable'
 import { formatDate, formatMoney, isZeroMoney, todayIso } from './amcFormat'
 import { ContractStatusPill, DetailRow, EligibilityPill, OrDash, Pager, Pill, PlannedDate, VisitStatusPill } from './components'
 import { ContractFormModal } from './ContractFormModal'
+import { ContractMastersPanel } from './ContractMastersPanel'
+import { ContractRenewalsPanel } from './ContractRenewalsPanel'
 import { ContractStatusDialog } from './ContractStatusDialog'
 import { validityState } from './contractValidity'
 import {
@@ -37,6 +40,11 @@ const ACTION_LABELS: Record<string, string> = {
   'amc_contract.updated': 'Contract updated',
   'amc_contract.status_changed': 'Status changed',
   'amc_contract.schedule_generated': 'Schedule updated',
+  'amc_contract.masters_linked': 'Master records linked',
+  'attachment.uploaded': 'Document attached',
+  'attachment.version_uploaded': 'Document replaced',
+  'amc_contract.renewal_created': 'Renewal created',
+  'amc_contract.renewal_of': 'Created as a renewal',
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -52,6 +60,8 @@ const FIELD_LABELS: Record<string, string> = {
   defaultVisitAmount: 'Default visit amount',
   notes: 'Notes',
   status: 'Status',
+  salesEngineer: 'Sales engineer',
+  systemType: 'System type',
 }
 
 const MONEY_FIELDS = new Set(['contractValue', 'finalCredit', 'defaultVisitAmount'])
@@ -142,7 +152,7 @@ function HistoryEntry({ entry }: { entry: ContractHistoryEntry }) {
   )
 }
 
-type Dialog = { kind: 'none' } | { kind: 'edit' } | { kind: 'status'; status: ContractStatus }
+type Dialog = { kind: 'none' } | { kind: 'edit' } | { kind: 'renew' } | { kind: 'status'; status: ContractStatus }
 
 function scheduleNote(saved: SavedContract): string {
   const change = saved.scheduleChange
@@ -293,6 +303,7 @@ export function ContractDetailPage() {
                 <OrDash value={contract.notes} />
               </DetailRow>
             </dl>
+            <ContractMastersPanel contractId={contract.id} canEdit={canEdit} />
           </Section>
 
           <Section id="contract-validity-heading" title="Contract validity">
@@ -455,7 +466,6 @@ export function ContractDetailPage() {
                 <InvoicesTable
                   items={invoices.data.items}
                   showClient={false}
-                  linkProject
                   canEdit={auth.can('INVOICES', 'EDIT')}
                   onDialog={setInvoiceDialog}
                 />
@@ -468,6 +478,14 @@ export function ContractDetailPage() {
             )}
           </Section>
         )}
+
+        <Section id="contract-renewals-heading" title="Renewals">
+          <ContractRenewalsPanel contractId={contract.id} canRenew={auth.can('AMC_CONTRACTS', 'CREATE')} onRenew={() => setDialog({ kind: 'renew' })} />
+        </Section>
+
+        <Section id="contract-documents-heading" title="Documents">
+          <AttachmentsPanel entityType="amc_contracts" entityId={contract.id} canUpload={canEdit} />
+        </Section>
 
         <Section id="contract-history-heading" title="Contract history">
           {history.isPending && <Spinner size="sm" label="Loading history" />}
@@ -502,6 +520,18 @@ export function ContractDetailPage() {
           onClose={() => setDialog({ kind: 'none' })}
           onSaved={(saved) => {
             setNotice(`The contract was updated.${scheduleNote(saved)}`)
+            setDialog({ kind: 'none' })
+          }}
+        />
+      )}
+
+      {dialog.kind === 'renew' && (
+        <ContractFormModal
+          contract={null}
+          renewalOf={contract}
+          onClose={() => setDialog({ kind: 'none' })}
+          onSaved={(saved) => {
+            setNotice(`Renewal created as a separate ${CONTRACT_STATUS_LABELS[saved.status].toLowerCase()} contract (${formatDate(saved.validFrom)} to ${formatDate(saved.validTo)}). This contract is unchanged.`)
             setDialog({ kind: 'none' })
           }}
         />

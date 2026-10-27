@@ -203,7 +203,6 @@ export function ExpensesPage() {
             <ExpensesTable
               items={data.items}
               showProject
-              linkProject={auth.can('PROJECTS', 'VIEW')}
               canEdit={canEdit}
               canVoid={canVoid}
               onDialog={setDialog}

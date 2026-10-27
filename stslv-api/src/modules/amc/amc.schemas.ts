@@ -97,6 +97,8 @@ export const createContractSchema = z.strictObject({
   maintenanceFrequency: contractFields.maintenanceFrequency,
   defaultVisitAmount: contractFields.defaultVisitAmount.optional(),
   notes: contractFields.notes.optional(),
+  // Optional link to the Sales Engineer master (migration 0070); null or left out: no link.
+  salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
   // A contract is created as a draft (no schedule) or active (schedule generated at once).
   status: z.enum(["DRAFT", "ACTIVE"]).default("DRAFT"),
 });
@@ -116,6 +118,7 @@ export const updateContractSchema = z
     maintenanceFrequency: contractFields.maintenanceFrequency.optional(),
     defaultVisitAmount: contractFields.defaultVisitAmount.optional(),
     notes: contractFields.notes.optional(),
+    salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), "Provide at least one field to update.");
 
@@ -132,6 +135,8 @@ export const listContractsSchema = z.object({
   status: z.enum([...CONTRACT_STATUSES, "all"]).default("all"),
   clientId: idSchema.optional(),
   frequency: frequency.optional(),
+  // Contracts linked to this Sales Engineer master record (migration 0070).
+  salesEngineerId: idSchema.optional(),
   page,
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
@@ -140,6 +145,32 @@ export const listContractsSchema = z.object({
 export const contractHistorySchema = z.object({
   page,
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+// An optional link: an id, or null to remove the link. Left out: unchanged.
+const optionalLink = (label: string) => z.union([idSchema, z.null()], { error: `Select a valid ${label}.` }).optional();
+
+/** Links a contract to master records (migration 0070). */
+export const contractMastersSchema = z
+  .strictObject({ salesEngineerId: optionalLink("sales engineer"), systemTypeId: optionalLink("system type") })
+  .refine((value) => value.salesEngineerId !== undefined || value.systemTypeId !== undefined, "Provide at least one link to change.");
+
+/** Active contracts whose validity ends within this many days (the user's choice of window). */
+export const expiringContractsSchema = z.object({
+  days: z.coerce.number().int().min(0).max(730).default(90),
+  page,
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+/** Renewals made, newest first. */
+export const renewalHistorySchema = z.object({
+  page,
+  pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+/** Visits per month from the current month forward. */
+export const workloadSchema = z.object({
+  months: z.coerce.number().int().min(1).max(24).default(6),
 });
 
 /** Proposed terms for a schedule preview. Anything left out uses the stored value. */
@@ -225,6 +256,10 @@ export type UpdateContractInput = z.infer<typeof updateContractSchema>;
 export type ChangeContractStatusInput = z.infer<typeof changeContractStatusSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsSchema>;
 export type ContractHistoryQuery = z.infer<typeof contractHistorySchema>;
+export type ContractMastersInput = z.infer<typeof contractMastersSchema>;
+export type ExpiringContractsQuery = z.infer<typeof expiringContractsSchema>;
+export type RenewalHistoryQuery = z.infer<typeof renewalHistorySchema>;
+export type WorkloadQuery = z.infer<typeof workloadSchema>;
 export type SchedulePreviewQuery = z.infer<typeof schedulePreviewSchema>;
 export type ListVisitsQuery = z.infer<typeof listVisitsSchema>;
 export type ExportVisitsQuery = z.infer<typeof exportVisitsSchema>;

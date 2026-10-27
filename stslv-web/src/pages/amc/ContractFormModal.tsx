@@ -60,11 +60,18 @@ const FIELDS = [
 interface ContractFormModalProps {
   /** The contract to edit, or null to add a new one. */
   contract: Contract | null
+  /**
+   * With contract null: add the new contract as the renewal of this one. The
+   * form starts from its details (not its validity); the source stays unchanged.
+   */
+  renewalOf?: Contract
   onClose: () => void
   onSaved: (contract: SavedContract) => void
 }
 
-export function ContractFormModal({ contract, onClose, onSaved }: ContractFormModalProps) {
+export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: ContractFormModalProps) {
+  // The details a new contract starts from: the contract being edited, or the one being renewed (without its validity).
+  const start = contract ?? renewalOf ?? null
   const queryClient = useQueryClient()
   const systemsId = useId()
   const [failure, setFailure] = useState<string | null>(null)
@@ -78,33 +85,67 @@ export function ContractFormModal({ contract, onClose, onSaved }: ContractFormMo
     register,
     handleSubmit,
     setError,
+    setValue,
+    getValues,
     control,
     formState: { errors },
   } = useForm<ContractForm>({
     resolver: zodResolver(contractSchema),
     defaultValues: {
-      clientId: contract?.client.id ?? '',
-      systemDescription: contract?.systemDescription ?? '',
-      responsibleEngineer: contract?.responsibleEngineer ?? '',
+      clientId: start?.client.id ?? '',
+      systemDescription: start?.systemDescription ?? '',
+      responsibleEngineer: start?.responsibleEngineer ?? '',
       validFrom: contract?.validFrom ?? '',
       validTo: contract?.validTo ?? '',
-      maintenanceFrequency: contract?.maintenanceFrequency ?? ('' as ContractForm['maintenanceFrequency']),
-      contractValue: contract?.contractValue ?? '',
-      defaultVisitAmount: contract?.defaultVisitAmount ?? '',
-      finalCredit: contract?.finalCredit ?? '',
-      description: contract?.description ?? '',
+      maintenanceFrequency: start?.maintenanceFrequency ?? ('' as ContractForm['maintenanceFrequency']),
+      contractValue: start?.contractValue ?? '',
+      defaultVisitAmount: start?.defaultVisitAmount ?? '',
+      finalCredit: start?.finalCredit ?? '',
+      description: start?.description ?? '',
       notes: contract?.notes ?? '',
-      status: 'ACTIVE',
+      // A renewal starts as a draft, so nothing is scheduled until it is activated.
+      status: renewalOf ? 'DRAFT' : 'ACTIVE',
     },
   })
+
+  // Optional link to the Sales Engineer master list (migration 0070). Offered only when the list can be read.
+  const engineers = useQuery({
+    queryKey: ['masters', 'sales-engineers', 'options'],
+    queryFn: () => api.get<{ id: string; name: string; employeeNo: string | null }[]>('/masters/sales-engineers/options'),
+    retry: false,
+  })
+  const currentLinks = useQuery({
+    queryKey: ['amc', 'contracts', 'masters', contract?.id],
+    queryFn: () => api.get<{ salesEngineer: { id: string; name: string; isActive: boolean } | null }>(`/amc/contracts/${contract?.id}/masters`),
+    enabled: Boolean(contract) && engineers.isSuccess,
+    retry: false,
+  })
+  const currentEngineer = currentLinks.data?.salesEngineer ?? null
+  const currentEngineerId = currentEngineer?.id ?? ''
+  const [chosenEngineerId, setChosenEngineerId] = useState<string | null>(null)
+  const engineerId = chosenEngineerId ?? currentEngineerId
+  const engineerPicker = engineers.isSuccess && (!contract || currentLinks.isSuccess)
+  const chooseEngineer = (id: string) => {
+    setChosenEngineerId(id)
+    const engineer = engineers.data?.find((item) => item.id === id)
+    // Fills the typed engineer only when it is empty; a typed name is never overwritten.
+    if (engineer && !getValues('responsibleEngineer').trim()) {
+      setValue('responsibleEngineer', engineer.name)
+    }
+  }
 
   const save = useMutation({
     mutationFn: (values: ContractForm) => {
       const { status, ...fields } = values
 
+      // The Sales Engineer master link is sent only when the picker is offered and its value changed.
+      const link = engineerPicker && engineerId !== currentEngineerId ? { salesEngineerId: engineerId || null } : {}
+
       return contract
-        ? api.patch<SavedContract>(`/amc/contracts/${contract.id}`, fields)
-        : api.post<SavedContract>('/amc/contracts', { ...fields, status })
+        ? api.patch<SavedContract>(`/amc/contracts/${contract.id}`, { ...fields, ...link })
+        : renewalOf
+          ? api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, { ...fields, status, ...link })
+          : api.post<SavedContract>('/amc/contracts', { ...fields, status, ...link })
     },
     onSuccess: async (saved) => {
       await Promise.all([
@@ -179,7 +220,7 @@ export function ContractFormModal({ contract, onClose, onSaved }: ContractFormMo
 
   return (
     <Modal
-      title={review ? 'Confirm schedule change' : contract ? 'Edit AMC Contract' : 'Add AMC Contract'}
+      title={review ? 'Confirm schedule change' : contract ? 'Edit AMC Contract' : renewalOf ? 'Renew AMC Contract' : 'Add AMC Contract'}
       onClose={onClose}
       size="xl"
       footer={
@@ -198,7 +239,7 @@ export function ContractFormModal({ contract, onClose, onSaved }: ContractFormMo
               Cancel
             </Button>
             <Button type="submit" form="amc-contract-form" loading={busy} disabled={clients.isPending}>
-              {contract ? 'Save changes' : 'Add contract'}
+              {contract ? 'Save changes' : renewalOf ? 'Create renewal' : 'Add contract'}
             </Button>
           </>
         )
@@ -242,7 +283,13 @@ export function ContractFormModal({ contract, onClose, onSaved }: ContractFormMo
               label="Client"
               required
               error={errors.clientId?.message}
-              hint={options.length === 0 ? 'No active clients. Add the client in Clients first.' : undefined}
+              hint={
+                renewalOf
+                  ? 'A renewal is for the same client as the contract it renews.'
+                  : options.length === 0
+                    ? 'No active clients. Add the client in Clients first.'
+                    : undefined
+              }
               {...register('clientId')}
             >
               <option value="">Select a client…</option>
@@ -270,6 +317,23 @@ export function ContractFormModal({ contract, onClose, onSaved }: ContractFormMo
 
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField label="Responsible engineer" error={errors.responsibleEngineer?.message} {...register('responsibleEngineer')} />
+            {engineerPicker && (
+              <SelectField
+                label="Sales engineer (master list)"
+                hint="Links the contract to the engineer's master record. The typed name above stays as entered."
+                value={engineerId}
+                onChange={(event) => chooseEngineer(event.target.value)}
+              >
+                <option value="">Not linked</option>
+                {currentEngineer && !currentEngineer.isActive && <option value={currentEngineer.id}>{currentEngineer.name} (inactive)</option>}
+                {(engineers.data ?? []).map((engineer) => (
+                  <option key={engineer.id} value={engineer.id}>
+                    {engineer.name}
+                    {engineer.employeeNo ? ` (${engineer.employeeNo})` : ''}
+                  </option>
+                ))}
+              </SelectField>
+            )}
             <SelectField
               label="Maintenance frequency"
               required

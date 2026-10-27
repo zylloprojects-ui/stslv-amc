@@ -139,7 +139,7 @@ describe('navigation between the auth pages', () => {
       })
       const view = renderApp(path)
 
-      expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
       view.unmount()
     }
   })

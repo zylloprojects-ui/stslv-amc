@@ -203,6 +203,8 @@ export function projectsApi(user: SessionUser, seed: Seed = {}, override?: Overr
     const [, resource, id, action] = path.split('/')
 
     if (path === '/auth/me') return ok({ user })
+    // Documents attached to a record: none unless a test says otherwise.
+    if (method === 'GET' && path === '/attachments') return ok([])
 
     if (method === 'GET' && path === '/clients') {
       const items = clients.filter((client) => client.isActive)

@@ -1,13 +1,17 @@
 import { Router } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
+import { requireSchema } from "../../middleware/require-schema";
 import { forbidden } from "../../shared/errors";
 import { sendExport } from "../../shared/export/send";
 import { parseIdParam } from "../../shared/validation";
 import {
   changeContractStatusSchema,
   contractHistorySchema,
+  contractMastersSchema,
   createContractSchema,
+  expiringContractsSchema,
+  renewalHistorySchema,
   exportVisitsSchema,
   listContractsSchema,
   listExecutionSchema,
@@ -17,6 +21,7 @@ import {
   updateContractSchema,
   updateExecutionSchema,
   updateVisitSchema,
+  workloadSchema,
 } from "./amc.schemas";
 import {
   changeContractStatus,
@@ -29,6 +34,9 @@ import {
   previewSchedule,
   updateContract,
 } from "./contracts.service";
+import { getContractMasters, setContractMasters } from "./contract-masters.service";
+import { getContractRenewals, listRenewalHistory } from "./renewals.service";
+import { getWorkload, listExpiringContracts } from "./reports.service";
 import { buildScheduleExport } from "./schedule.export";
 import { canViewSummary, getAmcSummary } from "./summary.service";
 import {
@@ -58,6 +66,23 @@ amcRouter.get("/summary", async (req, res) => {
   res.json({ success: true, data: await getAmcSummary(auth, summarySchema.parse(req.query).upcomingDays) });
 });
 
+// --- Reports (read-only) ------------------------------------------------------
+// Declared before "/contracts/:id" style routes; each needs the module whose data it shows.
+amcRouter.get("/reports/expiring", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await listExpiringContracts(expiringContractsSchema.parse(req.query)) });
+});
+
+// Renewals (migration 0072).
+const renewalsReady = requireSchema(["amc_contracts.renewed_from_id"]);
+
+amcRouter.get("/reports/renewals", authorize("AMC_CONTRACTS", "VIEW"), renewalsReady, async (req, res) => {
+  res.json({ success: true, data: await listRenewalHistory(renewalHistorySchema.parse(req.query)) });
+});
+
+amcRouter.get("/reports/workload", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getWorkload(workloadSchema.parse(req.query)) });
+});
+
 // --- Contracts ---------------------------------------------------------------
 amcRouter.get("/contracts", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
   res.json({ success: true, data: await listContracts(listContractsSchema.parse(req.query)) });
@@ -69,6 +94,30 @@ amcRouter.get("/contracts/systems", authorize("AMC_CONTRACTS", "VIEW"), async (_
 
 amcRouter.get("/contracts/:id", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
   res.json({ success: true, data: await getContract(parseIdParam(req.params.id)) });
+});
+
+// The contract's optional links to master records (migration 0070).
+const mastersReady = requireSchema(["sales_engineers", "system_types"]);
+
+amcRouter.get("/contracts/:id/masters", authorize("AMC_CONTRACTS", "VIEW"), mastersReady, async (req, res) => {
+  res.json({ success: true, data: await getContractMasters(parseIdParam(req.params.id)) });
+});
+
+amcRouter.put("/contracts/:id/masters", authorize("AMC_CONTRACTS", "EDIT"), mastersReady, async (req, res) => {
+  const links = contractMastersSchema.parse(req.body);
+
+  res.json({ success: true, data: await setContractMasters(requireAuth(req), parseIdParam(req.params.id), links) });
+});
+
+amcRouter.get("/contracts/:id/renewals", authorize("AMC_CONTRACTS", "VIEW"), renewalsReady, async (req, res) => {
+  res.json({ success: true, data: await getContractRenewals(parseIdParam(req.params.id)) });
+});
+
+// A renewal is a new contract (same fields and checks as adding one), linked to this contract, which stays unchanged.
+amcRouter.post("/contracts/:id/renewals", authorize("AMC_CONTRACTS", "CREATE"), renewalsReady, async (req, res) => {
+  const renewal = await createContract(requireAuth(req), createContractSchema.parse(req.body), { renewedFromId: parseIdParam(req.params.id) });
+
+  res.status(201).json({ success: true, data: renewal });
 });
 
 // Read-only: the activity recorded against one contract (the contract page's history).

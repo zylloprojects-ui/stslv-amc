@@ -3,8 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import type { BillableProject, BillableVisit, BillableWork, Invoice } from '../lib/invoiceTypes'
 import type { SessionUser } from '../lib/types'
-import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
-import { makeProject, projectsApi } from './projectsApi'
+import { fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
 // Invoice Tracking against a stand-in for the API. Every figure shown must be
 // one the API returned; the only arithmetic on the screen is the exact check
@@ -188,7 +187,7 @@ describe('invoice tracking page', () => {
     // Two bases, two figures: the AMC and project amounts are never added together.
     expect(screen.getByTestId('pending-projects')).toHaveTextContent('Projects: 2 · 849.750 (not yet invoiced, excluding VAT)')
 
-    const job = within(within(projects).getByRole('link', { name: 'GPSA0001' }).closest('tr') as HTMLElement)
+    const job = within(within(projects).getByText('GPSA0001').closest('tr') as HTMLElement)
     expect(job.getByText('Partly invoiced')).toBeInTheDocument()
     expect(job.getByText('1,000.000')).toBeInTheDocument()
     expect(job.getByText('400.250')).toBeInTheDocument()
@@ -206,7 +205,8 @@ describe('invoice tracking page', () => {
     expect(rows).toHaveLength(2)
     expect(issued.getByText('3201')).toBeInTheDocument()
     expect(issued.getByText('15 Sept 2026')).toBeInTheDocument()
-    expect(issued.getByRole('link', { name: 'GPSA0001' })).toHaveAttribute('href', '/projects/100')
+    expect(issued.getByText(/^GPSA0001 — /)).toBeInTheDocument()
+    expect(issued.queryByRole('link', { name: /GPSA0001/ })).not.toBeInTheDocument()
     expect(issued.getByText('400.250')).toBeInTheDocument()
     expect(issued.getByText('20.013')).toBeInTheDocument()
     expect(issued.getByText('420.263')).toBeInTheDocument()
@@ -471,53 +471,6 @@ describe('invoice permissions', () => {
     renderApp('/invoices')
 
     expect(await screen.findByText('Completed work is listed for roles that may also view the AMC Schedule or Projects.')).toBeInTheDocument()
-  })
-})
-
-describe('invoices on the project page', () => {
-  const COMPLETED = makeProject({ status: 'COMPLETED', completedDate: '2026-09-10', invoicedValue: '400.250', uninvoicedValue: '599.750' })
-  const partly = (request: MockRequest) => {
-    if (request.method === 'GET' && request.path === '/projects/100') {
-      return ok({ ...COMPLETED, allowedStatuses: ['IN_PROGRESS'], invoiceState: 'PARTLY_INVOICED', readyForInvoice: false })
-    }
-    if (request.method === 'GET' && request.path === '/invoices') {
-      return ok({ items: [ISSUED], total: 1, page: 1, pageSize: 50, totals: { amountExclVat: '400.250', vatAmount: '20.013', totalAmount: '420.263' } })
-    }
-    if (request.method === 'GET' && request.path === '/invoices/billable') {
-      return ok({ amcVisits: { items: [], pendingCount: 0, pendingAmount: '0.000' }, projects: { items: [JOB], pendingCount: 1, pendingValue: '599.750' } })
-    }
-
-    return undefined
-  }
-
-  it('shows the invoices of the project and what is not yet invoiced, as the API reports them', async () => {
-    const api = projectsApi(ADMIN, { projects: [COMPLETED] }, partly)
-    renderApp('/projects/100')
-
-    expect(await screen.findByText('Partly invoiced.')).toBeInTheDocument()
-    const summary = screen.getByLabelText('Financial summary')
-    expect(within(summary).getByText('Invoiced').nextElementSibling).toHaveTextContent('400.250')
-    expect(within(summary).getByText('Not yet invoiced').nextElementSibling).toHaveTextContent('599.750')
-
-    const table = await invoicesTable()
-    expect(within(table).getByText('3201')).toBeInTheDocument()
-    expect(api.find('GET', '/invoices')[0]?.query.get('projectId')).toBe('100')
-    expect(screen.getByRole('link', { name: 'Open in Invoice Tracking' })).toHaveAttribute('href', '/invoices?projectId=100')
-
-    // Recording from the project offers the part of the job value not yet invoiced.
-    await userEvent.click(screen.getByRole('button', { name: 'Record invoice' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Record Invoice' })
-    expect(await within(dialog).findByRole('checkbox', { name: /GPSA0001/ })).toBeChecked()
-    expect(within(dialog).getByLabelText(/^Allocation for GPSA0001/)).toHaveValue('599.750')
-  })
-
-  it('does not show invoices to a user without the Invoices permission', async () => {
-    const api = projectsApi(NO_INVOICES, { projects: [COMPLETED] }, partly)
-    renderApp('/projects/100')
-
-    expect(await screen.findByText('Partly invoiced.')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Invoices' })).not.toBeInTheDocument()
-    expect(api.find('GET', '/invoices')).toHaveLength(0)
   })
 })
 

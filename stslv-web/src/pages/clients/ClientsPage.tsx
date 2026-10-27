@@ -6,12 +6,22 @@ import { Alert, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, StatusBa
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { formatDate } from '../../lib/format'
-import type { Client, Paged } from '../../lib/types'
+import { Link } from 'react-router-dom'
+import { CLIENT_TYPE_LABELS, type Client, type ClientFeatures, type Paged } from '../../lib/types'
 import { ClientAvatar } from './clientAvatar'
 import { ClientDetailsModal } from './ClientDetailsModal'
 import { ClientFormModal } from './ClientFormModal'
 
 type StatusFilter = 'active' | 'inactive' | 'all'
+
+// The list's sort choices, as the API's sort and direction.
+const SORTS: Record<string, { label: string; sort: string; direction: 'asc' | 'desc' }> = {
+  'name-asc': { label: 'Name (A–Z)', sort: 'name', direction: 'asc' },
+  'name-desc': { label: 'Name (Z–A)', sort: 'name', direction: 'desc' },
+  'created-desc': { label: 'Newest first', sort: 'createdAt', direction: 'desc' },
+  'created-asc': { label: 'Oldest first', sort: 'createdAt', direction: 'asc' },
+  'updated-desc': { label: 'Recently updated', sort: 'updatedAt', direction: 'desc' },
+}
 
 const PAGE_SIZE = 25
 
@@ -95,7 +105,14 @@ export function ClientsPage() {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<StatusFilter>('active')
+  const [clientType, setClientType] = useState('')
+  const [sortKey, setSortKey] = useState('name-asc')
   const [page, setPage] = useState(1)
+  const typeId = useId()
+  const sortId = useId()
+  // Client type and VAT number need migration 0074; without it they are not shown.
+  const features = useQuery({ queryKey: ['clients', 'features'], queryFn: () => api.get<ClientFeatures>('/clients/features'), staleTime: 60_000 })
+  const withDetails = features.data?.clientDetails === true
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -110,11 +127,15 @@ export function ClientsPage() {
   }, [searchInput])
 
   const clients = useQuery({
-    queryKey: ['clients', 'list', { search, status, page }],
+    queryKey: ['clients', 'list', { search, status, clientType, sortKey, page }],
     queryFn: () => {
-      const params = new URLSearchParams({ status, page: String(page), pageSize: String(PAGE_SIZE) })
+      const order = SORTS[sortKey] ?? SORTS['name-asc']
+      const params = new URLSearchParams({ status, page: String(page), pageSize: String(PAGE_SIZE), sort: order?.sort ?? 'name', direction: order?.direction ?? 'asc' })
       if (search) {
         params.set('search', search)
+      }
+      if (clientType) {
+        params.set('clientType', clientType)
       }
       return api.get<Paged<Client>>(`/clients?${params.toString()}`)
     },
@@ -143,7 +164,7 @@ export function ClientsPage() {
   const canDeactivate = auth.can('CLIENTS', 'DELETE')
 
   const data = clients.data
-  const filtered = search !== '' || status !== 'active'
+  const filtered = search !== '' || status !== 'active' || clientType !== ''
 
   return (
     <>
@@ -188,7 +209,7 @@ export function ClientsPage() {
                 type="search"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Name, contact person, email or phone"
+                placeholder={withDetails ? 'Name, contact, email, phone or VAT' : 'Name, contact person, email or phone'}
                 className={`block w-full py-2.5 pl-10 pr-3 placeholder:text-slate-500 ${FIELD}`}
               />
             </div>
@@ -209,6 +230,46 @@ export function ClientsPage() {
               <option value="active">Active</option>
               <option value="inactive">Inactive</option>
               <option value="all">All</option>
+            </select>
+          </div>
+          {withDetails && (
+            <div>
+              <label htmlFor={typeId} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+                Type
+              </label>
+              <select
+                id={typeId}
+                value={clientType}
+                onChange={(event) => {
+                  setClientType(event.target.value)
+                  setPage(1)
+                }}
+                className={`block px-3 py-2.5 ${FIELD}`}
+              >
+                <option value="">All types</option>
+                <option value="COMPANY">{CLIENT_TYPE_LABELS.COMPANY}</option>
+                <option value="INDIVIDUAL">{CLIENT_TYPE_LABELS.INDIVIDUAL}</option>
+              </select>
+            </div>
+          )}
+          <div>
+            <label htmlFor={sortId} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+              Sort
+            </label>
+            <select
+              id={sortId}
+              value={sortKey}
+              onChange={(event) => {
+                setSortKey(event.target.value)
+                setPage(1)
+              }}
+              className={`block px-3 py-2.5 ${FIELD}`}
+            >
+              {Object.entries(SORTS).map(([key, option]) => (
+                <option key={key} value={key}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
           </div>
@@ -252,6 +313,11 @@ export function ClientsPage() {
                     <th scope="col" className={`${TABLE.th} pl-5`}>
                       Client
                     </th>
+                    {withDetails && (
+                      <th scope="col" className={TABLE.th}>
+                        Type and VAT
+                      </th>
+                    )}
                     <th scope="col" className={TABLE.th}>
                       Contact details
                     </th>
@@ -271,11 +337,22 @@ export function ClientsPage() {
                         <div className="flex items-center gap-3.5">
                           <ClientAvatar name={client.name} />
                           <div className="min-w-0">
-                            <span className={`block max-w-64 break-words text-sm font-semibold leading-snug ${client.isActive ? 'text-slate-900' : 'text-slate-500'}`}>{client.name}</span>
+                            <Link
+                              to={`/clients/${client.id}`}
+                              className={`block max-w-64 break-words text-sm font-semibold leading-snug hover:text-[#1479BD] hover:underline ${client.isActive ? 'text-slate-900' : 'text-slate-500'}`}
+                            >
+                              {client.name}
+                            </Link>
                             <span className="mt-0.5 block text-xs text-slate-500">Added {formatDate(client.createdAt.slice(0, 10))}</span>
                           </div>
                         </div>
                       </td>
+                      {withDetails && (
+                        <td className={`${TABLE.td} whitespace-nowrap`}>
+                          <span className="block text-sm text-slate-900">{client.clientType ? CLIENT_TYPE_LABELS[client.clientType] : '—'}</span>
+                          <span className="block text-xs text-slate-500">{client.vatNumber ? `VAT ${client.vatNumber}` : 'No VAT number'}</span>
+                        </td>
+                      )}
                       {/* Person, phone and email in one cell, as small pills. A client with none of them offers to add them. */}
                       <td className={`${TABLE.td} min-w-52 py-3`}>
                         {client.contactPerson || client.phone || client.email ? (
