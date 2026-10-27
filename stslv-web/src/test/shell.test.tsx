@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Alert, Button, Modal } from '../components/ui'
 import { formatCount, initialsOf } from '../lib/format'
 import { ACCOUNTANT, ADMIN, makeClient, mockApi, ok, renderApp, signIn } from './helpers'
@@ -34,7 +34,7 @@ describe('application shell', () => {
     session(ADMIN)
     renderApp('/dashboard')
 
-    await screen.findByRole('heading', { name: 'Dashboard' })
+    await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
     expect(document.title).toBe('Dashboard · STSLEV AMC')
 
     const nav = screen.getByRole('navigation', { name: 'Main' })
@@ -68,11 +68,19 @@ describe('application shell', () => {
     renderApp('/dashboard')
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
-    await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
+    await userEvent.click(within(nav).getByRole('button', { name: 'Master Data Center pages' }))
     await userEvent.click(within(nav).getByRole('link', { name: 'Clients' }))
 
     await screen.findByRole('heading', { name: 'Clients' })
     expect(screen.getByRole('main')).toHaveFocus()
+  })
+
+  it('does not repeat the page name or its section in the header', async () => {
+    session(ADMIN)
+    renderApp('/clients')
+
+    await screen.findByRole('heading', { name: 'Clients' })
+    expect(screen.getByRole('banner')).not.toHaveTextContent(/Operations|Clients/)
   })
 
   it('marks the current page in the navigation', async () => {
@@ -83,6 +91,32 @@ describe('application shell', () => {
 
     expect(within(nav).getByRole('link', { name: 'Clients' })).toHaveAttribute('aria-current', 'page')
     expect(within(nav).getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current')
+  })
+})
+
+describe('parts that are not shown yet', () => {
+  it('leaves Departments out of Settings, and opens the profile when it is asked for by address', async () => {
+    session(ADMIN)
+    renderApp('/settings?section=departments')
+
+    const sections = await screen.findByRole('navigation', { name: 'Settings sections' })
+
+    expect(within(sections).getByText('Holidays')).toBeInTheDocument()
+    expect(within(sections).queryByText('Departments')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Departments' })).not.toBeInTheDocument()
+  })
+
+  it('has the loader preview on a development server only', async () => {
+    session(ADMIN)
+    vi.stubEnv('DEV', false)
+
+    try {
+      renderApp('/loader-preview')
+
+      expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 
@@ -152,11 +186,11 @@ describe('mobile menu', () => {
         .map((link) => link.textContent)
 
     // One group is open at a time; the role has no Administration group and no Settings link.
-    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Operations', 'Finance'])
+    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Master Data Center', 'Finance'])
     await userEvent.click(within(menu).getByRole('button', { name: 'Finance' }))
-    expect(links()).toEqual(['Dashboard', 'Expenses'])
-    await userEvent.click(within(menu).getByRole('button', { name: 'Operations' }))
-    expect(links()).toEqual(['Dashboard', 'Clients', 'Projects'])
+    expect(links()).toEqual(['Dashboard', 'Master Data Center', 'Expenses'])
+    await userEvent.click(within(menu).getByRole('button', { name: 'Master Data Center pages' }))
+    expect(links()).toEqual(['Dashboard', 'Master Data Center', 'Clients'])
 
     await userEvent.click(within(menu).getByRole('link', { name: 'Clients' }))
 

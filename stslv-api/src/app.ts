@@ -3,12 +3,17 @@ import cors from "cors";
 import { checkDatabaseHealth } from "./config/database";
 import { env } from "./config/env";
 import { amcRouter } from "./modules/amc/amc.routes";
+import { attachmentsRouter } from "./modules/attachments/attachments.routes";
+import { auditRouter } from "./modules/audit/audit.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { clientsRouter } from "./modules/clients/clients.routes";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
 import { expensesRouter } from "./modules/expenses/expenses.routes";
 import { historicalDataRouter } from "./modules/historical-data/historical-data.routes";
 import { holidaysRouter } from "./modules/holidays/holidays.routes";
+import { invoicesRouter } from "./modules/invoices/invoices.routes";
+import { mastersRouter } from "./modules/masters/masters.routes";
+import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
 import { rolesRouter } from "./modules/roles/roles.routes";
@@ -24,8 +29,15 @@ export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
+  // Behind a hosting platform's proxy the caller's address arrives in X-Forwarded-For.
+  // Only the configured number of proxies is trusted (TRUST_PROXY in .env), so a
+  // caller cannot pick its own address and slip past the rate limit.
+  if (env.trustProxyHops > 0) {
+    app.set("trust proxy", env.trustProxyHops);
+  }
   // Only the configured web origins may call the API from a browser (CORS_ORIGIN in .env).
-  app.use(cors({ origin: env.corsOrigins }));
+  // Content-Disposition carries the file name of an export; a browser on another origin may read it only when it is exposed.
+  app.use(cors({ origin: env.corsOrigins, exposedHeaders: ["Content-Disposition"] }));
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {
@@ -64,8 +76,13 @@ export function createApp() {
   app.use("/api/projects", projectsRouter);
   app.use("/api/procurement", procurementRouter);
   app.use("/api/expenses", expensesRouter);
+  app.use("/api/invoices", invoicesRouter);
   app.use("/api/historical-data", historicalDataRouter);
   app.use("/api/holidays", holidaysRouter);
+  app.use("/api/audit", auditRouter);
+  app.use("/api/masters", mastersRouter);
+  app.use("/api/attachments", attachmentsRouter);
+  app.use("/api/notifications", notificationsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

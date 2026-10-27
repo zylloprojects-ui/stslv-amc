@@ -2,7 +2,8 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type R
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { cx } from '../lib/format'
-import { NAVIGATION } from './navigation'
+import { isAdmin } from '../auth/roles'
+import { NAVIGATION, navItemVisible } from './navigation'
 
 interface Destination {
   label: string
@@ -15,6 +16,16 @@ const GROUP_STYLE: Record<string, { from: string; to: string; icon: ReactNode }>
     from: '#1B8AD3',
     to: '#00A6C8',
     icon: <path d="M4 12 12 4l8 8M6 10v9h12v-9" strokeLinecap="round" strokeLinejoin="round" />,
+  },
+  'Master Data Center': {
+    from: '#0E7C86',
+    to: '#2DB7A3',
+    icon: (
+      <>
+        <ellipse cx="12" cy="6" rx="7" ry="2.8" />
+        <path d="M5 6v6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6M5 12v6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8v-6" />
+      </>
+    ),
   },
   Operations: {
     from: '#00A6C8',
@@ -80,9 +91,13 @@ export function HeaderSearch() {
 
   // Only pages the signed-in user may view are offered; the API still enforces access.
   const destinations = useMemo<Destination[]>(() => {
-    const pages = NAVIGATION.flatMap((section) =>
-      section.items.filter((item) => auth.can(item.module, 'VIEW')).map((item) => ({ label: item.label, path: item.path, group: section.title ?? 'General' })),
-    )
+    const pages = NAVIGATION.flatMap((section) => {
+      const items = section.items.filter((item) => navItemVisible(item, auth.can, isAdmin(auth.user))).map((item) => ({ label: item.label, path: item.path, group: section.title ?? 'General' }))
+      // A group's landing page is offered when any of its pages is.
+      const landing = section.path && section.title && items.length > 0 ? [{ label: section.title, path: section.path, group: section.title }] : []
+
+      return [...landing, ...items]
+    })
 
     return [...pages, { label: 'My Account', path: '/account', group: 'Account' }]
   }, [auth])

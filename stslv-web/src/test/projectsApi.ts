@@ -61,6 +61,8 @@ export function makeProject(overrides: Partial<Project> = {}): Project {
     allowedStatuses: TRANSITIONS.NEW,
     invoiceState: 'NOT_READY',
     readyForInvoice: false,
+    invoicedValue: '0.000',
+    uninvoicedValue: '1000.000',
     trackedExpenses: '0.000',
     operationalJobMargin: '1000.000',
     budgetRemaining: null,
@@ -201,6 +203,8 @@ export function projectsApi(user: SessionUser, seed: Seed = {}, override?: Overr
     const [, resource, id, action] = path.split('/')
 
     if (path === '/auth/me') return ok({ user })
+    // Documents attached to a record: none unless a test says otherwise.
+    if (method === 'GET' && path === '/attachments') return ok([])
 
     if (method === 'GET' && path === '/clients') {
       const items = clients.filter((client) => client.isActive)

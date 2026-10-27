@@ -7,6 +7,58 @@
 
 This document records where each dashboard figure comes from, who may see it, what the shared UI offers to every module, and what is left to do.
 
+## 0. AMC Operations Dashboard (2026-10-27)
+
+The dashboard page (`/dashboard`) is now the **AMC Operations Dashboard**. It added no migration and no table. Functional guidance: reference specification `09-dashboard-kpis-calculations.md` (functional only; no code, records or styling taken).
+
+### 0.1 Endpoints
+
+| Endpoint | Permission | Returns |
+|---|---|---|
+| `GET /api/dashboard/operations` | `DASHBOARD:VIEW`; each section under its module's permission (below), null otherwise | KPIs, portfolio, expiring, workload, today's work, payment availability |
+| `GET /api/dashboard/calendar?month=YYYY-MM` | `DASHBOARD:VIEW` and (`AMC_SCHEDULE:VIEW` or `AMC_EXECUTION:VIEW`) | visit counts per day (total, completed, open, overdue) |
+| `GET /api/dashboard/readiness` | `DASHBOARD:VIEW` and the built-in Admin role | individual verified checks, no score |
+| `GET /api/dashboard/summary` | unchanged | the module figures shown under "Waiting for an invoice and other figures" |
+
+Reused without change: `GET /api/amc/visits` (a day's services), `GET /api/amc/visits/:id` (service details), `GET /api/invoices` (recent invoices, invoice numbers of a visit), `GET /api/invoices/export` (Excel/PDF, needs `INVOICES:EXPORT`).
+
+Code: `stslv-api/src/modules/dashboard/operations.service.ts`, `readiness.service.ts`; web `stslv-web/src/pages/DashboardPage.tsx` and `pages/dashboard/` (`kpis.ts`, `KpiStrip.tsx`, `MaintenanceCalendar.tsx`, `Widgets.tsx`, `RecentInvoices.tsx`, `dashboardPreferences.ts`).
+
+### 0.2 Calculation rules
+
+"Today" and "this month" are PostgreSQL `current_date`, the same date every module uses; the server time zone is returned and shown on the page (local database: Asia/Calcutta; the business time zone is still an open decision).
+
+| KPI / widget | Permission | Rule |
+|---|---|---|
+| Active AMC | `AMC_CONTRACTS:VIEW` | contracts with status `ACTIVE` (past-validity ones stated beside it) |
+| Active AMC Value | `AMC_CONTRACTS:VIEW` | `sum(contract_value)` of active contracts, numeric(16,3). **Not annualised**; labelled so. |
+| Total Final Credit | `AMC_CONTRACTS:VIEW` | `sum(final_credit)` of active contracts as entered, with how many have a figure. Meaning unconfirmed (Q1); never called revenue or collected. |
+| Services This Month | `AMC_SCHEDULE:VIEW` or `AMC_EXECUTION:VIEW` | visits planned this calendar month, not cancelled, not historical, on a contract that is not cancelled. Same rule as the workload report, so it equals the first workload bar. |
+| Unpaid Invoices, Paid This Month, Payment Trend | `INVOICES:VIEW` | **Not available.** Invoices are `ISSUED`/`CANCELLED` only (0060); there is no paid date or paid amount. Nothing is derived from an invoice number or invoice date. |
+| Expiring ≤45 Days | `AMC_CONTRACTS:VIEW` | active contracts with `valid_to` from today to today + 45, both ends included, each contract counted once; contracts with a renewal that is not cancelled are stated beside it (needs 0072, otherwise null) |
+| Expiring Contracts (widget) | `AMC_CONTRACTS:VIEW` | active contracts with `valid_to` ≤ today + 90 (past-validity ones first, flagged), first 10 with the total; renewal link when 0072 is applied |
+| AMC Portfolio Status | `AMC_CONTRACTS:VIEW` | count per status for all four statuses; percentage to one decimal, rounded half up with integer arithmetic; null when there are no contracts |
+| Upcoming Service Workload | schedule or execution view | `getWorkload` of the AMC reports, 6 months from this month |
+| Today / Next 7 days | schedule or execution view | counted visits planned today; open visits planned in the next 7 days; first 10 of each with totals; no amounts |
+| Service details | `AMC_SCHEDULE:VIEW` (amount); invoice no. needs `INVOICES:VIEW` | the stored visit; "AMC reference" is the contract record number (STSLV has no contract number); payment status "Not tracked" |
+| Production Readiness | built-in Admin | API, database, pending migrations (files vs `schema_migrations`), backup (not recorded by STSLV: shown as not available), CORS origins, sign-in limits, failed sign-ins in 24 h |
+
+Nothing on the dashboard changes a contract or visit status.
+
+### 0.3 Preferences
+
+KPI order, calendar open/closed and hidden Recent Invoices columns are kept in this browser's `localStorage`, per signed-in user (`stslev.dashboard.*.<userId>`), like the other display preferences. They do not follow the user to another browser; no table was added. "Reset KPI Layout" restores the default order.
+
+### 0.4 Demo data
+
+`stslv-api/src/scripts/seed-dashboard-demo.ts` creates clearly fictional records ("DEMO –" clients, "DEMO-INV-" invoice) through the normal services. Without `--insert-demo` it writes nothing; it does nothing if the demo clients already exist. It has only been run on `stslv_amc_dev_projects`, schema `stslv_dashboard_demo`. Do not run it on `stslv_amc_dev` without approval.
+
+### 0.5 Open points
+
+Payment tracking (paid date, paid amount) does not exist; currency label (OMR) not confirmed, so amounts carry none; Final Credit meaning (Q1); business time zone; whether contracts with an open renewal should leave the expiry KPI; no Security Center or Backup & Restore module exists (the readiness panel links to Login History and Audit Log instead).
+
+The sections below describe the earlier module-figure cards, which remain on the page under "Waiting for an invoice and other figures" (Active Contracts moved to the KPI strip; the Projects cards and links were removed with the Projects pages).
+
 ## 1. Dashboard
 
 ### 1.1 What it shows
@@ -22,6 +74,7 @@ Every figure is read from `GET /api/dashboard/summary`. The dashboard module cal
 | Projects | Active Projects | `projects.counts.active` (`new`, `inProgress`) | Projects that are `NEW` or `IN_PROGRESS`. |
 | Projects | Projects Ready for Invoice | `projects.counts.readyForInvoice` | `v_project_financials`: completed projects with a job value above zero. |
 | Finance | Tracked Expenses | `projects.costs.trackedExpenses` (`trackedExpensesOnCancelledProjects`) | Expenses recorded here and not voided, cancelled projects left out. |
+| Finance | Invoices Recorded | `invoices.issued.count` (`issued.amountExclVat`, `cancelled.count`) | Active invoices recorded in Invoice Tracking; cancelled invoices are not counted. |
 | Finance | Ready-for-Invoice Value | `amc.invoicing.readyForInvoice.amount` and `projects.values.readyForInvoiceValue` | Two separate amounts. See section 1.4. |
 
 No operational figure is hard-coded anywhere in the web application. A card shows a number only when the API returned it.
@@ -51,7 +104,9 @@ The API is the authority. A section the user may not see is returned as `null`.
 | Active Projects, Projects Ready for Invoice, and its value | `PROJECTS:VIEW` |
 | Tracked Expenses | `PROJECTS:VIEW` and `EXPENSES:VIEW` |
 
-These are the checks the AMC and Projects modules already make on their own summaries. No figure is tied to `INVOICES`: that permission will gate the invoice figures when Invoice Tracking exists. The matrix itself is still provisional (open question Q12).
+| Invoices Recorded | `INVOICES:VIEW` |
+
+These are the checks the AMC, Projects and Invoice Tracking modules already make on their own summaries. `INVOICES:VIEW` opens only the invoice figures: the AMC and project figures inside the invoice summary still need `AMC_SCHEDULE:VIEW` and `PROJECTS:VIEW`. The matrix itself is still provisional (open question Q12).
 
 ### 1.4 Rules for money figures
 
@@ -63,7 +118,7 @@ These are the checks the AMC and Projects modules already make on their own summ
 
 | Metric | Open point |
 |---|---|
-| Ready for Invoice (AMC and Projects) | No invoice records exist yet, so completed work stays "ready for invoice". When Invoice Tracking replaces the two views, invoiced work leaves these figures without any change to the dashboard. |
+| Ready for Invoice (AMC and Projects) | Invoiced work leaves these figures once its invoice is recorded in Invoice Tracking. A partly invoiced project is not in the project count; it is stated beside it ("N more partly invoiced"). The invoicing rules are provisional (`docs/INVOICE_MODULE.md`). |
 | Ready-for-Invoice Value | VAT basis of AMC visit amounts (Q11). Until it is confirmed the two amounts stay separate. |
 | Projects Ready for Invoice | Invoicing before completion (Q21). |
 
@@ -98,5 +153,5 @@ The browser check ran against a stand-in API with invented records, outside the 
 ## 4. Work remaining
 
 1. Move the AMC and Projects tables to `TableScroll`, and check their pages at phone and tablet width.
-2. Add the "pending invoices" list that `PHASE1_SYSTEM_DESIGN.md` 16.3 asks to be the most prominent item on the dashboard. It needs Invoice Tracking.
+2. Add the "pending invoices" list that `PHASE1_SYSTEM_DESIGN.md` 16.3 asks to be the most prominent item on the dashboard. The list itself now exists on the Invoice Tracking page ("Waiting for an invoice"); the ready-for-invoice cards link to it.
 3. Update the test count in `docs/FOUNDATION.md` section 7.

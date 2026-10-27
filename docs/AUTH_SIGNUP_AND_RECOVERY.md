@@ -93,7 +93,16 @@ Until a provider is chosen, a reset requested on a deployed system creates a tok
 
 ## 4. Abuse limits
 
-`/signup`, `/forgot-password`, `/reset-password/check` and `/reset-password` are each limited to `PUBLIC_AUTH_RATE_LIMIT` requests per network address per 15 minutes (default 10). The count lives in the API process's memory. Before production, behind a reverse proxy, Express must be configured to trust the proxy or every visitor is counted as one address. `/login` is not rate limited (unchanged; see open questions).
+`/signup`, `/forgot-password`, `/reset-password/check` and `/reset-password` are each limited to `PUBLIC_AUTH_RATE_LIMIT` requests per network address per 15 minutes (default 10). The count lives in the API process's memory. Before production, behind a reverse proxy, Express must be configured to trust the proxy or every visitor is counted as one address.
+
+`/login` has two limits, both per 15 minutes and kept in the same process memory:
+
+- `LOGIN_RATE_LIMIT` (default 50) sign-in requests per network address, successful or not. Generous because an office's staff may share one address.
+- `LOGIN_FAILURE_LIMIT` (default 5) failed sign-ins for one email from one network address. A successful sign-in clears the count. Because it is keyed on address and email together, failures from another network never block the real user, and no account is ever locked.
+
+Over either limit the API answers `429 TOO_MANY_REQUESTS` ("Too many attempts. Please wait a few minutes and try again."), whatever the email, so the limit does not reveal which emails have accounts. Below the limits, every failure still gets the one `401 INVALID_CREDENTIALS` answer. Requests that arrive at the same moment are checked before any of them finishes, so a burst can exceed the failure limit slightly; the per-address limit still bounds it.
+
+Every failed sign-in writes an `auth.login_failed` activity entry (module `AUTH`, no acting user) with `metadata.reason` (`unknown_account`, `wrong_password` or `inactive_account`) and `metadata.ip`. For an existing account the entry points to that user; for an email with no account the email is not stored, because people sometimes type their password into the email field. Passwords and tokens are never logged.
 
 ## 5. Database
 
@@ -140,5 +149,5 @@ These four are public (no token) and return the standard `{ success, data | erro
 3. **After a rejection.** The person is not told (no email provider). A rejection cannot be undone by an administrator; the person signs up again. Rejected accounts stay listed. Are these the wanted rules?
 4. **Telling a pending user why they cannot sign in.** Login currently answers "Incorrect email or password" for a pending account, the same as for any other failure.
 5. **Notifying administrators** of a new request (today they see it in Users & Access).
-6. **Login rate limiting** and a shared (not per-process) limiter for production.
+6. **A shared (not per-process) limiter for production.** Login is now rate limited (section 4), but the counts live in one process's memory.
 7. **Who may sign up.** For example, only company email addresses.

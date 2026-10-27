@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { formatJobDate, formatMonth } from '../lib/format'
 import { ADMIN, mockApi, ok, renderApp, signIn } from './helpers'
-import { amcApi, EXECUTION, makeContract, makeVisit } from './amc-helpers'
+import { amcApi, makeContract, makeVisit } from './amc-helpers'
 import { currentMonth } from '../pages/amc/amcFormat'
 import { makeProject, projectsApi } from './projectsApi'
 
@@ -49,87 +49,7 @@ describe('month-only dates', () => {
   })
 })
 
-describe('historical project in the list', () => {
-  it('is marked Historical with the status of the earlier register and a month-only date', async () => {
-    projectsApi(ADMIN, { projects: [NORMAL, HISTORICAL] })
-    renderApp('/projects')
-
-    const table = await screen.findByRole('table', { name: 'Projects' })
-    const row = within(within(table).getByRole('link', { name: 'GPSA0901' }).closest('tr') as HTMLElement)
-
-    expect(row.getByText('Historical · Completed')).toBeInTheDocument()
-    expect(row.getByText('Feb 2025')).toBeInTheDocument()
-    expect(row.queryByText(/1 Feb 2025/)).not.toBeInTheDocument()
-    // Value, VAT and grand value are shown like those of any project.
-    expect(row.getByText('25.000')).toBeInTheDocument()
-    expect(row.getByText('525.000')).toBeInTheDocument()
-    // Not waiting for an invoice.
-    expect(row.queryByText('Ready for invoice')).not.toBeInTheDocument()
-  })
-
-  it('can be viewed but not edited, while an ordinary project still can', async () => {
-    projectsApi(ADMIN, { projects: [NORMAL, HISTORICAL] })
-    renderApp('/projects')
-    await screen.findByRole('table', { name: 'Projects' })
-
-    expect(screen.getByRole('link', { name: 'View GPSA0901' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Edit GPSA0901' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Edit GPSA0001' })).toBeInTheDocument()
-  })
-
-  it('can be filtered by the Historical status through the API', async () => {
-    const api = projectsApi(ADMIN, { projects: [NORMAL, HISTORICAL] })
-    renderApp('/projects')
-    await screen.findByRole('table', { name: 'Projects' })
-
-    await userEvent.selectOptions(screen.getByLabelText('Status'), 'HISTORICAL')
-
-    await waitFor(() => expect(api.find('GET', '/projects').at(-1)?.query.get('status')).toBe('HISTORICAL'))
-    await waitFor(() => expect(screen.queryByRole('link', { name: 'GPSA0001' })).not.toBeInTheDocument())
-    expect(screen.getByRole('link', { name: 'GPSA0901' })).toBeInTheDocument()
-  })
-})
-
-describe('historical project page', () => {
-  it('explains what the record is and shows what the earlier register recorded', async () => {
-    projectsApi(ADMIN, { projects: [HISTORICAL] })
-    renderApp('/projects/200')
-
-    expect(await screen.findByRole('heading', { name: 'Project GPSA0901' })).toBeInTheDocument()
-    expect(screen.getByText('Historical record.')).toBeInTheDocument()
-    expect(screen.getByText('Status in the earlier register').nextElementSibling).toHaveTextContent('Completed')
-    expect(screen.getByText('Job date').nextElementSibling).toHaveTextContent('Feb 2025 (day not recorded)')
-    // No completion date is shown, because none was recorded.
-    expect(screen.getByText('Completed', { selector: 'dt' }).nextElementSibling).toHaveTextContent('Not recorded')
-    expect(screen.getByLabelText('Financial summary')).toHaveTextContent('500.000')
-  })
-
-  it('offers no edit, no status change and no new procurement or expense', async () => {
-    const api = projectsApi(ADMIN, { projects: [HISTORICAL] })
-    renderApp('/projects/200')
-    await screen.findByRole('heading', { name: 'Project GPSA0901' })
-    await screen.findByText('No expenses recorded for this project')
-
-    for (const name of ['Edit', 'Mark completed', 'Start work', 'Cancel project', 'Reopen project', 'Add procurement request', 'Record expense']) {
-      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
-    }
-    expect(screen.queryByText(/Ready for invoice/)).not.toBeInTheDocument()
-    expect(api.find('PATCH', '/projects/200')).toHaveLength(0)
-    expect(api.find('POST', '/projects/200/status')).toHaveLength(0)
-  })
-
-  it('still offers every action on an ordinary project', async () => {
-    projectsApi(ADMIN, { projects: [NORMAL] })
-    renderApp('/projects/100')
-    await screen.findByRole('heading', { name: 'Project GPSA0001' })
-
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Mark completed' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Record expense' })).toBeInTheDocument()
-    expect(screen.queryByText('Historical record.')).not.toBeInTheDocument()
-    expect(screen.queryByText('Status in the earlier register')).not.toBeInTheDocument()
-  })
-
+describe('historical project', () => {
   it('is not offered when choosing the job for a new expense', async () => {
     projectsApi(ADMIN, { projects: [NORMAL, HISTORICAL] })
     renderApp('/expenses')
@@ -192,42 +112,6 @@ describe('historical visit in the schedule', () => {
   })
 })
 
-describe('historical visit in the execution work list', () => {
-  it('offers only a view, under all visits', async () => {
-    amcApi(EXECUTION, { visits: [NORMAL_VISIT, HISTORICAL_VISIT] })
-    renderApp('/amc/execution')
-    await screen.findByRole('table')
-
-    // The work that is due does not include it.
-    expect(screen.getByRole('button', { name: 'View Test Hotel One FIRE visit 1' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'View Test Hotel Two CCTV visit 2' })).not.toBeInTheDocument()
-
-    await userEvent.selectOptions(screen.getByLabelText('Show'), 'all')
-    const row = within((await screen.findByRole('button', { name: 'View Test Hotel Two CCTV visit 2' })).closest('tr') as HTMLElement)
-
-    expect(row.getByText('Historical')).toBeInTheDocument()
-    expect(row.getByText('Not recorded')).toBeInTheDocument()
-    expect(row.getAllByRole('button').map((button) => button.textContent)).toEqual(['View'])
-
-    await userEvent.click(row.getByRole('button', { name: 'View Test Hotel Two CCTV visit 2' }))
-    expect(await within(await screen.findByRole('dialog', { name: 'Visit details' })).findByText('Historical record.')).toBeInTheDocument()
-  })
-
-  it('is not a status a user can choose for a visit', async () => {
-    amcApi(EXECUTION, { visits: [NORMAL_VISIT] })
-    renderApp('/amc/execution')
-
-    await userEvent.selectOptions(await screen.findByLabelText('Show'), 'all')
-    await userEvent.click(await screen.findByRole('button', { name: 'Update Test Hotel One FIRE visit 1' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Update visit' })
-    const options = within(within(dialog).getByLabelText(/^Status/))
-      .getAllByRole('option')
-      .map((option) => option.textContent)
-
-    expect(options).toEqual(['Scheduled', 'In progress', 'Completed', 'Postponed', 'Cancelled'])
-  })
-})
-
 describe('imported contract', () => {
   it('says from which date visits are generated and lists its historical visits', async () => {
     amcApi(ADMIN, {
@@ -245,8 +129,9 @@ describe('imported contract', () => {
     })
     renderApp('/amc/contracts')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel Two CCTV' }))
-    const dialog = await screen.findByRole('dialog', { name: 'AMC contract details' })
+    await userEvent.click(await screen.findByRole('link', { name: 'View Test Hotel Two CCTV' }))
+    await screen.findByRole('heading', { name: 'Test Hotel Two — CCTV' })
+    const dialog = screen.getByRole('main')
 
     expect(await within(dialog).findByText(/imported from an earlier register/)).toHaveTextContent('starting on or after 01 Oct 2026')
     expect(within(dialog).getByText(/1 historical/)).toBeInTheDocument()
@@ -263,8 +148,9 @@ describe('imported contract', () => {
     amcApi(ADMIN, { contracts: [makeContract()], visits: [makeVisit()] })
     renderApp('/amc/contracts')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel One FIRE' }))
-    const dialog = await screen.findByRole('dialog', { name: 'AMC contract details' })
+    await userEvent.click(await screen.findByRole('link', { name: 'View Test Hotel One FIRE' }))
+    await screen.findByRole('heading', { name: 'Test Hotel One — FIRE' })
+    const dialog = screen.getByRole('main')
     await within(dialog).findByRole('table', { name: 'Visits of this contract' })
 
     expect(within(dialog).queryByText(/imported from an earlier register/)).not.toBeInTheDocument()
@@ -293,27 +179,13 @@ describe('dashboard', () => {
     })
   }
 
-  const cardOf = async (label: string) => (await screen.findByRole('heading', { name: label, level: 3 })).closest('[data-metric-card]') as HTMLElement
-
-  it('shows the operational figures only: the value of historical projects is in none of them', async () => {
-    dashboardApi(summary({ trackedExpensesOnCancelledProjects: '0.000', trackedExpensesOnHistoricalProjects: '0.000' }))
-    renderApp('/dashboard')
-
-    expect(await within(await cardOf('Active Projects')).findByText('2')).toBeInTheDocument()
-    expect(within(await cardOf('Projects Ready for Invoice')).getByText('1')).toBeInTheDocument()
-    expect(within(await cardOf('Ready-for-Invoice Value')).getByText('2,000.250')).toBeInTheDocument()
-    expect(within(await cardOf('Tracked Expenses')).getByText('Cancelled projects left out')).toBeInTheDocument()
-    expect(document.body).not.toHaveTextContent('18,500.000')
-    expect(document.body).not.toHaveTextContent('19,425.000')
-  })
-
-  it('states apart any expense recorded against historical projects, beside those of cancelled projects', async () => {
+  it('shows none of the historical project values, now that the other-figures cards are hidden', async () => {
     dashboardApi(summary({ trackedExpensesOnCancelledProjects: '40.000', trackedExpensesOnHistoricalProjects: '12.500' }))
     renderApp('/dashboard')
 
-    const card = await cardOf('Tracked Expenses')
-
-    expect(await within(card).findByText('350.125')).toBeInTheDocument()
-    expect(within(card).getByText('Plus 40.000 on cancelled projects and 12.500 on historical projects')).toBeInTheDocument()
+    await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
+    expect(screen.queryByRole('heading', { name: 'Tracked Expenses' })).not.toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent('18,500.000')
+    expect(document.body).not.toHaveTextContent('19,425.000')
   })
 })

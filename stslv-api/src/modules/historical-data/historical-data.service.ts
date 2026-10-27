@@ -181,7 +181,20 @@ const SOURCE_AMOUNT = `CASE r.record_kind
     WHEN 'AMC_VISIT' THEN (r.proposed_values->>'visitAmount')::numeric
   END`;
 
-export async function getReviewSummary() {
+/** The three headline counts of the page: every source record, and how many are imported or held. */
+export async function getReviewTotals() {
+  const result = await pool.query<{ records: number; imported: number; provisional: number }>(
+    `SELECT count(*)::int AS records,
+            count(*) FILTER (WHERE disposition = 'IMPORTED')::int AS imported,
+            count(*) FILTER (WHERE disposition = 'HELD')::int AS provisional
+     FROM legacy_import_rows`
+  );
+
+  return { totals: result.rows[0] ?? { records: 0, imported: 0, provisional: 0 } };
+}
+
+/** The Import Audit: the batches, the counts and amounts by kind, the hold reasons and the invoice references. */
+export async function getImportAudit() {
   const batches = await pool.query<{ id: string; label: string; cutover_date: string; source_files: unknown; created_at: Date; rows: number }>(
     `SELECT b.id, b.label, b.cutover_date::text AS cutover_date, b.source_files, b.created_at,
             (SELECT count(*)::int FROM legacy_import_rows r WHERE r.batch_id = b.id) AS rows

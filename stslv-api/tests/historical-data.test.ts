@@ -48,7 +48,7 @@ afterAll(async () => {
 
 describe("access", () => {
   it("requires a signed-in user", async () => {
-    for (const path of ["/summary", "/rows", "/rows/1"]) {
+    for (const path of ["/summary", "/audit", "/rows", "/rows/1"]) {
       expect((await api().get(`/api/historical-data${path}`)).status).toBe(401);
     }
   });
@@ -59,7 +59,7 @@ describe("access", () => {
     for (const role of ["ACCOUNTANT", "PROCUREMENT", "EXECUTION", "INVOICING"]) {
       const user = await signedIn(`${role.toLowerCase()}@example.com`, [role]);
 
-      for (const path of ["/summary", "/rows", "/rows/1"]) {
+      for (const path of ["/summary", "/audit", "/rows", "/rows/1"]) {
         const response = await get(path, user);
 
         expect(response.status).toBe(403);
@@ -78,7 +78,20 @@ describe("access", () => {
     const other = await signedIn("other@example.com", ["OTHER"]);
 
     expect((await get("/rows", reviewer)).status).toBe(200);
+    expect((await get("/summary", reviewer)).status).toBe(200);
     expect((await get("/rows", other)).status).toBe(403);
+  });
+
+  it("keeps the import audit for Admin, even from a role granted the whole module", async () => {
+    await pool.query("INSERT INTO roles (code, name) VALUES ('AUDIT_HOPEFUL', 'Audit hopeful')");
+    await grant("AUDIT_HOPEFUL", ["VIEW", "CREATE", "EDIT", "DELETE", "APPROVE", "EXPORT"].map((action): [string, string] => ["HISTORICAL_DATA", action]));
+
+    const hopeful = await signedIn("hopeful@example.com", ["AUDIT_HOPEFUL"]);
+    const response = await get("/audit", hopeful);
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual({ success: false, error: { code: "FORBIDDEN", message: expect.any(String) } });
+    expect((await get("/audit")).status).toBe(200);
   });
 
   it("lists the module among the permission modules", async () => {
@@ -93,7 +106,7 @@ describe("read-only", () => {
     const id = (await rows("")).items[0]?.id as string;
     const before = await fingerprint();
 
-    for (const path of ["/rows", `/rows/${id}`, "/summary", "/import", "/apply", `/rows/${id}/release`, `/rows/${id}/approve`]) {
+    for (const path of ["/rows", `/rows/${id}`, "/summary", "/audit", "/import", "/apply", `/rows/${id}/release`, `/rows/${id}/approve`]) {
       for (const method of ["post", "put", "patch", "delete"] as const) {
         const response = await api()[method](`/api/historical-data${path}`).set(admin.headers).send({ disposition: "IMPORTED" });
 
@@ -108,6 +121,7 @@ describe("read-only", () => {
     const before = await fingerprint();
 
     await get("/summary");
+    await get("/audit");
     await rows("&kind=PROJECT&status=provisional&search=JOB");
 
     expect(await fingerprint()).toBe(before);
@@ -115,10 +129,25 @@ describe("read-only", () => {
 });
 
 describe("summary", () => {
+  it("gives the three headline counts and nothing of the audit", async () => {
+    const expected = stagingRows(result.plan);
+    const summary = (await get("/summary")).body.data;
+
+    expect(summary).toEqual({
+      totals: {
+        records: expected.length,
+        imported: expected.filter((row) => row.disposition === "IMPORTED").length,
+        provisional: expected.filter((row) => row.disposition === "HELD").length,
+      },
+    });
+  });
+});
+
+describe("import audit", () => {
   it("counts every source record, imported and provisional, by kind", async () => {
     const expected = stagingRows(result.plan);
     const count = (kind: string, disposition?: string) => expected.filter((row) => row.record_kind === kind && (!disposition || row.disposition === disposition)).length;
-    const summary = (await get("/summary")).body.data;
+    const summary = (await get("/audit")).body.data;
 
     expect(summary.totals).toEqual({
       records: expected.length,
@@ -137,7 +166,7 @@ describe("summary", () => {
   });
 
   it("adds up the source amounts exactly, and never counts an empty amount as zero", async () => {
-    const summary = (await get("/summary")).body.data;
+    const summary = (await get("/audit")).body.data;
     const of = (kind: string) => summary.byKind.find((item: { kind: string }) => item.kind === kind);
 
     // The plan's own totals, to three decimals.
@@ -150,7 +179,7 @@ describe("summary", () => {
   });
 
   it("reports why records are provisional, the invoice references and the batch", async () => {
-    const summary = (await get("/summary")).body.data;
+    const summary = (await get("/audit")).body.data;
     const reasons = Object.fromEntries(summary.holdReasons.filter((reason: { kind: string }) => reason.kind === "PROJECT").map((reason: { code: string; count: number }) => [reason.code, reason.count]));
 
     expect(reasons).toEqual(result.plan.totals.projects.heldByReason);

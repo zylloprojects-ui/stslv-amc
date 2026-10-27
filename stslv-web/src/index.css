@@ -726,6 +726,31 @@ select:not([multiple]) {
   max-width: 16rem;
 }
 
+/* Light theme tables: a framed table with a tinted header, ruled rows, a gentle zebra and a clear row highlight. */
+html:not(.dark) .table-scroll {
+  border: 1px solid #c9d6e4;
+  border-radius: 0.75rem;
+}
+html:not(.dark) .table-scroll th {
+  background: linear-gradient(180deg, #edf5fc, #dfeaf6);
+  color: #0b3b66;
+  font-weight: 700;
+  border-bottom: 2px solid #9db9d3;
+}
+html:not(.dark) .table-scroll td {
+  border-bottom: 1px solid #dde6ef;
+  color: #1e293b;
+}
+html:not(.dark) .table-scroll tbody tr:last-child td {
+  border-bottom: 0;
+}
+html:not(.dark) .table-scroll tbody tr:nth-child(even) td {
+  background-color: #f6f9fd;
+}
+html:not(.dark) .table-scroll tbody tr:hover td {
+  background-color: #e6f2fc;
+}
+
 /* Dialog header: light and clean, with the brand colours as a line along its bottom edge. */
 .app-modal-header {
   background: linear-gradient(180deg, #ffffff 0%, #f1f7fc 100%);
@@ -950,4 +975,38 @@ html:not(.dark) .table-scroll th {
 html:not(.dark) .table-scroll td:last-child,
 html:not(.dark) .table-scroll th:last-child {
   border-right: 0;
+}
+
+/* ---- Loader styles chosen in the header menu (Pinwheel, Pulse, Skeleton). ---- */
+@keyframes loader-petal {
+  0%, 100% { opacity: 0.22; transform: scale(0.9); }
+  40% { opacity: 1; transform: scale(1); }
+}
+.loader-petal {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: loader-petal 0.96s ease-in-out infinite;
+}
+.loader-turn { animation: login-orbit 8s linear infinite; }
+
+@keyframes loader-ripple {
+  0% { transform: scale(0.55); opacity: 0.8; }
+  100% { transform: scale(1.35); opacity: 0; }
+}
+.loader-ripple { animation: loader-ripple 2.1s ease-out infinite; }
+
+@keyframes loader-skeleton {
+  to { background-position: -200% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%) 0 0 / 200% 100%;
+  animation: loader-skeleton 1.4s ease-in-out infinite;
+}
+.dark .skeleton {
+  background: linear-gradient(90deg, #172c46 25%, #1f3a5c 50%, #172c46 75%) 0 0 / 200% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-petal, .loader-turn, .loader-ripple, .skeleton { animation: none; }
+  .loader-petal { opacity: 1; }
 }

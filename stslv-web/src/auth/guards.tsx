@@ -4,6 +4,7 @@ import { usePageTitle } from '../components/hooks'
 import { BrandLoader, Button, FullPageMessage } from '../components/ui'
 import type { Action, Module } from '../lib/types'
 import { useAuth } from './context'
+import { isAdmin } from './roles'
 
 /** Wraps every route that needs a signed-in user. */
 export function ProtectedRoute() {
@@ -45,6 +46,28 @@ export function RequirePermission({ module, action = 'VIEW', children }: { modul
   const auth = useAuth()
 
   if (!auth.can(module, action)) {
+    return <AccessDenied />
+  }
+
+  return <>{children}</>
+}
+
+/** Shows its children to users who may view at least one of the modules (a hub of several modules). */
+export function RequireAnyPermission({ modules, children }: { modules: Module[]; children: ReactNode }) {
+  const auth = useAuth()
+
+  if (!modules.some((module) => auth.can(module, 'VIEW'))) {
+    return <AccessDenied />
+  }
+
+  return <>{children}</>
+}
+
+/** For pages reserved to the built-in Admin role. The API enforces the same rule. */
+export function RequireAdmin({ children }: { children: ReactNode }) {
+  const auth = useAuth()
+
+  if (!isAdmin(auth.user)) {
     return <AccessDenied />
   }
 

@@ -15,6 +15,13 @@ const DRAFT = makeContract({
   schedule: { visitCount: 0, completedCount: 0, openCount: 0, historicalCount: 0, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '0.000', valueDifference: '9000.000' },
 })
 
+/** Waits for a contract's own page and returns queries scoped to its main content. */
+async function openedContract(title: string) {
+  await screen.findByRole('heading', { name: title })
+
+  return within(screen.getByRole('main'))
+}
+
 async function openAddForm() {
   await userEvent.click(await screen.findByRole('button', { name: 'Add Contract' }))
   const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
@@ -155,7 +162,7 @@ describe('add contract', () => {
     })
     expect(screen.getByRole('status')).toHaveTextContent('The contract for Test Hotel Two Automation was added. 4 visit(s) added to the schedule.')
     // The list is read again from the API.
-    expect(await screen.findByRole('button', { name: 'View Test Hotel Two Automation' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'View Test Hotel Two Automation' })).toBeInTheDocument()
   })
 
   it('offers only clients from the Client Master and suggests systems already in use', async () => {
@@ -196,7 +203,7 @@ describe('add contract', () => {
 })
 
 describe('contract details', () => {
-  it('shows the stored contract, its figures and its dated visits', async () => {
+  it('opens the contract page from the list, with the stored contract, its figures and its dated visits', async () => {
     const api = amcApi(ADMIN, {
       contracts: [makeContract({ finalCredit: '1500.000', schedule: { ...FIRE.schedule, scheduledTotal: '1215.000', valueDifference: '405.000' } })],
       visits: [
@@ -206,16 +213,21 @@ describe('contract details', () => {
     })
     renderApp('/amc/contracts')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel One FIRE' }))
-    const dialog = await screen.findByRole('dialog', { name: 'AMC contract details' })
+    await userEvent.click(await screen.findByRole('link', { name: 'View Test Hotel One FIRE' }))
+    const page = await openedContract('Test Hotel One — FIRE')
 
-    expect(await within(dialog).findByText('01 Jan 2027 to 31 Dec 2027')).toBeInTheDocument()
-    expect(within(dialog).getByText('1,620.000')).toBeInTheDocument()
-    expect(within(dialog).getByText('1,500.000')).toBeInTheDocument()
-    expect(within(dialog).getByText('1,215.000')).toBeInTheDocument()
-    expect(within(dialog).getByText(/do not add up to the contract value/)).toBeInTheDocument()
+    await userEvent.click(page.getByRole('tab', { name: 'Contract validity' }))
+    const validity = within(page.getByRole('tabpanel'))
+    expect(validity.getByText('01 Jan 2027')).toBeInTheDocument()
+    expect(validity.getByText('31 Dec 2027')).toBeInTheDocument()
+    await userEvent.click(page.getByRole('tab', { name: 'Commercial details' }))
+    const commercial = within(page.getByRole('tabpanel'))
+    expect(commercial.getByText('1,620.000')).toBeInTheDocument()
+    expect(commercial.getByText('1,500.000')).toBeInTheDocument()
+    expect(commercial.getByText('1,215.000')).toBeInTheDocument()
+    expect(commercial.getByText(/do not add up to the contract value/)).toBeInTheDocument()
 
-    const table = await within(dialog).findByRole('table', { name: 'Visits of this contract' })
+    const table = await page.findByRole('table', { name: 'Visits of this contract' })
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows).toHaveLength(2)
     expect(within(rows[0] as HTMLElement).getByText('Completed')).toBeInTheDocument()
@@ -357,31 +369,29 @@ describe('edit contract', () => {
 })
 
 describe('contract status', () => {
-  it('activates a draft from its details', async () => {
+  it('activates a draft from its page', async () => {
     const api = amcApi(ADMIN, { contracts: [DRAFT] })
-    renderApp('/amc/contracts')
+    renderApp('/amc/contracts/101')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel Two CCTV' }))
-    const details = await screen.findByRole('dialog', { name: 'AMC contract details' })
-    expect(await within(details).findByText(/A draft has no schedule/)).toBeInTheDocument()
+    const page = await openedContract('Test Hotel Two — CCTV')
+    expect(await page.findByText(/A draft has no schedule/)).toBeInTheDocument()
 
-    await userEvent.click(within(details).getByRole('button', { name: 'Activate' }))
+    await userEvent.click(page.getByRole('button', { name: 'Activate' }))
     const confirm = await screen.findByRole('dialog', { name: 'Activate contract' })
     expect(confirm).toHaveTextContent('The maintenance schedule is generated')
     await userEvent.click(within(confirm).getByRole('button', { name: 'Activate contract' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/101/status')).toHaveLength(1))
     expect(api.find('POST', '/amc/contracts/101/status')[0]?.body).toEqual({ status: 'ACTIVE' })
-    expect(await screen.findByRole('status')).toHaveTextContent('The contract for Test Hotel Two CCTV is now Active.')
+    expect(await screen.findByRole('status')).toHaveTextContent('The contract is now Active.')
   })
 
   it('cancels a contract and cancels its open visits only when that is ticked', async () => {
     const api = amcApi(ADMIN, { contracts: [FIRE] })
-    renderApp('/amc/contracts')
+    renderApp('/amc/contracts/100')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel One FIRE' }))
-    const details = await screen.findByRole('dialog', { name: 'AMC contract details' })
-    await userEvent.click(await within(details).findByRole('button', { name: 'Cancel contract' }))
+    const page = await openedContract('Test Hotel One — FIRE')
+    await userEvent.click(page.getByRole('button', { name: 'Cancel contract' }))
 
     const confirm = await screen.findByRole('dialog', { name: 'Cancel contract' })
     expect(confirm).toHaveTextContent('This contract has 3 visit(s) that are not completed.')
@@ -396,17 +406,17 @@ describe('contract status', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('is now Cancelled. 3 visit(s) cancelled.')
   })
 
-  it('goes back to the details without changing anything', async () => {
+  it('goes back to the contract page without changing anything', async () => {
     const api = amcApi(ADMIN, { contracts: [FIRE] })
-    renderApp('/amc/contracts')
+    renderApp('/amc/contracts/100')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel One FIRE' }))
-    const details = await screen.findByRole('dialog', { name: 'AMC contract details' })
-    await userEvent.click(await within(details).findByRole('button', { name: 'Mark as expired' }))
+    const page = await openedContract('Test Hotel One — FIRE')
+    await userEvent.click(page.getByRole('button', { name: 'Mark as expired' }))
     const confirm = await screen.findByRole('dialog', { name: 'Mark contract as expired' })
     await userEvent.click(within(confirm).getByRole('button', { name: 'Back' }))
 
-    expect(await screen.findByRole('dialog', { name: 'AMC contract details' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.getByRole('heading', { name: 'Test Hotel One — FIRE' })).toBeInTheDocument()
     expect(api.find('POST', '/amc/contracts/100/status')).toHaveLength(0)
   })
 })
@@ -416,14 +426,15 @@ describe('contract permissions', () => {
     amcApi(VIEWER, { contracts: [FIRE] })
     renderApp('/amc/contracts')
 
-    expect(await screen.findByRole('button', { name: 'View Test Hotel One FIRE' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: 'View Test Hotel One FIRE' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add Contract' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'View Test Hotel One FIRE' }))
-    const details = await screen.findByRole('dialog', { name: 'AMC contract details' })
-    await within(details).findByText('01 Jan 2027 to 31 Dec 2027')
-    expect(within(details).getAllByRole('button').map((button) => button.textContent)).toEqual(['', 'Close'])
+    await userEvent.click(screen.getByRole('link', { name: 'View Test Hotel One FIRE' }))
+    const page = await openedContract('Test Hotel One — FIRE')
+    for (const name of ['Edit', 'Activate', 'Mark as expired', 'Reactivate', 'Cancel contract']) {
+      expect(page.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
   })
 
   it('refuses the page to a role without AMC Contracts access, without requesting its data', async () => {
@@ -440,11 +451,10 @@ describe('contract permissions', () => {
       override: (request) =>
         request.path === '/amc/contracts/100/status' ? fail(403, 'FORBIDDEN', 'You do not have permission to perform this action.') : undefined,
     })
-    renderApp('/amc/contracts')
+    renderApp('/amc/contracts/100')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'View Test Hotel One FIRE' }))
-    const details = await screen.findByRole('dialog', { name: 'AMC contract details' })
-    await userEvent.click(await within(details).findByRole('button', { name: 'Mark as expired' }))
+    const page = await openedContract('Test Hotel One — FIRE')
+    await userEvent.click(page.getByRole('button', { name: 'Mark as expired' }))
     const confirm = await screen.findByRole('dialog', { name: 'Mark contract as expired' })
     await userEvent.click(within(confirm).getByRole('button', { name: 'Mark contract as expired' }))
 

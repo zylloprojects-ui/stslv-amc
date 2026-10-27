@@ -42,7 +42,9 @@ describe('expense list', () => {
     // The voided expense is not listed unless asked for.
     expect(rows).toHaveLength(2)
     const first = within(rows[0] as HTMLElement)
-    expect(first.getByRole('link', { name: 'GPSA0001' })).toHaveAttribute('href', '/projects/100')
+    // Projects have no page of their own, so the job number is plain text.
+    expect(first.getByText('GPSA0001')).toBeInTheDocument()
+    expect(first.queryByRole('link')).not.toBeInTheDocument()
     expect(first.getByText('Materials')).toBeInTheDocument()
     expect(first.getByText('Cable and conduit')).toBeInTheDocument()
     expect(first.getByText('Test Supplier')).toBeInTheDocument()
@@ -230,7 +232,7 @@ describe('edit expense', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('PATCH', '/expenses/300')[0]?.body).toMatchObject({ projectId: '101', amount: '133.333', categoryId: '1' })
-    expect(await screen.findByRole('link', { name: 'GPSA0002' })).toBeInTheDocument()
+    expect(await screen.findByText('GPSA0002')).toBeInTheDocument()
     await waitFor(() => expect(total()).toHaveTextContent('133.333'))
   })
 })

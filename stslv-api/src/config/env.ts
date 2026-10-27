@@ -1,4 +1,5 @@
 import "dotenv/config";
+import path from "node:path";
 
 const isTest = process.env.NODE_ENV === "test";
 
@@ -116,6 +117,22 @@ function readWholeNumber(name: string, fallback: number, minimum: number, maximu
   return value;
 }
 
+/**
+ * Where uploaded attachments are kept. Local development defaults to
+ * stslv-api/storage/attachments (git-ignored). In production there is no
+ * default: the hosting disk may not be permanent, so uploads stay switched off
+ * until durable storage is configured on purpose.
+ */
+function readAttachmentsDir(): string | null {
+  const raw = process.env.ATTACHMENTS_DIR?.trim();
+
+  if (raw) {
+    return path.resolve(raw);
+  }
+
+  return process.env.NODE_ENV === "production" ? null : path.resolve(process.cwd(), "storage", "attachments");
+}
+
 const corsOrigins = readCorsOrigins();
 
 export const env = {
@@ -130,4 +147,17 @@ export const env = {
   passwordResetMinutes: readWholeNumber("PASSWORD_RESET_EXPIRES_MINUTES", 30, 5, 1440),
   // Requests one address may make to the public sign-up and password-recovery routes per 15 minutes.
   publicAuthRateLimit: readWholeNumber("PUBLIC_AUTH_RATE_LIMIT", 10, 1, 100_000),
+  // Sign-in requests one address may make per 15 minutes, successful or not. Generous,
+  // because an office's staff may all reach the API from one shared address.
+  loginRateLimit: readWholeNumber("LOGIN_RATE_LIMIT", 50, 1, 100_000),
+  // Failed sign-ins allowed per 15 minutes for one email from one address. Counted per
+  // address as well as email, so a stranger cannot lock a real user out of their own account.
+  loginFailureLimit: readWholeNumber("LOGIN_FAILURE_LIMIT", 5, 1, 100_000),
+  // How many reverse proxies stand between the internet and this API. 0 (the default)
+  // means none: forwarded-address headers are ignored, which is right for local
+  // development. A hosting platform's load balancer counts as one.
+  trustProxyHops: readWholeNumber("TRUST_PROXY", 0, 0, 10),
+  // Attachments: storage folder (null = uploads unavailable) and largest file accepted, in MB. PROVISIONAL (Q14).
+  attachmentsDir: readAttachmentsDir(),
+  attachmentMaxMb: readWholeNumber("ATTACHMENT_MAX_MB", 10, 1, 50),
 };

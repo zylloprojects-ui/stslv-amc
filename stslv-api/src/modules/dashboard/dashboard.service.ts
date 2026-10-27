@@ -2,6 +2,7 @@ import { pool } from "../../config/database";
 import { summarySchema } from "../amc/amc.schemas";
 import { canViewSummary, getAmcSummary, type AmcSummary } from "../amc/summary.service";
 import type { AuthContext } from "../auth/access";
+import { getInvoiceSummary, type InvoiceSummary } from "../invoices/invoices.service";
 import { getProjectSummary } from "../projects/projects.service";
 
 // The dashboard calculates nothing about AMC or projects itself. It puts the
@@ -21,6 +22,11 @@ export interface DashboardSummary {
    * costs is null without EXPENSES:VIEW.
    */
   projects: Awaited<ReturnType<typeof getProjectSummary>> | null;
+  /**
+   * The Invoice Tracking module's own summary. Requires INVOICES:VIEW; inside
+   * it, amc is null without AMC_SCHEDULE:VIEW and projects without PROJECTS:VIEW.
+   */
+  invoices: InvoiceSummary | null;
 }
 
 async function getClientSummary(): Promise<{ active: number; inactive: number }> {
@@ -37,11 +43,12 @@ export async function getDashboardSummary(auth: AuthContext): Promise<DashboardS
   // The AMC summary's own default window for "upcoming" visits.
   const { upcomingDays } = summarySchema.parse({});
 
-  const [clients, amc, projects] = await Promise.all([
+  const [clients, amc, projects, invoices] = await Promise.all([
     auth.permissions.has("CLIENTS:VIEW") ? getClientSummary() : null,
     canViewSummary(auth) ? getAmcSummary(auth, upcomingDays) : null,
     auth.permissions.has("PROJECTS:VIEW") ? getProjectSummary(auth) : null,
+    auth.permissions.has("INVOICES:VIEW") ? getInvoiceSummary(auth) : null,
   ]);
 
-  return { clients, amc, projects };
+  return { clients, amc, projects, invoices };
 }

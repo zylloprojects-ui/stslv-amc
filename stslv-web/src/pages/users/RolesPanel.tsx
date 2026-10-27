@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useAuth } from '../../auth/context'
-import { Alert, Button, Card, TableScroll } from '../../components/ui'
+import { Alert, Badge, Button, Card, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
@@ -19,6 +19,8 @@ function PermissionMatrix({ role, catalogue, canEdit }: { role: Role; catalogue:
   const original = new Set(keysOf(role))
   const dirty = selected.size !== original.size || [...selected].some((key) => !original.has(key))
   const editable = canEdit && role.permissionsEditable
+  const total = catalogue.modules.length * catalogue.actions.length
+  const share = total > 0 ? Math.round((selected.size / total) * 100) : 0
 
   const save = useMutation({
     mutationFn: () =>
@@ -71,16 +73,36 @@ function PermissionMatrix({ role, catalogue, canEdit }: { role: Role; catalogue:
 
   return (
     <div>
-      {editable && (
-        <div className="flex flex-wrap justify-end gap-2 px-4 pt-4">
-          <Button variant="secondary" size="sm" disabled={!dirty || save.isPending} onClick={() => setSelected(new Set(keysOf(role)))}>
-            Discard changes
-          </Button>
-          <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>
-            Save permissions
-          </Button>
+      <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="break-words text-lg font-bold text-[#0b3b66]">{role.name}</h3>
+            {role.description && <p className="mt-0.5 text-sm text-slate-600">{role.description}</p>}
+            <p className="mt-1 text-xs text-slate-500">
+              {role.userCount} {role.userCount === 1 ? 'user' : 'users'} with this role
+            </p>
+          </div>
+          {editable && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" disabled={!dirty || save.isPending} onClick={() => setSelected(new Set(keysOf(role)))}>
+                Discard changes
+              </Button>
+              <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>
+                Save permissions
+              </Button>
+            </div>
+          )}
         </div>
-      )}
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <span className="h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+            <span className="block h-full rounded-full bg-gradient-to-r from-[#1479BD] to-[#4aa3df] transition-all duration-500" style={{ width: `${share}%` }} />
+          </span>
+          <span className="text-xs font-semibold text-slate-600">
+            <span className="text-base font-bold tabular-nums text-[#0b3b66]">{selected.size}</span> of {total} permissions · {share}%
+          </span>
+          {dirty && <Badge tone="amber">Unsaved changes</Badge>}
+        </div>
+      </div>
 
       <div className="space-y-3 p-4 pb-0">
         {!role.permissionsEditable && <Alert tone="info">The Admin role always has full access. Its permissions cannot be changed.</Alert>}
@@ -172,36 +194,64 @@ function PermissionMatrix({ role, catalogue, canEdit }: { role: Role; catalogue:
 export function RolesPanel({ catalogue, canEdit }: { catalogue: RolesResponse; canEdit: boolean }) {
   const [selectedId, setSelectedId] = useState<string | null>(catalogue.roles[0]?.id ?? null)
   const role = catalogue.roles.find((candidate) => candidate.id === selectedId) ?? null
+  const total = catalogue.modules.length * catalogue.actions.length
 
   return (
     <div className="space-y-4">
-      <ul aria-label="Roles" className="flex flex-wrap gap-2">
-        {catalogue.roles.map((candidate) => {
-          const on = candidate.id === selectedId
+      <Alert tone="info">
+        The permissions of the Accountant, Procurement, Execution and Invoicing roles are a provisional starting point and have
+        not yet been approved by the business. Modules that are not built yet have no effect until they exist.
+      </Alert>
 
-          return (
-            <li key={candidate.id}>
-              <button
-                type="button"
-                aria-current={on ? 'true' : undefined}
-                onClick={() => setSelectedId(candidate.id)}
-                className={cx(
-                  'rounded-full px-4 py-1.5 text-sm font-semibold ring-1 ring-inset transition-colors',
-                  on ? 'bg-[#1479BD] text-white ring-[#1479BD]' : 'bg-white text-slate-700 ring-slate-300 hover:bg-sky-50 hover:text-[#0b3b66]',
-                )}
-              >
-                {candidate.name}
-                {!candidate.isActive && <span className="ml-1.5 text-xs font-normal opacity-80">(inactive)</span>}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
+      {/* minmax(0, …) lets the permission table scroll inside its card instead of widening the page. */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[17rem_minmax(0,1fr)]">
+        <ul aria-label="Roles" className="space-y-3 self-start">
+          {catalogue.roles.map((candidate) => {
+            const on = candidate.id === selectedId
+            const count = candidate.permissions.length
+            const share = total > 0 ? Math.round((count / total) * 100) : 0
 
-      <Card className="min-w-0">
-        {/* key: reset the unsaved selection when another role is chosen or the saved data changes. */}
-        {role && <PermissionMatrix key={`${role.id}:${keysOf(role).join(',')}`} role={role} catalogue={catalogue} canEdit={canEdit} />}
-      </Card>
+            return (
+              <li key={candidate.id}>
+                <button
+                  type="button"
+                  aria-label={candidate.name}
+                  aria-current={on ? 'true' : undefined}
+                  onClick={() => setSelectedId(candidate.id)}
+                  className={cx('surface relative block w-full overflow-hidden rounded-xl p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg', on && 'ring-2 ring-[#1479BD] ring-offset-1')}
+                >
+                  <span className={cx('absolute inset-y-0 left-0 w-1.5 bg-gradient-to-b', on ? 'from-[#1479BD] to-[#0b3b66]' : 'from-[#4aa3df] to-[#1479BD]')} aria-hidden="true" />
+                  <span className="flex items-start justify-between gap-2 pl-2" aria-hidden="true">
+                    <span className="min-w-0">
+                      <span className="block break-words text-sm font-bold text-[#0b3b66]">{candidate.name}</span>
+                      <span className="block text-xs text-slate-500">
+                        {candidate.userCount} {candidate.userCount === 1 ? 'user' : 'users'}
+                      </span>
+                    </span>
+                    {!candidate.isActive ? <Badge>Inactive</Badge> : !candidate.permissionsEditable ? <Badge tone="blue">Full access</Badge> : null}
+                  </span>
+                  <span className="mt-3 block pl-2" aria-hidden="true">
+                    <span className="flex items-baseline justify-between text-xs text-slate-500">
+                      <span>
+                        <span className="text-base font-bold tabular-nums text-slate-900">{count}</span> of {total}
+                      </span>
+                      <span className="font-semibold">{share}%</span>
+                    </span>
+                    <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-slate-200">
+                      <span className="block h-full rounded-full bg-gradient-to-r from-[#1479BD] to-[#4aa3df]" style={{ width: `${share}%` }} />
+                    </span>
+                  </span>
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+
+        <Card className="min-w-0">
+          {/* key: reset the unsaved selection when another role is chosen or the saved data changes. */}
+          {role && <PermissionMatrix key={`${role.id}:${keysOf(role).join(',')}`} role={role} catalogue={catalogue} canEdit={canEdit} />}
+        </Card>
+      </div>
     </div>
   )
 }

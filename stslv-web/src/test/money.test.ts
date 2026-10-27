@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { formatDate } from '../lib/format'
-import { formatMoney, formatRate, isMoney, isRate, isZeroAmount, previewVat } from '../lib/money'
+import { formatMoney, formatRate, isMoney, isRate, isZeroAmount, previewVat, sameMoney, sumMoney } from '../lib/money'
 
 describe('money text handling', () => {
   it('formats stored amounts with thousands separators and three decimals, without converting to a number', () => {
@@ -52,6 +52,18 @@ describe('money text handling', () => {
     expect(previewVat('12.3456', '5')).toBeNull()
     expect(previewVat('100', '101')).toBeNull()
     expect(previewVat('abc', '5')).toBeNull()
+  })
+
+  it('adds and compares amounts exactly, to the third decimal', () => {
+    // 0.1 + 0.2 is not 0.3 in floating point; here it is.
+    expect(sumMoney(['0.1', '0.2'])).toBe('0.300')
+    expect(sumMoney(['405', '599.750', '0.001'])).toBe('1004.751')
+    expect(sumMoney(['99999999999.999', '0.001'])).toBe('100000000000.000')
+    expect(sumMoney([])).toBe('0.000')
+    expect(sameMoney('405', '405.000')).toBe(true)
+    expect(sameMoney('0405.5', '405.500')).toBe(true)
+    expect(sameMoney('405.000', '404.999')).toBe(false)
+    expect(sameMoney(sumMoney(['33.333', '0.001']), '33.334')).toBe(true)
   })
 
   it('formats a calendar day without shifting it across time zones', () => {

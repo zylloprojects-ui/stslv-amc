@@ -1,13 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { AttachmentsPanel } from '../../components/AttachmentsPanel'
 import { DetailRow, Money, OrDash } from '../../components/records'
 import { Alert, Badge, Button, Modal, Spinner, TextAreaField } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { projectLabel } from '../../lib/projectOptions'
-import type { Expense } from '../../lib/projectTypes'
-import type { FixedProject } from '../procurement/ProcurementFormModal'
+import type { Expense, FixedProject } from '../../lib/projectTypes'
 import { ExpenseFormModal } from './ExpenseFormModal'
 
 export type ExpenseDialog =
@@ -129,6 +129,14 @@ function ExpenseDetailsModal({ expenseId, canEdit, onEdit, onClose }: ExpenseDet
           <DetailRow label="Recorded">{formatDateTime(expense.createdAt)}</DetailRow>
           <DetailRow label="Last updated">{formatDateTime(expense.updatedAt)}</DetailRow>
         </dl>
+      )}
+      {expense && (
+        <section aria-labelledby="expense-documents-heading" className="mt-6 rounded-md border border-slate-200">
+          <h3 id="expense-documents-heading" className="border-b border-slate-200 px-6 py-3 text-sm font-semibold text-slate-900">
+            Receipts and bills
+          </h3>
+          <AttachmentsPanel entityType="project_expenses" entityId={expense.id} canUpload={canEdit} label="Receipts and bills" />
+        </section>
       )}
     </Modal>
   )

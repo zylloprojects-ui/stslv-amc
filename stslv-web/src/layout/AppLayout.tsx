@@ -6,10 +6,12 @@ import { usePalette, useSidebarCollapsed, useTheme, type Theme } from '../lib/pr
 import { CookieNotice } from './CookieNotice'
 import { FeedbackButton } from './FeedbackWidget'
 import { HeaderSearch } from './HeaderSearch'
+import { NotificationBell } from './NotificationBell'
 import { PaletteMenu } from './PaletteMenu'
 import { ScrollToTop } from './ScrollToTop'
 import { SelectPopup } from './SelectPopup'
 import { Sidebar } from './Sidebar'
+import { SplashLoader } from './SplashLoader'
 import { UserMenu } from './UserMenu'
 
 // The width from which the sidebar is always visible (Tailwind's "lg").
@@ -122,6 +124,7 @@ export function AppLayout() {
         </div>
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <NotificationBell />
           <FeedbackButton />
           <PaletteMenu palette={palette} onChoose={choosePalette} dark={theme === 'dark'} />
           <button
@@ -153,6 +156,7 @@ export function AppLayout() {
             <Outlet />
           </div>
         </main>
+        <SplashLoader />
       </div>
 
       <SelectPopup />

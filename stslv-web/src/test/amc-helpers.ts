@@ -1,4 +1,5 @@
-import type { Contract, ExecutionVisit, SchedulePreview, ScheduleVisit } from '../pages/amc/types'
+import type { Invoice } from '../lib/invoiceTypes'
+import type { Contract, ContractHistoryEntry, ExecutionVisit, SchedulePreview, ScheduleVisit } from '../pages/amc/types'
 import type { SessionUser } from '../lib/types'
 import { fail, makeClient, mockApi, ok, signIn, type MockReply, type MockRequest } from './helpers'
 
@@ -98,6 +99,10 @@ interface AmcApiOptions {
   contracts?: Contract[]
   visits?: ScheduleVisit[]
   preview?: SchedulePreview
+  /** The contract page's history, by contract id. */
+  history?: Record<string, ContractHistoryEntry[]>
+  /** What GET /invoices returns (the contract page asks for its contract's invoices). */
+  invoices?: Invoice[]
   override?: (request: MockRequest) => MockReply | undefined
 }
 
@@ -119,6 +124,8 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
     const body = (request.body ?? {}) as Record<string, unknown>
 
     if (path === '/auth/me') return ok({ user })
+    // Documents attached to a record: none unless a test says otherwise.
+    if (method === 'GET' && path === '/attachments') return ok([])
     if (method === 'GET' && path === '/clients') return ok({ items: CLIENTS, total: CLIENTS.length, page: 1, pageSize: 100 })
     if (method === 'GET' && path === '/amc/contracts/systems') return ok([...new Set(contracts.map((contract) => contract.systemDescription))])
 
@@ -156,6 +163,13 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
 
       if (!contract) return fail(404, 'NOT_FOUND', 'AMC contract not found.')
       if (method === 'GET' && rest === '') return ok(contract)
+      if (method === 'GET' && rest === '/masters') return ok({ salesEngineer: null, systemType: null })
+      if (method === 'GET' && rest === '/renewals') return ok({ renewedFrom: null, renewals: [] })
+      if (method === 'GET' && rest === '/history') {
+        const items = options.history?.[contract.id] ?? []
+
+        return ok({ items, total: items.length, page: Number(query.get('page') ?? 1), pageSize: Number(query.get('pageSize') ?? 25) })
+      }
       if (method === 'GET' && rest === '/schedule/preview') {
         return ok(
           options.preview ?? {
@@ -191,7 +205,7 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
         .filter((visit) => (!from || visit.scheduledDate >= from) && (!to || visit.scheduledDate <= to))
         .filter((visit) => !query.get('clientId') || visit.client.id === query.get('clientId'))
         .filter((visit) => !query.get('contractId') || visit.contract.id === query.get('contractId'))
-        .filter((visit) => !query.get('status') || visit.status === query.get('status'))
+        .filter((visit) => !query.get('status') || (query.get('status') ?? '').split(',').includes(visit.status))
         .filter((visit) => !query.get('invoiceEligibility') || visit.invoiceEligibility === query.get('invoiceEligibility'))
 
       return ok({ items, total: items.length, page: 1, pageSize: 50, totals: { visitAmount: '810.000', amountMissingCount: 0 } })
@@ -235,6 +249,22 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
 
         return ok(toExecution(saved))
       }
+    }
+
+    // --- Invoices (only as the contract page asks for them) ---
+    if (method === 'GET' && path === '/invoices') {
+      const contractId = query.get('amcContractId')
+      const items = (options.invoices ?? []).filter(
+        (invoice) => !contractId || invoice.allocations.some((allocation) => allocation.amcVisit?.contractId === contractId),
+      )
+
+      return ok({
+        items,
+        total: items.length,
+        page: 1,
+        pageSize: Number(query.get('pageSize') ?? 25),
+        totals: { amountExclVat: '0.000', vatAmount: '0.000', totalAmount: '0.000' },
+      })
     }
 
     // --- Execution ---

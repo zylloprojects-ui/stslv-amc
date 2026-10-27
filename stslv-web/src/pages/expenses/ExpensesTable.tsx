@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom'
 import { Money } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Badge, Button } from '../../components/ui'
@@ -10,8 +9,6 @@ interface ExpensesTableProps {
   items: Expense[]
   /** Hidden on a project's own page, where every row belongs to that project. */
   showProject: boolean
-  /** Whether the job number links to the project page. */
-  linkProject: boolean
   canEdit: boolean
   canVoid: boolean
   onDialog: (dialog: ExpenseDialog) => void
@@ -19,7 +16,7 @@ interface ExpensesTableProps {
   startAt?: number
 }
 
-export function ExpensesTable({ items, showProject, linkProject, canEdit, canVoid, onDialog, startAt = 0 }: ExpensesTableProps) {
+export function ExpensesTable({ items, showProject, canEdit, canVoid, onDialog, startAt = 0 }: ExpensesTableProps) {
   return (
     <div className={TABLE.wrapper}>
       <table className={TABLE.table}>
@@ -64,13 +61,7 @@ export function ExpensesTable({ items, showProject, linkProject, canEdit, canVoi
               <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(expense.expenseDate)}</td>
               {showProject && (
                 <td className={`${TABLE.td} whitespace-nowrap font-medium`}>
-                  {linkProject ? (
-                    <Link to={`/projects/${expense.projectId}`} className="text-blue-700 hover:underline">
-                      {expense.jobNumber}
-                    </Link>
-                  ) : (
-                    expense.jobNumber
-                  )}
+                  {expense.jobNumber}
                   <div className="text-xs font-normal text-slate-500">{expense.clientName}</div>
                 </td>
               )}

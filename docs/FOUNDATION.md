@@ -138,7 +138,7 @@ The API tests use the database named in `.env` but a **separate PostgreSQL schem
 
 ## 8. Known limits of the foundation
 
-- No login rate limiting or account lockout yet.
+- Login is rate limited per network address and per address and email (see `AUTH_SIGNUP_AND_RECOVERY.md` section 4). There is deliberately no account lockout.
 - No "forgot password" flow. An administrator resets a user's password in Users & Access; `npm run admin:create` can create a further Admin if every Admin is locked out.
 - Roles cannot be created or renamed in the application; only their permissions and membership can be changed.
 - The activity log is written but has no screen yet.

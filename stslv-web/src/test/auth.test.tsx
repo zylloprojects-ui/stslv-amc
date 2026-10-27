@@ -66,11 +66,11 @@ describe('login', () => {
 
     release(ok({ token: 'issued-token', expiresAt: '2026-10-01T18:00:00.000Z', user: ADMIN }))
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
     expect(api.find('POST', '/auth/login')[0]?.body).toEqual({ email: 'admin@example.com', password: 'a-good-password' })
     expect(localStorage.getItem('stslv-amc.token')).toBe('issued-token')
     // Later requests carry the token.
-    await waitFor(() => expect(api.find('GET', '/dashboard/summary')[0]?.authorization).toBe('Bearer issued-token'))
+    await waitFor(() => expect(api.find('GET', '/dashboard/operations')[0]?.authorization).toBe('Bearer issued-token'))
   })
 
   it('reports an unreachable server', async () => {
@@ -110,7 +110,7 @@ describe('protected routes', () => {
     session(ADMIN)
     renderApp('/dashboard')
 
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
     const header = screen.getByRole('banner')
     expect(within(header).getByText('Asha Admin')).toBeInTheDocument()
     expect(within(header).getByText('Admin')).toBeInTheDocument()
@@ -177,13 +177,14 @@ describe('permission-based navigation', () => {
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
 
-    // Settings sits in the footer, after the groups.
-    expect(linkNames(nav)).toEqual(['Dashboard', 'Settings'])
+    // Settings sits in the footer, after the groups. The Master Data Center heading is itself a link, to its hub.
+    expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center', 'Settings'])
     expect(await linksByGroup(nav)).toEqual({
-      Operations: ['Clients', 'AMC Contracts', 'AMC Schedule', 'AMC Execution', 'Projects', 'Procurement'],
+      'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
+      Operations: ['AMC Contracts', 'AMC Schedule', 'AMC Calendar'],
       Finance: ['Expenses', 'Invoice Tracking'],
       Reporting: ['Reports', 'Historical Data'],
-      Administration: ['Users & Access', 'Roles & Permissions'],
+      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
     })
   })
 
@@ -194,14 +195,14 @@ describe('permission-based navigation', () => {
     const nav = await screen.findByRole('navigation', { name: 'Main' })
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
 
-    await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
-    expect(within(nav).getByRole('button', { name: 'Operations' })).toHaveAttribute('aria-expanded', 'true')
+    await userEvent.click(within(nav).getByRole('button', { name: 'Master Data Center pages' }))
+    expect(within(nav).getByRole('button', { name: 'Master Data Center pages' })).toHaveAttribute('aria-expanded', 'true')
     expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
 
     await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
     expect(within(nav).getByRole('link', { name: 'Expenses' })).toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
-    expect(within(nav).getByRole('button', { name: 'Operations' })).toHaveAttribute('aria-expanded', 'false')
+    expect(within(nav).getByRole('button', { name: 'Master Data Center pages' })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('starts with the group of the current page open', async () => {
@@ -220,9 +221,9 @@ describe('permission-based navigation', () => {
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
 
-    // No Settings link: the role may not view it.
-    expect(linkNames(nav)).toEqual(['Dashboard'])
-    expect(await linksByGroup(nav)).toEqual({ Operations: ['Clients', 'Projects'], Finance: ['Expenses'] })
+    // No Settings link: the role may not view it. Clients makes the Master Data Center hub available.
+    expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center'])
+    expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'], Finance: ['Expenses'] })
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })
 
@@ -235,38 +236,22 @@ describe('permission-based navigation', () => {
     expect(api.find('GET', '/users')).toHaveLength(0)
   })
 
-  it('shows unbuilt modules as in progress, with no data', async () => {
+  it('opens the Reports page itself, not a placeholder', async () => {
     session(ADMIN)
     renderApp('/reports')
 
-    expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument()
-    expect(screen.getByText('Module implementation in progress')).toBeInTheDocument()
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Reports', level: 1 })).toBeInTheDocument()
+    expect(screen.queryByText('Module implementation in progress')).not.toBeInTheDocument()
   })
 })
 
 describe('dashboard', () => {
-  it('shows the real client counts, and no card for a figure the API did not return', async () => {
+  it('no longer shows the other-figures cards, whatever the summary holds', async () => {
     session(ADMIN)
     renderApp('/dashboard')
 
-    const clientsCard = (await screen.findByText('Active Clients')).parentElement as HTMLElement
-    expect(await within(clientsCard).findByText('4')).toBeInTheDocument()
-    expect(within(clientsCard).getByText(/1 inactive/)).toBeInTheDocument()
-
-    // The summary above carries client counts only. The other metrics are connected
-    // to the API, so without a figure from it they are left out: no placeholder, no zero.
-    for (const label of [
-      'Active Contracts',
-      'Visits Due',
-      'Ready for Invoice',
-      'Active Projects',
-      'Projects Ready for Invoice',
-      'Tracked Expenses',
-      'Ready-for-Invoice Value',
-    ]) {
-      expect(screen.queryByRole('heading', { name: label, level: 3 })).not.toBeInTheDocument()
-    }
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
+    expect(screen.queryByText('Active Clients')).not.toBeInTheDocument()
     expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
   })
 })
@@ -417,7 +402,23 @@ describe('page search', () => {
     await userEvent.click(await screen.findByRole('combobox', { name: 'Search pages' }))
 
     const options = (await screen.findAllByRole('option')).map((option) => option.querySelector('span.font-semibold')?.textContent)
-    expect(options).toEqual(['Dashboard', 'Clients', 'Projects', 'Expenses', 'My Account'])
+    expect(options).toEqual(['Dashboard', 'Master Data Center', 'Clients', 'Expenses', 'My Account'])
+  })
+})
+
+describe('loader style', () => {
+  it('lets the user pick a loader design and remembers it', async () => {
+    session(ADMIN)
+    renderApp('/dashboard')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Colour theme' }))
+    await userEvent.click(screen.getByRole('button', { name: /Skeleton/ }))
+
+    expect(localStorage.getItem('stslev.loader')).toBe('skeleton')
+    expect(screen.getByRole('button', { name: /Skeleton/ })).toHaveAttribute('aria-pressed', 'true')
+
+    // The choice lives in a store shared by every loader; put it back for the tests that follow.
+    await userEvent.click(screen.getByRole('button', { name: /Logo ring/ }))
   })
 })
 

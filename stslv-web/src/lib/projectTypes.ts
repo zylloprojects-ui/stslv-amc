@@ -15,7 +15,15 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   HISTORICAL: 'Historical',
 }
 
-export type InvoiceState = 'NOT_READY' | 'READY_FOR_INVOICE' | 'NO_INVOICE_REQUIRED' | 'NOT_APPLICABLE' | 'HISTORICAL'
+// PARTLY_INVOICED and INVOICED: active invoices cover part or all of the job value (both excluding VAT).
+export type InvoiceState =
+  | 'NOT_READY'
+  | 'READY_FOR_INVOICE'
+  | 'PARTLY_INVOICED'
+  | 'INVOICED'
+  | 'NO_INVOICE_REQUIRED'
+  | 'NOT_APPLICABLE'
+  | 'HISTORICAL'
 
 export interface Project {
   id: string
@@ -42,6 +50,10 @@ export interface Project {
   allowedStatuses: ProjectStatus[]
   invoiceState: InvoiceState
   readyForInvoice: boolean
+  /** What active invoices allocate to the project, excluding VAT. */
+  invoicedValue: string
+  /** Job value excluding VAT not yet covered by an active invoice. Null for a historical or cancelled project. */
+  uninvoicedValue: string | null
   /** Null when the signed-in user may not view expenses. */
   trackedExpenses: string | null
   operationalJobMargin: string | null
@@ -56,6 +68,14 @@ export interface ProjectOption {
   description: string
   clientName: string
   status: ProjectStatus
+}
+
+/** A project a form is opened for, so the project picker is not shown. */
+export interface FixedProject {
+  id: string
+  jobNumber: string
+  clientName: string
+  description: string
 }
 
 export interface ProjectDefaults {

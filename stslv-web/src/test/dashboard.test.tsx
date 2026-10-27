@@ -3,428 +3,553 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
+import { monthCells } from '../pages/dashboard/calendarCells'
+import { orderedIds } from '../pages/dashboard/dashboardPreferences'
 import { MetricCard } from '../pages/dashboard/MetricCard'
-import { ACCOUNTANT, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply } from './helpers'
+import type { OperationsDashboard } from '../pages/dashboard/operationsTypes'
+import { ACCOUNTANT, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
-function dashboardApi(user: SessionUser, summary: () => MockReply | Promise<MockReply>) {
+// The AMC Operations Dashboard. The API is mocked: every figure here is a
+// fixture, and each test checks that the page shows exactly what the API sent.
+
+const UNAVAILABLE = { available: false as const, reason: 'Payment is not recorded in STSLV AMC. Invoices are tracked as Issued or Cancelled only, with no paid date or paid amount.' }
+
+const OPERATIONS: OperationsDashboard = {
+  asOf: '2026-10-27',
+  timeZone: 'Asia/Muscat',
+  kpis: {
+    contracts: {
+      active: 12,
+      activePastValidity: 2,
+      activeValue: '8010.500',
+      finalCreditTotal: '300.501',
+      finalCreditRecorded: 2,
+      expiringSoon: 3,
+      expiringSoonDays: 45,
+      expiringSoonWithRenewal: 1,
+    },
+    services: { thisMonth: 9, completedThisMonth: 4, openThisMonth: 5 },
+    unpaidInvoices: UNAVAILABLE,
+    paidThisMonth: UNAVAILABLE,
+  },
+  portfolio: {
+    total: 16,
+    statuses: [
+      { status: 'DRAFT', count: 3, percent: '18.8' },
+      { status: 'ACTIVE', count: 12, percent: '75.0' },
+      { status: 'EXPIRED', count: 0, percent: '0.0' },
+      { status: 'CANCELLED', count: 1, percent: '6.3' },
+    ],
+  },
+  expiring: {
+    days: 90,
+    total: 2,
+    pastValidity: 1,
+    renewalsInstalled: true,
+    items: [
+      { id: '41', client: { id: '1', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', validTo: '2026-10-26', daysLeft: -1, renewal: null },
+      { id: '42', client: { id: '2', name: 'City Tower' }, systemDescription: 'CCTV', validTo: '2026-12-11', daysLeft: 45, renewal: { id: '77', status: 'DRAFT' } },
+    ],
+  },
+  workload: {
+    months: [
+      { month: '2026-10', planned: 9, completed: 4, open: 5 },
+      { month: '2026-11', planned: 7, completed: 0, open: 7 },
+      { month: '2026-12', planned: 0, completed: 0, open: 0 },
+      { month: '2027-01', planned: 3, completed: 0, open: 3 },
+      { month: '2027-02', planned: 1, completed: 0, open: 1 },
+      { month: '2027-03', planned: 2, completed: 0, open: 2 },
+    ],
+  },
+  schedule: {
+    today: [
+      { id: '501', contractId: '41', client: { id: '1', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', scheduledDate: '2026-10-27', assignedTo: 'R. Engineer', status: 'SCHEDULED', isOverdue: false },
+    ],
+    todayTotal: 1,
+    upcoming: [
+      { id: '502', contractId: '42', client: { id: '2', name: 'City Tower' }, systemDescription: 'CCTV', scheduledDate: '2026-10-30', assignedTo: null, status: 'SCHEDULED', isOverdue: false },
+    ],
+    upcomingTotal: 1,
+    upcomingDays: 7,
+  },
+  payments: UNAVAILABLE,
+}
+
+const SUMMARY = {
+  clients: { active: 1234, inactive: 2 },
+  amc: {
+    asOf: '2026-10-27',
+    contracts: { active: 12, activePastValidity: 2 },
+    visits: { due: 7, overdue: 4 },
+    invoicing: { readyForInvoice: { count: 5, amount: '12345.500' }, amountRequired: { count: 2 } },
+  },
+  projects: {
+    counts: { active: 9, new: 4, inProgress: 5, readyForInvoice: 6 },
+    values: { readyForInvoiceValue: '2000.250' },
+    costs: { trackedExpenses: '4321.125', trackedExpensesOnCancelledProjects: '40.000' },
+  },
+  invoices: { issued: { count: 3, amountExclVat: '900.000', vatAmount: '45.000', totalAmount: '945.000' }, cancelled: { count: 0 }, projects: null },
+}
+
+const VISIT = {
+  id: '501',
+  contract: { id: '41', status: 'ACTIVE', systemDescription: 'FIRE ALARM', maintenanceFrequency: 'QUARTERLY' },
+  client: { id: '1', name: 'Harbour Hotel' },
+  sequenceNo: 3,
+  periodStart: '2026-10-01',
+  periodEnd: '2026-12-31',
+  originalScheduledDate: '2026-10-27',
+  scheduledDate: '2026-10-27',
+  isRescheduled: false,
+  isOverdue: false,
+  assignedTo: 'R. Engineer',
+  assignedToOverride: null,
+  status: 'COMPLETED',
+  completedDate: '2026-10-27',
+  completedBy: null,
+  workPerformed: null,
+  executionNotes: null,
+  statusReason: null,
+  notes: null,
+  createdAt: '2026-10-01T08:00:00.000Z',
+  updatedAt: '2026-10-01T08:00:00.000Z',
+  visitAmount: '405.125',
+  amountIsCustom: false,
+  invoiceEligibility: 'INVOICED',
+}
+
+const invoice = (id: string, invoiceNumber: string, status: 'ISSUED' | 'CANCELLED' = 'ISSUED') => ({
+  id,
+  invoiceNumber,
+  client: { id: '1', name: 'Harbour Hotel' },
+  invoiceDate: '2026-10-20',
+  amountExclVat: '400.000',
+  vatAmount: '20.000',
+  totalAmount: '420.000',
+  status,
+  source: 'ZOHO',
+  sourceReference: null,
+  notes: null,
+  cancelledAt: null,
+  cancelledBy: null,
+  cancellationReason: null,
+  createdBy: { id: '1', fullName: 'Asha Admin' },
+  createdAt: '2026-10-20T08:00:00.000Z',
+  updatedAt: '2026-10-20T08:00:00.000Z',
+  allocations: [],
+})
+
+const READINESS = {
+  checkedAt: '2026-10-27T08:00:00.000Z',
+  checks: [
+    { id: 'api', label: 'API', state: 'OK', detail: 'The API answered this request.' },
+    { id: 'database', label: 'Database', state: 'OK', detail: 'Connected.' },
+    { id: 'migrations', label: 'Database updates', state: 'ATTENTION', detail: '5 of 24 database updates are not applied: 0070, 0071, 0072, 0073, 0074.' },
+    { id: 'backup', label: 'Last verified backup', state: 'UNAVAILABLE', detail: 'STSLV AMC does not record backups.' },
+  ],
+}
+
+type Overrides = Partial<Record<'operations' | 'summary' | 'readiness' | 'invoices' | 'visit' | 'calendar' | 'dayVisits', (request: MockRequest) => MockReply | Promise<MockReply>>>
+
+function dashboardApi(user: SessionUser, overrides: Overrides = {}) {
   signIn()
 
   return mockApi((request) => {
     if (request.path === '/auth/me') return ok({ user })
-    if (request.path === '/dashboard/summary') return summary()
+    if (request.path === '/notifications') return ok({ items: [], unread: 0 })
+    if (request.path === '/dashboard/operations') return overrides.operations?.(request) ?? ok(OPERATIONS)
+    if (request.path === '/dashboard/summary') return overrides.summary?.(request) ?? ok(SUMMARY)
+    if (request.path === '/dashboard/readiness') return overrides.readiness?.(request) ?? ok(READINESS)
+    if (request.path === '/dashboard/calendar')
+      return overrides.calendar?.(request) ?? ok({ month: request.query.get('month'), days: [{ date: '2026-10-27', total: 2, completed: 1, open: 1, overdue: 0 }] })
+    if (request.path === '/amc/visits/501') return overrides.visit?.(request) ?? ok(VISIT)
+    if (request.path === '/amc/visits') return overrides.dayVisits?.(request) ?? ok({ items: [VISIT], total: 1, page: 1, pageSize: 50, totals: { visitAmount: '405.125', amountMissingCount: 0 } })
+    if (request.path === '/invoices') {
+      if (overrides.invoices) return overrides.invoices(request)
+      if (request.query.get('amcVisitId')) return ok({ items: [invoice('9', 'INV-0091')], total: 1, page: 1, pageSize: 10, totals: {} })
+      return ok({ items: [invoice('9', 'INV-0091'), invoice('8', 'INV-0090', 'CANCELLED')], total: 12, page: Number(request.query.get('page') ?? 1), pageSize: 8, totals: {} })
+    }
     return undefined
   })
 }
 
-// The shape GET /api/dashboard/summary returns to a user who may see everything.
-const AMC = {
-  asOf: '2026-10-01',
-  contracts: { active: 12, activePastValidity: 3, draft: 1, expired: 0, cancelled: 2 },
-  visits: { due: 7, overdue: 4, upcoming: 9, upcomingDays: 30, dueThisMonth: 11, inProgress: 1, postponed: 1, completedThisMonth: 2, completedTotal: 30 },
-  invoicing: { readyForInvoice: { count: 5, amount: '12345.500' }, amountRequired: { count: 2 }, noInvoiceRequired: { count: 1 } },
-}
-const PROJECTS = {
-  counts: { total: 20, active: 9, new: 4, inProgress: 5, completed: 8, cancelled: 3, readyForInvoice: 6, noInvoiceRequired: 1 },
-  values: { totalJobValue: '90000.000', totalGrandValue: '94500.000', readyForInvoiceValue: '2000.250' },
-  costs: { trackedExpenses: '4321.125', operationalJobMargin: '85678.875', trackedExpensesOnCancelledProjects: '40.000' },
-}
-const FULL = { clients: { active: 1234, inactive: 2 }, amc: AMC, projects: PROJECTS }
-const SUMMARY = ok(FULL)
-
-const ALL_LABELS = [
-  'Active Clients',
-  'Active Contracts',
-  'Visits Due',
-  'Ready for Invoice',
-  'Active Projects',
-  'Projects Ready for Invoice',
-  'Tracked Expenses',
-  'Ready-for-Invoice Value',
-]
-
 const withPermissions = (permissions: string[]): SessionUser => ({ ...ACCOUNTANT, permissions })
 
-/** The card that holds a metric: its label is the card's heading. */
-async function cardOf(label: string) {
-  const heading = await screen.findByRole('heading', { name: label, level: 3 })
+async function kpiCard(label: string) {
+  const strip = await screen.findByRole('list', { name: 'Key figures' })
+  const heading = await within(strip).findByRole('heading', { name: label })
 
-  return heading.closest('[data-metric-card]') as HTMLElement
+  return heading.closest('[data-kpi]') as HTMLElement
 }
 
-const shownCards = () => screen.queryAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)
+const kpiOrder = () => [...document.querySelectorAll('[data-kpi]')].map((card) => card.getAttribute('data-kpi'))
 
-describe('dashboard layout', () => {
-  it('groups the metrics as Clients, AMC, Projects and Finance', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+describe('KPI cards', () => {
+  it('shows the seven KPIs from the API, formatted, each with its code', async () => {
+    dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const expected: Record<string, string[]> = {
-      Clients: ['Active Clients'],
-      AMC: ['Active Contracts', 'Visits Due', 'Ready for Invoice'],
-      Projects: ['Active Projects', 'Projects Ready for Invoice'],
-      Finance: ['Tracked Expenses', 'Ready-for-Invoice Value'],
+    const active = await kpiCard('Active AMC')
+    expect(await within(active).findByText('12')).toBeInTheDocument()
+    expect(within(active).getByText(/2 past validity/)).toBeInTheDocument()
+
+    const value = await kpiCard('Active AMC Value')
+    expect(within(value).getByText('8,010.500')).toBeInTheDocument()
+    expect(within(value).getByTitle(/not annualised/)).toBeInTheDocument()
+
+    const credit = await kpiCard('Total Final Credit')
+    expect(within(credit).getByText('300.501')).toBeInTheDocument()
+    expect(within(credit).getByTitle(/meaning not yet confirmed, not revenue/)).toBeInTheDocument()
+
+    const services = await kpiCard('Services This Month')
+    expect(within(services).getByText('9')).toBeInTheDocument()
+    expect(within(services).getByText(/4 completed, 5 open/)).toBeInTheDocument()
+
+    const expiring = await kpiCard('Expiring ≤45 Days')
+    expect(within(expiring).getByText('3')).toBeInTheDocument()
+    expect(within(expiring).getByText(/within 45 days · 1 with a renewal/)).toBeInTheDocument()
+    expect(kpiOrder()).toEqual(['active', 'value', 'credit', 'services', 'unpaid', 'paid', 'expiring'])
+  })
+
+  it('shows unpaid and paid invoices as not available, never as a number', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    for (const label of ['Unpaid Invoices', 'Paid This Month']) {
+      const card = await kpiCard(label)
+
+      expect(await within(card).findByText('Not available')).toBeInTheDocument()
+      expect(within(card).getByText(/Payment is not recorded/)).toBeInTheDocument()
+      expect(within(card).queryByText(/^\d/)).not.toBeInTheDocument()
     }
-
-    for (const [group, labels] of Object.entries(expected)) {
-      const section = await screen.findByRole('region', { name: group })
-      const shown = within(section)
-        .getAllByRole('heading', { level: 3 })
-        .map((heading) => heading.textContent)
-
-      expect(shown).toEqual(labels)
-    }
   })
 
-  it('lays the cards out in a grid that narrows to one column on a phone', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+  it('shows a role only the KPIs its permissions allow, and only what the API returned', async () => {
+    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']), {
+      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, unpaidInvoices: null, paidThisMonth: null }, portfolio: null, expiring: null, payments: null }),
+    })
     renderApp('/dashboard')
 
-    const grid = (await cardOf('Active Contracts')).parentElement as HTMLElement
-
-    // One column by default, two from the small breakpoint, three on a wide screen.
-    expect(grid).toHaveClass('grid', 'sm:grid-cols-2', 'xl:grid-cols-3')
-    expect(grid.className).not.toMatch(/(^|\s)grid-cols-\d/)
+    await kpiCard('Services This Month')
+    expect(kpiOrder()).toEqual(['services'])
+    expect(screen.queryByText('8,010.500')).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'AMC Portfolio Status' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Payment Trend' })).not.toBeInTheDocument()
   })
 
-  it('shows the client figures from the API, formatted, with a link to the clients', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+  it('hides a card whose section the API left out even if the role seems to allow it', async () => {
+    dashboardApi(ADMIN, { operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null } }) })
     renderApp('/dashboard')
 
-    const card = await cardOf('Active Clients')
-
-    expect(await within(card).findByText('1,234')).toBeInTheDocument()
-    expect(within(card).getByText('2 inactive')).toBeInTheDocument()
-    expect(within(card).getByRole('link', { name: 'View clients' })).toHaveAttribute('href', '/clients')
-    expect(within(card).queryByText('Not yet available')).not.toBeInTheDocument()
-  })
-})
-
-describe('dashboard banner', () => {
-  it('greets the user by name under the product name, with today’s date', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
-    renderApp('/dashboard')
-
-    expect(await screen.findByRole('heading', { name: 'Dashboard', level: 1 })).toBeInTheDocument()
-
-    const main = screen.getByRole('main')
-    expect(main).toHaveTextContent(/Good (morning|afternoon|evening), Asha Admin\./)
-    expect(main).toHaveTextContent(new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }))
-    expect(main).toHaveTextContent('STSLEV AMC · Operations Suite')
-    expect(main).not.toHaveTextContent('STSLEV ERP')
-    expect(document.title).toBe('Dashboard · STSLEV AMC')
+    await kpiCard('Services This Month')
+    expect(kpiOrder()).toEqual(['services', 'unpaid', 'paid'])
   })
 
-  it('offers quick links only to pages the role may open', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
-    const admin = renderApp('/dashboard')
-
-    await cardOf('Active Clients')
-    const banner = () => screen.getByRole('heading', { name: 'Dashboard', level: 1 }).parentElement as HTMLElement
-
-    expect(within(banner()).getByRole('link', { name: 'Clients' })).toHaveAttribute('href', '/clients')
-    expect(within(banner()).getByRole('link', { name: 'Users & Access' })).toHaveAttribute('href', '/admin/users')
-    admin.unmount()
-
-    dashboardApi(ACCOUNTANT, () => ok({ clients: FULL.clients, amc: null, projects: PROJECTS }))
+  it('reports a failure without inventing a figure, and recovers on retry', async () => {
+    let failing = true
+    dashboardApi(ADMIN, { operations: () => (failing ? fail(500, 'INTERNAL_ERROR', 'An unexpected error occurred.') : ok(OPERATIONS)) })
     renderApp('/dashboard')
 
-    await cardOf('Active Clients')
-    expect(within(banner()).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
-    expect(within(banner()).queryByRole('link', { name: 'Users & Access' })).not.toBeInTheDocument()
+    expect(await screen.findByText(/The dashboard figures could not be loaded/)).toBeInTheDocument()
+    expect(screen.getByText('System unreachable')).toBeInTheDocument()
+    const card = await kpiCard('Active AMC')
+    expect(within(card).getByText('Could not be loaded')).toBeInTheDocument()
+    expect(card.textContent).not.toMatch(/\d/)
+
+    failing = false
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+
+    expect(await within(await kpiCard('Active AMC')).findByText('12')).toBeInTheDocument()
+    expect(screen.getByText('System online')).toBeInTheDocument()
   })
 })
 
-describe('workspace cards', () => {
-  const workspace = () => within(screen.getByRole('region', { name: 'Workspace' }))
+describe('KPI layout preferences', () => {
+  it('moves cards, remembers the order for this user and resets it', async () => {
+    dashboardApi(ADMIN)
+    const view = renderApp('/dashboard')
 
-  it('counts the modules the role may open, from the navigation', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
-    const admin = renderApp('/dashboard')
+    await kpiCard('Active AMC')
+    await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Move Active AMC later' }))
+    expect(kpiOrder().slice(0, 2)).toEqual(['value', 'active'])
+    expect(screen.getByRole('button', { name: 'Move Active AMC Value earlier' })).toBeDisabled()
 
-    await cardOf('Active Clients')
-    // Every navigation item: the Admin may open them all.
-    expect(workspace().getByText('Modules Available').nextElementSibling).toHaveTextContent(/^14$/)
-    expect(workspace().getByText('Admin')).toBeInTheDocument()
-    admin.unmount()
+    expect(JSON.parse(localStorage.getItem('stslev.dashboard.kpi-order.1') ?? '[]').slice(0, 2)).toEqual(['value', 'active'])
 
-    dashboardApi(ACCOUNTANT, () => ok({ clients: FULL.clients, amc: null, projects: PROJECTS }))
+    // The order survives a reload.
+    view.unmount()
     renderApp('/dashboard')
+    await kpiCard('Active AMC')
+    expect(kpiOrder().slice(0, 2)).toEqual(['value', 'active'])
 
-    await cardOf('Active Clients')
-    // Dashboard, Clients, Projects and Expenses.
-    expect(workspace().getByText('Modules Available').nextElementSibling).toHaveTextContent(/^4$/)
+    await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Layout' }))
+    expect(kpiOrder().slice(0, 2)).toEqual(['active', 'value'])
+    expect(localStorage.getItem('stslev.dashboard.kpi-order.1')).toBeNull()
   })
 
-  it('reports the connection from the dashboard’s own request, never as a fixed text', async () => {
-    let release: (reply: MockReply) => void = () => {}
-    dashboardApi(
-      ADMIN,
-      () =>
-        new Promise<MockReply>((resolve) => {
-          release = resolve
-        }),
-    )
-    const pending = renderApp('/dashboard')
-
-    await cardOf('Active Clients')
-    expect(workspace().getByText('Checking…')).toBeInTheDocument()
-
-    release(SUMMARY)
-    expect(await workspace().findByText('Connected')).toBeInTheDocument()
-    pending.unmount()
-
-    dashboardApi(ADMIN, () => fail(500, 'INTERNAL_ERROR', 'An unexpected error occurred.'))
+  it('moves a card past the ones the user cannot see', async () => {
+    // Saved order puts a contract card between two invoice cards; this role sees no contract cards.
+    localStorage.setItem('stslev.dashboard.kpi-order.2', JSON.stringify(['unpaid', 'active', 'paid', 'value', 'credit', 'services', 'expiring']))
+    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'INVOICES:VIEW']), {
+      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, services: null }, portfolio: null, expiring: null, workload: null, schedule: null }),
+    })
     renderApp('/dashboard')
 
-    await screen.findByRole('alert')
-    expect(await workspace().findByText('Unreachable')).toBeInTheDocument()
-    expect(workspace().queryByText('Connected')).not.toBeInTheDocument()
+    await kpiCard('Unpaid Invoices')
+    expect(kpiOrder()).toEqual(['unpaid', 'paid'])
+    await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Move Unpaid Invoices later' }))
+    expect(kpiOrder()).toEqual(['paid', 'unpaid'])
   })
 
-  it('draws the Active Clients ring only from figures the API returned', async () => {
-    let release: (reply: MockReply) => void = () => {}
-    dashboardApi(
-      ADMIN,
-      () =>
-        new Promise<MockReply>((resolve) => {
-          release = resolve
-        }),
-    )
-    renderApp('/dashboard')
-
-    const card = await cardOf('Active Clients')
-    const arc = () => card.querySelector('circle[stroke^="url"]')
-
-    // Nothing is drawn while the figures are still loading.
-    expect(arc()).toBeNull()
-
-    // 3 active of 4 clients: three quarters of the ring.
-    release(ok({ ...FULL, clients: { active: 3, inactive: 1 } }))
-    expect(await within(card).findByText('3')).toBeInTheDocument()
-
-    const [filled, whole] = (arc()?.getAttribute('stroke-dasharray') ?? '').split(' ').map(Number)
-    expect((filled as number) / (whole as number)).toBeCloseTo(0.75)
+  it('keeps saved ids that still exist and adds new cards at the end', () => {
+    expect(orderedIds(['b', 'gone', 'a', 'b'], ['a', 'b', 'c'])).toEqual(['b', 'a', 'c'])
+    expect(orderedIds(null, ['a', 'b'])).toEqual(['a', 'b'])
   })
 })
 
-describe('module rollout', () => {
-  const tiles = () =>
-    within(screen.getByRole('region', { name: 'Module rollout' }))
-      .getAllByRole('listitem')
-      .map((item) => item.textContent)
-
-  it('marks built modules Live and only the unbuilt ones Planned', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+describe('maintenance calendar', () => {
+  it('lists today’s work and the next days, and opens service details', async () => {
+    dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await cardOf('Active Clients')
+    const panel = (await screen.findByRole('heading', { name: 'AMC Maintenance Calendar' })).closest('section') as HTMLElement
+    expect(within(panel).getByText(/Today · 27 Oct 2026/)).toBeInTheDocument()
+    expect(within(panel).getByText('City Tower')).toBeInTheDocument()
+    expect(within(panel).getByRole('link', { name: 'Open full calendar →' })).toHaveAttribute('href', '/amc/calendar')
 
-    expect(tiles()).toEqual([
-      'ClientsLive',
-      'AMC ContractsLive',
-      'AMC ScheduleLive',
-      'AMC ExecutionLive',
-      'ProjectsLive',
-      'ProcurementLive',
-      'ExpensesLive',
-      'Invoice TrackingPlanned',
-      'ReportsPlanned',
-      'Historical DataLive',
-      'Users & AccessLive',
-      'Roles & PermissionsLive',
-      'SettingsLive',
+    await userEvent.click(within(panel).getByRole('button', { name: /Service details: Harbour Hotel, FIRE ALARM, 27 Oct 2026/ }))
+
+    const details = within(panel).getByRole('region', { name: 'Service details' })
+    expect(await within(details).findByText('Quarterly')).toBeInTheDocument()
+    expect(within(details).getByRole('link', { name: 'Contract record 41' })).toHaveAttribute('href', '/amc/contracts/41')
+    expect(within(details).getByText('R. Engineer')).toBeInTheDocument()
+    expect(within(details).getByText('405.125')).toBeInTheDocument()
+    expect(within(details).getByText('Invoiced')).toBeInTheDocument()
+    expect(await within(details).findByText('INV-0091')).toBeInTheDocument()
+    expect(within(details).getByText('Not tracked in STSLV AMC')).toBeInTheDocument()
+  })
+
+  it('does not ask for invoice numbers without Invoice Tracking access', async () => {
+    const api = dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']), {
+      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, unpaidInvoices: null, paidThisMonth: null }, portfolio: null, expiring: null, payments: null }),
+    })
+    renderApp('/dashboard')
+
+    await userEvent.click(await screen.findByRole('button', { name: /Service details: Harbour Hotel/ }))
+    expect(await screen.findByText('Needs Invoice Tracking access')).toBeInTheDocument()
+    expect(api.find('GET', '/invoices')).toHaveLength(0)
+  })
+
+  it('shows counts per day, lists a day’s services, and collapses with the choice remembered', async () => {
+    const api = dashboardApi(ADMIN)
+    const view = renderApp('/dashboard')
+
+    const grid = await screen.findByRole('grid', { name: 'Visits in October 2026' })
+    await userEvent.click(within(grid).getByRole('button', { name: '27 Oct 2026: 2 visits' }))
+    expect(await screen.findByRole('heading', { name: 'Services on 27 Oct 2026' })).toBeInTheDocument()
+    const dayRequest = api.find('GET', '/amc/visits')[0]
+    expect(dayRequest?.query.get('from')).toBe('2026-10-27')
+    expect(dayRequest?.query.get('to')).toBe('2026-10-27')
+    // Days without visits cannot be opened.
+    expect(within(grid).getByRole('button', { name: '01 Oct 2026: no visits' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next month' }))
+    expect(await screen.findByRole('grid', { name: 'Visits in November 2026' })).toBeInTheDocument()
+    expect(api.find('GET', '/dashboard/calendar').map((request) => request.query.get('month'))).toEqual(['2026-10', '2026-11'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hide calendar ▴' }))
+    expect(screen.queryByRole('grid')).not.toBeInTheDocument()
+    expect(localStorage.getItem('stslev.dashboard.calendar-open.1')).toBe('0')
+
+    view.unmount()
+    renderApp('/dashboard')
+    expect(await screen.findByRole('button', { name: 'Show calendar ▾' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('builds whole weeks around a month', () => {
+    const cells = monthCells('2026-10')
+
+    // 1 October 2026 is a Thursday.
+    expect(cells.slice(0, 5)).toEqual([null, null, null, null, '2026-10-01'])
+    expect(cells.length % 7).toBe(0)
+    expect(cells.filter(Boolean)).toHaveLength(31)
+    expect(monthCells('2028-02').filter(Boolean)).toHaveLength(29)
+  })
+})
+
+describe('charts and widgets', () => {
+  it('draws the workload for six months with the same figures in a table', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    const panel = (await screen.findByRole('heading', { name: 'Upcoming Service Workload' })).closest('section') as HTMLElement
+    const rows = within(panel).getAllByRole('row').slice(1)
+
+    expect(rows.map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent))).toEqual([
+      ['October 2026', '9', '4', '5'],
+      ['November 2026', '7', '0', '7'],
+      ['December 2026', '0', '0', '0'],
+      ['January 2027', '3', '0', '3'],
+      ['February 2027', '1', '0', '1'],
+      ['March 2027', '2', '0', '2'],
     ])
+    expect(within(panel).getByRole('link', { name: 'Schedule →' })).toHaveAttribute('href', '/amc/schedule')
   })
 
-  it('agrees with the pages: a Planned module opens a placeholder, a Live one opens its page', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
-    const planned = renderApp('/invoices')
-    expect(await screen.findByText('Module implementation in progress')).toBeInTheDocument()
-    planned.unmount()
-
-    const live = renderApp('/settings')
-    expect(await screen.findByRole('heading', { name: 'Settings', level: 1 })).toBeInTheDocument()
-    expect(screen.queryByText('Module implementation in progress')).not.toBeInTheDocument()
-    live.unmount()
-  })
-
-  it('lists only the modules the role may open', async () => {
-    dashboardApi(ACCOUNTANT, () => ok({ clients: FULL.clients, amc: null, projects: PROJECTS }))
+  it('says the payment trend is not available instead of drawing zeros', async () => {
+    dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await cardOf('Active Clients')
+    const panel = (await screen.findByRole('heading', { name: 'Payment Trend' })).closest('section') as HTMLElement
+    expect(within(panel).getByText('Payment data not available')).toBeInTheDocument()
+    expect(within(panel).queryByRole('img')).not.toBeInTheDocument()
+  })
 
-    expect(tiles()).toEqual(['ClientsLive', 'ProjectsLive', 'ExpensesLive'])
+  it('breaks the portfolio down by every status with the API’s percentages', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    const panel = (await screen.findByRole('heading', { name: 'AMC Portfolio Status' })).closest('section') as HTMLElement
+    const cells = within(panel)
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => row.lastElementChild?.textContent)
+
+    expect(cells).toEqual(['Draft: 3 · 18.8%', 'Active: 12 · 75.0%', 'Expired: 0 · 0.0%', 'Cancelled: 1 · 6.3%'])
+    expect(within(panel).getByRole('link', { name: 'AMC Contracts →' })).toHaveAttribute('href', '/amc/contracts')
+  })
+
+  it('handles an empty portfolio', async () => {
+    dashboardApi(ADMIN, {
+      operations: () => ok({ ...OPERATIONS, portfolio: { total: 0, statuses: OPERATIONS.portfolio!.statuses.map((s) => ({ ...s, count: 0, percent: null })) }, expiring: { ...OPERATIONS.expiring!, total: 0, pastValidity: 0, items: [] } }),
+    })
+    renderApp('/dashboard')
+
+    expect(await screen.findByText('No AMC contracts recorded yet.')).toBeInTheDocument()
+    expect(screen.getByText('✓ No active AMC ends in the next 90 days.')).toBeInTheDocument()
+  })
+
+  it('lists expiring contracts with days left and renewal status', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    const panel = (await screen.findByRole('heading', { name: 'Expiring Contracts' })).closest('section') as HTMLElement
+    const rows = within(panel).getAllByRole('row').slice(1)
+
+    expect(within(rows[0] as HTMLElement).getByText('Ended 1 day ago')).toBeInTheDocument()
+    expect(within(rows[0] as HTMLElement).getByText('None')).toBeInTheDocument()
+    expect(within(rows[1] as HTMLElement).getByText('45 days')).toBeInTheDocument()
+    expect(within(rows[1] as HTMLElement).getByRole('link', { name: /Renewal/ })).toHaveAttribute('href', '/amc/contracts/77')
+    expect(within(panel).getByText(/1 already past validity/)).toBeInTheDocument()
   })
 })
 
-describe('connected metrics', () => {
-  it('shows the AMC figures the API returned', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+describe('recent invoices', () => {
+  const panel = async () => (await screen.findByRole('heading', { name: 'Recent Invoices' })).closest('section') as HTMLElement
+
+  it('lists invoices without a paid date, pages through them, and links to Invoice Tracking', async () => {
+    const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const contracts = await cardOf('Active Contracts')
-    expect(await within(contracts).findByText('12')).toBeInTheDocument()
-    expect(within(contracts).getByText('3 past validity')).toBeInTheDocument()
-    expect(within(contracts).getByRole('link', { name: 'View contracts' })).toHaveAttribute('href', '/amc/contracts')
+    const section = await panel()
+    expect(await within(section).findByText('INV-0091')).toBeInTheDocument()
+    expect(within(section).getAllByText('Not tracked')).toHaveLength(2)
+    expect(within(section).getAllByText('420.000')).toHaveLength(2)
+    expect(within(section).getByRole('link', { name: 'Open Invoice Tracking →' })).toHaveAttribute('href', '/invoices')
 
-    const due = await cardOf('Visits Due')
-    expect(within(due).getByText('7')).toBeInTheDocument()
-    expect(within(due).getByText('4 overdue')).toBeInTheDocument()
-    expect(within(due).getByRole('link', { name: 'View work list' })).toHaveAttribute('href', '/amc/execution')
-
-    const ready = await cardOf('Ready for Invoice')
-    expect(within(ready).getByText('5')).toBeInTheDocument()
-    expect(within(ready).getByText('5 visits · 2 completed visits need an amount')).toBeInTheDocument()
+    await userEvent.click(within(section).getByRole('button', { name: 'Next' }))
+    expect(api.find('GET', '/invoices').some((request) => request.query.get('page') === '2')).toBe(true)
   })
 
-  it('shows the project and expense figures the API returned', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+  it('searches and filters through the invoice list', async () => {
+    const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const active = await cardOf('Active Projects')
-    expect(await within(active).findByText('9')).toBeInTheDocument()
-    expect(within(active).getByText('4 new, 5 in progress')).toBeInTheDocument()
-    expect(within(active).getByRole('link', { name: 'View projects' })).toHaveAttribute('href', '/projects')
+    const section = await panel()
+    await userEvent.type(within(section).getByLabelText('Search'), 'Harbour')
+    await userEvent.selectOptions(within(section).getByRole('combobox', { name: 'Status' }), 'ISSUED')
 
-    const ready = await cardOf('Projects Ready for Invoice')
-    expect(within(ready).getByText('6')).toBeInTheDocument()
-
-    const expenses = await cardOf('Tracked Expenses')
-    expect(within(expenses).getByText('4,321.125')).toBeInTheDocument()
-    expect(within(expenses).getByText('Plus 40.000 on cancelled projects')).toBeInTheDocument()
-    expect(within(expenses).getByRole('link', { name: 'View expenses' })).toHaveAttribute('href', '/expenses')
+    await screen.findByText('INV-0091')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    const last = api.find('GET', '/invoices').filter((request) => !request.query.get('amcVisitId')).at(-1)
+    expect(last?.query.get('search')).toBe('Harbour')
+    expect(last?.query.get('status')).toBe('ISSUED')
   })
 
-  it('shows whatever the API returns: the figures are not fixed in the page', async () => {
-    dashboardApi(ADMIN, () =>
-      ok({
-        clients: { active: 1, inactive: 0 },
-        amc: {
-          ...AMC,
-          contracts: { ...AMC.contracts, active: 31, activePastValidity: 0 },
-          visits: { ...AMC.visits, due: 0, overdue: 0 },
-          invoicing: { ...AMC.invoicing, readyForInvoice: { count: 1, amount: '0.005' }, amountRequired: { count: 0 } },
-        },
-        projects: {
-          ...PROJECTS,
-          counts: { ...PROJECTS.counts, active: 44, new: 40, inProgress: 4, readyForInvoice: 1 },
-          values: { ...PROJECTS.values, readyForInvoiceValue: '99999999999.999' },
-          costs: { ...PROJECTS.costs, trackedExpenses: '0.000', trackedExpensesOnCancelledProjects: '0.000' },
-        },
-      }),
-    )
+  it('hides and shows columns and remembers the choice', async () => {
+    dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const contracts = await cardOf('Active Contracts')
-    expect(await within(contracts).findByText('31')).toBeInTheDocument()
-    expect(within(contracts).queryByText(/past validity/)).not.toBeInTheDocument()
+    const section = await panel()
+    await within(section).findByText('INV-0091')
+    await userEvent.click(within(section).getByText('Columns'))
+    await userEvent.click(within(section).getByRole('checkbox', { name: 'Paid on' }))
 
-    // A real zero from the API is shown as a zero.
-    expect(within(await cardOf('Visits Due')).getByText('0')).toBeInTheDocument()
-    expect(within(await cardOf('Ready for Invoice')).getByText('1 completed visit')).toBeInTheDocument()
-    expect(within(await cardOf('Active Projects')).getByText('44')).toBeInTheDocument()
-    expect(within(await cardOf('Projects Ready for Invoice')).getByText('1 completed project')).toBeInTheDocument()
-
-    const expenses = await cardOf('Tracked Expenses')
-    expect(within(expenses).getByText('0.000')).toBeInTheDocument()
-    expect(within(expenses).getByText('Cancelled projects left out')).toBeInTheDocument()
-
-    // Amounts keep every digit: they are formatted as text, never through a JavaScript number.
-    const value = await cardOf('Ready-for-Invoice Value')
-    expect(within(value).getByText('0.005')).toBeInTheDocument()
-    expect(within(value).getByText('99,999,999,999.999')).toBeInTheDocument()
+    expect(within(section).queryByRole('columnheader', { name: 'Paid on' })).not.toBeInTheDocument()
+    expect(within(section).queryByText('Not tracked')).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('stslev.dashboard.columns.recent-invoices.1') ?? '[]')).toEqual(['paid'])
   })
 
-  it('shows no connected metric as "Not yet available"', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+  it('offers Excel and PDF only with the export permission, using the current filters', async () => {
+    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'INVOICES:VIEW']), {
+      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, services: null }, portfolio: null, expiring: null, workload: null, schedule: null }),
+    })
     renderApp('/dashboard')
 
-    await within(await cardOf('Ready-for-Invoice Value')).findByText('12,345.500')
+    const section = await panel()
+    await within(section).findByText('INV-0091')
+    expect(within(section).queryByRole('button', { name: /Export invoices/ })).not.toBeInTheDocument()
+    expect(within(section).getByText(/exports need the Invoice Tracking export permission/)).toBeInTheDocument()
+  })
 
-    expect(shownCards()).toEqual(ALL_LABELS)
-    expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
-    expect(screen.queryByText(/no data source yet/)).not.toBeInTheDocument()
-    // No figure card is drawn as an empty placeholder.
-    expect(document.querySelector('[data-metric-card].border-dashed')).toBeNull()
+  it('shows export buttons to a role with INVOICES:EXPORT', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    const section = await panel()
+    expect(await within(section).findByRole('button', { name: 'Export invoices to Excel' })).toBeInTheDocument()
+    expect(within(section).getByRole('button', { name: 'Export invoices to PDF' })).toBeInTheDocument()
+  })
+
+  it('is not shown without Invoice Tracking access', async () => {
+    const api = dashboardApi(ACCOUNTANT, { operations: () => ok({ ...OPERATIONS, kpis: { contracts: null, services: null, unpaidInvoices: null, paidThisMonth: null }, portfolio: null, expiring: null, workload: null, schedule: null, payments: null }) })
+    renderApp('/dashboard')
+
+    await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
+    expect(screen.queryByRole('heading', { name: 'Recent Invoices' })).not.toBeInTheDocument()
+    expect(api.find('GET', '/invoices')).toHaveLength(0)
   })
 })
 
-describe('ready-for-invoice value', () => {
-  it('shows the AMC and project amounts as two separate values, each with its basis', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+describe('production readiness', () => {
+  it('is no longer shown, even to the Admin, and its checks are not requested', async () => {
+    const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const card = await cardOf('Ready-for-Invoice Value')
-    const rows = (await within(card).findAllByRole('term')).map((term) => [term.textContent, (term.nextElementSibling as HTMLElement).textContent])
-
-    expect(rows).toEqual([
-      ['AMC As entered', '12,345.500'],
-      ['Projects Excl. VAT', '2,000.250'],
-    ])
-    expect(within(card).getByText('Shown separately. The two amounts are not added together.')).toBeInTheDocument()
+    await kpiCard('Active AMC')
+    expect(screen.queryByRole('heading', { name: 'Production Readiness' })).not.toBeInTheDocument()
+    expect(api.find('GET', '/dashboard/readiness')).toHaveLength(0)
   })
+})
 
-  it('never shows a combined total', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
+describe('module figures', () => {
+  it('are not shown on the dashboard, and their summary is not requested', async () => {
+    const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const card = await cardOf('Ready-for-Invoice Value')
-
-    expect(await within(card).findByText('12,345.500')).toBeInTheDocument()
-    expect(within(card).getByText('2,000.250')).toBeInTheDocument()
-    // 12345.500 + 2000.250 would be 14345.750.
-    expect(document.body.textContent).not.toMatch(/14,?345\.75/)
-    expect(screen.queryByText(/total/i)).not.toBeInTheDocument()
-  })
-
-  it('lets the two values wrap onto separate lines on a narrow screen', async () => {
-    dashboardApi(ADMIN, () => SUMMARY)
-    renderApp('/dashboard')
-
-    const card = await cardOf('Ready-for-Invoice Value')
-
-    for (const term of await within(card).findAllByRole('term')) {
-      expect(term.parentElement).toHaveClass('flex', 'flex-wrap')
-      expect(term.nextElementSibling).toHaveClass('min-w-0', 'break-words')
-    }
-  })
-
-  it('shows only the project value to a role without the AMC schedule', async () => {
-    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'PROJECTS:VIEW']), () => ok({ clients: null, amc: null, projects: { ...PROJECTS, costs: null } }))
-    renderApp('/dashboard')
-
-    const card = await cardOf('Ready-for-Invoice Value')
-
-    expect((await within(card).findAllByRole('term')).map((term) => term.textContent)).toEqual(['Projects Excl. VAT'])
-    expect(within(card).getByText('2,000.250')).toBeInTheDocument()
-    expect(within(card).queryByText('As entered')).not.toBeInTheDocument()
-  })
-
-  it('shows only the AMC value to a role without projects', async () => {
-    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']), () =>
-      ok({ clients: null, amc: { ...AMC, contracts: null }, projects: null }),
-    )
-    renderApp('/dashboard')
-
-    const card = await cardOf('Ready-for-Invoice Value')
-
-    expect((await within(card).findAllByRole('term')).map((term) => term.textContent)).toEqual(['AMC As entered'])
-    expect(within(card).getByText('12,345.500')).toBeInTheDocument()
-    expect(within(card).queryByText('Excl. VAT')).not.toBeInTheDocument()
+    await kpiCard('Active AMC')
+    expect(screen.queryByRole('region', { name: 'Waiting for an invoice and other figures' })).not.toBeInTheDocument()
+    expect(api.find('GET', '/dashboard/summary')).toHaveLength(0)
   })
 })
 
 describe('a metric with no data source', () => {
   it('is marked "Not yet available" and never shows a number', () => {
-    // No dashboard metric is in this state today. The card keeps it for a figure
-    // whose module is not built yet (for example invoiced amounts).
     render(
       <MemoryRouter>
-        <MetricCard
-          metric={{ id: 'invoices.pending', label: 'Pending Invoices', visible: () => true, source: 'Invoice Tracking' }}
-          state={{ kind: 'unavailable' }}
-        />
+        <MetricCard metric={{ id: 'invoices.pending', label: 'Pending Invoices', visible: () => true, source: 'Invoice Tracking' }} state={{ kind: 'unavailable' }} />
       </MemoryRouter>,
     )
 
@@ -432,168 +557,5 @@ describe('a metric with no data source', () => {
 
     expect(within(card).getByText('Not yet available')).toBeInTheDocument()
     expect(card.textContent).not.toMatch(/\d/)
-  })
-})
-
-describe('dashboard states', () => {
-  it('shows a loading placeholder until the figures arrive', async () => {
-    let release: (reply: MockReply) => void = () => {}
-    dashboardApi(
-      ADMIN,
-      () =>
-        new Promise<MockReply>((resolve) => {
-          release = resolve
-        }),
-    )
-    renderApp('/dashboard')
-
-    const card = await cardOf('Active Clients')
-
-    expect(within(card).getByRole('status')).toHaveTextContent('Loading Active Clients')
-    // No figure of any kind is on the page before the API answers.
-    for (const label of ALL_LABELS) {
-      expect((await cardOf(label)).textContent, label).not.toMatch(/\d/)
-    }
-
-    release(SUMMARY)
-
-    expect(await within(card).findByText('1,234')).toBeInTheDocument()
-    expect(within(card).queryByRole('status')).not.toBeInTheDocument()
-  })
-
-  it('reports a failure without inventing a figure, and recovers on retry', async () => {
-    let failing = true
-    dashboardApi(ADMIN, () => (failing ? fail(500, 'INTERNAL_ERROR', 'An unexpected error occurred.') : SUMMARY))
-    renderApp('/dashboard')
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('The dashboard figures could not be loaded. An unexpected error occurred.')
-
-    for (const label of ALL_LABELS) {
-      const failed = await cardOf(label)
-
-      expect(within(failed).getByText('Could not be loaded.')).toBeInTheDocument()
-      expect(failed.textContent, label).not.toMatch(/\d/)
-    }
-
-    const card = await cardOf('Active Clients')
-
-    failing = false
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
-
-    expect(await within(card).findByText('1,234')).toBeInTheDocument()
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-  })
-
-  it('reads the figures again when Refresh is pressed', async () => {
-    let active = 4
-    const api = dashboardApi(ADMIN, () => ok({ ...FULL, clients: { active, inactive: 0 } }))
-    renderApp('/dashboard')
-
-    const card = await cardOf('Active Clients')
-    await within(card).findByText('4')
-
-    active = 5
-    await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-
-    expect(await within(card).findByText('5')).toBeInTheDocument()
-    expect(api.find('GET', '/dashboard/summary')).toHaveLength(2)
-  })
-})
-
-describe('dashboard permissions', () => {
-  it('shows a role only the metrics of modules it may view', async () => {
-    // What the API returns to this role: no AMC figures, projects with costs.
-    dashboardApi(ACCOUNTANT, () => ok({ clients: FULL.clients, amc: null, projects: PROJECTS }))
-    renderApp('/dashboard')
-
-    await within(await cardOf('Active Clients')).findByText('1,234')
-
-    expect(shownCards()).toEqual(['Active Clients', 'Active Projects', 'Projects Ready for Invoice', 'Tracked Expenses', 'Ready-for-Invoice Value'])
-    expect(screen.queryByRole('region', { name: 'AMC' })).not.toBeInTheDocument()
-  })
-
-  it('hides a figure the role does not include, even if the API were to send it', async () => {
-    dashboardApi(ACCOUNTANT, () => SUMMARY)
-    renderApp('/dashboard')
-
-    await within(await cardOf('Active Clients')).findByText('1,234')
-
-    expect(screen.queryByRole('region', { name: 'AMC' })).not.toBeInTheDocument()
-    // The AMC amount is not shown in the value card either.
-    expect(within(await cardOf('Ready-for-Invoice Value')).queryByText('As entered')).not.toBeInTheDocument()
-    expect(document.body.textContent).not.toContain('12,345.500')
-  })
-
-  it('hides a card whose figure the API left out, instead of showing a zero', async () => {
-    // The role appears to include everything, but the API is the authority and returned less.
-    dashboardApi(ADMIN, () =>
-      ok({
-        clients: null,
-        amc: { ...AMC, contracts: null, invoicing: null },
-        projects: { ...PROJECTS, costs: null },
-      }),
-    )
-    renderApp('/dashboard')
-
-    await within(await cardOf('Visits Due')).findByText('7')
-
-    expect(shownCards()).toEqual(['Visits Due', 'Active Projects', 'Projects Ready for Invoice', 'Ready-for-Invoice Value'])
-    expect(screen.queryByRole('region', { name: 'Clients' })).not.toBeInTheDocument()
-    expect(screen.queryByText('Not yet available')).not.toBeInTheDocument()
-    expect(within(await cardOf('Ready-for-Invoice Value')).queryByText('As entered')).not.toBeInTheDocument()
-  })
-
-  it('shows Visits Due to a role with the execution work list only, and no amounts', async () => {
-    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_EXECUTION:VIEW']), () =>
-      ok({ clients: null, amc: { ...AMC, contracts: null, invoicing: null }, projects: null }),
-    )
-    renderApp('/dashboard')
-
-    const due = await cardOf('Visits Due')
-
-    expect(await within(due).findByText('7')).toBeInTheDocument()
-    expect(within(due).getByRole('link', { name: 'View work list' })).toHaveAttribute('href', '/amc/execution')
-    expect(shownCards()).toEqual(['Visits Due'])
-  })
-
-  it('links Visits Due to the schedule for a role without the work list', async () => {
-    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']), () => ok({ clients: null, amc: { ...AMC, contracts: null }, projects: null }))
-    renderApp('/dashboard')
-
-    const due = await cardOf('Visits Due')
-
-    expect(await within(due).findByRole('link', { name: 'View schedule' })).toHaveAttribute('href', '/amc/schedule')
-    expect(shownCards()).toEqual(['Visits Due', 'Ready for Invoice', 'Ready-for-Invoice Value'])
-  })
-
-  it('does not show Tracked Expenses without both the projects and the expenses permission', async () => {
-    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'EXPENSES:VIEW']), () => ok({ clients: null, amc: null, projects: null }))
-    renderApp('/dashboard')
-
-    expect(await screen.findByText('No figures to show')).toBeInTheDocument()
-    expect(shownCards()).toEqual([])
-  })
-
-  it('does not tie any metric to the Invoice Tracking permission', async () => {
-    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'INVOICES:VIEW', 'INVOICES:EDIT']), () => SUMMARY)
-    renderApp('/dashboard')
-
-    expect(await screen.findByText('No figures to show')).toBeInTheDocument()
-    expect(shownCards()).toEqual([])
-  })
-
-  it('explains an empty dashboard to a role with no reporting module', async () => {
-    dashboardApi(withPermissions(['DASHBOARD:VIEW']), () => ok({ clients: null, amc: null, projects: null }))
-    renderApp('/dashboard')
-
-    const empty = (await screen.findByText('No figures to show')).parentElement as HTMLElement
-
-    expect(screen.queryByRole('heading', { level: 3 })).not.toBeInTheDocument()
-    expect(document.querySelector('[data-metric-card]')).toBeNull()
-    // No business figure is invented: the only numbers on the page are today's date and
-    // the count of modules this role may open (just the dashboard itself).
-    expect(empty.textContent).not.toMatch(/\d/)
-    expect(within(screen.getByRole('region', { name: 'Workspace' })).getByText('Modules Available').nextElementSibling).toHaveTextContent(/^1$/)
-    expect(screen.queryByRole('region', { name: 'Module rollout' })).not.toBeInTheDocument()
   })
 })

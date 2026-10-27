@@ -47,6 +47,8 @@ export const INVOICE_ELIGIBILITIES = [
   "AMOUNT_REQUIRED",
   "NO_INVOICE_REQUIRED",
   "READY_FOR_INVOICE",
+  // Completed and covered by at least one active invoice (migration 0060).
+  "INVOICED",
   "HISTORICAL",
 ] as const;
 export type InvoiceEligibility = (typeof INVOICE_ELIGIBILITIES)[number];

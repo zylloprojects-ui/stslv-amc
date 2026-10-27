@@ -38,7 +38,7 @@ export const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
   HISTORICAL: 'Historical',
 }
 
-export const INVOICE_ELIGIBILITIES = ['NOT_COMPLETED', 'AMOUNT_REQUIRED', 'NO_INVOICE_REQUIRED', 'READY_FOR_INVOICE', 'HISTORICAL'] as const
+export const INVOICE_ELIGIBILITIES = ['NOT_COMPLETED', 'AMOUNT_REQUIRED', 'NO_INVOICE_REQUIRED', 'READY_FOR_INVOICE', 'INVOICED', 'HISTORICAL'] as const
 export type InvoiceEligibility = (typeof INVOICE_ELIGIBILITIES)[number]
 
 export const INVOICE_ELIGIBILITY_LABELS: Record<InvoiceEligibility, string> = {
@@ -46,6 +46,7 @@ export const INVOICE_ELIGIBILITY_LABELS: Record<InvoiceEligibility, string> = {
   AMOUNT_REQUIRED: 'Amount required',
   NO_INVOICE_REQUIRED: 'No invoice required',
   READY_FOR_INVOICE: 'Ready for invoice',
+  INVOICED: 'Invoiced',
   HISTORICAL: 'Historical',
 }
 
@@ -78,6 +79,25 @@ export interface Contract {
     scheduledTotal: string
     valueDifference: string
   }
+}
+
+/** One activity entry recorded against a contract (GET /amc/contracts/:id/history). */
+export interface ContractHistoryEntry {
+  id: string
+  action: string
+  description: string | null
+  /** Null for an action not made by a signed-in user, such as the historical import. */
+  user: { id: string; fullName: string } | null
+  changes: Record<string, { from: unknown; to: unknown }> | null
+  reason: string | null
+  createdAt: string
+}
+
+export interface ContractHistory {
+  items: ContractHistoryEntry[]
+  total: number
+  page: number
+  pageSize: number
 }
 
 export interface ScheduleChange {

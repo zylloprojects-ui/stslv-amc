@@ -72,12 +72,12 @@ The generator locks that row inside the transaction that inserts the project, so
 | `NO_INVOICE_REQUIRED` | `COMPLETED` with a job value of **zero** — nothing to bill, so it never waits for an invoice |
 | `NOT_APPLICABLE` | `CANCELLED` |
 
-No invoice table, column or route exists. The Invoice Tracking module takes over from here:
+| `PARTLY_INVOICED` | `COMPLETED`; active invoices allocate less than the job value (both excluding VAT) |
+| `INVOICED` | `COMPLETED`; active invoices allocate the job value or more |
 
-1. Create `invoices` and its link table to `projects(id)` in its own migration range.
-2. `CREATE OR REPLACE VIEW v_project_financials` so that a project whose value is fully invoiced leaves `READY_FOR_INVOICE` (add states such as `INVOICED`; keep the existing column names).
-3. Add the new states to `INVOICE_STATES` in `projects.schemas.ts` and `InvoiceState` in the web `projectTypes.ts`.
-4. Decide whether a completed project with invoices may still be reopened (today it may).
+The last two states, and the view's `invoiced_value` and `uninvoiced_value`, come from Invoice Tracking (migration `0060`, see `docs/INVOICE_MODULE.md`). The project API returns them as `invoicedValue` and `uninvoicedValue`.
+
+While an active invoice covers a project it cannot be reopened or moved to another client; cancelling the invoice lifts the lock. Its other fields, including the job value, stay editable. PROVISIONAL.
 
 ## 5. API
 

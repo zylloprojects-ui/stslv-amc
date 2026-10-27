@@ -31,10 +31,16 @@ export function ProjectStatusBadge({ status, legacyStatus = null }: { status: Pr
   )
 }
 
-/** Shown only for the two states that matter to invoicing. A historical project is waiting for no invoice. */
+/** Shown only for the states that matter to invoicing. A historical project is waiting for no invoice. */
 export function InvoiceStateBadge({ state }: { state: InvoiceState }) {
   if (state === 'READY_FOR_INVOICE') {
     return <Badge tone="amber">Ready for invoice</Badge>
+  }
+  if (state === 'PARTLY_INVOICED') {
+    return <Badge tone="amber">Partly invoiced</Badge>
+  }
+  if (state === 'INVOICED') {
+    return <Badge tone="green">Invoiced</Badge>
   }
   if (state === 'NO_INVOICE_REQUIRED') {
     return <Badge tone="slate">No invoice required</Badge>
@@ -93,9 +99,9 @@ export function Pager({ page, pageSize, shown, total, onPage, children }: PagerP
 
 export function DetailRow({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="grid min-h-[2.25rem] grid-cols-[9rem_minmax(0,1fr)] border border-slate-300! [&:not(:first-child)]:-mt-px">
-      <dt className="flex items-center border-r border-slate-300! bg-slate-100 px-3 py-1.5 text-[13px] font-bold leading-snug text-slate-800">{label}</dt>
-      <dd className="flex min-w-0 items-center whitespace-pre-wrap break-words px-3 py-1.5 text-[13px] leading-snug text-slate-900">{children}</dd>
+    <div className="grid min-h-[3.25rem] grid-cols-[10.5rem_minmax(0,1fr)] border border-slate-300! [&:not(:first-child)]:-mt-px">
+      <dt className="flex items-center border-r border-slate-300! bg-slate-100 px-3 py-2.5 text-sm font-bold text-slate-800">{label}</dt>
+      <dd className="flex min-w-0 items-center whitespace-pre-wrap break-words px-3 py-2.5 text-sm text-slate-900">{children}</dd>
     </div>
   )
 }

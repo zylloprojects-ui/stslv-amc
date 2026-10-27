@@ -41,12 +41,32 @@ const RESET_REQUESTED = "If an active account exists for that email, a password 
 // The routes below are open to anyone, so each address is limited.
 const publicLimit = () => rateLimit({ windowMs: 15 * 60 * 1000, max: env.publicAuthRateLimit });
 
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+
+// Every sign-in request from one address, so password guessing across many accounts is slowed.
+const loginLimit = rateLimit({ windowMs: LOGIN_WINDOW_MS, max: () => env.loginRateLimit });
+
+// Failed sign-ins per address and email. A successful sign-in clears the count. Keyed on
+// both, so failures from elsewhere never block the real user. The email is read as typed
+// (before validation) and only used as a key in memory.
+const loginFailureLimit = rateLimit({
+  windowMs: LOGIN_WINDOW_MS,
+  max: () => env.loginFailureLimit,
+  key: (req) => {
+    const email: unknown = req.body?.email;
+
+    return `${req.ip ?? "unknown"}|${typeof email === "string" ? email.trim().toLowerCase() : ""}`;
+  },
+  countWhen: (status) => status === 401,
+  clearWhen: (status) => status >= 200 && status < 300,
+});
+
 export const authRouter = Router();
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", loginLimit, loginFailureLimit, async (req, res) => {
   const { email, password } = loginSchema.parse(req.body);
 
-  res.json({ success: true, data: await login(email, password) });
+  res.json({ success: true, data: await login(email, password, { ip: req.ip ?? null }) });
 });
 
 authRouter.post("/signup", publicLimit(), async (req, res) => {

@@ -32,7 +32,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   REPORTS: 'Reports',
   USERS: 'Users & Access',
   SETTINGS: 'Settings',
-  HISTORICAL_DATA: 'Historical Data Review',
+  HISTORICAL_DATA: 'Historical Data',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -67,9 +67,21 @@ export interface Client {
   phone: string | null
   address: string | null
   notes: string | null
+  /** Migration 0074: null when not set, or on a database without it. Optional in older test data. */
+  clientType?: ClientType | null
+  vatNumber?: string | null
   isActive: boolean
   createdAt: string
   updatedAt: string
+}
+
+export type ClientType = 'COMPANY' | 'INDIVIDUAL'
+
+export const CLIENT_TYPE_LABELS: Record<ClientType, string> = { COMPANY: 'Company', INDIVIDUAL: 'Individual' }
+
+/** What the client pages can offer on this database (GET /clients/features). */
+export interface ClientFeatures {
+  clientDetails: boolean
 }
 
 export interface Paged<T> {

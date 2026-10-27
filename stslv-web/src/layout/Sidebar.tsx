@@ -3,9 +3,10 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { cx } from '../lib/format'
 import type { Theme } from '../lib/preferences'
-import { NAVIGATION } from './navigation'
+import { isAdmin } from '../auth/roles'
+import { NAVIGATION, navItemVisible } from './navigation'
 
-type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Operations' | 'Finance' | 'Reporting' | 'Administration' | 'settings' | 'logout'
+type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Master Data Center' | 'Operations' | 'Finance' | 'Reporting' | 'Administration' | 'settings' | 'logout'
 
 const NAV_ICONS: Record<IconKey, ReactNode> = {
   close: <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />,
@@ -34,6 +35,12 @@ const NAV_ICONS: Record<IconKey, ReactNode> = {
       <rect x="13.5" y="3.5" width="7" height="7" rx="1.8" />
       <rect x="3.5" y="13.5" width="7" height="7" rx="1.8" />
       <rect x="13.5" y="13.5" width="7" height="7" rx="1.8" />
+    </>
+  ),
+  'Master Data Center': (
+    <>
+      <ellipse cx="12" cy="6" rx="7.5" ry="2.5" />
+      <path d="M4.5 6v6c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5V6M4.5 12v6c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-6" strokeLinecap="round" />
     </>
   ),
   Operations: (
@@ -109,7 +116,9 @@ interface SidebarProps {
 
 /** The group that holds the page at this address, if it sits in one. */
 function groupOf(pathname: string): string | null {
-  return NAVIGATION.find((section) => section.title && section.items.some((item) => pathname === item.path || pathname.startsWith(`${item.path}/`)))?.title ?? null
+  const within = (path: string) => pathname === path || pathname.startsWith(`${path}/`)
+
+  return NAVIGATION.find((section) => section.title && ((section.path && within(section.path)) || section.items.some((item) => within(item.path))))?.title ?? null
 }
 
 export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onToggleTheme, onToggleCollapse, onClose }: SidebarProps) {
@@ -135,7 +144,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
   const settingsAllowed = auth.can('SETTINGS', 'VIEW')
   const sections = NAVIGATION.map((section) => ({
     ...section,
-    items: section.items.filter((item) => item.module !== 'SETTINGS' && auth.can(item.module, 'VIEW')),
+    items: section.items.filter((item) => item.path !== '/settings' && navItemVisible(item, auth.can, isAdmin(auth.user))),
   })).filter((section) => section.items.length > 0)
 
   const topLevel = (...extra: (string | false)[]) => cx(TOP_LEVEL, collapsed && 'justify-center px-0', ...extra)
@@ -209,17 +218,47 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
           return (
             <div key={title} className="mb-1">
               <h2>
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  onClick={() => (collapsed ? onExpand?.() : setOpenGroup(open ? null : title))}
-                  title={collapsed ? title : undefined}
-                  className={topLevel(TOP_IDLE)}
-                >
-                  <NavIcon name={title as IconKey} />
-                  {label(title)}
-                  {!collapsed && <Chevron open={open} />}
-                </button>
+                {section.path ? (
+                  // A group with a landing page: the heading opens the page, the chevron shows or hides the group's links.
+                  <span className="flex items-center">
+                    <NavLink
+                      to={section.path}
+                      end
+                      onClick={() => {
+                        setOpenGroup(title)
+                        onNavigate()
+                      }}
+                      title={collapsed ? title : undefined}
+                      className={({ isActive }) => cx(topLevel(isActive ? TOP_ACTIVE : TOP_IDLE), 'min-w-0 flex-1 w-auto!')}
+                    >
+                      <NavIcon name={title as IconKey} />
+                      {label(title)}
+                    </NavLink>
+                    {!collapsed && (
+                      <button
+                        type="button"
+                        aria-expanded={open}
+                        aria-label={`${title} pages`}
+                        onClick={() => setOpenGroup(open ? null : title)}
+                        className={cx('flex h-9 shrink-0 items-center justify-end rounded-lg pl-2 pr-3 transition-colors', TOP_IDLE, FOCUS)}
+                      >
+                        <Chevron open={open} />
+                      </button>
+                    )}
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    aria-expanded={open}
+                    onClick={() => (collapsed ? onExpand?.() : setOpenGroup(open ? null : title))}
+                    title={collapsed ? title : undefined}
+                    className={topLevel(TOP_IDLE)}
+                  >
+                    <NavIcon name={title as IconKey} />
+                    {label(title)}
+                    {!collapsed && <Chevron open={open} />}
+                  </button>
+                )}
               </h2>
               {open && !collapsed && (
                 <ul className="login-rise ml-[1.35rem] mt-0.5 space-y-0.5 sb-line-l pl-3">

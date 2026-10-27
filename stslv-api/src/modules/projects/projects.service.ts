@@ -4,6 +4,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, isUniqueViolation, notFound, validationError } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
+import { assertProjectNotInvoiced } from "../invoices/invoice-locks";
 import { generateJobNumber, previewNextJobNumber } from "./job-number";
 import type {
   ChangeProjectStatusInput,
@@ -38,6 +39,8 @@ interface ProjectRow {
   operational_job_margin: string;
   budget_remaining: string | null;
   invoice_state: InvoiceState;
+  invoiced_value: string;
+  uninvoiced_value: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -70,6 +73,10 @@ export interface Project {
   allowedStatuses: ProjectStatus[];
   invoiceState: InvoiceState;
   readyForInvoice: boolean;
+  /** What active invoices allocate to the project, excluding VAT. */
+  invoicedValue: string;
+  /** Job value excluding VAT not yet covered by an active invoice. Null for a historical or cancelled project. */
+  uninvoicedValue: string | null;
   /**
    * Figures derived from expense rows. Null when the signed-in user does not
    * hold EXPENSES:VIEW: recorded costs are not disclosed through Projects.
@@ -89,6 +96,7 @@ const SELECT_PROJECT = `
          p.job_value, p.vat_rate, p.vat_amount, p.grand_value, p.budget_amount,
          p.status, p.completed_date::text AS completed_date, p.notes,
          f.tracked_expenses, f.operational_job_margin, f.budget_remaining, f.invoice_state,
+         f.invoiced_value, f.uninvoiced_value,
          p.created_at, p.updated_at
   FROM projects p
   JOIN clients c ON c.id = p.client_id
@@ -149,6 +157,8 @@ function toProject(row: ProjectRow, showCosts: boolean): Project {
     allowedStatuses: STATUS_TRANSITIONS[row.status],
     invoiceState: row.invoice_state,
     readyForInvoice: row.invoice_state === "READY_FOR_INVOICE",
+    invoicedValue: row.invoiced_value,
+    uninvoicedValue: row.uninvoiced_value,
     trackedExpenses: showCosts ? row.tracked_expenses : null,
     operationalJobMargin: showCosts ? row.operational_job_margin : null,
     budgetRemaining: showCosts ? row.budget_remaining : null,
@@ -379,6 +389,8 @@ export function updateProject(auth: AuthContext, id: string, input: UpdateProjec
     }
     if (changes.clientId) {
       await requireActiveClient(client, after.clientId);
+      // An invoice is issued to the client of the work it covers.
+      await assertProjectNotInvoiced(client, id, before.jobNumber, "moved to another client");
     }
     if (before.completedDate !== null && after.jobDate > before.completedDate) {
       throw validationError("Some fields are invalid.", [
@@ -437,6 +449,10 @@ export function changeProjectStatus(auth: AuthContext, id: string, input: Change
     }
     if (!STATUS_TRANSITIONS[before.status].includes(input.status)) {
       throw conflict(`A project that is ${before.status} cannot be changed to ${input.status}.`);
+    }
+    // Invoiced work stays completed until its invoice is cancelled.
+    if (before.status === "COMPLETED") {
+      await assertProjectNotInvoiced(client, id, before.jobNumber, "reopened");
     }
 
     let completedDate: string | null = null;

@@ -2,8 +2,10 @@ import { Router } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
 import { parseIdParam } from "../../shared/validation";
+import { z } from "zod";
+import { pagingSchema } from "../../shared/money";
 import { createClientSchema, listClientsSchema, updateClientSchema } from "./clients.schemas";
-import { createClient, getClient, listClients, setClientActive, updateClient } from "./clients.service";
+import { clientFeatures, createClient, getClient, listClientHistory, listClients, setClientActive, updateClient } from "./clients.service";
 
 export const clientsRouter = Router();
 
@@ -11,6 +13,19 @@ clientsRouter.use(authenticate);
 
 clientsRouter.get("/", authorize("CLIENTS", "VIEW"), async (req, res) => {
   res.json({ success: true, data: await listClients(listClientsSchema.parse(req.query)) });
+});
+
+// What the client pages can offer on this database (fields that need migration 0074). Declared before "/:id".
+clientsRouter.get("/features", authorize("CLIENTS", "VIEW"), async (_req, res) => {
+  res.json({ success: true, data: await clientFeatures() });
+});
+
+const historySchema = z.object(pagingSchema);
+
+clientsRouter.get("/:id/history", authorize("CLIENTS", "VIEW"), async (req, res) => {
+  const { page, pageSize } = historySchema.parse(req.query);
+
+  res.json({ success: true, data: await listClientHistory(parseIdParam(req.params.id), page, pageSize) });
 });
 
 clientsRouter.get("/:id", authorize("CLIENTS", "VIEW"), async (req, res) => {

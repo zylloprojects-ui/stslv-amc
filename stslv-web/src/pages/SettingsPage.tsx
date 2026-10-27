@@ -3,6 +3,8 @@ import { useState, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { Badge, Button, Card, PageHeader } from '../components/ui'
+import { apiUrl } from '../lib/api'
+import { ROLE_LIST_ENABLED } from '../lib/features'
 import { cx, initialsOf } from '../lib/format'
 import { PALETTES, usePalette, useSidebarCollapsed, useTheme, type PaletteId } from '../lib/preferences'
 import { ChangePasswordModal } from './account/ChangePasswordModal'
@@ -16,7 +18,7 @@ interface HealthResponse {
 
 // The two health routes predate the { success, data } response format, so they are read directly.
 async function fetchHealth(path: string): Promise<HealthResponse> {
-  const response = await fetch(path, { headers: { Accept: 'application/json' } })
+  const response = await fetch(apiUrl(path), { headers: { Accept: 'application/json' } })
   const body = (await response.json().catch(() => null)) as HealthResponse | null
 
   if (!response.ok || !body?.success) {
@@ -109,7 +111,7 @@ const ICONS = {
       <rect x="13.5" y="13.5" width="7" height="7" rx="1.5" />
     </>,
   ),
-  departments: svg(
+  roles: svg(
     <>
       <circle cx="12" cy="6" r="2.5" />
       <circle cx="5.5" cy="17.5" r="2.5" />
@@ -412,7 +414,7 @@ function BusinessPanel() {
   )
 }
 
-const ORGANIZATION: SectionId[] = ['company', 'divisions', 'departments', 'holidays', 'tax']
+const ORGANIZATION: SectionId[] = ['company', 'divisions', 'roles', 'holidays', 'tax']
 
 const OVERVIEW_PARTS: Partial<Record<SectionId, { part: OverviewPart; title: string; subtitle: string }>> = {
   users: { part: 'overview', title: 'Users', subtitle: 'How many people have an account, in which state, and who is waiting for approval.' },
@@ -439,7 +441,7 @@ export function SettingsPage() {
   const organization: NavItem[] = [
     { id: 'company', label: 'Company profile', icon: ICONS.company },
     { id: 'divisions', label: 'Divisions', icon: ICONS.divisions },
-    { id: 'departments', label: 'Departments', icon: ICONS.departments },
+    ...(ROLE_LIST_ENABLED ? [{ id: 'roles' as const, label: 'Role list', icon: ICONS.roles }] : []),
     { id: 'holidays', label: 'Holidays', icon: ICONS.holidays },
     { id: 'tax', label: 'Tax setup', icon: ICONS.tax },
   ]

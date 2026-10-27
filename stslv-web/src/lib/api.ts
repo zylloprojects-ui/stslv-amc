@@ -3,6 +3,16 @@
 
 const TOKEN_KEY = 'stslv-amc.token'
 
+// Where the API lives. Empty in local development, where Vite forwards /api to
+// the API (vite.config.ts). A hosted build sets VITE_API_BASE_URL to the API's
+// address, for example https://api.example.com (see docs/DEPLOYMENT.md).
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/+$/, '')
+
+/** The full address of an API path such as /api/health. */
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`
+}
+
 export interface ApiErrorDetail {
   field: string
   message: string
@@ -48,24 +58,32 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/** A file sent as the raw request body, with its own headers (see api.upload). */
+interface RawBody {
+  data: Blob
+  headers: Record<string, string>
+}
+
+async function request<T>(method: string, path: string, body?: unknown, raw?: RawBody): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const token = getToken()
 
   if (token) {
     headers.Authorization = `Bearer ${token}`
   }
-  if (body !== undefined) {
+  if (raw) {
+    Object.assign(headers, raw.headers)
+  } else if (body !== undefined) {
     headers['Content-Type'] = 'application/json'
   }
 
   let response: Response
 
   try {
-    response = await fetch(`/api${path}`, {
+    response = await fetch(apiUrl(`/api${path}`), {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: raw ? raw.data : body === undefined ? undefined : JSON.stringify(body),
     })
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection and try again.')
@@ -99,6 +117,58 @@ export const api = {
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   delete: <T = null>(path: string) => request<T>('DELETE', path),
+  /** Sends one file as the raw body; its name travels URI-encoded in X-File-Name. */
+  upload: <T>(path: string, file: File) =>
+    request<T>('POST', path, undefined, {
+      data: file,
+      headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+    }),
+}
+
+export interface DownloadedFile {
+  blob: Blob
+  /** The name the API gave the file, or null when it gave none. */
+  filename: string | null
+}
+
+/** Fetches a file the API produces, such as an export. A refusal arrives as the usual error, never as a file. */
+export async function download(path: string): Promise<DownloadedFile> {
+  const token = getToken()
+  let response: Response
+
+  try {
+    response = await fetch(apiUrl(`/api${path}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  } catch {
+    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection and try again.')
+  }
+
+  if (!response.ok) {
+    const payload = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null
+    const error = new ApiError(response.status, payload?.error?.code ?? 'UNKNOWN_ERROR', payload?.error?.message ?? 'The file could not be produced. Please try again.')
+
+    if (response.status === 401) {
+      unauthorizedHandler?.()
+    }
+
+    throw error
+  }
+
+  const filename = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1] ?? null
+
+  return { blob: await response.blob(), filename }
+}
+
+/** Hands a downloaded file to the browser to save. */
+export function saveFile(file: DownloadedFile, fallbackName: string): void {
+  const url = URL.createObjectURL(file.blob)
+  const link = document.createElement('a')
+
+  link.href = url
+  link.download = file.filename ?? fallbackName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
 }
 
 /** A message suitable for showing to the user, whatever was thrown. */

@@ -1,8 +1,8 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { currentMonth, formatDate, formatMoney, isZeroMoney, monthLabel, monthRange, shiftMonth } from '../pages/amc/amcFormat'
-import { ACCOUNTANT, ADMIN, fail, renderApp } from './helpers'
+import { ACCOUNTANT, ADMIN, fail, ok, renderApp } from './helpers'
 import { amcApi, makeVisit, VIEWER } from './amc-helpers'
 
 // Visits are placed in the current month, which is what the schedule opens on.
@@ -233,5 +233,68 @@ describe('schedule permissions', () => {
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
     expect(api.find('GET', '/amc/visits')).toHaveLength(0)
+  })
+})
+
+describe('schedule export', () => {
+  /** Stands in for the browser's "save this file": records the name each download was saved under. */
+  function captureSaves(): string[] {
+    const saved: string[] = []
+
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push(this.download)
+    })
+
+    return saved
+  }
+
+  it('exports every visit that matches the current filters, as Excel or PDF', async () => {
+    const saved = captureSaves()
+    const api = amcApi(ADMIN, {
+      visits: [FIRST, SECOND],
+      override: (request) => (request.path === '/amc/visits/export' ? ok(null) : undefined),
+    })
+    renderApp('/amc/schedule')
+
+    await screen.findByRole('table', { name: `AMC schedule for ${monthLabel(MONTH)}` })
+    await userEvent.selectOptions(screen.getByLabelText('Client'), '11')
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'COMPLETED')
+    await userEvent.click(within(screen.getByRole('group', { name: 'Export AMC schedule' })).getByRole('button', { name: 'Export AMC schedule to Excel' }))
+
+    await waitFor(() => expect(saved).toEqual(['amc-schedule.xlsx']))
+    const excel = api.find('GET', '/amc/visits/export')[0]
+    expect(Object.fromEntries(excel?.query ?? [])).toEqual({ format: 'xlsx', ...monthRange(MONTH), clientId: '11', status: 'COMPLETED' })
+    expect(excel?.authorization).toBe('Bearer test-token')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export AMC schedule to PDF' }))
+    await waitFor(() => expect(saved).toEqual(['amc-schedule.xlsx', 'amc-schedule.pdf']))
+    expect(api.find('GET', '/amc/visits/export')[1]?.query.get('format')).toBe('pdf')
+    // An export never carries the paging of the screen.
+    expect(api.find('GET', '/amc/visits/export')[1]?.query.has('page')).toBe(false)
+  })
+
+  it('shows why an export was refused, and saves nothing', async () => {
+    const saved = captureSaves()
+    amcApi(ADMIN, {
+      visits: [FIRST],
+      override: (request) =>
+        request.path === '/amc/visits/export' ? fail(422, 'EXPORT_TOO_LARGE', 'This export has 2500 rows; a PDF can hold at most 2000. Narrow the filters or export to Excel.') : undefined,
+    })
+    renderApp('/amc/schedule')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Export AMC schedule to PDF' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('This export has 2500 rows; a PDF can hold at most 2000. Narrow the filters or export to Excel.')
+    expect(saved).toEqual([])
+  })
+
+  it('offers no export to a role without the EXPORT permission', async () => {
+    amcApi(VIEWER, { visits: [FIRST] })
+    renderApp('/amc/schedule')
+
+    await screen.findByRole('button', { name: 'View Test Hotel One FIRE visit 1' })
+    expect(screen.queryByRole('group', { name: 'Export AMC schedule' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Export/ })).not.toBeInTheDocument()
   })
 })

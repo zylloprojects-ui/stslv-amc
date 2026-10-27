@@ -27,6 +27,14 @@ function toThousandths(value: string): bigint {
   return BigInt(whole) * 1000n + BigInt(fraction.padEnd(3, '0'))
 }
 
+/** Adds amounts exactly ("405.000" + "0.001" is "405.001"). Every value must already be a valid amount. */
+export function sumMoney(values: string[]): string {
+  return fromThousandths(values.reduce((total, value) => total + toThousandths(value), 0n))
+}
+
+/** Whether two valid amounts are the same figure, however they are written ("405" and "405.000"). */
+export const sameMoney = (a: string, b: string): boolean => toThousandths(a) === toThousandths(b)
+
 function fromThousandths(value: bigint): string {
   const digits = value.toString().padStart(4, '0')
 

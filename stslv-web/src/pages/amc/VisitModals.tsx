@@ -3,9 +3,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
+import { useAuth } from '../../auth/context'
 import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
+import type { PagedInvoices } from '../../lib/invoiceTypes'
 import { formatDate, formatMoney, MONEY_PATTERN } from './amcFormat'
 import { DetailRow, EligibilityPill, OrDash, PlannedDate, VisitStatusPill } from './components'
 import { FREQUENCY_LABELS, type ScheduleVisit } from './types'
@@ -17,6 +19,26 @@ interface VisitDetailsModalProps {
   canEdit: boolean
   onEdit: (visit: ScheduleVisit) => void
   onClose: () => void
+}
+
+/** The active invoices that cover a visit, for roles that may view invoices. */
+function VisitInvoices({ visitId }: { visitId: string }) {
+  const auth = useAuth()
+  const query = useQuery({
+    queryKey: ['invoices', 'visit', visitId],
+    queryFn: () => api.get<PagedInvoices>(`/invoices?amcVisitId=${visitId}&status=ISSUED&pageSize=100`),
+    enabled: auth.can('INVOICES', 'VIEW'),
+  })
+
+  if (!query.data || query.data.items.length === 0) {
+    return null
+  }
+
+  return (
+    <span className="text-slate-700">
+      {query.data.items.map((invoice) => `Invoice ${invoice.invoiceNumber} (${formatDate(invoice.invoiceDate)})`).join(', ')}
+    </span>
+  )
 }
 
 export function VisitDetailsModal({ visitId, canEdit, onEdit, onClose }: VisitDetailsModalProps) {
@@ -76,7 +98,10 @@ export function VisitDetailsModal({ visitId, canEdit, onEdit, onClose }: VisitDe
             {visit.amountIsCustom && <span className="text-slate-500"> (set on this visit)</span>}
           </DetailRow>
           <DetailRow label="Invoicing">
-            <EligibilityPill eligibility={visit.invoiceEligibility} />
+            <span className="flex flex-wrap items-center gap-2">
+              <EligibilityPill eligibility={visit.invoiceEligibility} />
+              {visit.invoiceEligibility === 'INVOICED' && <VisitInvoices visitId={visit.id} />}
+            </span>
           </DetailRow>
           <DetailRow label="Completed">
             {visit.completedDate ? (

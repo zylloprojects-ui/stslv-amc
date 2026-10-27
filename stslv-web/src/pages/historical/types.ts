@@ -1,11 +1,11 @@
-// The Historical Data Review: every record of the client's earlier Excel
-// registers, as the controlled import staged it. Read-only.
+// Historical Data: every record of the client's earlier Excel registers, as
+// the controlled import staged it. Read-only.
 
 export const RECORD_KINDS = ['CLIENT', 'AMC_CONTRACT', 'AMC_VISIT', 'PROJECT'] as const
 
 export type RecordKind = (typeof RECORD_KINDS)[number]
 
-/** IMPORTED: the record is in the normal application. PROVISIONAL: it is held, and exists only in this review. */
+/** IMPORTED: the record is in the normal application. PROVISIONAL: it is held, and exists only on this page. Shown as "Needs Review". */
 export type ReviewStatus = 'IMPORTED' | 'PROVISIONAL'
 
 export interface HoldReason {
@@ -45,6 +45,12 @@ export interface ReviewRow {
   link: ReviewLink | null
 }
 
+/** The three headline counts, for every user of the page. */
+export interface ReviewTotals {
+  totals: { records: number; imported: number; provisional: number }
+}
+
+/** The Import Audit, for Admin only. */
 export interface ReviewSummary {
   batches: { id: string; label: string; cutoverDate: string; sourceFiles: { name: string; sheet?: string; sha256: string }[]; createdAt: string; rows: number }[]
   totals: { records: number; imported: number; provisional: number }
@@ -87,7 +93,7 @@ export const AMOUNT_LABELS: Record<RecordKind, string | null> = {
 
 export const STATUS_LABELS: Record<ReviewStatus, string> = {
   IMPORTED: 'Imported',
-  PROVISIONAL: 'Provisional',
+  PROVISIONAL: 'Needs Review',
 }
 
 const sentence = (code: string): string => {
@@ -96,7 +102,7 @@ const sentence = (code: string): string => {
   return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
-// A short name for each reason a record is provisional. The full explanation,
+// A short name for each reason a record needs review. The full explanation,
 // with the rows concerned, comes with the record itself.
 const REASON_LABELS: Record<string, string> = {
   CLIENT_ALIAS_NOT_APPROVED: 'Client name is a likely alias, not yet confirmed',
@@ -104,7 +110,7 @@ const REASON_LABELS: Record<string, string> = {
   CLIENT_MISSING: 'Client is empty',
   NO_IMPORTABLE_RECORD_YET: 'Client waits for its first accepted record',
   MAINTENANCE_FREQUENCY_UNRESOLVED: 'Maintenance frequency not established',
-  CONTRACT_HELD: 'Its contract is provisional',
+  CONTRACT_HELD: 'Its contract needs review',
   POSSIBLE_RENEWAL: 'Possible renewal, after the contract validity',
   NOT_HISTORY_AT_CUTOVER: 'Not history yet: starts on or after the cutover date',
   BEFORE_CONTRACT_START: 'Before the contract start',

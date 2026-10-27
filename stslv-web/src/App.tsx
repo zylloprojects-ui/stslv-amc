@@ -2,15 +2,25 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
-import { ProtectedRoute, RequirePermission } from './auth/guards'
+import { ProtectedRoute, RequireAdmin, RequireAnyPermission, RequirePermission } from './auth/guards'
 import { AppLayout } from './layout/AppLayout'
 import { NAVIGATION } from './layout/navigation'
 import { ApiError } from './lib/api'
 import type { Module } from './lib/types'
 import { AccountPage } from './pages/AccountPage'
 import { AmcContractsPage } from './pages/amc/AmcContractsPage'
-import { AmcExecutionPage } from './pages/amc/AmcExecutionPage'
+import { AmcCalendarPage } from './pages/amc/AmcCalendarPage'
 import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
+import { ContractDetailPage } from './pages/amc/ContractDetailPage'
+import { AuditLogPage } from './pages/admin/AuditLogPage'
+import { LoginHistoryPage } from './pages/admin/LoginHistoryPage'
+import { MasterDataCenterPage } from './pages/masters/MasterDataCenterPage'
+import { MasterListPage } from './pages/masters/MasterDataPage'
+import { SalesEngineerDetailPage } from './pages/masters/SalesEngineerDetailPage'
+import { SalesEngineersPage } from './pages/masters/SalesEngineersPage'
+import { ClientDetailPage } from './pages/clients/ClientDetailPage'
+import { NotificationsPage } from './pages/notifications/NotificationsPage'
+import { ReportsPage } from './pages/reports/ReportsPage'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
 import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
 import { SignUpPage } from './pages/auth/SignUpPage'
@@ -18,13 +28,11 @@ import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { ExpensesPage } from './pages/expenses/ExpensesPage'
 import { HistoricalDataPage } from './pages/historical/HistoricalDataPage'
+import { InvoicesPage } from './pages/invoices/InvoicesPage'
 import { AuthLayout, LoginPage } from './pages/LoginPage'
 import { LoaderPreviewPage } from './pages/LoaderPreviewPage'
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
 import { NotFoundPage } from './pages/NotFoundPage'
-import { ProcurementPage } from './pages/procurement/ProcurementPage'
-import { ProjectDetailPage } from './pages/projects/ProjectDetailPage'
-import { ProjectsPage } from './pages/projects/ProjectsPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { UsersPage } from './pages/users/UsersPage'
 
@@ -69,7 +77,8 @@ export function AppRoutes() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
           <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="/loader-preview" element={<LoaderPreviewPage />} />
+          {/* A developer's page: it exists on a development server only, never in a production build. */}
+          {import.meta.env.DEV && <Route path="/loader-preview" element={<LoaderPreviewPage />} />}
           <Route
             path="/dashboard"
             element={
@@ -87,10 +96,62 @@ export function AppRoutes() {
             }
           />
           <Route
+            path="/clients/:id"
+            element={
+              <RequirePermission module="CLIENTS">
+                <ClientDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/master-data"
+            element={
+              <RequireAnyPermission modules={['CLIENTS', 'SETTINGS']}>
+                <MasterDataCenterPage />
+              </RequireAnyPermission>
+            }
+          />
+          {/* One route per list. The key gives each list its own search and paging state. */}
+          {(['system-types', 'maintenance-frequencies', 'departments'] as const).map((tab) => (
+            <Route
+              key={tab}
+              path={`/master-data/${tab}`}
+              element={
+                <RequirePermission module="SETTINGS">
+                  <MasterListPage key={tab} tab={tab} />
+                </RequirePermission>
+              }
+            />
+          ))}
+          <Route
+            path="/master-data/sales-engineers"
+            element={
+              <RequirePermission module="SETTINGS">
+                <SalesEngineersPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/master-data/sales-engineers/:id"
+            element={
+              <RequirePermission module="SETTINGS">
+                <SalesEngineerDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="/amc/contracts"
             element={
               <RequirePermission module="AMC_CONTRACTS">
                 <AmcContractsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/contracts/:id"
+            element={
+              <RequirePermission module="AMC_CONTRACTS">
+                <ContractDetailPage />
               </RequirePermission>
             }
           />
@@ -103,34 +164,10 @@ export function AppRoutes() {
             }
           />
           <Route
-            path="/amc/execution"
+            path="/amc/calendar"
             element={
-              <RequirePermission module="AMC_EXECUTION">
-                <AmcExecutionPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="/projects"
-            element={
-              <RequirePermission module="PROJECTS">
-                <ProjectsPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="/projects/:id"
-            element={
-              <RequirePermission module="PROJECTS">
-                <ProjectDetailPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="/procurement"
-            element={
-              <RequirePermission module="PROCUREMENT">
-                <ProcurementPage />
+              <RequirePermission module="AMC_SCHEDULE">
+                <AmcCalendarPage />
               </RequirePermission>
             }
           />
@@ -139,6 +176,22 @@ export function AppRoutes() {
             element={
               <RequirePermission module="EXPENSES">
                 <ExpensesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/invoices"
+            element={
+              <RequirePermission module="INVOICES">
+                <InvoicesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequirePermission module="REPORTS">
+                <ReportsPage />
               </RequirePermission>
             }
           />
@@ -177,6 +230,25 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          <Route
+            path="/admin/login-history"
+            element={
+              <RequirePermission module="USERS">
+                <LoginHistoryPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/admin/audit-log"
+            element={
+              <RequireAdmin>
+                <AuditLogPage />
+              </RequireAdmin>
+            }
+          />
+          <Route path="/notifications" element={<NotificationsPage />} />
+          {/* The former combined System Types & Departments page. */}
+          <Route path="/admin/master-data" element={<Navigate to="/master-data" replace />} />
           <Route
             path="/settings"
             element={

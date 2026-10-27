@@ -146,15 +146,11 @@ describe("how eligibility is held", () => {
     );
   });
 
-  it("is not stored on the visit, and no invoice table exists", async () => {
+  it("is not stored on the visit", async () => {
     const columns = await pool.query<{ column_name: string }>(
       "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'amc_visits'"
     );
-    const tables = await pool.query<{ table_name: string }>(
-      "SELECT table_name FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE '%invoice%'"
-    );
 
     expect(columns.rows.map((row) => row.column_name).filter((name) => name.includes("invoice") || name.includes("eligib"))).toEqual([]);
-    expect(tables.rows).toEqual([]);
   });
 });
