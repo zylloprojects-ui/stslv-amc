@@ -3,6 +3,8 @@ import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { AttachmentsPanel } from '../../components/AttachmentsPanel'
+import { PageTabs, TabPanel, useTabsLayout } from '../../components/PageTabs'
+import { ContactChip } from '../../components/ProfileParts'
 import { LoadError } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
@@ -35,13 +37,7 @@ const VISIT_LIMIT = 200
 const INVOICE_LIMIT = 50
 const HISTORY_PAGE_SIZE = 20
 
-type TabId = 'overview' | 'validity' | 'commercial'
-
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'overview', label: 'Contract overview' },
-  { id: 'validity', label: 'Contract validity' },
-  { id: 'commercial', label: 'Commercial details' },
-]
+type TabId = 'schedule' | 'invoices' | 'renewals' | 'documents' | 'history' | 'details'
 
 const ACTION_LABELS: Record<string, string> = {
   'amc_contract.created': 'Contract created',
@@ -109,21 +105,6 @@ function changeValue(field: string, value: unknown): string {
   }
 
   return value
-}
-
-function Section({ id, title, actions, children }: { id: string; title: string; actions?: ReactNode; children: ReactNode }) {
-  return (
-    <section aria-labelledby={id} className="flex min-w-0 flex-col">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h2 id={id} className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#0b3b66]">
-          <span className="h-4 w-1 rounded-full bg-[#1479BD]" aria-hidden="true" />
-          {title}
-        </h2>
-        {actions}
-      </div>
-      <Card className="flex-1 rounded-2xl">{children}</Card>
-    </section>
-  )
 }
 
 /** One fact of the contract: the caption above, the value below. `inline` puts the value on the right, for short figures. */
@@ -209,7 +190,8 @@ export function ContractDetailPage() {
   const [invoiceDialog, setInvoiceDialog] = useState<InvoiceDialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
   const [historyPage, setHistoryPage] = useState(1)
-  const [activeTab, setActiveTab] = useState<TabId>('overview')
+  const [activeTab, setActiveTab] = useState<TabId>('schedule')
+  const layout = useTabsLayout()
 
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
   // Cancelling a contract needs its own permission.
@@ -266,78 +248,41 @@ export function ContractDetailPage() {
   const validity = validityState(contract.validFrom, contract.validTo, todayIso())
   const schedule = contract.schedule
 
-  // The three groups of contract facts, drawn the same way in the cards and in the tabs.
-  const overviewBody = (wide: boolean) => (
+  // What the profile bar and the figures do not already say; the linked master records are here too.
+  const detailsBody = (
     <>
-      <dl className={wide ? 'grid gap-x-10 px-6 py-1 sm:grid-cols-2 lg:grid-cols-3' : 'px-6 py-1'}>
-        <Fact label="Client">
-          {contract.client.name}
-          {!contract.client.isActive && ' (inactive)'}
-        </Fact>
-        <Fact label="System">{contract.systemDescription}</Fact>
-        <Fact label="Responsible engineer">
-          <OrDash value={contract.responsibleEngineer} />
-        </Fact>
-        <Fact label="Frequency">{frequencyLabel(contract.maintenanceFrequency)}</Fact>
-        <Fact label="Status">
-          <span className="inline-flex flex-wrap items-center gap-1">
-            <ContractStatusPill status={contract.status} />
-            {contract.isPastValidity && contract.status === 'ACTIVE' && <Pill tone="amber">Validity ended</Pill>}
-          </span>
-        </Fact>
+      <dl className="grid gap-x-10 px-6 py-1 sm:grid-cols-2 lg:grid-cols-3">
         <Fact label="Description">
           <OrDash value={contract.description} />
         </Fact>
         <Fact label="Notes">
           <OrDash value={contract.notes} />
         </Fact>
+        <Fact label="Duration">{validity ? `${validity.durationDays} calendar days (start and end dates included)` : '—'}</Fact>
+        <Fact label="Created">{formatDateTime(contract.createdAt)}</Fact>
+        <Fact label="Last updated">{formatDateTime(contract.updatedAt)}</Fact>
       </dl>
       <ContractMastersPanel contractId={contract.id} canEdit={canEdit} />
     </>
   )
-  const validityBody = (wide: boolean) => (
-    <>
-      <dl className={wide ? 'grid gap-x-10 px-6 py-1 sm:grid-cols-2 lg:grid-cols-3' : 'px-6 py-1'}>
-        <Fact label="Start date">{formatDate(contract.validFrom)}</Fact>
-        <Fact label="End date">{formatDate(contract.validTo)}</Fact>
-        <Fact label="Duration">
-          {validity ? `${validity.durationDays} calendar days (start and end dates included)` : '—'}
-        </Fact>
-        <Fact label="Time remaining">
-          {validity ? (
-            <span className={validity.phase === 'ended' ? 'font-medium text-amber-700' : undefined}>{validity.text}</span>
-          ) : (
-            '—'
-          )}
-        </Fact>
-        <Fact label="Created">{formatDateTime(contract.createdAt)}</Fact>
-        <Fact label="Last updated">{formatDateTime(contract.updatedAt)}</Fact>
-      </dl>
-      {validity && (
-        <div className="px-6 pb-5 pt-2">
-          <ShareBar share={elapsedShare(contract.validFrom, contract.validTo, todayIso())} title="Share of the validity period that has passed" />
-        </div>
-      )}
-    </>
-  )
-  const commercialBody = (wide: boolean) => (
-    <>
-      <dl className={wide ? 'grid gap-x-10 px-6 py-1 sm:grid-cols-2' : 'px-6 py-1'}>
-        <Fact inline label="Contract value">{formatMoney(contract.contractValue)}</Fact>
-        <Fact inline label="Default visit amount">{formatMoney(contract.defaultVisitAmount)}</Fact>
-        <Fact inline label="Final credit">{formatMoney(contract.finalCredit)}</Fact>
-        <Fact inline label="Total of visit amounts">{formatMoney(schedule.scheduledTotal)}</Fact>
-        <Fact inline label="Contract value less visit amounts">{formatMoney(schedule.valueDifference)}</Fact>
-      </dl>
-      {schedule.visitCount > 0 && (!isZeroMoney(schedule.valueDifference) || schedule.amountMissingCount > 0) && (
-        <p className="px-6 pb-4 text-xs text-slate-500">
-          {!isZeroMoney(schedule.valueDifference) &&
-            'The visit amounts do not add up to the contract value. This is shown for information; it is not treated as an error. '}
-          {schedule.amountMissingCount > 0 && `${schedule.amountMissingCount} visit(s) have no amount yet.`}
-        </p>
-      )}
-    </>
-  )
+
+  const PANEL: Record<TabId, [string, string]> = {
+    schedule: ['Service schedule', 'Every maintenance visit of this contract and where it stands.'],
+    invoices: ['Invoices', 'Invoices recorded against visits of this contract.'],
+    renewals: ['Renewals', 'Renewal history and renewing this contract.'],
+    documents: ['Documents', 'Files attached to this contract.'],
+    history: ['Contract history', 'Every change made to this contract.'],
+    details: ['Details', 'Description, notes and linked master records.'],
+  }
+
+  const tabs: { id: TabId; label: string; count?: number }[] = [
+    { id: 'schedule', label: 'Service schedule', count: schedule.visitCount },
+    ...(canViewInvoices ? [{ id: 'invoices' as const, label: 'Invoices', count: invoices.data?.total }] : []),
+    { id: 'renewals', label: 'Renewals' },
+    { id: 'documents', label: 'Documents' },
+    { id: 'history', label: 'Contract history' },
+    { id: 'details', label: 'Details' },
+  ]
 
   return (
     <>
@@ -387,212 +332,249 @@ export function ContractDetailPage() {
         </div>
       )}
 
-      <div className="space-y-8">
-        <div className="grid items-stretch gap-6 lg:grid-cols-3">
-          <section aria-label="Contract details" className="lg:col-span-3">
-            <div role="tablist" aria-label="Contract details" className="mb-3 flex flex-wrap gap-1 border-b border-slate-300">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  id={`contract-tab-${tab.id}`}
-                  aria-selected={tab.id === activeTab}
-                  aria-controls="contract-tab-panel"
-                  onClick={() => setActiveTab(tab.id)}
-                  className={cx(
-                    '-mb-px rounded-t-lg border border-b-0 px-5 py-2.5 text-sm font-bold transition-colors',
-                    tab.id === activeTab ? 'border-slate-300 bg-white text-[#0b3b66]' : 'border-transparent text-slate-600 hover:bg-sky-50 hover:text-[#0b3b66]',
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
+      <div className="space-y-6">
+        <Card className="rounded-2xl">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4 p-5">
+            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0a3a66] to-[#2f9bd8] text-white shadow-md" aria-hidden="true">
+              <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="1.6">
+                <path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20V3.5Z" strokeLinejoin="round" />
+                <path d="M14 3.5v4h4M9.5 12h5M9.5 15.5h5" strokeLinecap="round" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <ContractStatusPill status={contract.status} />
+                {contract.isPastValidity && contract.status === 'ACTIVE' && <Pill tone="amber">Validity ended</Pill>}
+                <span className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{frequencyLabel(contract.maintenanceFrequency)}</span>
+              </div>
+              <p className={cx('mt-1.5 text-sm font-semibold', validity?.phase === 'ended' ? 'text-amber-700' : 'text-slate-700')}>{validity ? validity.text : '—'}</p>
             </div>
-            <Card className="rounded-2xl rounded-tl-none">
-              <div role="tabpanel" id="contract-tab-panel" aria-labelledby={`contract-tab-${activeTab}`} className="py-2">
-                {activeTab === 'overview' && overviewBody(true)}
-                {activeTab === 'validity' && validityBody(true)}
-                {activeTab === 'commercial' && commercialBody(true)}
-              </div>
-            </Card>
-          </section>
-        </div>
-
-        <Section id="contract-schedule-heading" title="Service schedule">
-          <div className="px-6 py-4">
-            {schedule.visitCount > 0 && (
-              <div className="mb-3">
-                <ShareBar share={schedule.completedCount / schedule.visitCount} title="Share of the visits that are completed" />
-              </div>
-            )}
-            <p className="text-sm text-slate-700">
-              {schedule.visitCount} visit{schedule.visitCount === 1 ? '' : 's'}: {schedule.completedCount} completed, {schedule.openCount} open
-              {schedule.historicalCount > 0 && `, ${schedule.historicalCount} historical`}
-              {schedule.cancelledCount > 0 && `, ${schedule.cancelledCount} cancelled`}.
-            </p>
-            {contract.scheduleCutoverDate !== null && (
-              <p className="mt-2 text-sm text-slate-600">
-                This contract was imported from an earlier register. Visits are generated only for periods starting on or after{' '}
-                {formatDate(contract.scheduleCutoverDate)}. Earlier periods are shown as historical where the earlier schedule listed them, and
-                are not created otherwise.
-              </p>
-            )}
-            {contract.status === 'DRAFT' && (
-              <p className="mt-2 text-sm text-slate-600">
-                {schedule.historicalCount > 0
-                  ? 'A draft has no generated schedule. New visits are generated when the contract is activated.'
-                  : 'A draft has no schedule. The visits are generated when the contract is activated.'}
-              </p>
-            )}
+            <dl className="grid min-w-0 flex-1 basis-[30rem] gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+              <ContactChip icon="building" label="Client">
+                {contract.client.name}
+                {!contract.client.isActive && ' (inactive)'}
+              </ContactChip>
+              <ContactChip icon="badge" label="System">
+                {contract.systemDescription}
+              </ContactChip>
+              <ContactChip icon="user" label="Responsible engineer">
+                <OrDash value={contract.responsibleEngineer} />
+              </ContactChip>
+              <ContactChip icon="clock" label="Validity">
+                {formatDate(contract.validFrom)} – {formatDate(contract.validTo)}
+              </ContactChip>
+            </dl>
           </div>
-          {!canViewSchedule && <p className="px-6 pb-4 text-sm text-slate-600">Your role does not include access to the AMC schedule.</p>}
-          {canViewSchedule && visits.isPending && <Spinner size="sm" label="Loading visits" />}
-          {visits.isError && (
-            <div className="px-6 pb-4">
-              <LoadError error={visits.error} onRetry={() => void visits.refetch()} />
+          {validity && (
+            <div className="border-t border-slate-200 bg-slate-50/70 px-5 py-3">
+              <ShareBar share={elapsedShare(contract.validFrom, contract.validTo, todayIso())} title="Share of the validity period that has passed" />
             </div>
           )}
-          {visits.data && visits.data.items.length === 0 && contract.status !== 'DRAFT' && (
-            <EmptyState title="No visits scheduled" description="Visits appear here once the contract's schedule has been generated." />
+        </Card>
+
+        <section aria-label="Contract figures">
+          <Card className="rounded-2xl">
+            <dl className="grid grid-cols-2 divide-x divide-y divide-slate-200 lg:grid-cols-5 lg:divide-y-0">
+              {[
+                { label: 'Contract value', value: formatMoney(contract.contractValue) },
+                { label: 'Default visit amount', value: formatMoney(contract.defaultVisitAmount) },
+                { label: 'Final credit', value: formatMoney(contract.finalCredit) },
+                { label: 'Total of visit amounts', value: formatMoney(schedule.scheduledTotal) },
+                { label: 'Contract value less visit amounts', value: formatMoney(schedule.valueDifference) },
+              ].map((figure) => (
+                <div key={figure.label} className="min-w-0 px-5 py-4">
+                  <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{figure.label}</dt>
+                  <dd className="mt-1.5 text-xl font-bold leading-none tabular-nums text-[#0b3b66]">{figure.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
+          {schedule.visitCount > 0 && (!isZeroMoney(schedule.valueDifference) || schedule.amountMissingCount > 0) && (
+            <p className="mt-2 text-xs text-slate-500">
+              {!isZeroMoney(schedule.valueDifference) && 'The visit amounts do not add up to the contract value. This is shown for information; it is not treated as an error. '}
+              {schedule.amountMissingCount > 0 && `${schedule.amountMissingCount} visit(s) have no amount yet.`}
+            </p>
           )}
-          {visits.data && visits.data.items.length > 0 && (
-            <>
-              <div className={TABLE.wrapper}>
-                <table className={TABLE.table}>
-                  <caption className="sr-only">Visits of this contract</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col" className={TABLE.th}>
-                        No.
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Scheduled
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Period
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Status
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Completed
-                      </th>
-                      <th scope="col" className={`${TABLE.th} text-right`}>
-                        Amount
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Invoicing
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {visits.data.items.map((visit) => (
-                      <tr key={visit.id}>
-                        <td className={`${TABLE.td} whitespace-nowrap`}>{visitNumberLabel(visit)}</td>
-                        <td className={`${TABLE.td} whitespace-nowrap`}>
-                          <PlannedDate visit={visit} format={formatDate} />
-                        </td>
-                        <td className={`${TABLE.td} whitespace-nowrap`}>
-                          {formatDate(visit.periodStart)} – {formatDate(visit.periodEnd)}
-                        </td>
-                        <td className={TABLE.td}>
-                          <VisitStatusPill status={visit.status} overdue={visit.isOverdue} />
-                        </td>
-                        <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(visit.completedDate)}</td>
-                        <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(visit.visitAmount)}</td>
-                        <td className={TABLE.td}>
-                          <EligibilityPill eligibility={visit.invoiceEligibility} />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              {visits.data.total > visits.data.items.length && (
-                <p className="border-t border-slate-200 px-6 py-3 text-sm text-slate-600">
-                  Showing the first {visits.data.items.length} of {visits.data.total} visits. The full list is in{' '}
-                  <Link to="/amc/schedule" className="font-medium text-blue-700 hover:underline">
-                    AMC Schedule
-                  </Link>
-                  .
-                </p>
+        </section>
+
+        <div className={layout.wrapper}>
+          <PageTabs label="Contract records" idPrefix="contract-tab" active={activeTab} onChange={setActiveTab} tabs={tabs} />
+          <TabPanel idPrefix="contract-tab" active={activeTab} title={PANEL[activeTab][0]} description={PANEL[activeTab][1]}>
+            <div>
+              {activeTab === 'schedule' && (
+                <>
+                    <div className="px-6 py-4">
+                      {schedule.visitCount > 0 && (
+                        <div className="mb-3">
+                          <ShareBar share={schedule.completedCount / schedule.visitCount} title="Share of the visits that are completed" />
+                        </div>
+                      )}
+                      <p className="text-sm text-slate-700">
+                        {schedule.visitCount} visit{schedule.visitCount === 1 ? '' : 's'}: {schedule.completedCount} completed, {schedule.openCount} open
+                        {schedule.historicalCount > 0 && `, ${schedule.historicalCount} historical`}
+                        {schedule.cancelledCount > 0 && `, ${schedule.cancelledCount} cancelled`}.
+                      </p>
+                      {contract.scheduleCutoverDate !== null && (
+                        <p className="mt-2 text-sm text-slate-600">
+                          This contract was imported from an earlier register. Visits are generated only for periods starting on or after{' '}
+                          {formatDate(contract.scheduleCutoverDate)}. Earlier periods are shown as historical where the earlier schedule listed them, and
+                          are not created otherwise.
+                        </p>
+                      )}
+                      {contract.status === 'DRAFT' && (
+                        <p className="mt-2 text-sm text-slate-600">
+                          {schedule.historicalCount > 0
+                            ? 'A draft has no generated schedule. New visits are generated when the contract is activated.'
+                            : 'A draft has no schedule. The visits are generated when the contract is activated.'}
+                        </p>
+                      )}
+                    </div>
+                    {!canViewSchedule && <p className="px-6 pb-4 text-sm text-slate-600">Your role does not include access to the AMC schedule.</p>}
+                    {canViewSchedule && visits.isPending && <Spinner size="sm" label="Loading visits" />}
+                    {visits.isError && (
+                      <div className="px-6 pb-4">
+                        <LoadError error={visits.error} onRetry={() => void visits.refetch()} />
+                      </div>
+                    )}
+                    {visits.data && visits.data.items.length === 0 && contract.status !== 'DRAFT' && (
+                      <EmptyState title="No visits scheduled" description="Visits appear here once the contract's schedule has been generated." />
+                    )}
+                    {visits.data && visits.data.items.length > 0 && (
+                      <>
+                        <div className={TABLE.wrapper}>
+                          <table className={TABLE.table}>
+                            <caption className="sr-only">Visits of this contract</caption>
+                            <thead>
+                              <tr>
+                                <th scope="col" className={TABLE.th}>
+                                  No.
+                                </th>
+                                <th scope="col" className={TABLE.th}>
+                                  Scheduled
+                                </th>
+                                <th scope="col" className={TABLE.th}>
+                                  Period
+                                </th>
+                                <th scope="col" className={TABLE.th}>
+                                  Status
+                                </th>
+                                <th scope="col" className={TABLE.th}>
+                                  Completed
+                                </th>
+                                <th scope="col" className={`${TABLE.th} text-right`}>
+                                  Amount
+                                </th>
+                                <th scope="col" className={TABLE.th}>
+                                  Invoicing
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {visits.data.items.map((visit) => (
+                                <tr key={visit.id}>
+                                  <td className={`${TABLE.td} whitespace-nowrap`}>{visitNumberLabel(visit)}</td>
+                                  <td className={`${TABLE.td} whitespace-nowrap`}>
+                                    <PlannedDate visit={visit} format={formatDate} />
+                                  </td>
+                                  <td className={`${TABLE.td} whitespace-nowrap`}>
+                                    {formatDate(visit.periodStart)} – {formatDate(visit.periodEnd)}
+                                  </td>
+                                  <td className={TABLE.td}>
+                                    <VisitStatusPill status={visit.status} overdue={visit.isOverdue} />
+                                  </td>
+                                  <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(visit.completedDate)}</td>
+                                  <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(visit.visitAmount)}</td>
+                                  <td className={TABLE.td}>
+                                    <EligibilityPill eligibility={visit.invoiceEligibility} />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {visits.data.total > visits.data.items.length && (
+                          <p className="border-t border-slate-200 px-6 py-3 text-sm text-slate-600">
+                            Showing the first {visits.data.items.length} of {visits.data.total} visits. The full list is in{' '}
+                            <Link to="/amc/schedule" className="font-medium text-blue-700 hover:underline">
+                              AMC Schedule
+                            </Link>
+                            .
+                          </p>
+                        )}
+                      </>
+                    )}
+
+                </>
               )}
-            </>
-          )}
-        </Section>
+              {activeTab === 'invoices' && canViewInvoices && (
+                <>
+                  <div className="flex justify-end border-b border-slate-200 bg-slate-50/70 px-4 py-2.5">
+                    <Link to="/invoices" className="text-sm font-semibold text-[#1479BD] hover:underline">
+                      Invoice Tracking →
+                    </Link>
+                  </div>
+                  <p className="px-6 pt-3 text-sm text-slate-600">Invoices recorded against at least one visit of this contract.</p>
+                  {invoices.isPending && <Spinner size="sm" label="Loading invoices" />}
+                  {invoices.isError && (
+                    <div className="px-6 py-4">
+                      <LoadError error={invoices.error} onRetry={() => void invoices.refetch()} />
+                    </div>
+                  )}
+                  {invoices.data && invoices.data.items.length === 0 && (
+                    <EmptyState title="No invoices recorded for this contract" description="Invoices are recorded in Invoice Tracking once visits are completed." />
+                  )}
+                  {invoices.data && invoices.data.items.length > 0 && (
+                    <>
+                      <InvoicesTable
+                        items={invoices.data.items}
+                        showClient={false}
+                        canEdit={auth.can('INVOICES', 'EDIT')}
+                        onDialog={setInvoiceDialog}
+                      />
+                      {invoices.data.total > invoices.data.items.length && (
+                        <p className="border-t border-slate-200 px-6 py-3 text-sm text-slate-600">
+                          Showing the latest {invoices.data.items.length} of {invoices.data.total} invoices. The full list is in Invoice Tracking.
+                        </p>
+                      )}
+                    </>
+                  )}
 
-        {canViewInvoices && (
-          <Section
-            id="contract-invoices-heading"
-            title="Invoices"
-            actions={
-              <Link to="/invoices" className="text-sm font-medium text-blue-700 hover:underline">
-                Invoice Tracking
-              </Link>
-            }
-          >
-            <p className="px-6 pt-3 text-sm text-slate-600">Invoices recorded against at least one visit of this contract.</p>
-            {invoices.isPending && <Spinner size="sm" label="Loading invoices" />}
-            {invoices.isError && (
-              <div className="px-6 py-4">
-                <LoadError error={invoices.error} onRetry={() => void invoices.refetch()} />
-              </div>
-            )}
-            {invoices.data && invoices.data.items.length === 0 && (
-              <EmptyState title="No invoices recorded for this contract" description="Invoices are recorded in Invoice Tracking once visits are completed." />
-            )}
-            {invoices.data && invoices.data.items.length > 0 && (
-              <>
-                <InvoicesTable
-                  items={invoices.data.items}
-                  showClient={false}
-                  canEdit={auth.can('INVOICES', 'EDIT')}
-                  onDialog={setInvoiceDialog}
-                />
-                {invoices.data.total > invoices.data.items.length && (
-                  <p className="border-t border-slate-200 px-6 py-3 text-sm text-slate-600">
-                    Showing the latest {invoices.data.items.length} of {invoices.data.total} invoices. The full list is in Invoice Tracking.
-                  </p>
-                )}
-              </>
-            )}
-          </Section>
-        )}
+                </>
+              )}
+              {activeTab === 'renewals' && <ContractRenewalsPanel contractId={contract.id} canRenew={auth.can('AMC_CONTRACTS', 'CREATE')} onRenew={() => setDialog({ kind: 'renew' })} />}
+              {activeTab === 'documents' && <AttachmentsPanel entityType="amc_contracts" entityId={contract.id} canUpload={canEdit} />}
+              {activeTab === 'history' && (
+                <>
+                  {history.isPending && <Spinner size="sm" label="Loading history" />}
+                  {history.isError && (
+                    <div className="px-6 py-4">
+                      <LoadError error={history.error} onRetry={() => void history.refetch()} />
+                    </div>
+                  )}
+                  {history.data && history.data.items.length === 0 && <EmptyState title="No history recorded for this contract" />}
+                  {history.data && history.data.items.length > 0 && (
+                    <>
+                      <ol className="divide-y divide-slate-100" aria-label="Contract history, newest first">
+                        {history.data.items.map((entry) => (
+                          <HistoryEntry key={entry.id} entry={entry} />
+                        ))}
+                      </ol>
+                      <Pager
+                        page={history.data.page}
+                        pageSize={history.data.pageSize}
+                        total={history.data.total}
+                        shown={history.data.items.length}
+                        onPage={setHistoryPage}
+                      />
+                    </>
+                  )}
 
-        <Section id="contract-renewals-heading" title="Renewals">
-          <ContractRenewalsPanel contractId={contract.id} canRenew={auth.can('AMC_CONTRACTS', 'CREATE')} onRenew={() => setDialog({ kind: 'renew' })} />
-        </Section>
-
-        <Section id="contract-documents-heading" title="Documents">
-          <AttachmentsPanel entityType="amc_contracts" entityId={contract.id} canUpload={canEdit} />
-        </Section>
-
-        <Section id="contract-history-heading" title="Contract history">
-          {history.isPending && <Spinner size="sm" label="Loading history" />}
-          {history.isError && (
-            <div className="px-6 py-4">
-              <LoadError error={history.error} onRetry={() => void history.refetch()} />
+                </>
+              )}
+              {activeTab === 'details' && detailsBody}
             </div>
-          )}
-          {history.data && history.data.items.length === 0 && <EmptyState title="No history recorded for this contract" />}
-          {history.data && history.data.items.length > 0 && (
-            <>
-              <ol className="divide-y divide-slate-100" aria-label="Contract history, newest first">
-                {history.data.items.map((entry) => (
-                  <HistoryEntry key={entry.id} entry={entry} />
-                ))}
-              </ol>
-              <Pager
-                page={history.data.page}
-                pageSize={history.data.pageSize}
-                total={history.data.total}
-                shown={history.data.items.length}
-                onPage={setHistoryPage}
-              />
-            </>
-          )}
-        </Section>
+          </TabPanel>
+        </div>
       </div>
 
       {dialog.kind === 'edit' && (

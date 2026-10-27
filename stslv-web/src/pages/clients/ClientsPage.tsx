@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useId, useState, type ReactNode } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { Alert, Button, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
@@ -79,13 +80,6 @@ const ICONS = {
       <path d="m4 7 8 6 8-6" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
-  eye: (
-    <>
-      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" strokeLinejoin="round" />
-      <circle cx="12" cy="12" r="3" />
-    </>
-  ),
-  edit: <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 8l3 3" strokeLinecap="round" strokeLinejoin="round" />,
 }
 
 function Icon({ name, className = 'h-4 w-4' }: { name: keyof typeof ICONS; className?: string }) {
@@ -97,59 +91,8 @@ function Icon({ name, className = 'h-4 w-4' }: { name: keyof typeof ICONS; class
 }
 
 const FIELD = 'rounded-lg border border-slate-300 bg-white text-sm shadow-sm transition focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60'
-const ICON_BUTTON =
-  'inline-flex h-8 w-9 items-center justify-center text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10'
 const LABEL = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600'
 const NONE = <span className="text-slate-400">—</span>
-
-/** A small square button with an icon only. The accessible name is given by aria-label; title shows it on hover. */
-function IconButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" aria-label={label} title={label} onClick={onClick} className={ICON_BUTTON}>
-      {children}
-    </button>
-  )
-}
-
-type StatusValue = 'active' | 'inactive'
-
-/**
- * The status of one row as a select. Choosing a different status does nothing
- * by itself: Apply saves it, Cancel puts the select back.
- */
-function StatusCell({ client, busy, onApply }: { client: Client; busy: boolean; onApply: (client: Client) => void }) {
-  // The list keys this cell by the stored status, so a saved change starts it afresh.
-  const current: StatusValue = client.isActive ? 'active' : 'inactive'
-  const [chosen, setChosen] = useState<StatusValue>(current)
-  const changed = chosen !== current
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <select
-        aria-label={`Status of ${client.name}`}
-        value={chosen}
-        disabled={busy}
-        onChange={(event) => setChosen(event.target.value as StatusValue)}
-        className={`rounded-lg border px-2 py-1.5 text-xs font-semibold shadow-sm focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60 ${
-          chosen === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-300 bg-slate-100 text-slate-700'
-        }`}
-      >
-        <option value="active">{CLIENT_STATUS_LABELS.active}</option>
-        <option value="inactive">{CLIENT_STATUS_LABELS.inactive}</option>
-      </select>
-      {changed && (
-        <>
-          <Button size="sm" loading={busy} onClick={() => onApply(client)} aria-label={`Apply ${CLIENT_STATUS_LABELS[chosen]} to ${client.name}`}>
-            Apply
-          </Button>
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => setChosen(current)} aria-label={`Keep ${client.name} ${CLIENT_STATUS_LABELS[current]}`}>
-            Cancel
-          </Button>
-        </>
-      )}
-    </div>
-  )
-}
 
 export function ClientsPage() {
   const auth = useAuth()
@@ -442,12 +385,12 @@ export function ClientsPage() {
                       <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
                       {show('code') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs font-semibold text-slate-600`}>{client.code}</td>}
                       <td className={`${TABLE.td} min-w-56 py-3`}>
-                        <div className="flex items-center gap-3.5">
+                        <div className="flex items-center gap-3">
                           <ClientAvatar name={client.name} />
-                          <div className="min-w-0">
+                          <div className="min-w-0 max-w-[16rem]">
                             <Link
                               to={`/clients/${client.id}`}
-                              className={`block max-w-64 break-words text-sm font-semibold leading-snug hover:text-[#1479BD] hover:underline ${client.isActive ? 'text-slate-900' : 'text-slate-500'}`}
+                              className={`line-clamp-2 break-words text-sm font-semibold leading-snug hover:text-[#1479BD] hover:underline ${client.isActive ? 'text-[#0b3b66]' : 'text-slate-500'}`}
                             >
                               {client.name}
                             </Link>
@@ -458,15 +401,12 @@ export function ClientsPage() {
                       {show('type') && <td className={`${TABLE.td} whitespace-nowrap`}>{client.clientType ? CLIENT_TYPE_LABELS[client.clientType] : NONE}</td>}
                       {show('vat') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs`}>{client.vatNumber ?? NONE}</td>}
                       {show('contact') && (
-                        <td className={`${TABLE.td} ${TABLE.text}`}>
-                          {client.contactPerson && <span className="block text-sm font-medium text-slate-900">{client.contactPerson}</span>}
+                        <td className={`${TABLE.td} min-w-48 max-w-64`}>
+                          {client.contactPerson && <span className="block truncate text-sm font-semibold text-slate-900" title={client.contactPerson}>{client.contactPerson}</span>}
                           {client.email && (
-                            <a
-                              href={`mailto:${client.email}`}
-                              className="mt-0.5 inline-flex max-w-full items-center gap-1 text-xs text-slate-500 [overflow-wrap:anywhere] hover:text-[#1479BD] hover:underline"
-                            >
-                              <Icon name="mail" className="h-3.5 w-3.5 shrink-0" />
-                              {client.email}
+                            <a href={`mailto:${client.email}`} title={client.email} className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-slate-600 hover:text-[#1479BD] hover:underline">
+                              <Icon name="mail" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                              <span className="truncate">{client.email}</span>
                             </a>
                           )}
                           {!client.contactPerson && !client.email && NONE}
@@ -475,11 +415,8 @@ export function ClientsPage() {
                       {show('phone') && (
                         <td className={`${TABLE.td} whitespace-nowrap`}>
                           {client.phone ? (
-                            <a
-                              href={`tel:${client.phone.replace(/[^+\d]/g, '')}`}
-                              className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 transition-colors hover:bg-sky-100 hover:text-[#0b3b66]"
-                            >
-                              <Icon name="phone" className="h-3.5 w-3.5 shrink-0 text-[#1479BD]" />
+                            <a href={`tel:${client.phone.replace(/[^+\d]/g, '')}`} className="inline-flex items-center gap-1.5 text-sm tabular-nums text-slate-700 hover:text-[#1479BD] hover:underline">
+                              <Icon name="phone" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                               {client.phone}
                             </a>
                           ) : (
@@ -489,24 +426,23 @@ export function ClientsPage() {
                       )}
                       {show('status') && (
                         <td className={`${TABLE.td} whitespace-nowrap`}>
-                          {canChangeStatus ? (
-                            <StatusCell key={`${client.id}-${client.isActive}`} client={client} busy={toggle.isPending && toggle.variables?.id === client.id} onApply={(target) => toggle.mutate(target)} />
-                          ) : (
-                            <ClientStatusBadge active={client.isActive} />
-                          )}
+                          <ClientStatusBadge active={client.isActive} />
                         </td>
                       )}
                       <td className={`${TABLE.td} whitespace-nowrap pr-5 text-right`}>
-                        <div className="inline-flex items-center divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                          <IconButton label={`View ${client.name}`} onClick={() => setDialog({ kind: 'view', clientId: client.id })}>
-                            <Icon name="eye" className="h-[18px] w-[18px]" />
-                          </IconButton>
-                          {canEdit && (
-                            <IconButton label={`Edit ${client.name}`} onClick={() => setDialog({ kind: 'edit', client })}>
-                              <Icon name="edit" className="h-[18px] w-[18px]" />
-                            </IconButton>
+                        <ActionGroup>
+                          <ActionButton label={`View ${client.name}`} icon="view" onClick={() => setDialog({ kind: 'view', clientId: client.id })} />
+                          {canEdit && <ActionButton label={`Edit ${client.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', client })} />}
+                          {canChangeStatus && (
+                            <ActionButton
+                              danger={client.isActive}
+                              label={`${client.isActive ? 'Deactivate' : 'Reactivate'} ${client.name}`}
+                              icon={client.isActive ? 'deactivate' : 'reactivate'}
+                              disabled={toggle.isPending && toggle.variables?.id === client.id}
+                              onClick={() => toggle.mutate(client)}
+                            />
                           )}
-                        </div>
+                        </ActionGroup>
                       </td>
                     </tr>
                   ))}

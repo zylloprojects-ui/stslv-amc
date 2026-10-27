@@ -68,15 +68,16 @@ export function RecordHistory({ path, queryKey, actionLabels = {}, fieldLabels =
 
   return (
     <>
-      <ol className="divide-y divide-slate-100" aria-label="History, newest first">
+      <ol className="relative py-2 before:absolute before:bottom-4 before:left-[1.65rem] before:top-4 before:w-px before:bg-slate-200" aria-label="History, newest first">
         {data.items.map((entry) => {
           const changes = entry.changes ? Object.entries(entry.changes) : []
 
           return (
-            <li key={entry.id} className="px-6 py-3">
+            <li key={entry.id} className="relative py-3 pl-14 pr-6">
+              <span className="absolute left-[1.15rem] top-[1.15rem] h-3.5 w-3.5 rounded-full bg-[#1479BD] ring-4 ring-sky-100" aria-hidden="true" />
               <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-                <p className="text-sm font-semibold text-slate-900">{actionLabels[entry.action] ?? sentence(entry.action)}</p>
-                <p className="text-xs text-slate-500">
+                <p className="text-sm font-bold text-[#0b3b66]">{actionLabels[entry.action] ?? sentence(entry.action)}</p>
+                <p className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
                   <time dateTime={entry.createdAt}>{formatDateTime(entry.createdAt)}</time>
                   {' · '}
                   {entry.user ? entry.user.fullName : 'System'}
@@ -84,7 +85,7 @@ export function RecordHistory({ path, queryKey, actionLabels = {}, fieldLabels =
               </div>
               {entry.description && <p className="mt-1 text-sm text-slate-700">{entry.description}</p>}
               {changes.length > 0 && (
-                <ul className="mt-2 space-y-0.5 text-sm text-slate-600" aria-label="Changed fields">
+                <ul className="mt-2 space-y-1 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2 text-sm text-slate-600" aria-label="Changed fields">
                   {changes.map(([field, change]) => (
                     <li key={field}>
                       <span className="font-medium text-slate-700">{fieldLabels[field] ?? sentence(field)}:</span>{' '}

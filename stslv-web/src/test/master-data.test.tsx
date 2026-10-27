@@ -134,6 +134,7 @@ describe('contract master links', () => {
     })
     renderApp('/amc/contracts/100')
 
+    await userEvent.click(await screen.findByRole('tab', { name: 'Details' }))
     const overview = within(await screen.findByRole('tabpanel'))
     expect(await overview.findAllByText('Not linked')).toHaveLength(2)
 
@@ -154,9 +155,11 @@ describe('contract master links', () => {
     })
     renderApp('/amc/contracts/100')
 
+    await userEvent.click(await screen.findByRole('tab', { name: 'Details' }))
     const overview = within(await screen.findByRole('tabpanel'))
     await waitFor(() => expect(overview.queryByText('Loading master records')).not.toBeInTheDocument())
     expect(overview.queryByText('Master records')).not.toBeInTheDocument()
-    expect(overview.getByText('Test Engineer')).toBeInTheDocument()
+    // The engineer named on the contract is in the profile bar.
+    expect(screen.getByText('Test Engineer')).toBeInTheDocument()
   })
 })

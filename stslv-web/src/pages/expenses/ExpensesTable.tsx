@@ -1,6 +1,7 @@
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Money } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Badge, Button } from '../../components/ui'
+import { Badge } from '../../components/ui'
 import { cx, formatDate } from '../../lib/format'
 import type { Expense } from '../../lib/projectTypes'
 import type { ExpenseDialog } from './ExpenseDialogs'
@@ -80,37 +81,11 @@ export function ExpensesTable({ items, showProject, canEdit, canVoid, onDialog, 
                 <Money value={expense.amount} />
               </td>
               <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                <div className="flex justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`View expense ${expense.description}`}
-                    onClick={() => onDialog({ kind: 'view', expenseId: expense.id })}
-                  >
-                    View
-                  </Button>
-                  {canEdit && !expense.isVoided && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      aria-label={`Edit expense ${expense.description}`}
-                      onClick={() => onDialog({ kind: 'edit', expense })}
-                    >
-                      Edit
-                    </Button>
-                  )}
-                  {canVoid && !expense.isVoided && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-700 hover:bg-red-50"
-                      aria-label={`Void expense ${expense.description}`}
-                      onClick={() => onDialog({ kind: 'void', expense })}
-                    >
-                      Void
-                    </Button>
-                  )}
-                </div>
+                <ActionGroup>
+                  <ActionButton label={`View expense ${expense.description}`} icon="view" onClick={() => onDialog({ kind: 'view', expenseId: expense.id })} />
+                  {canEdit && !expense.isVoided && <ActionButton label={`Edit expense ${expense.description}`} icon="edit" onClick={() => onDialog({ kind: 'edit', expense })} />}
+                  {canVoid && !expense.isVoided && <ActionButton danger label={`Void expense ${expense.description}`} icon="void" onClick={() => onDialog({ kind: 'void', expense })} />}
+                </ActionGroup>
               </td>
             </tr>
           ))}

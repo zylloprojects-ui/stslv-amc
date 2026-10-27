@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { api, ApiError, download, errorMessage, saveFile } from '../lib/api'
 import { formatDateTime } from '../lib/format'
+import { ActionButton, ActionGroup } from './IconActions'
 import { LoadError } from './records'
 import { TABLE } from './table'
 import { Alert, Button, EmptyState, Modal, SelectField, Spinner, TextAreaField, TextField } from './ui'
@@ -162,21 +163,11 @@ export function AttachmentsPanel({ entityType, entityId, canUpload, label = 'Doc
                     <span className="block text-xs text-slate-500">{attachment.uploadedBy.fullName}</span>
                   </td>
                   <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                    <span className="inline-flex gap-2">
-                      <Button size="sm" variant="secondary" onClick={() => void open(attachment)} aria-label={`Download ${attachment.title}`}>
-                        Download
-                      </Button>
-                      {(attachment.versionCount ?? 1) > 1 && (
-                        <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: 'versions', attachment })} aria-label={`Versions of ${attachment.title}`}>
-                          Versions
-                        </Button>
-                      )}
-                      {canUpload && (
-                        <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: 'replace', attachment })} aria-label={`Replace ${attachment.title}`}>
-                          Replace
-                        </Button>
-                      )}
-                    </span>
+                    <ActionGroup>
+                      <ActionButton label={`Download ${attachment.title}`} icon="download" onClick={() => void open(attachment)} />
+                      {(attachment.versionCount ?? 1) > 1 && <ActionButton label={`Versions of ${attachment.title}`} icon="versions" onClick={() => setDialog({ kind: 'versions', attachment })} />}
+                      {canUpload && <ActionButton label={`Replace ${attachment.title}`} icon="replace" onClick={() => setDialog({ kind: 'replace', attachment })} />}
+                    </ActionGroup>
                   </td>
                 </tr>
               ))}

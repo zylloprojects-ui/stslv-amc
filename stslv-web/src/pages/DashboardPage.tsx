@@ -54,7 +54,7 @@ function Panel({ id, icon, eyebrow, title, description, link, className, childre
                       </div>
         </div>
         {link && (
-          <Link to={link.to} className="shrink-0 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-[#0b3b66] shadow-sm hover:bg-sky-50">
+          <Link to={link.to} className="shrink-0 whitespace-nowrap rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-bold text-[#0b3b66] hover:border-[#1479BD] hover:bg-white">
             {link.label} →
           </Link>
         )}

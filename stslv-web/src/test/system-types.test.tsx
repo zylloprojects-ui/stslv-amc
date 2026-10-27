@@ -81,7 +81,8 @@ describe('list', () => {
     expect(within(fa).getByText('Addressable panels')).toBeInTheDocument()
     expect(within(fa).getByText('FA')).toBeInTheDocument()
     expect(within(fa).getByText('40')).toBeInTheDocument()
-    expect(within(fa).getByRole('combobox', { name: 'Status of Fire Alarm' })).toHaveValue('active')
+    expect(within(fa).getByText('Active', { selector: 'span' })).toBeInTheDocument()
+    expect(within(fa).getByRole('button', { name: 'Deactivate Fire Alarm' })).toBeInTheDocument()
   })
 
   it('sends search, status and sort to the API, and the same filters to the export', async () => {
@@ -160,19 +161,15 @@ describe('form', () => {
 })
 
 describe('status', () => {
-  it('changes status only on Apply, and Cancel puts the select back', async () => {
+  it('changes status from the row icon action', async () => {
     const api = typesApi(ADMIN, [FA], (request) => (request.path === '/masters/system-types/4/status' ? ok({ ...FA, isActive: false }) : undefined))
     renderPage()
     await table()
 
-    const select = screen.getByRole('combobox', { name: 'Status of Fire Alarm' })
-    await userEvent.selectOptions(select, 'inactive')
-    await userEvent.click(screen.getByRole('button', { name: 'Keep Fire Alarm Active' }))
-    expect(select).toHaveValue('active')
+    expect(screen.queryByRole('combobox', { name: /Status of/ })).not.toBeInTheDocument()
     expect(api.find('POST', '/masters/system-types/4/status')).toHaveLength(0)
 
-    await userEvent.selectOptions(select, 'inactive')
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Fire Alarm' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Fire Alarm' }))
 
     await waitFor(() => expect(api.find('POST', '/masters/system-types/4/status')[0]?.body).toEqual({ isActive: false }))
     expect(await screen.findByText(/Fire Alarm is now Disabled\. Contracts that use it keep it/)).toBeInTheDocument()
@@ -241,8 +238,7 @@ describe('permissions', () => {
 
     expect(within(list).getByText('Active')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add System Type' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: /Status of/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^(Edit|Delete) / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^(Edit|Delete|Deactivate|Reactivate) / })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Export/ })).not.toBeInTheDocument()
     // Without contract view permission the count is shown, not opened.
     expect(screen.queryByRole('button', { name: /View the 2 AMC contracts/ })).not.toBeInTheDocument()

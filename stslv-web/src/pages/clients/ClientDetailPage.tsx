@@ -4,12 +4,15 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
 import { LinkedContracts } from '../../components/LinkedContracts'
-import { DetailRow, LoadError, Money, OrDash } from '../../components/records'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
+import { PageTabs, TabPanel, useTabsLayout } from '../../components/PageTabs'
+import { ContactChip } from '../../components/ProfileParts'
+import { LoadError, Money, OrDash } from '../../components/records'
 import { RecordHistory } from '../../components/RecordHistory'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
-import { formatCount, formatDate, formatDateTime } from '../../lib/format'
+import { cx, formatCount, formatDate, formatDateTime } from '../../lib/format'
 import type { PagedInvoices } from '../../lib/invoiceTypes'
 import { formatMoney } from '../../lib/money'
 import { CLIENT_STATUS_LABELS, CLIENT_TYPE_LABELS, type Client, type ClientFeatures, type ClientSummary, type ClientType } from '../../lib/types'
@@ -17,6 +20,7 @@ import { VisitStatusPill } from '../amc/components'
 import type { VisitList } from '../amc/types'
 import { InvoiceStatusBadge } from '../invoices/InvoicesTable'
 import { ClientFormModal } from './ClientFormModal'
+import { initialsOf } from './clientAvatarHelpers'
 import { ClientStatusBadge } from './ClientStatusBadge'
 
 const ACTION_LABELS: Record<string, string> = {
@@ -42,85 +46,7 @@ const FIELD_LABELS: Record<string, string> = {
 const OPEN_VISIT_STATUSES = 'SCHEDULED,IN_PROGRESS,POSTPONED'
 const LIST_LIMIT = 10
 
-function Section({ id, title, actions, children }: { id: string; title: string; actions?: ReactNode; children: ReactNode }) {
-  return (
-    <Card>
-      <section aria-labelledby={id}>
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
-          <h2 id={id} className="text-base font-semibold text-slate-900">
-            {title}
-          </h2>
-          {actions}
-        </div>
-        {children}
-      </section>
-    </Card>
-  )
-}
-
-/**
- * One Client 360 figure. `value` null shows "Not available" with the reason in
- * `hint`, so a figure the system does not have is never shown as a zero.
- */
-function Metric({ label, value, hint, tone = 'default' }: { label: string; value: ReactNode | null; hint?: ReactNode; tone?: 'default' | 'warn' }) {
-  const unavailable = value === null
-
-  return (
-    <div className={`rounded-xl border bg-white p-4 shadow-sm ${unavailable ? 'border-dashed border-slate-200' : tone === 'warn' ? 'border-amber-200' : 'border-slate-200'}`}>
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</dt>
-      <dd className={`mt-1 text-xl font-bold tabular-nums ${unavailable ? 'text-base font-semibold text-slate-400' : 'text-[#0b3b66]'}`}>{unavailable ? 'Not available' : value}</dd>
-      {hint && <dd className={`mt-1 text-xs ${tone === 'warn' && !unavailable ? 'text-amber-700' : 'text-slate-500'}`}>{hint}</dd>}
-    </div>
-  )
-}
-
 const NO_ACCESS = (module: string) => `Your role does not include ${module}.`
-
-function SummaryStrip({ summary }: { summary: ClientSummary }) {
-  const { contracts, visits, invoices } = summary
-
-  return (
-    <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <Metric
-        label="Total AMC contracts"
-        value={contracts ? formatCount(contracts.total) : null}
-        hint={contracts ? `${contracts.draft} draft · ${contracts.expired} expired · ${contracts.cancelled} cancelled` : NO_ACCESS('AMC contracts')}
-      />
-      <Metric label="Active AMC contracts" value={contracts ? formatCount(contracts.active) : null} hint={contracts ? undefined : NO_ACCESS('AMC contracts')} />
-      <Metric
-        label="Active AMC value"
-        value={contracts ? formatMoney(contracts.activeValue) : null}
-        hint={contracts ? `All contracts except cancelled: ${formatMoney(contracts.nonCancelledValue)}` : NO_ACCESS('AMC contracts')}
-      />
-      <Metric
-        label="Final credit (active contracts)"
-        value={contracts ? formatMoney(contracts.finalCreditTotal) : null}
-        hint={contracts ? `Entered on ${contracts.finalCreditRecorded} of ${contracts.active} active ${contracts.active === 1 ? 'contract' : 'contracts'}` : NO_ACCESS('AMC contracts')}
-      />
-      <Metric
-        label="Upcoming visits"
-        value={visits ? formatCount(visits.upcoming) : null}
-        hint={visits ? (visits.nextVisitDate ? `Next on ${formatDate(visits.nextVisitDate)}` : 'None scheduled') : NO_ACCESS('the AMC schedule')}
-      />
-      <Metric
-        label="Overdue visits"
-        value={visits ? formatCount(visits.overdue) : null}
-        tone={visits && visits.overdue > 0 ? 'warn' : 'default'}
-        hint={visits ? `${formatCount(visits.completed)} completed · ${formatCount(visits.readyForInvoice)} ready for invoice` : NO_ACCESS('the AMC schedule')}
-      />
-      <Metric
-        label="Invoices issued"
-        value={invoices ? formatCount(invoices.issued) : null}
-        hint={
-          invoices
-            ? `${formatMoney(invoices.issuedTotal)} incl. VAT${invoices.lastInvoiceDate ? ` · last ${formatDate(invoices.lastInvoiceDate)}` : ''}${invoices.cancelled > 0 ? ` · ${invoices.cancelled} cancelled` : ''}`
-            : NO_ACCESS('invoices')
-        }
-      />
-      <Metric label="Paid / unpaid invoices" value={null} hint="Payments are not recorded in STSLV AMC." />
-    </dl>
-  )
-}
 
 function Renewals({ renewals }: { renewals: NonNullable<ClientSummary['renewals']> }) {
   if (renewals.items.length === 0) {
@@ -280,6 +206,47 @@ function RelatedInvoices({ clientId }: { clientId: string }) {
   )
 }
 
+interface Stat {
+  label: string
+  value: ReactNode | null
+  hint: ReactNode
+  warn?: boolean
+}
+
+function clientStats(summary: ClientSummary): Stat[] {
+  const { contracts, visits, invoices } = summary
+
+  return [
+    { label: 'Total AMC contracts', value: contracts ? formatCount(contracts.total) : null, hint: contracts ? `${contracts.draft} draft · ${contracts.expired} expired · ${contracts.cancelled} cancelled` : NO_ACCESS('AMC contracts') },
+    { label: 'Active AMC contracts', value: contracts ? formatCount(contracts.active) : null, hint: contracts ? 'Status Active' : NO_ACCESS('AMC contracts') },
+    { label: 'Active AMC value', value: contracts ? formatMoney(contracts.activeValue) : null, hint: contracts ? `All contracts except cancelled: ${formatMoney(contracts.nonCancelledValue)}` : NO_ACCESS('AMC contracts') },
+    { label: 'Final credit (active contracts)', value: contracts ? formatMoney(contracts.finalCreditTotal) : null, hint: contracts ? `Entered on ${contracts.finalCreditRecorded} of ${contracts.active} active ${contracts.active === 1 ? 'contract' : 'contracts'}` : NO_ACCESS('AMC contracts') },
+    { label: 'Upcoming visits', value: visits ? formatCount(visits.upcoming) : null, hint: visits ? (visits.nextVisitDate ? `Next on ${formatDate(visits.nextVisitDate)}` : 'None scheduled') : NO_ACCESS('the AMC schedule') },
+    { label: 'Overdue visits', value: visits ? formatCount(visits.overdue) : null, hint: visits ? `${formatCount(visits.completed)} completed · ${formatCount(visits.readyForInvoice)} ready for invoice` : NO_ACCESS('the AMC schedule'), warn: !!visits && visits.overdue > 0 },
+    {
+      label: 'Invoices issued',
+      value: invoices ? formatCount(invoices.issued) : null,
+      hint: invoices ? `${formatMoney(invoices.issuedTotal)} incl. VAT${invoices.lastInvoiceDate ? ` · last ${formatDate(invoices.lastInvoiceDate)}` : ''}${invoices.cancelled > 0 ? ` · ${invoices.cancelled} cancelled` : ''}` : NO_ACCESS('invoices'),
+    },
+    { label: 'Paid / unpaid invoices', value: null, hint: 'Payments are not recorded in STSLV AMC.' },
+  ]
+}
+
+/** The eight figures as one card, four across, with dividers. */
+function StatGrid({ summary }: { summary: ClientSummary }) {
+  return (
+    <dl className="grid grid-cols-2 divide-x divide-y divide-slate-200 lg:grid-cols-4">
+      {clientStats(summary).map((stat) => (
+        <div key={stat.label} className={cx('min-w-0 px-5 py-4', stat.warn && 'bg-amber-50/60')}>
+          <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{stat.label}</dt>
+          <dd className={cx('mt-1.5 tabular-nums', stat.value === null ? 'text-base font-bold text-slate-400' : 'text-2xl font-bold leading-none text-[#0b3b66]')}>{stat.value === null ? 'Not available' : stat.value}</dd>
+          <dd className={cx('mt-1.5 text-xs leading-snug', stat.warn ? 'text-amber-700' : 'text-slate-500')}>{stat.hint}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 /** Client 360: one client's details, figures, visits, contracts, invoices and history. */
 export function ClientDetailPage() {
   const { id = '' } = useParams()
@@ -289,6 +256,8 @@ export function ClientDetailPage() {
   const [confirmToggle, setConfirmToggle] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [tab, setTab] = useState<'visits' | 'contracts' | 'invoices' | 'renewals' | 'history'>('visits')
+  const layout = useTabsLayout()
 
   const query = useQuery({ queryKey: ['clients', 'detail', id], queryFn: () => api.get<Client>(`/clients/${id}`) })
   const summary = useQuery({ queryKey: ['clients', 'summary', id], queryFn: () => api.get<ClientSummary>(`/clients/${id}/summary`), enabled: query.isSuccess })
@@ -307,7 +276,7 @@ export function ClientDetailPage() {
   })
 
   const back = (
-    <Link to="/clients" className="text-sm font-medium text-blue-700 hover:underline">
+    <Link to="/clients" className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-[#0b3b66] shadow-sm hover:bg-sky-50">
       ← All clients
     </Link>
   )
@@ -332,6 +301,134 @@ export function ClientDetailPage() {
   const canExportInvoices = auth.can('INVOICES', 'VIEW') && auth.can('INVOICES', 'EXPORT')
   const asOf = summary.data?.asOf
 
+  const exportBar = (buttons: ReactNode) => (buttons ? <div className="flex justify-end border-b border-slate-200 bg-slate-50/70 px-4 py-2.5">{buttons}</div> : null)
+
+  const PANEL: Record<typeof tab, [string, string]> = {
+    visits: ['Upcoming visits', 'Open AMC visits of this client, from today onwards.'],
+    contracts: ['AMC contracts', 'Every maintenance contract held by this client.'],
+    invoices: ['Invoices', 'Invoices recorded against this client’s visits.'],
+    renewals: ['Renewals', 'Contracts that have ended or are about to end.'],
+    history: ['History', 'Every change made to this client record.'],
+  }
+
+  const tabsBlock = (
+    <div className={layout.wrapper}>
+      <PageTabs
+        label="Client records"
+        idPrefix="client-tab"
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'visits', label: 'Upcoming visits', count: summary.data?.visits?.upcoming },
+          { id: 'contracts', label: 'AMC contracts', count: summary.data?.contracts?.total },
+          { id: 'invoices', label: 'Invoices', count: summary.data?.invoices?.issued },
+          { id: 'renewals', label: 'Renewals', count: summary.data?.renewals?.total },
+          { id: 'history', label: 'History' },
+        ]}
+      />
+      <TabPanel idPrefix="client-tab" active={tab} title={PANEL[tab][0]} description={PANEL[tab][1]}>
+        <div>
+          {tab === 'visits' && (
+            <>
+              {exportBar(
+                canExportVisits && asOf ? (
+                  <ExportButtons
+                    what="upcoming visits"
+                    fileStem="amc-schedule"
+                    size="sm"
+                    path={(format) => `/amc/visits/export?${new URLSearchParams({ format, clientId: client.id, from: asOf, status: OPEN_VISIT_STATUSES }).toString()}`}
+                    onError={setExportError}
+                  />
+                ) : null,
+              )}
+              {!auth.can('AMC_SCHEDULE', 'VIEW') ? <p className="px-6 py-4 text-sm text-slate-600">{NO_ACCESS('the AMC schedule')}</p> : asOf ? <UpcomingVisits clientId={client.id} from={asOf} /> : summary.isPending && <Spinner size="sm" label="Loading visits" />}
+            </>
+          )}
+          {tab === 'contracts' && (
+            <>
+              {exportBar(canExportContracts ? <ExportButtons what="AMC contracts" fileStem={`client-contracts-${client.code.toLowerCase()}`} size="sm" path={(format) => `/clients/${client.id}/contracts/export?format=${format}`} onError={setExportError} /> : null)}
+              <LinkedContracts filter={{ clientId: client.id }} emptyTitle="No AMC contracts for this client" />
+            </>
+          )}
+          {tab === 'invoices' && (
+            <>
+              {exportBar(canExportInvoices ? <ExportButtons what="invoices" fileStem="invoice-tracking" size="sm" path={(format) => `/invoices/export?${new URLSearchParams({ format, clientId: client.id }).toString()}`} onError={setExportError} /> : null)}
+              {auth.can('INVOICES', 'VIEW') ? <RelatedInvoices clientId={client.id} /> : <p className="px-6 py-4 text-sm text-slate-600">{NO_ACCESS('invoices')}</p>}
+            </>
+          )}
+          {tab === 'renewals' &&
+            (!auth.can('AMC_CONTRACTS', 'VIEW') ? (
+              <p className="px-6 py-4 text-sm text-slate-600">{NO_ACCESS('AMC contracts')}</p>
+            ) : summary.data?.renewals ? (
+              <>
+                <p className="px-6 pt-4 text-sm text-slate-600">Active contracts whose validity has ended or ends within {summary.data.renewals.windowDays} days.</p>
+                <Renewals renewals={summary.data.renewals} />
+              </>
+            ) : (
+              summary.isPending && <Spinner size="sm" label="Loading renewals" />
+            ))}
+          {tab === 'history' && (
+            <RecordHistory
+              path={`/clients/${client.id}/history`}
+              queryKey={['clients', 'history', client.id]}
+              actionLabels={ACTION_LABELS}
+              fieldLabels={FIELD_LABELS}
+              formatValue={(field, value) => (field === 'clientType' && typeof value === 'string' ? (CLIENT_TYPE_LABELS[value as ClientType] ?? null) : null)}
+              emptyTitle="No history recorded for this client"
+            />
+          )}
+        </div>
+      </TabPanel>
+    </div>
+  )
+
+  const statSection = (
+    <section aria-label="Client figures">
+      {summary.isPending && <Spinner size="sm" label="Loading client figures" />}
+      {summary.isError && (
+        <Card>
+          <LoadError error={summary.error} onRetry={() => void summary.refetch()} />
+        </Card>
+      )}
+      {summary.data && (
+        <Card className="rounded-2xl">
+          <StatGrid summary={summary.data} />
+        </Card>
+      )}
+    </section>
+  )
+
+  const contacts = (
+    <>
+      {withDetails && (
+        <ContactChip icon="receipt" label="VAT number">
+          <OrDash value={client.vatNumber ?? null} />
+        </ContactChip>
+      )}
+      <ContactChip icon="user" label="Contact person">
+        <OrDash value={client.contactPerson} />
+      </ContactChip>
+      <ContactChip icon="phone" label="Phone">
+        {client.phone ? (
+          <a href={`tel:${client.phone.replace(/[^+\d]/g, '')}`} className="text-[#1479BD] hover:underline">
+            {client.phone}
+          </a>
+        ) : (
+          <OrDash value={null} />
+        )}
+      </ContactChip>
+      <ContactChip icon="mail" label="Email" wrap>
+        {client.email ? (
+          <a href={`mailto:${client.email}`} title={client.email} className="text-[#1479BD] hover:underline">
+            {client.email}
+          </a>
+        ) : (
+          <OrDash value={null} />
+        )}
+      </ContactChip>
+    </>
+  )
+
   return (
     <>
       <div className="mb-4">{back}</div>
@@ -339,20 +436,6 @@ export function ClientDetailPage() {
       <PageHeader
         title={client.name}
         description={`${client.code} · Client 360: details, AMC contracts, visits, invoices and history.`}
-        actions={
-          <>
-            {auth.can('CLIENTS', 'EDIT') && (
-              <Button variant="secondary" onClick={() => setEditing(true)}>
-                Edit
-              </Button>
-            )}
-            {auth.can('CLIENTS', 'DELETE') && (
-              <Button variant={client.isActive ? 'danger' : 'secondary'} onClick={() => setConfirmToggle(true)}>
-                {client.isActive ? 'Disable' : 'Enable'}
-              </Button>
-            )}
-          </>
-        }
       />
 
       {notice && (
@@ -374,135 +457,37 @@ export function ClientDetailPage() {
       )}
 
       <div className="space-y-6">
-        <section aria-label="Client figures">
-          {summary.isPending && <Spinner size="sm" label="Loading client figures" />}
-          {summary.isError && (
-            <Card>
-              <LoadError error={summary.error} onRetry={() => void summary.refetch()} />
-            </Card>
-          )}
-          {summary.data && <SummaryStrip summary={summary.data} />}
-        </section>
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Section id="client-details-heading" title="Client details">
-            <dl className="px-6 py-4">
-              <DetailRow label="Client code">
-                <span className="font-mono">{client.code}</span>
-              </DetailRow>
-              <DetailRow label="Status">
+        <Card className="rounded-2xl">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4 p-5">
+            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0a3a66] to-[#2f9bd8] text-xl font-bold tracking-wide text-white shadow-md" aria-hidden="true">
+              {initialsOf(client.name)}
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md bg-sky-50 px-2 py-0.5 font-mono text-xs font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{client.code}</span>
                 <ClientStatusBadge active={client.isActive} />
-              </DetailRow>
-              {withDetails && <DetailRow label="Client type">{client.clientType ? CLIENT_TYPE_LABELS[client.clientType] : <OrDash value={null} />}</DetailRow>}
-              {withDetails && (
-                <DetailRow label="VAT number">
-                  <OrDash value={client.vatNumber ?? null} />
-                </DetailRow>
-              )}
-              <DetailRow label="Contact person">
-                <OrDash value={client.contactPerson} />
-              </DetailRow>
-              <DetailRow label="Phone">
-                {client.phone ? (
-                  <a href={`tel:${client.phone.replace(/[^+\d]/g, '')}`} className="text-blue-700 hover:underline">
-                    {client.phone}
-                  </a>
-                ) : (
-                  <OrDash value={null} />
+                {(auth.can('CLIENTS', 'EDIT') || auth.can('CLIENTS', 'DELETE')) && (
+                  <span className="ml-1">
+                    <ActionGroup>
+                      {auth.can('CLIENTS', 'EDIT') && <ActionButton label="Edit" icon="edit" onClick={() => setEditing(true)} />}
+                      {auth.can('CLIENTS', 'DELETE') && (
+                        <ActionButton label={client.isActive ? 'Disable' : 'Enable'} icon={client.isActive ? 'deactivate' : 'reactivate'} danger={client.isActive} onClick={() => setConfirmToggle(true)} />
+                      )}
+                    </ActionGroup>
+                  </span>
                 )}
-              </DetailRow>
-              <DetailRow label="Email">
-                {client.email ? (
-                  <a href={`mailto:${client.email}`} className="break-all text-blue-700 hover:underline">
-                    {client.email}
-                  </a>
-                ) : (
-                  <OrDash value={null} />
-                )}
-              </DetailRow>
-              <DetailRow label="Address">
-                <OrDash value={client.address} />
-              </DetailRow>
-              <DetailRow label="Remarks">
-                <OrDash value={client.notes} />
-              </DetailRow>
-              <DetailRow label="Added">{formatDateTime(client.createdAt)}</DetailRow>
-              <DetailRow label="Last updated">{formatDateTime(client.updatedAt)}</DetailRow>
-            </dl>
-          </Section>
-
-          <Section id="client-renewals-heading" title="Contract renewals">
-            {!auth.can('AMC_CONTRACTS', 'VIEW') ? (
-              <p className="px-6 py-4 text-sm text-slate-600">{NO_ACCESS('AMC contracts')}</p>
-            ) : summary.data?.renewals ? (
-              <>
-                <p className="px-6 pt-4 text-sm text-slate-600">Active contracts whose validity has ended or ends within {summary.data.renewals.windowDays} days.</p>
-                <Renewals renewals={summary.data.renewals} />
-              </>
-            ) : (
-              summary.isPending && <Spinner size="sm" label="Loading renewals" />
-            )}
-          </Section>
-        </div>
-
-        <Section
-          id="client-visits-heading"
-          title="Upcoming AMC visits"
-          actions={
-            canExportVisits && asOf ? (
-              <ExportButtons
-                what="upcoming visits"
-                fileStem="amc-schedule"
-                size="sm"
-                path={(format) => `/amc/visits/export?${new URLSearchParams({ format, clientId: client.id, from: asOf, status: OPEN_VISIT_STATUSES }).toString()}`}
-                onError={setExportError}
-              />
-            ) : undefined
-          }
-        >
-          {!auth.can('AMC_SCHEDULE', 'VIEW') ? (
-            <p className="px-6 py-4 text-sm text-slate-600">{NO_ACCESS('the AMC schedule')}</p>
-          ) : asOf ? (
-            <UpcomingVisits clientId={client.id} from={asOf} />
-          ) : (
-            summary.isPending && <Spinner size="sm" label="Loading visits" />
-          )}
-        </Section>
-
-        <Section
-          id="client-contracts-heading"
-          title="AMC contracts"
-          actions={
-            canExportContracts ? (
-              <ExportButtons what="AMC contracts" fileStem={`client-contracts-${client.code.toLowerCase()}`} size="sm" path={(format) => `/clients/${client.id}/contracts/export?format=${format}`} onError={setExportError} />
-            ) : undefined
-          }
-        >
-          <LinkedContracts filter={{ clientId: client.id }} emptyTitle="No AMC contracts for this client" />
-        </Section>
-
-        <Section
-          id="client-invoices-heading"
-          title="Invoices"
-          actions={
-            canExportInvoices ? (
-              <ExportButtons what="invoices" fileStem="invoice-tracking" size="sm" path={(format) => `/invoices/export?${new URLSearchParams({ format, clientId: client.id }).toString()}`} onError={setExportError} />
-            ) : undefined
-          }
-        >
-          {auth.can('INVOICES', 'VIEW') ? <RelatedInvoices clientId={client.id} /> : <p className="px-6 py-4 text-sm text-slate-600">{NO_ACCESS('invoices')}</p>}
-        </Section>
-
-        <Section id="client-history-heading" title="History">
-          <RecordHistory
-            path={`/clients/${client.id}/history`}
-            queryKey={['clients', 'history', client.id]}
-            actionLabels={ACTION_LABELS}
-            fieldLabels={FIELD_LABELS}
-            formatValue={(field, value) => (field === 'clientType' && typeof value === 'string' ? (CLIENT_TYPE_LABELS[value as ClientType] ?? null) : null)}
-            emptyTitle="No history recorded for this client"
-          />
-        </Section>
+              </div>
+              {withDetails && <p className="mt-1.5 text-sm font-semibold text-slate-700">{client.clientType ? CLIENT_TYPE_LABELS[client.clientType] : 'Client type not set'}</p>}
+            </div>
+            <dl className="grid min-w-0 flex-1 basis-[30rem] gap-3 sm:grid-cols-2 2xl:grid-cols-4">{contacts}</dl>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-slate-200 bg-slate-50/70 px-5 py-2.5 text-xs text-slate-600">
+            <p className="min-w-0">{client.address ? <><span className="font-bold text-slate-700">Address:</span> {client.address}</> : <span className="text-slate-400">No address</span>}{client.notes ? <> · <span className="font-bold text-slate-700">Remarks:</span> {client.notes}</> : null}</p>
+            <p>Added {formatDateTime(client.createdAt)} · Updated {formatDateTime(client.updatedAt)}</p>
+          </div>
+        </Card>
+        {statSection}
+        {tabsBlock}
       </div>
 
       {editing && (

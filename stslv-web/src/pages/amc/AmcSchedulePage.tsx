@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
@@ -377,16 +378,10 @@ export function AmcSchedulePage() {
                         <EligibilityPill eligibility={visit.invoiceEligibility} />
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="sm" aria-label={`View ${label(visit)}`} onClick={() => setDialog({ kind: 'view', visitId: visit.id })}>
-                            View
-                          </Button>
-                          {canEdit && visit.status !== 'HISTORICAL' && (
-                            <Button variant="ghost" size="sm" aria-label={`Edit ${label(visit)}`} onClick={() => setDialog({ kind: 'edit', visit })}>
-                              Edit
-                            </Button>
-                          )}
-                        </div>
+                        <ActionGroup>
+                          <ActionButton label={`View ${label(visit)}`} icon="view" onClick={() => setDialog({ kind: 'view', visitId: visit.id })} />
+                          {canEdit && visit.status !== 'HISTORICAL' && <ActionButton label={`Edit ${label(visit)}`} icon="edit" onClick={() => setDialog({ kind: 'edit', visit })} />}
+                        </ActionGroup>
                       </td>
                     </tr>
                   ))}

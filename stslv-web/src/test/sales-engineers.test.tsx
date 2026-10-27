@@ -99,7 +99,7 @@ describe('Sales Engineers list', () => {
     expect(rows[1]).toHaveTextContent('engineer@example.com')
     expect(rows[1]).toHaveTextContent('Not linked')
     expect(rows[2]).toHaveTextContent('Field Account')
-    expect(within(rows[1] as HTMLElement).getByRole('combobox', { name: 'Status of Test Engineer' })).toHaveValue('active')
+    expect(within(rows[1] as HTMLElement).getByRole('button', { name: 'Deactivate Test Engineer' })).toBeInTheDocument()
     expect(within(rows[1] as HTMLElement).getByRole('link', { name: 'View Test Engineer' })).toHaveAttribute('href', '/master-data/sales-engineers/5')
   })
 
@@ -168,28 +168,21 @@ describe('Sales Engineers list', () => {
 
     expect(screen.queryByRole('button', { name: /^Add / })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: /^Status of / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^(Deactivate|Reactivate) / })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Export / })).not.toBeInTheDocument()
     expect(within(await table()).getByText('Active')).toBeInTheDocument()
   })
 })
 
-describe('status Apply and Cancel', () => {
-  it('does nothing until Apply, and Cancel puts the status back', async () => {
+describe('status row action', () => {
+  it('deactivates at once from the row icon when no active contract depends on the engineer', async () => {
     const api = engineersApi(ADMIN, [makeEngineer({ activeContractCount: 0 })])
     renderApp('/master-data/sales-engineers')
     await table()
 
-    const select = screen.getByRole('combobox', { name: 'Status of Test Engineer' })
-    await userEvent.selectOptions(select, 'inactive')
     expect(api.find('POST', '/masters/sales-engineers/5/status')).toHaveLength(0)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Keep Test Engineer Active' }))
-    expect(select).toHaveValue('active')
-    expect(screen.queryByRole('button', { name: /^Apply / })).not.toBeInTheDocument()
-
-    await userEvent.selectOptions(select, 'inactive')
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Test Engineer' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Engineer' }))
     await waitFor(() => expect(api.find('POST', '/masters/sales-engineers/5/status')[0]?.body).toEqual({ isActive: false }))
     expect(await screen.findByRole('status')).toHaveTextContent('Test Engineer is now Disabled.')
   })
@@ -199,8 +192,7 @@ describe('status Apply and Cancel', () => {
     renderApp('/master-data/sales-engineers')
     await table()
 
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status of Test Engineer' }), 'inactive')
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Test Engineer' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Engineer' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Disable sales engineer' })
     expect(dialog).toHaveTextContent('Test Engineer is assigned to 2 active AMC contracts.')
@@ -208,7 +200,7 @@ describe('status Apply and Cancel', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(api.find('POST', '/masters/sales-engineers/5/status')).toHaveLength(0)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Test Engineer' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Engineer' }))
     await userEvent.click(within(await screen.findByRole('dialog', { name: 'Disable sales engineer' })).getByRole('button', { name: 'Disable' }))
     await waitFor(() => expect(api.find('POST', '/masters/sales-engineers/5/status')).toHaveLength(1))
   })
@@ -319,10 +311,12 @@ describe('Engineer 360', () => {
     expect(strip).toHaveTextContent('Upcoming visits7')
     expect(strip).toHaveTextContent('Overdue visits2')
 
+    // The contracts tab is open first; the upcoming work is the next tab.
+    expect(screen.getByRole('tab', { name: /^AMC contracts/ })).toHaveAttribute('aria-selected', 'true')
+    await userEvent.click(screen.getByRole('tab', { name: /^Upcoming work/ }))
     const schedule = await screen.findByRole('table', { name: 'Upcoming work schedule' })
     expect(schedule).toHaveTextContent('Harbour Towers')
     expect(within(schedule).getByRole('link', { name: 'Fire alarm' })).toHaveAttribute('href', '/amc/contracts/100')
-    expect(await screen.findByRole('heading', { name: 'AMC contracts' })).toBeInTheDocument()
     expect(screen.getByText('Showing the next 1 of 7 upcoming visits. The full list is in the AMC Schedule.')).toBeInTheDocument()
   })
 

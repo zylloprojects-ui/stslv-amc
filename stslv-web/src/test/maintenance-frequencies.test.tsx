@@ -381,19 +381,16 @@ describe('form', () => {
 })
 
 describe('status', () => {
-  it('applies a status only on Apply, and Cancel restores the stored one', async () => {
+  it('archives an unused frequency from its row action, without a warning', async () => {
     const api = frequenciesApi(ADMIN, [ANNUALLY], (request) => (request.method === 'POST' && request.path === `${PATH}/4/status` ? ok({ ...ANNUALLY, status: 'archived', isActive: false, archivedAt: '2026-10-27T00:00:00.000Z' }) : undefined))
     renderPage()
 
-    const select = within(await rowOf('Annually')).getByRole('combobox', { name: 'Status of Annually' })
-    await userEvent.selectOptions(select, 'disabled')
-    await userEvent.click(screen.getByRole('button', { name: 'Keep Annually Active' }))
-    expect(select).toHaveValue('active')
+    const row = await rowOf('Annually')
+    expect(within(row).queryByRole('combobox')).not.toBeInTheDocument()
     expect(api.find('POST', `${PATH}/4/status`)).toHaveLength(0)
 
     // Unused: no warning, no confirmation sent.
-    await userEvent.selectOptions(select, 'archived')
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Archived to Annually' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Archive Annually' }))
     await waitFor(() => expect(api.find('POST', `${PATH}/4/status`)).toHaveLength(1))
     expect(api.find('POST', `${PATH}/4/status`)[0]?.body).toEqual({ status: 'archived' })
     expect(await screen.findByText(/Annually is now Archived/)).toBeInTheDocument()
@@ -403,8 +400,7 @@ describe('status', () => {
     const api = frequenciesApi(ADMIN, [QUARTERLY], (request) => (request.method === 'POST' && request.path === `${PATH}/2/status` ? ok({ ...QUARTERLY, status: 'disabled', isActive: false }) : undefined))
     renderPage()
 
-    await userEvent.selectOptions(within(await rowOf('Quarterly')).getByRole('combobox', { name: 'Status of Quarterly' }), 'disabled')
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Quarterly' }))
+    await userEvent.click(within(await rowOf('Quarterly')).getByRole('button', { name: 'Deactivate Quarterly' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Disable Quarterly?' })
     expect(within(dialog).getByText(/3 active AMC contracts use this frequency/)).toBeInTheDocument()
@@ -416,12 +412,11 @@ describe('status', () => {
     expect(api.find('POST', `${PATH}/2/status`)[0]?.body).toEqual({ status: 'disabled', confirm: true })
   })
 
-  it('does not offer Active when the API reports the engine cannot generate the rule', async () => {
+  it('does not allow reactivating when the API reports the engine cannot generate the rule', async () => {
     frequenciesApi(ADMIN, [CUSTOM])
     renderPage()
 
-    const select = within(await rowOf('Custom')).getByRole('combobox', { name: 'Status of Custom' })
-    expect(within(select).getByRole('option', { name: 'Active' })).toBeDisabled()
+    expect(within(await rowOf('Custom')).getByRole('button', { name: 'Reactivate Custom' })).toBeDisabled()
   })
 })
 

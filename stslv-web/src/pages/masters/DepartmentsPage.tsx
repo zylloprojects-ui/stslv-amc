@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
@@ -66,44 +67,6 @@ function saveHiddenColumns(hidden: Set<ColumnKey>) {
 const FIELD = 'rounded-lg border border-slate-300 bg-white text-sm shadow-sm transition focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60'
 const LABEL = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600'
 
-/**
- * The status of one row as a select. Choosing a different status does nothing
- * by itself: Apply asks for it (a disable is confirmed first), Cancel puts the select back.
- */
-function StatusCell({ department, busy, onApply }: { department: DepartmentRecord; busy: boolean; onApply: (department: DepartmentRecord) => void }) {
-  // The list keys this cell by the stored status, so a saved change starts it afresh.
-  const current: StatusValue = department.isActive ? 'active' : 'inactive'
-  const [chosen, setChosen] = useState<StatusValue>(current)
-  const changed = chosen !== current
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <select
-        aria-label={`Status of ${department.name}`}
-        value={chosen}
-        disabled={busy}
-        onChange={(event) => setChosen(event.target.value as StatusValue)}
-        className={`rounded-lg border px-2 py-1.5 text-xs font-semibold shadow-sm focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60 ${
-          chosen === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-300 bg-slate-100 text-slate-700'
-        }`}
-      >
-        <option value="active">{STATUS_LABELS.active}</option>
-        <option value="inactive">{STATUS_LABELS.inactive}</option>
-      </select>
-      {changed && (
-        <>
-          <Button size="sm" loading={busy} onClick={() => onApply(department)} aria-label={`Apply ${STATUS_LABELS[chosen]} to ${department.name}`}>
-            Apply
-          </Button>
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => setChosen(current)} aria-label={`Keep ${department.name} ${STATUS_LABELS[current]}`}>
-            Cancel
-          </Button>
-        </>
-      )}
-    </div>
-  )
-}
-
 type Dialog =
   | { kind: 'none' }
   | { kind: 'create' }
@@ -124,8 +87,6 @@ export function DepartmentsPage() {
   const [sortKey, setSortKey] = useState('name')
   const [page, setPage] = useState(1)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
-  // Bumped when a disable is cancelled, so every status select goes back to the stored status.
-  const [statusResets, setStatusResets] = useState(0)
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
@@ -187,7 +148,6 @@ export function DepartmentsPage() {
 
   const cancelDisable = () => {
     setDialog({ kind: 'none' })
-    setStatusResets((count) => count + 1)
     toggle.reset()
   }
 
@@ -382,16 +342,7 @@ export function DepartmentsPage() {
                           {show('code') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs font-semibold text-slate-600`}>{department.code}</td>}
                           {show('status') && (
                             <td className={`${TABLE.td} whitespace-nowrap`}>
-                              {canEdit ? (
-                                <StatusCell
-                                  key={`${department.id}-${department.isActive}-${statusResets}`}
-                                  department={department}
-                                  busy={toggle.isPending && toggle.variables?.id === department.id}
-                                  onApply={apply}
-                                />
-                              ) : (
-                                <Badge tone={department.isActive ? 'green' : 'slate'}>{STATUS_LABELS[department.isActive ? 'active' : 'inactive']}</Badge>
-                              )}
+                              <Badge tone={department.isActive ? 'green' : 'slate'}>{STATUS_LABELS[department.isActive ? 'active' : 'inactive']}</Badge>
                             </td>
                           )}
                           {show('engineers') && (
@@ -412,9 +363,16 @@ export function DepartmentsPage() {
                           )}
                           <td className={`${TABLE.td} whitespace-nowrap pr-5 text-right`}>
                             {canEdit && (
-                              <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: 'edit', department })} aria-label={`Edit ${department.name}`}>
-                                Edit
-                              </Button>
+                              <ActionGroup>
+                                <ActionButton label={`Edit ${department.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', department })} />
+                                <ActionButton
+                                  danger={department.isActive}
+                                  label={`${department.isActive ? 'Deactivate' : 'Reactivate'} ${department.name}`}
+                                  icon={department.isActive ? 'deactivate' : 'reactivate'}
+                                  disabled={toggle.isPending && toggle.variables?.id === department.id}
+                                  onClick={() => apply(department)}
+                                />
+                              </ActionGroup>
                             )}
                           </td>
                         </tr>
@@ -449,8 +407,6 @@ export function DepartmentsPage() {
           onConfirm={() => toggle.mutate(dialog.department)}
           onCancel={cancelDisable}
           onViewEngineers={() => {
-            // Leaves the disable unapplied: the row's select goes back to the stored status.
-            setStatusResets((count) => count + 1)
             setDialog({ kind: 'engineers', department: dialog.department })
           }}
         />

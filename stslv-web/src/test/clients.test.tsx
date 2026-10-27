@@ -100,8 +100,8 @@ describe('client list', () => {
 
     expect(await screen.findByText('Old Test Client')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText('Test Client One')).not.toBeInTheDocument())
-    expect(screen.getByLabelText('Status of Old Test Client')).toHaveValue('inactive')
-    expect(within(screen.getByLabelText('Status of Old Test Client')).getByRole('option', { name: 'Disabled' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reactivate Old Test Client' })).toBeInTheDocument()
+    expect(screen.getByText('Disabled', { selector: 'span' })).toBeInTheDocument()
     expect(api.find('GET', '/clients').at(-1)?.query.get('status')).toBe('inactive')
   })
 
@@ -246,19 +246,15 @@ describe('edit client', () => {
 })
 
 describe('change client status inline', () => {
-  it('saves nothing until Apply, and Cancel puts the status back', async () => {
+  it('shows the status as a badge and offers a deactivate icon action, with no select', async () => {
     const api = clientApi(ADMIN, [ONE])
     renderApp('/clients')
 
-    const select = await screen.findByLabelText('Status of Test Client One')
-    expect(screen.queryByRole('button', { name: /^Apply / })).not.toBeInTheDocument()
-
-    await userEvent.selectOptions(select, 'inactive')
-    expect(screen.getByRole('button', { name: 'Apply Disabled to Test Client One' })).toBeInTheDocument()
-    await userEvent.click(screen.getByRole('button', { name: 'Keep Test Client One Active' }))
-
-    expect(select).toHaveValue('active')
-    expect(screen.queryByRole('button', { name: /^Apply / })).not.toBeInTheDocument()
+    const deactivate = await screen.findByRole('button', { name: 'Deactivate Test Client One' })
+    expect(deactivate).toHaveAttribute('title', 'Deactivate Test Client One')
+    expect(deactivate).toHaveTextContent('')
+    expect(screen.queryByLabelText(/^Status of /)).not.toBeInTheDocument()
+    expect(screen.getByText('Active', { selector: 'span' })).toBeInTheDocument()
     expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(0)
   })
 
@@ -266,8 +262,7 @@ describe('change client status inline', () => {
     const api = clientApi(ADMIN, [ONE, TWO])
     renderApp('/clients')
 
-    await userEvent.selectOptions(await screen.findByLabelText('Status of Test Client One'), 'inactive')
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Test Client One' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
 
     await waitFor(() => expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(1))
     expect(await screen.findByRole('status')).toHaveTextContent('Test Client One is now Disabled.')
@@ -371,15 +366,20 @@ describe('Client 360', () => {
     expect(figures.getByText('All contracts except cancelled: 6,980.000')).toBeInTheDocument()
     expect(figures.getByText('Payments are not recorded in STSLV AMC.')).toBeInTheDocument()
     expect(figures.getByText('Next on 15 Feb 2030')).toBeInTheDocument()
-    expect(screen.getByText('Ended 300 days ago')).toBeInTheDocument()
     expect(screen.getByText('CL-00010', { selector: 'span' })).toBeInTheDocument()
 
     // Upcoming visits are asked for from the API's current date, open statuses only.
     await waitFor(() => expect(api.find('GET', '/amc/visits')).toHaveLength(1))
     expect(api.find('GET', '/amc/visits')[0]?.query.get('from')).toBe('2026-10-27')
     expect(api.find('GET', '/amc/visits')[0]?.query.get('status')).toBe('SCHEDULED,IN_PROGRESS,POSTPONED')
+    // The renewals, the invoices and the contracts are tabs, read when they are opened.
+    await userEvent.click(screen.getByRole('tab', { name: /^Renewals/ }))
+    expect(await screen.findByText('Ended 300 days ago')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /^Invoices/ }))
+    await waitFor(() => expect(api.find('GET', '/invoices')).toHaveLength(1))
     expect(api.find('GET', '/invoices')[0]?.query.get('clientId')).toBe('10')
-    expect(screen.getByRole('button', { name: 'Export AMC contracts to Excel' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /^AMC contracts/ }))
+    expect(await screen.findByRole('button', { name: 'Export AMC contracts to Excel' })).toBeInTheDocument()
   })
 
   it('shows "Not available" for sections the role cannot see, and no exports', async () => {
@@ -388,7 +388,8 @@ describe('Client 360', () => {
 
     const figures = within(await screen.findByRole('region', { name: 'Client figures' }))
     await waitFor(() => expect(figures.getAllByText('Not available')).toHaveLength(8))
-    expect(within(screen.getByRole('region', { name: 'Invoices' })).getByText('Your role does not include invoices.')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('tab', { name: /^Invoices/ }))
+    expect(within(screen.getByRole('tabpanel')).getByText('Your role does not include invoices.')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Export / })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument()
   })
@@ -420,8 +421,7 @@ describe('client permissions', () => {
     )
     renderApp('/clients')
 
-    await userEvent.selectOptions(await screen.findByLabelText('Status of Test Client One'), 'inactive')
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Disabled to Test Client One' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
     expect(screen.getByRole('button', { name: 'View Test Client One' })).toBeInTheDocument()

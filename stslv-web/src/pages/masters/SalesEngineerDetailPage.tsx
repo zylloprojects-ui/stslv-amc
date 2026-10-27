@@ -3,12 +3,15 @@ import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { LinkedContracts } from '../../components/LinkedContracts'
-import { DetailRow, LoadError, OrDash } from '../../components/records'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
+import { PageTabs, TabPanel, useTabsLayout } from '../../components/PageTabs'
+import { ContactChip } from '../../components/ProfileParts'
+import { LoadError, OrDash } from '../../components/records'
 import { RecordHistory } from '../../components/RecordHistory'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
-import { formatCount, formatDate, formatDateTime } from '../../lib/format'
+import { cx, formatCount, formatDate, formatDateTime } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { VisitStatusPill } from '../amc/components'
 import type { VisitStatus } from '../amc/types'
@@ -36,68 +39,13 @@ const FIELD_LABELS: Record<string, string> = {
 
 const NO_ACCESS = (module: string) => `Your role does not include ${module}.`
 
-function Section({ id, title, description, children }: { id: string; title: string; description?: string; children: ReactNode }) {
-  return (
-    <Card>
-      <section aria-labelledby={id}>
-        <div className="border-b border-slate-200 px-6 py-4">
-          <h2 id={id} className="text-base font-semibold text-slate-900">
-            {title}
-          </h2>
-          {description && <p className="mt-0.5 text-sm text-slate-600">{description}</p>}
-        </div>
-        {children}
-      </section>
-    </Card>
-  )
-}
-
-/**
- * One Engineer 360 figure. `value` null shows "Not available" with the reason in
- * `hint`, so a figure the viewer may not see is never shown as a zero.
- */
-function Metric({ label, value, hint, tone = 'default' }: { label: string; value: ReactNode | null; hint?: ReactNode; tone?: 'default' | 'warn' }) {
-  const unavailable = value === null
-
-  return (
-    <div className={`rounded-xl border bg-white p-4 shadow-sm ${unavailable ? 'border-dashed border-slate-200' : tone === 'warn' ? 'border-amber-200' : 'border-slate-200'}`}>
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</dt>
-      <dd className={`mt-1 text-xl font-bold tabular-nums ${unavailable ? 'text-base font-semibold text-slate-400' : 'text-[#0b3b66]'}`}>{unavailable ? 'Not available' : value}</dd>
-      {hint && <dd className={`mt-1 text-xs ${tone === 'warn' && !unavailable ? 'text-amber-700' : 'text-slate-500'}`}>{hint}</dd>}
-    </div>
-  )
-}
-
-function SummaryStrip({ summary }: { summary: EngineerSummary }) {
-  const { contracts, visits } = summary
-
-  return (
-    <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="Engineer figures">
-      <Metric
-        label="Assigned AMC contracts"
-        value={contracts ? formatCount(contracts.total) : null}
-        hint={contracts ? `${contracts.draft} draft · ${contracts.expired} expired · ${contracts.cancelled} cancelled` : NO_ACCESS('AMC contracts')}
-      />
-      <Metric label="Active AMC contracts" value={contracts ? formatCount(contracts.active) : null} hint={contracts ? undefined : NO_ACCESS('AMC contracts')} />
-      <Metric
-        label="Active AMC value"
-        value={contracts ? formatMoney(contracts.activeValue) : null}
-        hint={contracts ? 'Contract value of active contracts, as on the dashboard' : NO_ACCESS('AMC contracts')}
-      />
-      <Metric
-        label="Upcoming visits"
-        value={visits ? formatCount(visits.upcoming) : null}
-        hint={visits ? (visits.nextVisitDate ? `Next on ${formatDate(visits.nextVisitDate)}` : 'None scheduled') : NO_ACCESS('the AMC schedule')}
-      />
-      <Metric
-        label="Overdue visits"
-        value={visits ? formatCount(visits.overdue) : null}
-        tone={visits && visits.overdue > 0 ? 'warn' : 'default'}
-        hint={visits ? 'Open visits dated before today' : NO_ACCESS('the AMC schedule')}
-      />
-    </dl>
-  )
-}
+const initialsOf = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('')
 
 function UpcomingSchedule({ upcoming }: { upcoming: NonNullable<EngineerSummary['upcoming']> }) {
   if (upcoming.items.length === 0) return <EmptyState title="No upcoming visits" description="No open visit is scheduled from today on this engineer’s contracts." />
@@ -119,14 +67,16 @@ function UpcomingSchedule({ upcoming }: { upcoming: NonNullable<EngineerSummary[
           <tbody className="divide-y divide-slate-100">
             {upcoming.items.map((visit) => (
               <tr key={visit.id}>
-                <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(visit.scheduledDate)}</td>
+                <td className={`${TABLE.td} whitespace-nowrap font-semibold text-[#0b3b66]`}>{formatDate(visit.scheduledDate)}</td>
                 <td className={TABLE.td}>{visit.contract.clientName}</td>
                 <td className={TABLE.td}>
-                  <Link to={`/amc/contracts/${visit.contract.id}`} className="font-medium text-blue-700 hover:underline">
+                  <Link to={`/amc/contracts/${visit.contract.id}`} className="font-semibold text-[#0b3b66] hover:text-[#1479BD] hover:underline">
                     {visit.contract.systemDescription}
                   </Link>
                 </td>
-                <td className={`${TABLE.td} whitespace-nowrap tabular-nums`}>No. {visit.sequenceNo}</td>
+                <td className={`${TABLE.td} whitespace-nowrap tabular-nums`}>
+                  <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">No. {visit.sequenceNo}</span>
+                </td>
                 <td className={TABLE.td}>
                   <OrDash value={visit.assignedTo} />
                 </td>
@@ -147,6 +97,40 @@ function UpcomingSchedule({ upcoming }: { upcoming: NonNullable<EngineerSummary[
   )
 }
 
+interface Stat {
+  label: string
+  value: ReactNode | null
+  hint: ReactNode
+  warn?: boolean
+}
+
+function engineerStats(summary: EngineerSummary): Stat[] {
+  const { contracts, visits } = summary
+
+  return [
+    { label: 'Assigned AMC contracts', value: contracts ? formatCount(contracts.total) : null, hint: contracts ? `${contracts.draft} draft · ${contracts.expired} expired · ${contracts.cancelled} cancelled` : NO_ACCESS('AMC contracts') },
+    { label: 'Active AMC contracts', value: contracts ? formatCount(contracts.active) : null, hint: contracts ? 'Status Active' : NO_ACCESS('AMC contracts') },
+    { label: 'Active AMC value', value: contracts ? formatMoney(contracts.activeValue) : null, hint: contracts ? 'Contract value of active contracts' : NO_ACCESS('AMC contracts') },
+    { label: 'Upcoming visits', value: visits ? formatCount(visits.upcoming) : null, hint: visits ? (visits.nextVisitDate ? `Next on ${formatDate(visits.nextVisitDate)}` : 'None scheduled') : NO_ACCESS('the AMC schedule') },
+    { label: 'Overdue visits', value: visits ? formatCount(visits.overdue) : null, hint: visits ? 'Open visits dated before today' : NO_ACCESS('the AMC schedule'), warn: !!visits && visits.overdue > 0 },
+  ]
+}
+
+/** The five figures as one slim bar with dividers. A figure the viewer may not see says so, never zero. */
+function StatBar({ summary }: { summary: EngineerSummary }) {
+  return (
+    <dl className="grid grid-cols-2 divide-x divide-y divide-slate-200 lg:grid-cols-5 lg:divide-y-0" aria-label="Engineer figures">
+      {engineerStats(summary).map((stat) => (
+        <div key={stat.label} className={cx('min-w-0 px-5 py-4', stat.warn && 'bg-amber-50/60')}>
+          <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{stat.label}</dt>
+          <dd className={cx('mt-1.5 tabular-nums', stat.value === null ? 'text-base font-bold text-slate-400' : 'text-2xl font-bold leading-none text-[#0b3b66]')}>{stat.value === null ? 'Not available' : stat.value}</dd>
+          <dd className={cx('mt-1.5 text-xs leading-snug', stat.warn ? 'text-amber-700' : 'text-slate-500')}>{stat.hint}</dd>
+        </div>
+      ))}
+    </dl>
+  )
+}
+
 /** Engineer 360: details, figures from the linked AMC contracts and their visits, the contracts, the upcoming work and history. */
 export function SalesEngineerDetailPage() {
   const { id = '' } = useParams()
@@ -155,6 +139,8 @@ export function SalesEngineerDetailPage() {
   const [editing, setEditing] = useState(false)
   const [confirmStatus, setConfirmStatus] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [tab, setTab] = useState<'contracts' | 'work' | 'history'>('contracts')
+  const layout = useTabsLayout()
   const query = useQuery({ queryKey: ['masters', 'sales-engineers', 'detail', id], queryFn: () => api.get<EngineerRecord>(`/masters/sales-engineers/${id}`), retry: false })
   const summary = useQuery({
     queryKey: ['masters', 'sales-engineers', 'summary', id],
@@ -172,7 +158,7 @@ export function SalesEngineerDetailPage() {
   })
 
   const back = (
-    <Link to="/master-data/sales-engineers" className="text-sm font-medium text-blue-700 hover:underline">
+    <Link to="/master-data/sales-engineers" className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-[#0b3b66] shadow-sm hover:bg-sky-50">
       ← All sales engineers
     </Link>
   )
@@ -203,24 +189,66 @@ export function SalesEngineerDetailPage() {
   const engineer = query.data
   const canEdit = auth.can('SETTINGS', 'EDIT')
 
+  const PANEL: Record<typeof tab, [string, string]> = {
+    contracts: ['AMC contracts', 'Contracts this engineer is responsible for.'],
+    work: ['Upcoming work', 'Visits scheduled for this engineer’s contracts.'],
+    history: ['History', 'Every change made to this engineer record.'],
+  }
+
+  const tabsBlock = (
+    <div className={layout.wrapper}>
+      <PageTabs
+        label="Engineer records"
+        idPrefix="engineer-tab"
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          { id: 'contracts', label: 'AMC contracts', count: summary.data?.contracts?.total },
+          { id: 'work', label: 'Upcoming work', count: summary.data?.upcoming?.total },
+          { id: 'history', label: 'History' },
+        ]}
+      />
+      <TabPanel idPrefix="engineer-tab" active={tab} title={PANEL[tab][0]} description={PANEL[tab][1]}>
+        <div>
+          {tab === 'contracts' && <LinkedContracts filter={{ salesEngineerId: engineer.id }} emptyTitle="No AMC contracts assigned to this engineer" />}
+          {tab === 'work' && (
+            <>
+              {summary.data && (summary.data.upcoming ? <UpcomingSchedule upcoming={summary.data.upcoming} /> : <p className="px-6 py-4 text-sm text-slate-600">{NO_ACCESS('the AMC schedule')}</p>)}
+              {summary.isPending && <Spinner size="sm" label="Loading visits" />}
+            </>
+          )}
+          {tab === 'history' && (
+            <RecordHistory
+              path={`/masters/sales-engineers/${engineer.id}/history`}
+              queryKey={['masters', 'sales-engineers', 'history', engineer.id]}
+              actionLabels={ACTION_LABELS}
+              fieldLabels={FIELD_LABELS}
+              emptyTitle="No history recorded for this engineer"
+            />
+          )}
+        </div>
+      </TabPanel>
+    </div>
+  )
+
+  const statSection = (
+    <section aria-label="Engineer figures summary">
+      {summary.isPending && <Spinner size="sm" label="Loading figures" />}
+      {summary.isError && <LoadError error={summary.error} onRetry={() => void summary.refetch()} />}
+      {summary.data && (
+        <Card className="rounded-2xl">
+          <StatBar summary={summary.data} />
+        </Card>
+      )}
+    </section>
+  )
+
   return (
     <>
       <div className="mb-4">{back}</div>
       <PageHeader
         title={engineer.name}
         description={`${engineer.code} · Engineer 360: details, assigned AMC contracts, upcoming work and history.`}
-        actions={
-          canEdit && (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => setConfirmStatus(true)}>
-                {engineer.isActive ? 'Disable' : 'Enable'}
-              </Button>
-              <Button variant="secondary" onClick={() => setEditing(true)}>
-                Edit
-              </Button>
-            </div>
-          )
-        }
       />
 
       {notice && (
@@ -232,69 +260,58 @@ export function SalesEngineerDetailPage() {
       )}
 
       <div className="space-y-6">
-        <Section id="engineer-details-heading" title="Details">
-          <dl className="grid gap-x-8 px-6 py-4 lg:grid-cols-2">
-            <div>
-              <DetailRow label="Engineer code">
-                <span className="font-mono text-sm font-semibold">{engineer.code}</span>
-              </DetailRow>
-              <DetailRow label="Engineer name">{engineer.name}</DetailRow>
-              <DetailRow label="Employee number">
-                <OrDash value={engineer.employeeNo} />
-              </DetailRow>
-              <DetailRow label="Department">{engineer.department ? `${engineer.department.code} — ${engineer.department.name}` : 'None'}</DetailRow>
-              <DetailRow label="Status">
+        <Card className="rounded-2xl">
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-4 p-5">
+            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0a3a66] to-[#2f9bd8] text-xl font-bold tracking-wide text-white shadow-md" aria-hidden="true">
+              {initialsOf(engineer.name)}
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md bg-sky-50 px-2 py-0.5 font-mono text-xs font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{engineer.code}</span>
                 <EngineerStatusBadge active={engineer.isActive} />
-              </DetailRow>
+                {canEdit && (
+                  <span className="ml-1">
+                    <ActionGroup>
+                      <ActionButton label="Edit" icon="edit" onClick={() => setEditing(true)} />
+                      <ActionButton label={engineer.isActive ? 'Disable' : 'Enable'} icon={engineer.isActive ? 'deactivate' : 'reactivate'} danger={engineer.isActive} onClick={() => setConfirmStatus(true)} />
+                    </ActionGroup>
+                  </span>
+                )}
+              </div>
+              <p className="mt-1.5 text-sm font-semibold text-slate-700">{engineer.department ? `${engineer.department.code} — ${engineer.department.name}` : 'No department'}</p>
             </div>
-            <div>
-              <DetailRow label="Email">{engineer.email ? <a href={`mailto:${engineer.email}`} className="text-blue-700 hover:underline">{engineer.email}</a> : <OrDash value={null} />}</DetailRow>
-              <DetailRow label="Phone">
+            <dl className="grid min-w-0 flex-1 basis-[30rem] gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+              <ContactChip icon="badge" label="Employee number">
+                <OrDash value={engineer.employeeNo} />
+              </ContactChip>
+              <ContactChip icon="mail" label="Email" wrap>
+                {engineer.email ? (
+                  <a href={`mailto:${engineer.email}`} title={engineer.email} className="text-[#1479BD] hover:underline">
+                    {engineer.email}
+                  </a>
+                ) : (
+                  <OrDash value={null} />
+                )}
+              </ContactChip>
+              <ContactChip icon="phone" label="Phone">
                 <OrDash value={engineer.phone} />
-              </DetailRow>
-              <DetailRow label="User account">{engineer.user ? `${engineer.user.fullName} (${engineer.user.email})` : 'Not linked'}</DetailRow>
-              <DetailRow label="Notes">
-                <OrDash value={engineer.notes} />
-              </DetailRow>
-              <DetailRow label="Added">{formatDateTime(engineer.createdAt)}</DetailRow>
-              <DetailRow label="Last updated">{formatDateTime(engineer.updatedAt)}</DetailRow>
-            </div>
-          </dl>
-        </Section>
+              </ContactChip>
+              <ContactChip icon="user" label="User account">
+                {engineer.user ? engineer.user.fullName : 'Not linked'}
+              </ContactChip>
+            </dl>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 border-t border-slate-200 bg-slate-50/70 px-5 py-2.5 text-xs text-slate-600">
+            <p className="min-w-0">{engineer.notes ? <><span className="font-bold text-slate-700">Notes:</span> {engineer.notes}</> : <span className="text-slate-400">No notes</span>}</p>
+            <p>
+              Added {formatDateTime(engineer.createdAt)} · Updated {formatDateTime(engineer.updatedAt)}
+            </p>
+          </div>
+        </Card>
 
-        <section aria-label="Engineer figures summary">
-          {summary.isPending && <Spinner size="sm" label="Loading figures" />}
-          {summary.isError && <LoadError error={summary.error} onRetry={() => void summary.refetch()} />}
-          {summary.data && (
-            <>
-              <SummaryStrip summary={summary.data} />
-              <p className="mt-2 text-xs text-slate-500">
-                As of {formatDate(summary.data.asOf)}. Counted from contracts linked to this engineer in the master list; contracts that only carry the engineer’s name as typed text are not
-                included.
-              </p>
-            </>
-          )}
-        </section>
+        {statSection}
 
-        <Section id="engineer-contracts-heading" title="AMC contracts" description="Assigned to this engineer, every status. Contracts keep their engineer when the engineer is disabled.">
-          <LinkedContracts filter={{ salesEngineerId: engineer.id }} emptyTitle="No AMC contracts assigned to this engineer" />
-        </Section>
-
-        <Section id="engineer-schedule-heading" title="Upcoming work schedule" description="Open visits from today on this engineer’s contracts, soonest first.">
-          {summary.data &&
-            (summary.data.upcoming ? <UpcomingSchedule upcoming={summary.data.upcoming} /> : <p className="px-6 py-4 text-sm text-slate-600">{NO_ACCESS('the AMC schedule')}</p>)}
-          {summary.isPending && <Spinner size="sm" label="Loading visits" />}
-        </Section>
-
-        <Section id="engineer-history-heading" title="History">
-          <RecordHistory
-            path={`/masters/sales-engineers/${engineer.id}/history`}
-            queryKey={['masters', 'sales-engineers', 'history', engineer.id]}
-            actionLabels={ACTION_LABELS}
-            fieldLabels={FIELD_LABELS}
-            emptyTitle="No history recorded for this engineer"
-          />
-        </Section>
+        {tabsBlock}
       </div>
 
       {editing && (

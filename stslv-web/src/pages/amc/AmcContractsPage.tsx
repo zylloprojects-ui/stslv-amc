@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
@@ -424,25 +424,10 @@ export function AmcContractsPage() {
                         </span>
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                        <div className="inline-flex items-center divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                          <Link
-                            to={`/amc/contracts/${contract.id}`}
-                            aria-label={`View ${label(contract)}`}
-                            className="px-3 py-1.5 text-xs font-semibold text-[#1479BD] transition-colors hover:bg-sky-50 focus-visible:relative focus-visible:z-10"
-                          >
-                            View
-                          </Link>
-                          {canEdit && (
-                            <button
-                              type="button"
-                              aria-label={`Edit ${label(contract)}`}
-                              onClick={() => setDialog({ kind: 'edit', contract })}
-                              className="px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10"
-                            >
-                              Edit
-                            </button>
-                          )}
-                        </div>
+                        <ActionGroup>
+                          <ActionLink to={`/amc/contracts/${contract.id}`} label={`View ${label(contract)}`} icon="view" />
+                          {canEdit && <ActionButton label={`Edit ${label(contract)}`} icon="edit" onClick={() => setDialog({ kind: 'edit', contract })} />}
+                        </ActionGroup>
                       </td>
                     </tr>
                   ))}

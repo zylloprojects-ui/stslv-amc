@@ -385,6 +385,9 @@ describe('charts and widgets', () => {
     renderApp('/dashboard')
 
     const panel = (await screen.findByRole('heading', { name: 'Upcoming Service Workload' })).closest('section') as HTMLElement
+    expect(within(panel).queryByRole('table')).not.toBeInTheDocument()
+    await userEvent.click(within(panel).getByRole('button', { name: 'Show as table' }))
+    expect(within(panel).queryByRole('img')).not.toBeInTheDocument()
     const rows = within(panel).getAllByRole('row').slice(1)
 
     expect(rows.map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent))).toEqual([

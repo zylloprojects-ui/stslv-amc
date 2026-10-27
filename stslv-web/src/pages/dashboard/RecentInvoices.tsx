@@ -93,7 +93,12 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
           </select>
         </div>
         <details className="relative">
-          <summary className="cursor-pointer rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#0b3b66] shadow-sm hover:bg-sky-50">Columns</summary>
+          <summary className="inline-flex h-[38px] cursor-pointer list-none items-center gap-2 rounded-lg border border-slate-300 bg-white px-3.5 text-sm font-semibold text-[#0b3b66] shadow-sm transition-colors hover:bg-sky-50 [&::-webkit-details-marker]:hidden">
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-[#1479BD]" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden="true">
+              <path d="M4 6h16M4 12h16M4 18h16M9 4v4M15 10v4M8 16v4" strokeLinecap="round" />
+            </svg>
+            Columns
+          </summary>
           <fieldset className="absolute right-0 z-10 mt-1 w-48 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
             <legend className="sr-only">Show or hide columns</legend>
             {COLUMNS.map((column) => (

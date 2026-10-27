@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
@@ -16,7 +17,6 @@ import { ENGINEER_STATUS_LABELS, isFeatureUnavailable, type Department, type Mas
 // the AMC contracts they are on stay intact.
 
 type StatusFilter = 'active' | 'inactive' | 'all'
-type StatusValue = 'active' | 'inactive'
 
 const PAGE_SIZE = 25
 
@@ -67,18 +67,9 @@ function saveHiddenColumns(hidden: Set<ColumnKey>) {
 
 const FIELD = 'rounded-lg border border-slate-300 bg-white text-sm shadow-sm transition focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60'
 const LABEL = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600'
-const ICON_BUTTON =
-  'inline-flex h-8 w-9 items-center justify-center text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10'
 const NONE = <span className="text-slate-400">—</span>
 
 const ICONS = {
-  eye: (
-    <>
-      <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" strokeLinejoin="round" />
-      <circle cx="12" cy="12" r="3" />
-    </>
-  ),
-  edit: <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3ZM14 8l3 3" strokeLinecap="round" strokeLinejoin="round" />,
   search: (
     <>
       <circle cx="11" cy="11" r="6.5" />
@@ -97,45 +88,6 @@ function Icon({ name, className = 'h-[18px] w-[18px]' }: { name: keyof typeof IC
 
 export function EngineerStatusBadge({ active }: { active: boolean }) {
   return <Badge tone={active ? 'green' : 'slate'}>{ENGINEER_STATUS_LABELS[active ? 'active' : 'inactive']}</Badge>
-}
-
-/**
- * The status of one row as a select. Choosing a different status does nothing
- * by itself: Apply saves it (after a warning when an engineer with active
- * contracts is disabled), Cancel puts the select back.
- */
-function StatusCell({ engineer, busy, onApply }: { engineer: EngineerRecord; busy: boolean; onApply: (engineer: EngineerRecord) => void }) {
-  // The list keys this cell by the stored status, so a saved change starts it afresh.
-  const current: StatusValue = engineer.isActive ? 'active' : 'inactive'
-  const [chosen, setChosen] = useState<StatusValue>(current)
-  const changed = chosen !== current
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <select
-        aria-label={`Status of ${engineer.name}`}
-        value={chosen}
-        disabled={busy}
-        onChange={(event) => setChosen(event.target.value as StatusValue)}
-        className={`rounded-lg border px-2 py-1.5 text-xs font-semibold shadow-sm focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60 ${
-          chosen === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-300 bg-slate-100 text-slate-700'
-        }`}
-      >
-        <option value="active">{ENGINEER_STATUS_LABELS.active}</option>
-        <option value="inactive">{ENGINEER_STATUS_LABELS.inactive}</option>
-      </select>
-      {changed && (
-        <>
-          <Button size="sm" loading={busy} onClick={() => onApply(engineer)} aria-label={`Apply ${ENGINEER_STATUS_LABELS[chosen]} to ${engineer.name}`}>
-            Apply
-          </Button>
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => setChosen(current)} aria-label={`Keep ${engineer.name} ${ENGINEER_STATUS_LABELS[current]}`}>
-            Cancel
-          </Button>
-        </>
-      )}
-    </div>
-  )
 }
 
 function Field({ label, children }: { label: string; children: (id: string) => ReactNode }) {
@@ -488,29 +440,23 @@ export function SalesEngineersPage() {
                           {show('user') && <td className={TABLE.td}>{engineer.user ? engineer.user.fullName : <span className="text-slate-500">Not linked</span>}</td>}
                           {show('status') && (
                             <td className={`${TABLE.td} whitespace-nowrap`}>
-                              {canEdit ? (
-                                <StatusCell
-                                  key={`${engineer.id}-${engineer.isActive}`}
-                                  engineer={engineer}
-                                  busy={toggle.isPending && toggle.variables?.id === engineer.id}
-                                  onApply={apply}
-                                />
-                              ) : (
-                                <EngineerStatusBadge active={engineer.isActive} />
-                              )}
+                              <EngineerStatusBadge active={engineer.isActive} />
                             </td>
                           )}
                           <td className={`${TABLE.td} whitespace-nowrap pr-5 text-right`}>
-                            <div className="inline-flex items-center divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-                              <Link to={`/master-data/sales-engineers/${engineer.id}`} aria-label={`View ${engineer.name}`} title={`View ${engineer.name}`} className={ICON_BUTTON}>
-                                <Icon name="eye" />
-                              </Link>
+                            <ActionGroup>
+                              <ActionLink to={`/master-data/sales-engineers/${engineer.id}`} label={`View ${engineer.name}`} icon="view" />
+                              {canEdit && <ActionButton label={`Edit ${engineer.name}`} icon="edit" onClick={() => setEditing({ engineer })} />}
                               {canEdit && (
-                                <button type="button" aria-label={`Edit ${engineer.name}`} title={`Edit ${engineer.name}`} onClick={() => setEditing({ engineer })} className={ICON_BUTTON}>
-                                  <Icon name="edit" />
-                                </button>
+                                <ActionButton
+                                  danger={engineer.isActive}
+                                  label={`${engineer.isActive ? 'Deactivate' : 'Reactivate'} ${engineer.name}`}
+                                  icon={engineer.isActive ? 'deactivate' : 'reactivate'}
+                                  disabled={toggle.isPending && toggle.variables?.id === engineer.id}
+                                  onClick={() => apply(engineer)}
+                                />
                               )}
-                            </div>
+                            </ActionGroup>
                           </td>
                         </tr>
                       ))}
