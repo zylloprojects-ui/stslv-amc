@@ -237,17 +237,56 @@ describe("administrator approval in Users & Access", () => {
     ]);
   });
 
-  it("gives an account approved without a role no access at all", async () => {
+  it("refuses to approve a request that has no role, leaving it pending and unable to sign in", async () => {
     const id = (await userRow("fresh@example.com"))?.id as string;
 
-    await api().post(`/api/users/${id}/activate`).set(admin.headers);
+    const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      success: false,
+      error: {
+        code: "CONFLICT",
+        message: "Assign a role before approving this user.",
+        details: [{ field: "roleIds", message: "Assign a role before approving this user." }],
+      },
+    });
+    expect(await userRow("fresh@example.com")).toMatchObject({ is_active: false, approval_status: "PENDING", roles: 0 });
+    expect((await api().post("/api/auth/login").send({ email: "fresh@example.com", password: PASSWORD })).status).toBe(401);
+    expect(
+      (await pool.query("SELECT 1 FROM activity_logs WHERE action = 'user.registration_approved' AND entity_id = $1", [id])).rowCount
+    ).toBe(0);
+  });
+
+  it("does not count an inactive role as a role for approval", async () => {
+    const id = (await userRow("fresh@example.com"))?.id as string;
+
+    await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("INVOICING")] });
+    await pool.query("UPDATE roles SET is_active = false WHERE code = 'INVOICING'");
+
+    try {
+      const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toBe("Assign a role before approving this user.");
+      expect(await userRow("fresh@example.com")).toMatchObject({ is_active: false, approval_status: "PENDING" });
+    } finally {
+      await pool.query("UPDATE roles SET is_active = true WHERE code = 'INVOICING'");
+    }
+  });
+
+  it("approves the same request once an active role is assigned", async () => {
+    const id = (await userRow("fresh@example.com"))?.id as string;
+
+    const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ isActive: true, approvalStatus: "APPROVED", roles: [{ code: "INVOICING" }] });
 
     const headers = bearer(await loginToken("fresh@example.com"));
 
-    expect((await api().get("/api/auth/me").set(headers)).body.data.user.permissions).toEqual([]);
-    for (const path of ["/api/clients", "/api/users", "/api/dashboard/summary", "/api/projects"]) {
-      expect((await api().get(path).set(headers)).status, path).toBe(403);
-    }
+    expect((await api().get("/api/auth/me").set(headers)).body.data.user.permissions).toContain("INVOICES:VIEW");
+    expect((await api().get("/api/users").set(headers)).status).toBe(403);
   });
 
   it("does not let a user without user-management permission approve a sign-up", async () => {

@@ -270,8 +270,8 @@ describe('sign-up requests', () => {
     roles: [],
   }
 
-  function pendingApi(user: SessionUser = ADMIN) {
-    const users: User[] = [...USERS.map((entry) => ({ ...entry })), { ...PENDING }]
+  function pendingApi(user: SessionUser = ADMIN, options: { pending?: Partial<User>; activate?: () => MockReply } = {}) {
+    const users: User[] = [...USERS.map((entry) => ({ ...entry })), { ...PENDING, ...options.pending }]
 
     signIn()
 
@@ -285,14 +285,15 @@ describe('sign-up requests', () => {
         return ok(users[2])
       }
       if (request.method === 'POST' && request.path === '/users/7/activate') {
-        users[2] = { ...(users[2] as User), isActive: true, approvalStatus: 'APPROVED' }
+        if (options.activate) return options.activate()
+        users[2] ={ ...(users[2] as User), isActive: true, approvalStatus: 'APPROVED' }
         return ok(users[2])
       }
       return undefined
     })
   }
 
-  it('marks a self-registered account as pending and offers to approve it', async () => {
+  it('marks a self-registered account as pending, with Approve disabled until it has a role', async () => {
     pendingApi()
     renderApp('/admin/users')
 
@@ -302,7 +303,12 @@ describe('sign-up requests', () => {
     expect(within(row).getByText('Pending approval')).toBeInTheDocument()
     expect(within(row).getByText('No role')).toBeInTheDocument()
     expect(within(row).queryByText('Inactive')).not.toBeInTheDocument()
-    expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' })).toBeEnabled()
+    expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' })).toHaveAttribute('title', 'Assign a role before approving this user.')
+    expect(within(row).getByText('Assign a role before approving this user.')).toBeInTheDocument()
+    // Reject and Change roles stay available.
+    expect(within(row).getByRole('button', { name: 'Reject Nadia Newcomer' })).toBeEnabled()
+    expect(within(row).getByRole('button', { name: 'Change roles of Nadia Newcomer' })).toBeEnabled()
     expect(screen.getByRole('status')).toHaveTextContent('1 sign-up request is waiting for approval. A pending account cannot sign in. Assign a role, then approve it.')
   })
 
@@ -316,19 +322,32 @@ describe('sign-up requests', () => {
     expect(screen.queryByText('Pending approval')).not.toBeInTheDocument()
   })
 
-  it('warns before approving an account that has no role', async () => {
+  it('does not approve an account that has no role', async () => {
     const api = pendingApi()
+    renderApp('/admin/users')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Approve Nadia Newcomer' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(api.find('POST', '/users/7/activate')).toHaveLength(0)
+  })
+
+  it('shows the API refusal when an approval is still rejected for want of a role', async () => {
+    pendingApi(ADMIN, {
+      pending: { roles: [{ id: '2', code: 'ACCOUNTANT', name: 'Accountant' }] },
+      activate: () =>
+        fail(409, 'CONFLICT', 'Assign a role before approving this user.', [{ field: 'roleIds', message: 'Assign a role before approving this user.' }]),
+    })
     renderApp('/admin/users')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Approve Nadia Newcomer' }))
     const dialog = await screen.findByRole('dialog', { name: 'Approve sign-up request' })
 
     expect(dialog).toHaveTextContent('new.person@example.com')
-    expect(dialog).toHaveTextContent('No role is assigned yet')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Approve' }))
 
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-
-    expect(api.find('POST', '/users/7/activate')).toHaveLength(0)
+    expect(await within(dialog).findByText('Assign a role before approving this user.')).toBeInTheDocument()
+    expect(within(screen.getByRole('row', { name: /Nadia Newcomer/ })).getByText('Pending approval')).toBeInTheDocument()
   })
 
   it('lets an administrator assign a role and then approve the request', async () => {
@@ -346,6 +365,9 @@ describe('sign-up requests', () => {
     const row = screen.getByRole('row', { name: /Nadia Newcomer/ })
     await waitFor(() => expect(within(row).getByText('Accountant')).toBeInTheDocument())
     expect(within(row).getByText('Pending approval')).toBeInTheDocument()
+    // With a role assigned, Approve becomes available and the hint goes away.
+    expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' })).toBeEnabled()
+    expect(within(row).queryByText('Assign a role before approving this user.')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Approve Nadia Newcomer' }))
     const dialog = await screen.findByRole('dialog', { name: 'Approve sign-up request' })
@@ -502,10 +524,11 @@ describe('rejecting a sign-up request', () => {
       'Reject Nadia Newcomer',
       'Reject Omar Other',
     ])
-    // Pending: roles, approve and reject.
-    for (const action of ['Change roles of Nadia Newcomer', 'Approve Nadia Newcomer', 'Reject Nadia Newcomer']) {
+    // Pending: roles and reject; approve is shown but waits for a role.
+    for (const action of ['Change roles of Nadia Newcomer', 'Reject Nadia Newcomer']) {
       expect(within(row('Nadia Newcomer')).getByRole('button', { name: action })).toBeEnabled()
     }
+    expect(within(row('Nadia Newcomer')).getByRole('button', { name: 'Approve Nadia Newcomer' })).toBeDisabled()
     // The signed-in Admin, an active Admin-created user and a deactivated approved user: no Reject.
     for (const name of ['Asha Admin', 'Arun Accountant', 'Lena Leaver']) {
       expect(within(row(name)).queryByRole('button', { name: /Reject/ })).not.toBeInTheDocument()

@@ -20,6 +20,11 @@ const isRejected = (user: User) => user.approvalStatus === 'REJECTED'
 
 const toggleLabel = (user: User) => (user.isActive ? 'Deactivate' : isPending(user) ? 'Approve' : 'Activate')
 
+/** An approval must give access, so a pending request needs a role first. The API enforces the same rule. */
+const needsRoleToApprove = (user: User) => isPending(user) && user.roles.length === 0
+
+const ROLE_REQUIRED_TO_APPROVE = 'Assign a role before approving this user.'
+
 type Dialog =
   | { kind: 'none' }
   | { kind: 'create' }
@@ -220,13 +225,14 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                   danger={user.isActive && !isSelf}
                                   label={`${toggleLabel(user)} ${user.fullName}`}
                                   icon={user.isActive ? 'deactivate' : isPending(user) ? 'approve' : 'reactivate'}
-                                  disabled={isSelf}
-                                  hint={isSelf ? 'You cannot deactivate your own account.' : undefined}
+                                  disabled={isSelf || needsRoleToApprove(user)}
+                                  hint={isSelf ? 'You cannot deactivate your own account.' : needsRoleToApprove(user) ? ROLE_REQUIRED_TO_APPROVE : undefined}
                                   onClick={() => setDialog({ kind: 'toggle', user })}
                                 />
                                 {isPending(user) && <ActionButton danger label={`Reject ${user.fullName}`} icon="reject" onClick={() => setDialog({ kind: 'reject', user })} />}
                               </ActionGroup>
                               )}
+                              {needsRoleToApprove(user) && <p className="mt-1 text-xs text-amber-800">{ROLE_REQUIRED_TO_APPROVE}</p>}
                             </td>
                           )}
                         </tr>
@@ -318,11 +324,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                   Approve the sign-up request of <strong>{dialog.user.fullName}</strong> ({dialog.user.email})? The account is activated and
                   they can sign in with the password they chose.
                 </p>
-                <p className="mt-3">
-                  {dialog.user.roles.length === 0
-                    ? 'No role is assigned yet, so they will be able to sign in but will not see any module. Use Roles first to give them access.'
-                    : `They will have the access of: ${dialog.user.roles.map((role) => role.name).join(', ')}.`}
-                </p>
+                <p className="mt-3">They will have the access of: {dialog.user.roles.map((role) => role.name).join(', ')}.</p>
               </>
             ) : (
               <>

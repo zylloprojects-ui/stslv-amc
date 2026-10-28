@@ -241,6 +241,8 @@ describe("who may reject, and what may be rejected", () => {
 
   it("decides once when approve and reject arrive together", async () => {
     const id = await pendingUser("Rae Race", "rae@example.com");
+    // Approval needs a role; a rejection removes it again.
+    await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("EXECUTION")] });
     const [approval, rejection] = await Promise.all([api().post(`/api/users/${id}/activate`).set(admin.headers), reject(id)]);
     const row = await userRow("rae@example.com");
 
