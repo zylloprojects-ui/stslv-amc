@@ -117,6 +117,23 @@ function validityNote(contract: Contract): { text: string; ended: boolean } | nu
   return { text: days === 0 ? 'Ends today' : `${days} day${days === 1 ? '' : 's'} left`, ended: false }
 }
 
+/** How much of the validity period has passed, 0–100, for the thin timeline under the dates. Display only. */
+function validityElapsed(contract: Contract): number {
+  const from = Date.parse(`${contract.validFrom}T00:00:00Z`)
+  const to = Date.parse(`${contract.validTo}T00:00:00Z`)
+
+  if (Number.isNaN(from) || Number.isNaN(to) || to <= from) return 0
+
+  return Math.min(100, Math.max(0, Math.round(((Date.now() - from) / (to - from)) * 100)))
+}
+
+const STATUS_EDGE: Record<ContractStatus, string> = {
+  ACTIVE: '#10b981',
+  DRAFT: '#f59e0b',
+  EXPIRED: '#64748b',
+  CANCELLED: '#f43f5e',
+}
+
 // A contract's details, schedule, invoices and status changes are on its own page (ContractDetailPage).
 type Dialog = { kind: 'none' } | { kind: 'create' } | { kind: 'edit'; contract: Contract }
 
@@ -195,11 +212,18 @@ export function AmcContractsPage() {
       <Card>
         <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4 sm:px-5">
-            <h2 className="text-base font-semibold text-slate-900">Contract register</h2>
+            <h2 className="flex items-center gap-2.5 text-lg font-bold tracking-tight text-[#0b3b66]">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[#1479BD] to-[#00A6C8] text-white shadow-md" aria-hidden="true">
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 6h16M4 12h16M4 18h10" />
+                </svg>
+              </span>
+              Contract register
+            </h2>
             <p className="text-sm text-slate-500" aria-live="polite">
               {data ? (
                 <>
-                  <span className="font-semibold tabular-nums text-slate-800">{data.total}</span> {filtered ? 'matching ' : ''}
+                  <span className="mr-1 rounded-full bg-[#1479BD] px-2.5 py-0.5 text-xs font-bold tabular-nums text-white shadow-sm">{data.total}</span> {filtered ? 'matching ' : ''}
                   {data.total === 1 ? 'contract' : 'contracts'}
                 </>
               ) : (
@@ -207,7 +231,7 @@ export function AmcContractsPage() {
               )}
             </p>
           </div>
-          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+          <div className="mx-4 my-4 grid gap-4 rounded-xl border border-sky-100 bg-white/70 p-4 shadow-sm sm:mx-5 sm:grid-cols-2 lg:grid-cols-4">
           <Filter label="Search">
             {(id, className) => (
               <input
@@ -349,12 +373,12 @@ export function AmcContractsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {data.items.map((contract, index) => (
-                    <tr key={contract.id} className={`${TABLE.row} hover:shadow-[inset_3px_0_0_#1479BD]`}>
+                    <tr key={contract.id} className={`${TABLE.row} transition-shadow even:bg-slate-50/60 hover:bg-sky-50 hover:shadow-[inset_5px_0_0_#1479BD] [&>td]:py-4`} style={{ boxShadow: `inset 3px 0 0 ${STATUS_EDGE[contract.status] ?? '#94a3b8'}` }}>
                       <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
                       <td className={`${TABLE.td} min-w-48`}>
                         <div className="flex items-center gap-3">
-                          <ClientAvatar name={contract.client.name} className="h-9 w-9 text-xs" />
-                          <span className="min-w-0 break-words text-sm font-semibold leading-snug text-slate-900">{contract.client.name}</span>
+                          <ClientAvatar name={contract.client.name} className="h-11 w-11 text-sm shadow-md ring-2 ring-white" />
+                          <span className="min-w-0 break-words text-sm font-bold leading-snug text-[#0b3b66]">{contract.client.name}</span>
                         </div>
                       </td>
                       <td className={TABLE.td}>
@@ -381,6 +405,14 @@ export function AmcContractsPage() {
                         <span className="block font-medium text-slate-800">
                           {formatDate(contract.validFrom)} – {formatDate(contract.validTo)}
                         </span>
+                        {contract.status === 'ACTIVE' && (
+                          <span className="mt-1.5 block h-1 w-full overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+                            <span
+                              className={`block h-full rounded-full ${validityNote(contract)?.ended ? 'bg-amber-500' : validityElapsed(contract) > 80 ? 'bg-gradient-to-r from-amber-400 to-red-500' : 'bg-gradient-to-r from-emerald-400 to-[#1479BD]'}`}
+                              style={{ width: `${validityElapsed(contract)}%` }}
+                            />
+                          </span>
+                        )}
                         {validityNote(contract) && (
                           <span className={`mt-0.5 block text-xs ${validityNote(contract)?.ended ? 'text-amber-700' : 'text-slate-500'}`}>{validityNote(contract)?.text}</span>
                         )}
@@ -394,7 +426,7 @@ export function AmcContractsPage() {
                         </span>
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                        <span className="block font-semibold tabular-nums text-slate-900">{formatMoney(contract.contractValue)}</span>
+                        <span className="block text-base font-extrabold tabular-nums text-[#0b3b66]">{formatMoney(contract.contractValue)}</span>
                         {contract.defaultVisitAmount && (
                           <span className="mt-0.5 block text-xs tabular-nums text-slate-500">{formatMoney(contract.defaultVisitAmount)} per visit</span>
                         )}
@@ -403,18 +435,18 @@ export function AmcContractsPage() {
                         {contract.schedule.visitCount === 0 ? (
                           '—'
                         ) : (
-                          <>
+                          <span className="flex items-center gap-3">
                             <span
-                              className="mb-1 block h-1.5 w-28 overflow-hidden rounded-full bg-slate-200"
+                              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full p-[3px]"
+                              style={{ backgroundImage: `conic-gradient(#1479BD ${Math.round((contract.schedule.completedCount / contract.schedule.visitCount) * 360)}deg, #e2e8f0 0deg)` }}
                               aria-hidden="true"
                             >
-                              <span
-                                className="block h-full rounded-full bg-gradient-to-r from-[#1479BD] to-[#4aa3df]"
-                                style={{ width: `${Math.round((contract.schedule.completedCount / contract.schedule.visitCount) * 100)}%` }}
-                              />
+                              <span className="flex h-full w-full items-center justify-center rounded-full bg-white text-[11px] font-extrabold tabular-nums text-[#0b3b66]">
+                                {Math.round((contract.schedule.completedCount / contract.schedule.visitCount) * 100)}%
+                              </span>
                             </span>
                             <span className="text-xs">{`${contract.schedule.completedCount} of ${contract.schedule.visitCount} completed`}</span>
-                          </>
+                          </span>
                         )}
                       </td>
                       <td className={TABLE.td}>

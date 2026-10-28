@@ -7,7 +7,7 @@ import { PageTabs, TabPanel, useTabsLayout } from '../../components/PageTabs'
 import { ContactChip } from '../../components/ProfileParts'
 import { LoadError } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, BannerButton, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
 import type { PagedInvoices } from '../../lib/invoiceTypes'
@@ -294,25 +294,17 @@ export function ContractDetailPage() {
         actions={
           canEdit && (
             <>
-              {contract.status === 'DRAFT' && <Button onClick={() => setDialog({ kind: 'status', status: 'ACTIVE' })}>Activate</Button>}
-              {contract.status === 'ACTIVE' && (
-                <Button variant="secondary" onClick={() => setDialog({ kind: 'status', status: 'EXPIRED' })}>
-                  Mark as expired
-                </Button>
-              )}
+              {contract.status === 'DRAFT' && <BannerButton onClick={() => setDialog({ kind: 'status', status: 'ACTIVE' })}>Activate</BannerButton>}
+              {contract.status === 'ACTIVE' && <BannerButton onClick={() => setDialog({ kind: 'status', status: 'EXPIRED' })}>Mark as expired</BannerButton>}
               {(contract.status === 'EXPIRED' || contract.status === 'CANCELLED') && (
-                <Button variant="secondary" onClick={() => setDialog({ kind: 'status', status: 'ACTIVE' })}>
-                  Reactivate
-                </Button>
+                <BannerButton onClick={() => setDialog({ kind: 'status', status: 'ACTIVE' })}>Reactivate</BannerButton>
               )}
               {canCancel && (contract.status === 'DRAFT' || contract.status === 'ACTIVE') && (
-                <Button variant="danger" onClick={() => setDialog({ kind: 'status', status: 'CANCELLED' })}>
+                <BannerButton danger onClick={() => setDialog({ kind: 'status', status: 'CANCELLED' })}>
                   Cancel contract
-                </Button>
+                </BannerButton>
               )}
-              <Button variant="secondary" onClick={() => setDialog({ kind: 'edit' })}>
-                Edit
-              </Button>
+              <BannerButton onClick={() => setDialog({ kind: 'edit' })}>Edit</BannerButton>
             </>
           )
         }

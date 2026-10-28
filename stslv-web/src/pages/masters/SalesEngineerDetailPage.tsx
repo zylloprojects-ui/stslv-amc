@@ -3,13 +3,12 @@ import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { LinkedContracts } from '../../components/LinkedContracts'
-import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { PageTabs, TabPanel, useTabsLayout } from '../../components/PageTabs'
 import { ContactChip } from '../../components/ProfileParts'
 import { LoadError, OrDash } from '../../components/records'
 import { RecordHistory } from '../../components/RecordHistory'
 import { TABLE } from '../../components/table'
-import { Alert, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, BannerButton, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx, formatCount, formatDate, formatDateTime } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
@@ -249,6 +248,16 @@ export function SalesEngineerDetailPage() {
       <PageHeader
         title={engineer.name}
         description={`${engineer.code} · Engineer 360: details, assigned AMC contracts, upcoming work and history.`}
+        actions={
+          canEdit && (
+            <>
+              <BannerButton onClick={() => setEditing(true)}>Edit</BannerButton>
+              <BannerButton danger={engineer.isActive} onClick={() => setConfirmStatus(true)}>
+                {engineer.isActive ? 'Disable' : 'Enable'}
+              </BannerButton>
+            </>
+          )
+        }
       />
 
       {notice && (
@@ -269,14 +278,6 @@ export function SalesEngineerDetailPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-md bg-sky-50 px-2 py-0.5 font-mono text-xs font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{engineer.code}</span>
                 <EngineerStatusBadge active={engineer.isActive} />
-                {canEdit && (
-                  <span className="ml-1">
-                    <ActionGroup>
-                      <ActionButton label="Edit" icon="edit" onClick={() => setEditing(true)} />
-                      <ActionButton label={engineer.isActive ? 'Disable' : 'Enable'} icon={engineer.isActive ? 'deactivate' : 'reactivate'} danger={engineer.isActive} onClick={() => setConfirmStatus(true)} />
-                    </ActionGroup>
-                  </span>
-                )}
               </div>
               <p className="mt-1.5 text-sm font-semibold text-slate-700">{engineer.department ? `${engineer.department.code} — ${engineer.department.name}` : 'No department'}</p>
             </div>

@@ -72,11 +72,12 @@ export function Filter({ label, children, className }: FilterProps) {
   const id = useId()
 
   return (
-    <div className={className}>
-      <label htmlFor={id} className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600">
+    // A small card: the label sits inside the frame above the control, and the frame lights up on hover and focus.
+    <div className={cx('rounded-xl border-[1.5px] border-slate-300 bg-white px-3.5 pb-1.5 pt-2 shadow-sm transition-all focus-within:border-[#1479BD] focus-within:ring-4 focus-within:ring-sky-100 hover:border-[#1479BD]/60', className)}>
+      <label htmlFor={id} className="block text-[10px] font-bold uppercase tracking-[0.14em] text-[#1479BD]">
         {label}
       </label>
-      {children(id, 'block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm shadow-sm placeholder:text-slate-400')}
+      {children(id, 'block w-full bg-transparent py-1 text-sm font-semibold text-slate-900 placeholder:font-normal placeholder:text-slate-400 border-0 shadow-none focus:shadow-none focus:outline-none focus-visible:border-transparent focus-visible:shadow-none')}
     </div>
   )
 }
