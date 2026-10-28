@@ -235,7 +235,6 @@ describe('KPI cards', () => {
     expect(screen.queryByText('8,010.500')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'AMC Portfolio Status' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Payment Trend' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Production Readiness' })).not.toBeInTheDocument()
   })
 
   it('hides a card whose section the API left out even if the role seems to allow it', async () => {
@@ -386,6 +385,9 @@ describe('charts and widgets', () => {
     renderApp('/dashboard')
 
     const panel = (await screen.findByRole('heading', { name: 'Upcoming Service Workload' })).closest('section') as HTMLElement
+    expect(within(panel).queryByRole('table')).not.toBeInTheDocument()
+    await userEvent.click(within(panel).getByRole('button', { name: 'Show as table' }))
+    expect(within(panel).queryByRole('img')).not.toBeInTheDocument()
     const rows = within(panel).getAllByRole('row').slice(1)
 
     expect(rows.map((row) => [...row.querySelectorAll('td')].map((cell) => cell.textContent))).toEqual([

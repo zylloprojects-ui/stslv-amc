@@ -32,7 +32,9 @@ function renewalsApi(user = ADMIN, links: Record<string, ContractRenewals> = {})
 }
 
 async function renewalsSection() {
-  return within(await screen.findByRole('region', { name: 'Renewals' }))
+  await userEvent.click(await screen.findByRole('tab', { name: /^Renewals/ }))
+
+  return within(screen.getByRole('tabpanel'))
 }
 
 describe('contract renewals', () => {

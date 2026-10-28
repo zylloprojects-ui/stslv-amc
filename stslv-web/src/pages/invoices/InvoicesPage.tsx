@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { FILTER_INPUT, FILTER_LABEL, InvoiceStateBadge, LoadError, Money, Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
@@ -178,14 +179,13 @@ export function InvoicesPage() {
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                         {canCreate && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`Record invoice for ${visit.client.name} ${visit.systemDescription} visit ${visit.sequenceNo}`}
-                            onClick={() => setDialog({ kind: 'create', preset: { client: visit.client, key: `visit:${visit.id}`, amount: '' } })}
-                          >
-                            Record invoice
-                          </Button>
+                          <ActionGroup>
+                            <ActionButton
+                              label={`Record invoice for ${visit.client.name} ${visit.systemDescription} visit ${visit.sequenceNo}`}
+                              icon="invoice"
+                              onClick={() => setDialog({ kind: 'create', preset: { client: visit.client, key: `visit:${visit.id}`, amount: '' } })}
+                            />
+                          </ActionGroup>
                         )}
                       </td>
                     </tr>
@@ -258,19 +258,18 @@ export function InvoicesPage() {
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                         {canCreate && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            aria-label={`Record invoice for ${project.jobNumber}`}
-                            onClick={() =>
-                              setDialog({
-                                kind: 'create',
-                                preset: { client: project.client, key: `project:${project.id}`, amount: project.uninvoicedValue },
-                              })
-                            }
-                          >
-                            Record invoice
-                          </Button>
+                          <ActionGroup>
+                            <ActionButton
+                              label={`Record invoice for ${project.jobNumber}`}
+                              icon="invoice"
+                              onClick={() =>
+                                setDialog({
+                                  kind: 'create',
+                                  preset: { client: project.client, key: `project:${project.id}`, amount: project.uninvoicedValue },
+                                })
+                              }
+                            />
+                          </ActionGroup>
                         )}
                       </td>
                     </tr>

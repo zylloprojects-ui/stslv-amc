@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
@@ -81,51 +82,6 @@ function saveHiddenColumns(hidden: Set<ColumnKey>) {
 
 const FIELD = 'rounded-lg border border-slate-300 bg-white text-sm shadow-sm transition focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60'
 const LABEL = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600'
-
-const SELECT_TONES: Record<FrequencyStatus, string> = {
-  active: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  disabled: 'border-slate-300 bg-slate-100 text-slate-700',
-  archived: 'border-amber-200 bg-amber-50 text-amber-800',
-}
-
-/**
- * The status of one row as a select. Choosing a different status does nothing
- * by itself: Apply saves it, Cancel puts the select back. Active is not offered
- * for a rule the schedule engine cannot generate yet.
- */
-function StatusCell({ frequency, busy, onApply }: { frequency: MaintenanceFrequencyRule; busy: boolean; onApply: (frequency: MaintenanceFrequencyRule, status: FrequencyStatus) => void }) {
-  // The list keys this cell by the stored status, so a saved change starts it afresh.
-  const [chosen, setChosen] = useState<FrequencyStatus>(frequency.status)
-  const changed = chosen !== frequency.status
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <select
-        aria-label={`Status of ${frequency.name}`}
-        value={chosen}
-        disabled={busy}
-        onChange={(event) => setChosen(event.target.value as FrequencyStatus)}
-        className={`rounded-lg border px-2 py-1.5 text-xs font-semibold shadow-sm focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60 ${SELECT_TONES[chosen]}`}
-      >
-        <option value="active" disabled={!frequency.engineSupported && frequency.status !== 'active'}>
-          {FREQUENCY_STATUS_LABELS.active}
-        </option>
-        <option value="disabled">{FREQUENCY_STATUS_LABELS.disabled}</option>
-        <option value="archived">{FREQUENCY_STATUS_LABELS.archived}</option>
-      </select>
-      {changed && (
-        <>
-          <Button size="sm" loading={busy} onClick={() => onApply(frequency, chosen)} aria-label={`Apply ${FREQUENCY_STATUS_LABELS[chosen]} to ${frequency.name}`}>
-            Apply
-          </Button>
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => setChosen(frequency.status)} aria-label={`Keep ${frequency.name} ${FREQUENCY_STATUS_LABELS[frequency.status]}`}>
-            Cancel
-          </Button>
-        </>
-      )}
-    </div>
-  )
-}
 
 type Dialog =
   | { kind: 'none' }
@@ -472,16 +428,7 @@ export function MaintenanceFrequenciesPage() {
                           {show('sortOrder') && <td className={`${TABLE.td} text-right tabular-nums`}>{frequency.sortOrder}</td>}
                           {show('status') && (
                             <td className={`${TABLE.td} whitespace-nowrap`}>
-                              {canEdit ? (
-                                <StatusCell
-                                  key={`${frequency.id}-${frequency.status}`}
-                                  frequency={frequency}
-                                  busy={changeStatus.isPending && changeStatus.variables?.frequency.id === frequency.id}
-                                  onApply={applyStatus}
-                                />
-                              ) : (
-                                <Badge tone={STATUS_TONES[frequency.status]}>{FREQUENCY_STATUS_LABELS[frequency.status]}</Badge>
-                              )}
+                              <Badge tone={STATUS_TONES[frequency.status]}>{FREQUENCY_STATUS_LABELS[frequency.status]}</Badge>
                             </td>
                           )}
                           {show('activeContracts') && (
@@ -504,9 +451,34 @@ export function MaintenanceFrequenciesPage() {
                           )}
                           <td className={`${TABLE.td} whitespace-nowrap pr-5 text-right`}>
                             {canEdit && (
-                              <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: 'edit', frequency })} aria-label={`Edit ${frequency.name}`}>
-                                Edit
-                              </Button>
+                              <ActionGroup>
+                                <ActionButton label={`Edit ${frequency.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', frequency })} />
+                                {frequency.status === 'active' ? (
+                                  <ActionButton
+                                    danger
+                                    label={`Deactivate ${frequency.name}`}
+                                    icon="deactivate"
+                                    disabled={changeStatus.isPending && changeStatus.variables?.frequency.id === frequency.id}
+                                    onClick={() => applyStatus(frequency, 'disabled')}
+                                  />
+                                ) : (
+                                  <ActionButton
+                                    label={`Reactivate ${frequency.name}`}
+                                    icon="reactivate"
+                                    disabled={(!frequency.engineSupported) || (changeStatus.isPending && changeStatus.variables?.frequency.id === frequency.id)}
+                                    onClick={() => applyStatus(frequency, 'active')}
+                                  />
+                                )}
+                                {frequency.status !== 'archived' && (
+                                  <ActionButton
+                                    danger
+                                    label={`Archive ${frequency.name}`}
+                                    icon="archive"
+                                    disabled={changeStatus.isPending && changeStatus.variables?.frequency.id === frequency.id}
+                                    onClick={() => applyStatus(frequency, 'archived')}
+                                  />
+                                )}
+                              </ActionGroup>
                             )}
                           </td>
                         </tr>

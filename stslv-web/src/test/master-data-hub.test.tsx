@@ -281,13 +281,12 @@ describe('master list pages', () => {
     expect(await screen.findByRole('status')).toHaveTextContent('Every quarter was updated.')
   })
 
-  it('activates a disabled frequency with Apply', async () => {
+  it('reactivates a disabled frequency from its row action', async () => {
     const api = hubApi()
     renderApp('/master-data/maintenance-frequencies')
 
     await screen.findByRole('table', { name: 'Maintenance frequencies' })
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Status of Annually' }), 'active')
-    await userEvent.click(screen.getByRole('button', { name: 'Apply Active to Annually' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Reactivate Annually' }))
 
     await waitFor(() => expect(api.find('POST', '/masters/maintenance-frequencies/4/status')).toHaveLength(1))
     expect(api.find('POST', '/masters/maintenance-frequencies/4/status')[0]?.body).toEqual({ status: 'active' })

@@ -71,9 +71,11 @@ describe('list', () => {
     expect(within(rows[0] as HTMLElement).getAllByRole('columnheader').map((cell) => cell.textContent)).toEqual(['#', 'Department', 'Code', 'Status', 'Linked engineers', 'Actions'])
     const amc = rows[1] as HTMLElement
     expect(within(amc).getByText('Annual Maintenance Contract operations')).toBeInTheDocument()
-    expect(within(amc).getByRole('combobox', { name: 'Status of AMC' })).toHaveValue('active')
+    expect(within(amc).getByText('Active', { selector: 'span' })).toBeInTheDocument()
+    expect(within(amc).getByRole('button', { name: 'Deactivate AMC' })).toBeInTheDocument()
     expect(within(amc).getByRole('button', { name: 'View the 3 sales engineers in AMC' })).toHaveTextContent('3')
-    expect(within(rows[3] as HTMLElement).getByRole('combobox', { name: 'Status of Sales' })).toHaveValue('inactive')
+    expect(within(rows[3] as HTMLElement).getByText('Disabled', { selector: 'span' })).toBeInTheDocument()
+    expect(within(rows[3] as HTMLElement).getByRole('button', { name: 'Reactivate Sales' })).toBeInTheDocument()
 
     // Departments are never deleted.
     expect(screen.queryByRole('button', { name: /Delete/ })).not.toBeInTheDocument()
@@ -209,8 +211,7 @@ describe('status', () => {
     renderPage()
     const row = within(await table()).getAllByRole('row')[1] as HTMLElement
 
-    await userEvent.selectOptions(within(row).getByRole('combobox', { name: 'Status of AMC' }), 'inactive')
-    await userEvent.click(within(row).getByRole('button', { name: 'Apply Disabled to AMC' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Deactivate AMC' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Disable AMC — AMC?' })
     expect(within(dialog).getByText('3 sales engineers')).toBeInTheDocument()
@@ -219,7 +220,7 @@ describe('status', () => {
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(within(row).getByRole('combobox', { name: 'Status of AMC' })).toHaveValue('active')
+    expect(within(row).getByText('Active', { selector: 'span' })).toBeInTheDocument()
     expect(api.find('POST', '/masters/departments/1/status')).toHaveLength(0)
   })
 
@@ -228,8 +229,7 @@ describe('status', () => {
     renderPage()
     const row = within(await table()).getAllByRole('row')[1] as HTMLElement
 
-    await userEvent.selectOptions(within(row).getByRole('combobox', { name: 'Status of AMC' }), 'inactive')
-    await userEvent.click(within(row).getByRole('button', { name: 'Apply Disabled to AMC' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Deactivate AMC' }))
     await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Disable department' }))
 
     expect(await screen.findByText(/AMC is now Disabled. Engineers already in it keep it/)).toBeInTheDocument()
@@ -241,8 +241,7 @@ describe('status', () => {
     renderPage()
     const row = within(await table()).getAllByRole('row')[1] as HTMLElement
 
-    await userEvent.selectOptions(within(row).getByRole('combobox', { name: 'Status of AMC' }), 'inactive')
-    await userEvent.click(within(row).getByRole('button', { name: 'Apply Disabled to AMC' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Deactivate AMC' }))
     const dialog = await screen.findByRole('dialog')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Disable department' }))
 
@@ -254,8 +253,7 @@ describe('status', () => {
     renderPage()
     const row = within(await table()).getAllByRole('row')[1] as HTMLElement
 
-    await userEvent.selectOptions(within(row).getByRole('combobox', { name: 'Status of Sales' }), 'active')
-    await userEvent.click(within(row).getByRole('button', { name: 'Apply Active to Sales' }))
+    await userEvent.click(within(row).getByRole('button', { name: 'Reactivate Sales' }))
 
     expect(await screen.findByText(/Sales is now Active/)).toBeInTheDocument()
     expect(api.find('POST', '/masters/departments/3/status')[0]?.body).toEqual({ isActive: true })

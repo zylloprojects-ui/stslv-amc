@@ -1,62 +1,92 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { TABLE } from '../../components/table'
-import { cx, formatCount, formatDateTime } from '../../lib/format'
+import { cx, formatCount } from '../../lib/format'
 import { formatDate, monthLabel } from '../amc/amcFormat'
 import { ContractStatusPill } from '../amc/components'
 import { CONTRACT_STATUS_LABELS } from '../amc/types'
-import type { OperationsDashboard, Readiness, Unavailable, WorkloadMonth } from './operationsTypes'
+import type { OperationsDashboard, Unavailable, WorkloadMonth } from './operationsTypes'
 
 const shortMonth = (month: string) => monthLabel(month).slice(0, 3)
 
-/** Visits planned per month as bars, with the same figures in a table. One series, so no legend. */
+/** Visits planned per month as stacked bars (completed below, still open above), with the same figures in a table. */
 export function WorkloadChart({ months }: { months: WorkloadMonth[] }) {
   const [hover, setHover] = useState<string | null>(null)
+  const [asTable, setAsTable] = useState(false)
   const max = Math.max(1, ...months.map((entry) => entry.planned))
   const active = months.find((entry) => entry.month === hover)
+  const sum = (key: 'planned' | 'completed' | 'open') => months.reduce((total, entry) => total + entry[key], 0)
 
   return (
     <div>
       <div className="mb-4 flex flex-wrap gap-2 text-xs font-semibold">
-        <span className="rounded-full bg-sky-50 px-3 py-1 text-[#0b3b66] ring-1 ring-inset ring-sky-200">{`Planned: ${months.reduce((sum, entry) => sum + entry.planned, 0)}`}</span>
-        <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-800 ring-1 ring-inset ring-emerald-200">{`Completed: ${months.reduce((sum, entry) => sum + entry.completed, 0)}`}</span>
-        <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800 ring-1 ring-inset ring-amber-200">{`Open: ${months.reduce((sum, entry) => sum + entry.open, 0)}`}</span>
+        <span className="inline-flex items-center gap-2 rounded-full bg-slate-50 px-3 py-1 text-slate-800 ring-1 ring-inset ring-slate-300">
+          <span className="h-2 w-2 rounded-full bg-slate-700" aria-hidden="true" />
+          {`Planned: ${sum('planned')}`}
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-emerald-800 ring-1 ring-inset ring-emerald-200">
+          <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+          {`Completed: ${sum('completed')}`}
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full bg-sky-50 px-3 py-1 text-[#0b3b66] ring-1 ring-inset ring-sky-200">
+          <span className="h-2 w-2 rounded-full bg-[#1479BD]" aria-hidden="true" />
+          {`Open: ${sum('open')}`}
+        </span>
       </div>
 
+      {!asTable && (
+      <>
       <div className="flex gap-3">
-        <div className="relative h-56 w-6 shrink-0 text-right text-[11px] font-medium tabular-nums text-slate-500" aria-hidden="true">
-          <span className="absolute right-0 top-6 -translate-y-1/2">{max}</span>
+        <div className="relative h-60 w-6 shrink-0 text-right text-[11px] font-medium tabular-nums text-slate-500" aria-hidden="true">
+          <span className="absolute right-0 top-7 -translate-y-1/2">{max}</span>
           <span className="absolute bottom-0 right-0 translate-y-1/2">0</span>
         </div>
         <div className="min-w-0 flex-1">
-          <div className="relative h-56">
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 top-6 flex flex-col justify-between" aria-hidden="true">
+          <div className="relative h-60">
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 top-7 flex flex-col justify-between" aria-hidden="true">
               <span className="border-t border-dashed border-slate-300" />
               <span className="border-t border-dashed border-slate-300" />
-              <span className="border-t border-slate-400" />
+              <span className="border-t-2 border-slate-400" />
             </div>
-            <div className="absolute inset-x-0 bottom-0 top-6 flex items-end gap-3 px-2" role="img" aria-label="Visits planned per month; the same figures are in the table below.">
+            <div className="absolute inset-x-0 bottom-0 top-7 flex items-end gap-2 px-1" role="img" aria-label="Visits planned per month; the same figures are available as a table.">
               {months.map((entry) => (
                 <div
                   key={entry.month}
-                  className={cx('flex h-full flex-1 items-end justify-center rounded-t-lg transition-colors', hover === entry.month && 'bg-sky-50')}
+                  className={cx('flex h-full flex-1 items-end justify-center rounded-t-xl transition-colors', hover === entry.month ? 'bg-sky-100/80' : 'bg-sky-50/60')}
                   onMouseEnter={() => setHover(entry.month)}
                   onMouseLeave={() => setHover(null)}
                 >
                   <div
-                    className="relative w-full max-w-10 rounded-t-lg bg-gradient-to-t from-[#0e5a96] to-[#2f9bd8] shadow-sm"
-                    style={{ height: `${(entry.planned / max) * 100}%`, minHeight: entry.planned > 0 ? 6 : 3 }}
+                    className="relative flex w-full max-w-11 flex-col justify-end overflow-hidden rounded-t-xl shadow-sm"
+                    style={{ height: `${(entry.planned / max) * 100}%`, minHeight: entry.planned > 0 ? 8 : 3 }}
                   >
-                    <span className="absolute -top-5 left-1/2 -translate-x-1/2 text-xs font-bold tabular-nums text-[#0b3b66]">{entry.planned}</span>
+                    {entry.planned === 0 ? (
+                      <span className="h-full w-full bg-slate-300" />
+                    ) : (
+                      <>
+                        <span className="w-full bg-gradient-to-b from-[#2f9bd8] to-[#1479BD]" style={{ flexGrow: entry.open }} />
+                        <span className="w-full bg-gradient-to-b from-emerald-400 to-emerald-600" style={{ flexGrow: entry.completed }} />
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 top-7 flex items-end gap-2 px-1" aria-hidden="true">
+              {months.map((entry) => (
+                <div key={entry.month} className="relative flex h-full flex-1 items-end justify-center">
+                  <span className="absolute left-1/2 -translate-x-1/2 text-xs font-bold tabular-nums text-[#0b3b66]" style={{ bottom: `calc(${(entry.planned / max) * 100}% + 4px)` }}>
+                    {entry.planned}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="mt-2 flex gap-3 px-2">
-            {months.map((entry) => (
+          <div className="mt-2 flex gap-2 px-1">
+            {months.map((entry, index) => (
               <span key={entry.month} className={cx('flex-1 text-center text-xs font-semibold', hover === entry.month ? 'text-[#0b3b66]' : 'text-slate-600')}>
                 {shortMonth(entry.month)}
+                {index === 0 && <span className="mx-auto mt-1 block h-1 w-5 rounded-full bg-[#1479BD]" title="This month" />}
               </span>
             ))}
           </div>
@@ -66,40 +96,50 @@ export function WorkloadChart({ months }: { months: WorkloadMonth[] }) {
       <p className="mt-3 min-h-5 rounded-lg bg-slate-50 px-3 py-1.5 text-xs text-slate-600 ring-1 ring-inset ring-slate-200" aria-hidden="true">
         {active ? `${monthLabel(active.month)}: ${active.planned} planned · ${active.completed} completed · ${active.open} open` : 'Point at a bar to see its month in detail.'}
       </p>
-      <details className="mt-3">
-        <summary className="inline-block cursor-pointer rounded-lg bg-sky-50 px-3 py-1 text-xs font-semibold text-[#0b3b66] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">Show as table</summary>
-        <div className={cx(TABLE.wrapper, 'mt-2')}>
-          <table className={TABLE.table}>
-            <caption className="sr-only">Visits per month</caption>
-            <thead>
-              <tr>
-                <th scope="col" className={TABLE.th}>
-                  Month
-                </th>
-                <th scope="col" className={`${TABLE.th} text-right`}>
-                  Planned
-                </th>
-                <th scope="col" className={`${TABLE.th} text-right`}>
-                  Completed
-                </th>
-                <th scope="col" className={`${TABLE.th} text-right`}>
-                  Open
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {months.map((entry) => (
-                <tr key={entry.month}>
-                  <td className={TABLE.td}>{monthLabel(entry.month)}</td>
-                  <td className={`${TABLE.td} text-right tabular-nums`}>{entry.planned}</td>
-                  <td className={`${TABLE.td} text-right tabular-nums`}>{entry.completed}</td>
-                  <td className={`${TABLE.td} text-right tabular-nums`}>{entry.open}</td>
+      </>
+      )}
+
+      {asTable && (
+          <div className={TABLE.wrapper}>
+            <table className={TABLE.table}>
+              <caption className="sr-only">Visits per month</caption>
+              <thead>
+                <tr>
+                  <th scope="col" className={TABLE.th}>
+                    Month
+                  </th>
+                  <th scope="col" className={`${TABLE.th} text-right`}>
+                    Planned
+                  </th>
+                  <th scope="col" className={`${TABLE.th} text-right`}>
+                    Completed
+                  </th>
+                  <th scope="col" className={`${TABLE.th} text-right`}>
+                    Open
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {months.map((entry) => (
+                  <tr key={entry.month}>
+                    <td className={TABLE.td}>{monthLabel(entry.month)}</td>
+                    <td className={`${TABLE.td} text-right tabular-nums`}>{entry.planned}</td>
+                    <td className={`${TABLE.td} text-right tabular-nums`}>{entry.completed}</td>
+                    <td className={`${TABLE.td} text-right tabular-nums`}>{entry.open}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+      )}
+
+      <button
+        type="button"
+        onClick={() => setAsTable((value) => !value)}
+        className="mt-3 inline-block cursor-pointer rounded-lg bg-sky-50 px-3 py-1 text-xs font-semibold text-[#0b3b66] ring-1 ring-inset ring-sky-200 hover:bg-sky-100"
+      >
+        {asTable ? 'Show as graph' : 'Show as table'}
+      </button>
     </div>
   )
 }
@@ -127,47 +167,57 @@ export function PaymentTrend({ payments }: { payments: Unavailable }) {
   )
 }
 
-// A status keeps its meaning: green for live, amber for ended, red for cancelled, blue otherwise.
-const STATUS_BAR: Record<string, string> = {
-  ACTIVE: 'from-emerald-600 to-emerald-400',
-  DRAFT: 'from-[#0e5a96] to-[#2f9bd8]',
-  EXPIRED: 'from-amber-600 to-amber-400',
-  CANCELLED: 'from-red-600 to-red-400',
-}
+// A status keeps its meaning: green for live, blue for draft, amber for ended, red for cancelled.
+const STATUS_COLOR: Record<string, string> = { ACTIVE: '#10b981', DRAFT: '#1479BD', EXPIRED: '#f59e0b', CANCELLED: '#ef4444' }
 
 export function PortfolioStatus({ portfolio }: { portfolio: NonNullable<OperationsDashboard['portfolio']> }) {
-  const max = Math.max(1, ...portfolio.statuses.map((entry) => entry.count))
-
   if (portfolio.total === 0) {
     return <p className="py-6 text-center text-sm text-slate-600">No AMC contracts recorded yet.</p>
   }
 
+  const live = portfolio.statuses.filter((entry) => entry.count > 0)
+
   return (
     <div>
-      <p className="mb-3 inline-block rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{formatCount(portfolio.total)} contracts in total</p>
-      <table className="w-full text-sm">
+      {/* The total, then the whole portfolio as one thin bar split by status. */}
+      <div className="flex items-baseline gap-2.5" aria-hidden="true">
+        <span className="text-3xl font-extrabold leading-none tabular-nums text-[#0b3b66]">{formatCount(portfolio.total)}</span>
+        <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">AMC contracts in total</span>
+      </div>
+      <p className="sr-only">{formatCount(portfolio.total)} AMC contracts in total</p>
+
+      <div className="mt-3 flex h-2 gap-0.5 overflow-hidden rounded-full bg-slate-100" aria-hidden="true">
+        {live.map((entry) => (
+          <span
+            key={entry.status}
+            className="h-full"
+            style={{ width: `${(entry.count / portfolio.total) * 100}%`, backgroundColor: STATUS_COLOR[entry.status] ?? '#1479BD' }}
+            title={`${CONTRACT_STATUS_LABELS[entry.status]}: ${entry.count}`}
+          />
+        ))}
+      </div>
+
+      {/* A table for assistive technology, drawn as one slim line per status: a colour dot, the status and its figure. */}
+      <table className="mt-3 block w-full text-sm">
         <caption className="sr-only">Contracts by status</caption>
         <thead className="sr-only">
           <tr>
             <th scope="col">Status</th>
             <th scope="col">Contracts</th>
-            <th scope="col">Share</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody className="flex flex-col divide-y divide-slate-100">
           {portfolio.statuses.map((entry) => (
-            <tr key={entry.status} className="border-b border-slate-200 align-middle last:border-0">
-              <th scope="row" className="w-28 py-2 pr-3 text-left font-normal">
+            <tr key={entry.status} className={cx('flex items-center justify-between gap-3 py-2', entry.count === 0 && 'opacity-50')}>
+              <th scope="row" className="flex items-center gap-2.5 text-left font-normal">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: STATUS_COLOR[entry.status] ?? '#1479BD' }} aria-hidden="true" />
                 <ContractStatusPill status={entry.status} />
               </th>
-              <td className="py-2" aria-hidden="true">
-                <div className="h-3 overflow-hidden rounded-full bg-slate-200">
-                  <div className={cx('h-3 rounded-full bg-gradient-to-r', STATUS_BAR[entry.status] ?? 'from-[#0e5a96] to-[#2f9bd8]')} style={{ width: `${(entry.count / max) * 100}%` }} />
-                </div>
-              </td>
-              <td className="w-32 py-2 pl-3 text-right font-semibold tabular-nums text-slate-800">
+              <td className="whitespace-nowrap text-right text-sm font-bold tabular-nums text-slate-800">
                 <span className="sr-only">{CONTRACT_STATUS_LABELS[entry.status]}: </span>
-                {formatCount(entry.count)} · {entry.percent ?? '0.0'}%
+                {formatCount(entry.count)}
+                <span className="font-semibold text-slate-400"> · </span>
+                <span className="font-semibold text-slate-600">{entry.percent ?? '0.0'}%</span>
               </td>
             </tr>
           ))}
@@ -248,35 +298,6 @@ export function ExpiringContracts({ expiring }: { expiring: NonNullable<Operatio
           </tbody>
         </table>
       </div>
-    </div>
-  )
-}
-
-const STATE_STYLE = {
-  OK: { dot: 'bg-emerald-500', label: 'OK' },
-  ATTENTION: { dot: 'bg-amber-500', label: 'Needs attention' },
-  UNAVAILABLE: { dot: 'bg-slate-400', label: 'Not available' },
-} as const
-
-/** Each verified check on its own line. There is no overall score. */
-export function ReadinessChecks({ readiness }: { readiness: Readiness }) {
-  return (
-    <div>
-      <ul className="divide-y divide-slate-100">
-        {readiness.checks.map((check) => (
-          <li key={check.id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 py-2.5">
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-slate-900">{check.label}</span>
-              <span className="block text-xs text-slate-600">{check.detail}</span>
-            </span>
-            <span className="inline-flex shrink-0 items-center gap-1.5 text-xs font-semibold text-slate-700">
-              <span className={cx('h-2 w-2 rounded-full', STATE_STYLE[check.state].dot)} aria-hidden="true" />
-              {STATE_STYLE[check.state].label}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-slate-600">Checked {formatDateTime(readiness.checkedAt)}.</p>
     </div>
   )
 }

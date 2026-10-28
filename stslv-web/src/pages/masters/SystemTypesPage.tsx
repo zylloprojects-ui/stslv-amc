@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
@@ -66,44 +67,6 @@ function saveHiddenColumns(hidden: Set<ColumnKey>) {
 
 const FIELD = 'rounded-lg border border-slate-300 bg-white text-sm shadow-sm transition focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60'
 const LABEL = 'mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-600'
-
-/**
- * The status of one row as a select. Choosing a different status does nothing
- * by itself: Apply saves it, Cancel puts the select back.
- */
-function StatusCell({ type, busy, onApply }: { type: SystemType; busy: boolean; onApply: (type: SystemType) => void }) {
-  // The list keys this cell by the stored status, so a saved change starts it afresh.
-  const current: StatusValue = type.isActive ? 'active' : 'inactive'
-  const [chosen, setChosen] = useState<StatusValue>(current)
-  const changed = chosen !== current
-
-  return (
-    <div className="flex items-center gap-1.5">
-      <select
-        aria-label={`Status of ${type.name}`}
-        value={chosen}
-        disabled={busy}
-        onChange={(event) => setChosen(event.target.value as StatusValue)}
-        className={`rounded-lg border px-2 py-1.5 text-xs font-semibold shadow-sm focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-200/60 ${
-          chosen === 'active' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-slate-300 bg-slate-100 text-slate-700'
-        }`}
-      >
-        <option value="active">{STATUS_LABELS.active}</option>
-        <option value="inactive">{STATUS_LABELS.inactive}</option>
-      </select>
-      {changed && (
-        <>
-          <Button size="sm" loading={busy} onClick={() => onApply(type)} aria-label={`Apply ${STATUS_LABELS[chosen]} to ${type.name}`}>
-            Apply
-          </Button>
-          <Button size="sm" variant="secondary" disabled={busy} onClick={() => setChosen(current)} aria-label={`Keep ${type.name} ${STATUS_LABELS[current]}`}>
-            Cancel
-          </Button>
-        </>
-      )}
-    </div>
-  )
-}
 
 type Dialog =
   | { kind: 'none' }
@@ -372,11 +335,7 @@ export function SystemTypesPage() {
                           {show('sortOrder') && <td className={`${TABLE.td} text-right tabular-nums`}>{type.sortOrder}</td>}
                           {show('status') && (
                             <td className={`${TABLE.td} whitespace-nowrap`}>
-                              {canEdit ? (
-                                <StatusCell key={`${type.id}-${type.isActive}`} type={type} busy={toggle.isPending && toggle.variables?.id === type.id} onApply={(target) => toggle.mutate(target)} />
-                              ) : (
-                                <Badge tone={type.isActive ? 'green' : 'slate'}>{STATUS_LABELS[type.isActive ? 'active' : 'inactive']}</Badge>
-                              )}
+                              <Badge tone={type.isActive ? 'green' : 'slate'}>{STATUS_LABELS[type.isActive ? 'active' : 'inactive']}</Badge>
                             </td>
                           )}
                           {show('contracts') && (
@@ -396,23 +355,23 @@ export function SystemTypesPage() {
                             </td>
                           )}
                           <td className={`${TABLE.td} whitespace-nowrap pr-5 text-right`}>
-                            <span className="inline-flex gap-2">
-                              {canEdit && (
-                                <Button size="sm" variant="secondary" onClick={() => setDialog({ kind: 'edit', type })} aria-label={`Edit ${type.name}`}>
-                                  Edit
-                                </Button>
-                              )}
-                              {canDelete && (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => setDialog(type.contractCount > 0 ? { kind: 'in-use', type } : { kind: 'delete', type })}
-                                  aria-label={`Delete ${type.name}`}
-                                >
-                                  Delete
-                                </Button>
-                              )}
-                            </span>
+                            {(canEdit || canDelete) && (
+                              <ActionGroup>
+                                {canEdit && <ActionButton label={`Edit ${type.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', type })} />}
+                                {canEdit && (
+                                  <ActionButton
+                                    danger={type.isActive}
+                                    label={`${type.isActive ? 'Deactivate' : 'Reactivate'} ${type.name}`}
+                                    icon={type.isActive ? 'deactivate' : 'reactivate'}
+                                    disabled={toggle.isPending && toggle.variables?.id === type.id}
+                                    onClick={() => toggle.mutate(type)}
+                                  />
+                                )}
+                                {canDelete && (
+                                  <ActionButton danger label={`Delete ${type.name}`} icon="delete" onClick={() => setDialog(type.contractCount > 0 ? { kind: 'in-use', type } : { kind: 'delete', type })} />
+                                )}
+                              </ActionGroup>
+                            )}
                           </td>
                         </tr>
                       ))}

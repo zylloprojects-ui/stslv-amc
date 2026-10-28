@@ -47,7 +47,9 @@ function documentsApi(user = ADMIN, docs: Attachment[] = [DOC], extra?: (request
 }
 
 async function documents() {
-  return within(await screen.findByRole('region', { name: 'Documents' }))
+  await userEvent.click(await screen.findByRole('tab', { name: /^Documents/ }))
+
+  return within(screen.getByRole('tabpanel'))
 }
 
 describe('contract documents', () => {
