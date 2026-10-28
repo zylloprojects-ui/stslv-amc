@@ -65,6 +65,7 @@ const MODULE_LABELS: Record<string, string> = {
   USERS: 'Users and roles',
   SETTINGS: 'Settings',
   HISTORICAL_DATA: 'Historical data',
+  SERVICES_SALES: 'Services sales',
 }
 
 function sentence(text: string): string {

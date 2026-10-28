@@ -1,0 +1,55 @@
+/*
+ * Service Status table only. The shared table styles (index.css) give even rows
+ * and hovered rows a cell background, which would cover a row's status colour.
+ * These rules are scoped to .service-status-table and are more specific than
+ * the shared ones, so every row shows its status the same way, odd or even.
+ * The shared table styles themselves are not changed.
+ */
+
+/* Left indicator on the first cell, for every status. */
+.service-status-table.table-scroll tbody tr.ss-row[data-status] > td:first-child {
+  box-shadow: inset 4px 0 0 var(--ss-edge);
+}
+.service-status-table.table-scroll tbody tr.ss-row[data-status='NOT_COMPLETED'] {
+  --ss-edge: #1479bd;
+}
+.service-status-table.table-scroll tbody tr.ss-row[data-status='COMPLETED'] {
+  --ss-edge: #16a34a;
+  --ss-tint: #f0fdf4;
+  --ss-tint-hover: #dcfce7;
+}
+.service-status-table.table-scroll tbody tr.ss-row[data-status='WAITING_FOR_RENEWAL'] {
+  --ss-edge: #dc2626;
+  --ss-tint: #fef2f2;
+  --ss-tint-hover: #fee2e2;
+}
+
+/* Completed and Waiting for Renewal rows: the same tint on odd and even rows, a deeper one on hover.
+   Not Completed rows keep the table's own zebra and hover. */
+.service-status-table.table-scroll tbody tr.ss-row[data-status='COMPLETED'],
+.service-status-table.table-scroll tbody tr.ss-row[data-status='WAITING_FOR_RENEWAL'],
+.service-status-table.table-scroll tbody tr.ss-row[data-status='COMPLETED'] > td,
+.service-status-table.table-scroll tbody tr.ss-row[data-status='WAITING_FOR_RENEWAL'] > td {
+  background-color: var(--ss-tint);
+}
+.service-status-table.table-scroll tbody tr.ss-row[data-status='COMPLETED']:hover,
+.service-status-table.table-scroll tbody tr.ss-row[data-status='WAITING_FOR_RENEWAL']:hover,
+.service-status-table.table-scroll tbody tr.ss-row[data-status='COMPLETED']:hover > td,
+.service-status-table.table-scroll tbody tr.ss-row[data-status='WAITING_FOR_RENEWAL']:hover > td {
+  background-color: var(--ss-tint-hover);
+}
+
+/* Dark theme: translucent tints that read on the dark table. */
+.dark .service-status-table.table-scroll tbody tr.ss-row[data-status='NOT_COMPLETED'] {
+  --ss-edge: #4aa3df;
+}
+.dark .service-status-table.table-scroll tbody tr.ss-row[data-status='COMPLETED'] {
+  --ss-edge: #22c55e;
+  --ss-tint: rgba(34, 197, 94, 0.12);
+  --ss-tint-hover: rgba(34, 197, 94, 0.2);
+}
+.dark .service-status-table.table-scroll tbody tr.ss-row[data-status='WAITING_FOR_RENEWAL'] {
+  --ss-edge: #f87171;
+  --ss-tint: rgba(248, 113, 113, 0.13);
+  --ss-tint-hover: rgba(248, 113, 113, 0.21);
+}

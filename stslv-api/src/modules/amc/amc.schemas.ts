@@ -5,6 +5,8 @@ import {
   CONTRACT_STATUSES,
   INVOICE_ELIGIBILITIES,
   OPERATIONAL_VISIT_STATUSES,
+  SERVICE_STATUSES,
+  SETTABLE_SERVICE_STATUSES,
   VISIT_STATUSES,
 } from "./amc.constants";
 import { isValidIsoDate } from "./amc.schedule";
@@ -274,6 +276,50 @@ export const updateExecutionSchema = z
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), "Provide at least one field to update.");
 
+// ---------------------------------------------------------------------------
+// Service Status
+// ---------------------------------------------------------------------------
+
+export const listServiceStatusSchema = z.object({
+  // AMC reference ("AMC-0007"), client, system or service code, report number.
+  search: z.string().trim().max(200).optional(),
+  clientId: idSchema.optional(),
+  salesEngineerId: idSchema.optional(),
+  systemTypeId: idSchema.optional(),
+  frequency: frequency.optional(),
+  // Month and year of the scheduled date. Either may be left out: all months, or that month in every year.
+  month: z.coerce.number({ error: "Month must be a number from 1 to 12." }).int().min(1, "Month must be a number from 1 to 12.").max(12, "Month must be a number from 1 to 12.").optional(),
+  year: z.coerce.number({ error: "Year must be between 2000 and 2100." }).int().min(2000, "Year must be between 2000 and 2100.").max(2100, "Year must be between 2000 and 2100.").optional(),
+  serviceStatus: z.enum(SERVICE_STATUSES, { error: "Select a service status." }).optional(),
+  page,
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+/** The page's own filters, without paging, plus the file format. */
+export const exportServiceStatusSchema = listServiceStatusSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+
+const REPORT_NUMBER_MESSAGE = "Service report number must be at most 50 characters, without line breaks.";
+
+export const saveServiceStatusSchema = z
+  .strictObject({
+    // Waiting for renewal is derived and cannot be chosen.
+    status: z.enum(SETTABLE_SERVICE_STATUSES, { error: "Select Completed or Not Completed." }).optional(),
+    // Required when the visit becomes completed; may correct the date of a completed visit.
+    completedDate: isoDate("Completion date").optional(),
+    // Empty or null clears it.
+    reportNumber: z
+      .string({ error: REPORT_NUMBER_MESSAGE })
+      .trim()
+      .max(50, REPORT_NUMBER_MESSAGE)
+      .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), REPORT_NUMBER_MESSAGE)
+      .transform((value) => (value === "" ? null : value))
+      .nullable()
+      .optional(),
+    // The updatedAt the page showed. A save over a newer change is refused, so one person cannot silently overwrite another.
+    expectedUpdatedAt: z.string({ error: "Reload the page and try again." }).datetime({ offset: true, error: "Reload the page and try again." }),
+  })
+  .refine((value) => value.status !== undefined || value.reportNumber !== undefined || value.completedDate !== undefined, "Provide a status, completion date or report number to save.");
+
 export const summarySchema = z.object({
   upcomingDays: z.coerce.number().int().min(1).max(366).default(30),
 });
@@ -293,3 +339,6 @@ export type ExportVisitsQuery = z.infer<typeof exportVisitsSchema>;
 export type UpdateVisitInput = z.infer<typeof updateVisitSchema>;
 export type ListExecutionQuery = z.infer<typeof listExecutionSchema>;
 export type UpdateExecutionInput = z.infer<typeof updateExecutionSchema>;
+export type ListServiceStatusQuery = z.infer<typeof listServiceStatusSchema>;
+export type ExportServiceStatusQuery = z.infer<typeof exportServiceStatusSchema>;
+export type SaveServiceStatusInput = z.infer<typeof saveServiceStatusSchema>;

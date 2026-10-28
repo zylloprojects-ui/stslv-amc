@@ -16,6 +16,8 @@ export const MODULES = [
   "USERS",
   "SETTINGS",
   "HISTORICAL_DATA",
+  // Migration 0078 (module), grants 0079.
+  "SERVICES_SALES",
 ] as const;
 
 export const ACTIONS = ["VIEW", "CREATE", "EDIT", "DELETE", "APPROVE", "EXPORT"] as const;

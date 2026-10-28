@@ -12,8 +12,11 @@ import {
   createContractSchema,
   expiringContractsSchema,
   renewalHistorySchema,
+  saveServiceStatusSchema,
+  exportServiceStatusSchema,
   exportVisitsSchema,
   listContractsSchema,
+  listServiceStatusSchema,
   listExecutionSchema,
   listVisitsSchema,
   schedulePreviewSchema,
@@ -38,6 +41,8 @@ import { getContractMasters, setContractMasters } from "./contract-masters.servi
 import { getContractRenewals, listRenewalHistory } from "./renewals.service";
 import { getWorkload, listExpiringContracts } from "./reports.service";
 import { buildScheduleExport } from "./schedule.export";
+import { buildServiceStatusExport } from "./service-status.export";
+import { getServiceStatusOptions, listServiceStatus, saveServiceStatus } from "./service-status.service";
 import { canViewSummary, getAmcSummary } from "./summary.service";
 import {
   getExecutionVisit,
@@ -203,4 +208,31 @@ amcRouter.patch("/execution/visits/:id", authorize("AMC_EXECUTION", "EDIT"), asy
   const visit = await updateExecution(requireAuth(req), parseIdParam(req.params.id), updateExecutionSchema.parse(req.body));
 
   res.json({ success: true, data: visit });
+});
+
+// --- Service Status ------------------------------------------------------------
+// One row per scheduled visit, read from the same records as the schedule.
+// Viewing needs AMC_SCHEDULE:VIEW; saving changes the visit's execution, so it
+// needs AMC_EXECUTION:EDIT, and reopening completed work also needs
+// AMC_EXECUTION:APPROVE (checked by the execution rules).
+amcRouter.get("/service-status", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await listServiceStatus(listServiceStatusSchema.parse(req.query)) });
+});
+
+amcRouter.get("/service-status/options", authorize("AMC_SCHEDULE", "VIEW"), async (_req, res) => {
+  res.json({ success: true, data: await getServiceStatusOptions() });
+});
+
+// Every row that matches the page's filters, across all pages.
+amcRouter.get("/service-status/export", authorize("AMC_SCHEDULE", "VIEW"), authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+  const query = exportServiceStatusSchema.parse(req.query);
+  const { report, recordExport } = await buildServiceStatusExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
+});
+
+amcRouter.patch("/service-status/:id", authorize("AMC_EXECUTION", "EDIT"), async (req, res) => {
+  const item = await saveServiceStatus(requireAuth(req), parseIdParam(req.params.id), saveServiceStatusSchema.parse(req.body));
+
+  res.json({ success: true, data: item });
 });

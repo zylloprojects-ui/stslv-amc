@@ -269,7 +269,8 @@ export function LoginPage() {
   const location = useLocation()
   const navigate = useNavigate()
   // Set by the reset password page once the new password is saved.
-  const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true
+  const [resetDismissed, setResetDismissed] = useState(false)
+  const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true && !resetDismissed
   const [failure, setFailure] = useState<string | null>(null)
   const [attempts, setAttempts] = useState(0)
   const {
@@ -280,9 +281,12 @@ export function LoginPage() {
 
   usePageTitle('Sign in')
 
-  // Removed from the history entry too, so it does not come back on reload or when switching tabs.
+  // Hidden at once, and removed from the history entry too, so it does not come back on reload or when switching
+  // tabs. The router applies navigation as a transition, which can land after a sign-in error is shown; the local
+  // flag keeps the two messages from ever appearing together.
   const clearPasswordReset = () => {
     if (passwordReset) {
+      setResetDismissed(true)
       navigate(location.pathname, { replace: true, state: null })
     }
   }

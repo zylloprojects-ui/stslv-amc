@@ -402,119 +402,126 @@ const fieldError = (field: string, message: string) => validationError(message, 
 
 /** Execution changes to one visit: status, completion, planned date and work notes. */
 export function updateExecution(auth: AuthContext, id: string, input: UpdateExecutionInput): Promise<ExecutionVisit> {
-  return withTransaction(async (client) => {
-    const row = await findVisitRow(client, id, true);
+  return withTransaction((client) => applyExecution(client, auth, id, input));
+}
 
-    assertNotHistorical(row);
+/**
+ * The execution rules of one visit, inside a transaction the caller owns, so
+ * another screen (Service Status) can save a status change together with its
+ * own fields and every status change still goes through these checks.
+ */
+export async function applyExecution(client: Queryable, auth: AuthContext, id: string, input: UpdateExecutionInput): Promise<ExecutionVisit> {
+  const row = await findVisitRow(client, id, true);
 
-    const status = input.status ?? row.status;
-    const statusChanged = status !== row.status;
+  assertNotHistorical(row);
 
-    // Reopening completed work changes what is ready for invoice, so it needs
-    // the APPROVE permission. PROVISIONAL: who may reopen is unconfirmed.
-    if (row.status === "COMPLETED" && statusChanged && !auth.permissions.has("AMC_EXECUTION:APPROVE")) {
-      throw forbidden("A completed visit can only be reopened by a user with approval permission for AMC Execution.");
+  const status = input.status ?? row.status;
+  const statusChanged = status !== row.status;
+
+  // Reopening completed work changes what is ready for invoice, so it needs
+  // the APPROVE permission. PROVISIONAL: who may reopen is unconfirmed.
+  if (row.status === "COMPLETED" && statusChanged && !auth.permissions.has("AMC_EXECUTION:APPROVE")) {
+    throw forbidden("A completed visit can only be reopened by a user with approval permission for AMC Execution.");
+  }
+  // Invoiced work stays completed until its invoice is cancelled.
+  if (row.status === "COMPLETED" && statusChanged) {
+    await assertVisitNotInvoiced(client, id, "reopened");
+  }
+
+  let completedDate = row.completed_date;
+  let completedBy = row.completed_by;
+
+  if (status === "COMPLETED") {
+    if (input.completedDate !== undefined) {
+      completedDate = input.completedDate;
     }
-    // Invoiced work stays completed until its invoice is cancelled.
-    if (row.status === "COMPLETED" && statusChanged) {
-      await assertVisitNotInvoiced(client, id, "reopened");
-    }
-
-    let completedDate = row.completed_date;
-    let completedBy = row.completed_by;
-
-    if (status === "COMPLETED") {
-      if (input.completedDate !== undefined) {
-        completedDate = input.completedDate;
-      }
-      if (!completedDate) {
-        throw fieldError("completedDate", "Enter the date the visit was completed.");
-      }
-
-      // One day of tolerance, because the server's date can be behind the user's.
-      const allowed = await client.query<{ ok: boolean }>("SELECT $1::date <= current_date + 1 AS ok", [completedDate]);
-
-      if (!allowed.rows[0]?.ok) {
-        throw fieldError("completedDate", "The completion date cannot be in the future.");
-      }
-      if (statusChanged) {
-        completedBy = auth.user.id;
-      }
-    } else {
-      if (input.completedDate) {
-        throw fieldError("completedDate", "A completion date can only be recorded on a completed visit.");
-      }
-      completedDate = null;
-      completedBy = null;
+    if (!completedDate) {
+      throw fieldError("completedDate", "Enter the date the visit was completed.");
     }
 
-    if (input.scheduledDate !== undefined && input.scheduledDate !== row.scheduled_date) {
-      if (status === "COMPLETED" || status === "CANCELLED") {
-        throw fieldError("scheduledDate", `A ${status.toLowerCase()} visit cannot be rescheduled.`);
-      }
+    // One day of tolerance, because the server's date can be behind the user's.
+    const allowed = await client.query<{ ok: boolean }>("SELECT $1::date <= current_date + 1 AS ok", [completedDate]);
+
+    if (!allowed.rows[0]?.ok) {
+      throw fieldError("completedDate", "The completion date cannot be in the future.");
     }
-
-    // A reason belongs to a postponement or cancellation and is dropped when the visit moves on.
-    const keepsReason = status === "POSTPONED" || status === "CANCELLED";
-    const before = {
-      status: row.status,
-      completedDate: row.completed_date,
-      scheduledDate: row.scheduled_date,
-      workPerformed: row.work_performed,
-      executionNotes: row.execution_notes,
-      statusReason: row.status_reason,
-    };
-    const after = {
-      status,
-      completedDate,
-      scheduledDate: input.scheduledDate ?? row.scheduled_date,
-      workPerformed: input.workPerformed !== undefined ? input.workPerformed : row.work_performed,
-      executionNotes: input.executionNotes !== undefined ? input.executionNotes : row.execution_notes,
-      statusReason: !keepsReason ? null : input.statusReason !== undefined ? input.statusReason : statusChanged ? null : row.status_reason,
-    };
-    const changes = diffFields(before, after, [
-      "status",
-      "completedDate",
-      "scheduledDate",
-      "workPerformed",
-      "executionNotes",
-      "statusReason",
-    ]);
-
-    if (Object.keys(changes).length === 0) {
-      return toExecutionVisit(row);
+    if (statusChanged) {
+      completedBy = auth.user.id;
     }
+  } else {
+    if (input.completedDate) {
+      throw fieldError("completedDate", "A completion date can only be recorded on a completed visit.");
+    }
+    completedDate = null;
+    completedBy = null;
+  }
 
-    await client.query(
-      `UPDATE amc_visits
-       SET status = $1, completed_date = $2, completed_by = $3, scheduled_date = $4, work_performed = $5,
-           execution_notes = $6, status_reason = $7, updated_by = $8
-       WHERE id = $9`,
-      [
-        after.status,
-        after.completedDate,
-        completedBy,
-        after.scheduledDate,
-        after.workPerformed,
-        after.executionNotes,
-        after.statusReason,
-        auth.user.id,
-        id,
-      ]
-    );
+  if (input.scheduledDate !== undefined && input.scheduledDate !== row.scheduled_date) {
+    if (status === "COMPLETED" || status === "CANCELLED") {
+      throw fieldError("scheduledDate", `A ${status.toLowerCase()} visit cannot be rescheduled.`);
+    }
+  }
 
-    const label = `AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description})`;
+  // A reason belongs to a postponement or cancellation and is dropped when the visit moves on.
+  const keepsReason = status === "POSTPONED" || status === "CANCELLED";
+  const before = {
+    status: row.status,
+    completedDate: row.completed_date,
+    scheduledDate: row.scheduled_date,
+    workPerformed: row.work_performed,
+    executionNotes: row.execution_notes,
+    statusReason: row.status_reason,
+  };
+  const after = {
+    status,
+    completedDate,
+    scheduledDate: input.scheduledDate ?? row.scheduled_date,
+    workPerformed: input.workPerformed !== undefined ? input.workPerformed : row.work_performed,
+    executionNotes: input.executionNotes !== undefined ? input.executionNotes : row.execution_notes,
+    statusReason: !keepsReason ? null : input.statusReason !== undefined ? input.statusReason : statusChanged ? null : row.status_reason,
+  };
+  const changes = diffFields(before, after, [
+    "status",
+    "completedDate",
+    "scheduledDate",
+    "workPerformed",
+    "executionNotes",
+    "statusReason",
+  ]);
 
-    await logActivity(client, {
-      userId: auth.user.id,
-      action: !statusChanged ? "amc_visit.execution_updated" : status === "COMPLETED" ? "amc_visit.completed" : "amc_visit.status_changed",
-      module: "AMC_EXECUTION",
-      entityType: "amc_visits",
-      entityId: id,
-      description: statusChanged ? `${label} changed from ${row.status} to ${status}.` : `${label} execution details updated.`,
-      metadata: { changes },
-    });
+  if (Object.keys(changes).length === 0) {
+    return toExecutionVisit(row);
+  }
 
-    return toExecutionVisit(await findVisitRow(client, id));
+  await client.query(
+    `UPDATE amc_visits
+     SET status = $1, completed_date = $2, completed_by = $3, scheduled_date = $4, work_performed = $5,
+         execution_notes = $6, status_reason = $7, updated_by = $8
+     WHERE id = $9`,
+    [
+      after.status,
+      after.completedDate,
+      completedBy,
+      after.scheduledDate,
+      after.workPerformed,
+      after.executionNotes,
+      after.statusReason,
+      auth.user.id,
+      id,
+    ]
+  );
+
+  const label = `AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description})`;
+
+  await logActivity(client, {
+    userId: auth.user.id,
+    action: !statusChanged ? "amc_visit.execution_updated" : status === "COMPLETED" ? "amc_visit.completed" : "amc_visit.status_changed",
+    module: "AMC_EXECUTION",
+    entityType: "amc_visits",
+    entityId: id,
+    description: statusChanged ? `${label} changed from ${row.status} to ${status}.` : `${label} execution details updated.`,
+    metadata: { changes },
   });
+
+  return toExecutionVisit(await findVisitRow(client, id));
 }

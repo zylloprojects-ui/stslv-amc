@@ -43,6 +43,8 @@ export const NAVIGATION: NavSection[] = [
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },
       { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
       { label: 'AMC Calendar', path: '/amc/calendar', module: 'AMC_SCHEDULE' },
+      { label: 'Service Status', path: '/amc/service-status', module: 'AMC_SCHEDULE' },
+      { label: 'Services Sales', path: '/amc/services-sales', module: 'SERVICES_SALES' },
     ],
   },
   {

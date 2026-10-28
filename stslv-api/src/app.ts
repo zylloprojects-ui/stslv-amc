@@ -20,6 +20,7 @@ import { notificationsRouter } from "./modules/notifications/notifications.route
 import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
 import { rolesRouter } from "./modules/roles/roles.routes";
+import { servicesSalesRouter } from "./modules/services-sales/services-sales.routes";
 import { usersRouter } from "./modules/users/users.routes";
 import { errorHandler, notFoundHandler } from "./shared/errors";
 
@@ -80,6 +81,8 @@ export function createApp() {
   app.use("/api/procurement", procurementRouter);
   app.use("/api/expenses", expensesRouter);
   app.use("/api/invoices", invoicesRouter);
+  // Quotation numbers of completed AMC visits (migrations 0078 and 0079).
+  app.use("/api/services-sales", servicesSalesRouter);
   app.use("/api/historical-data", historicalDataRouter);
   app.use("/api/holidays", holidaysRouter);
   app.use("/api/audit", auditRouter);

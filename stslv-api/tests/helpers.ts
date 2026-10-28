@@ -11,7 +11,7 @@ export const api = () => request(app);
 export const PASSWORD = "Correct-Horse-42";
 
 // The seed migrations, in order. Each is idempotent, so they can be run again after the grants are emptied.
-const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_permission"];
+const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_permission", "seed_services_sales_permission"];
 const seedSql = SEED_MIGRATIONS.map((name) => loadMigrationFiles().find((migration) => migration.name === name)?.sql ?? "").join("\n");
 const seedsFound = SEED_MIGRATIONS.every((name) => loadMigrationFiles().some((migration) => migration.name === name));
 

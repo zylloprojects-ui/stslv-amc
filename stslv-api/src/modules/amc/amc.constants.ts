@@ -54,6 +54,21 @@ export const INVOICE_ELIGIBILITIES = [
 export type InvoiceEligibility = (typeof INVOICE_ELIGIBILITIES)[number];
 
 /**
+ * The three states the Service Status page shows for a visit. Derived on read,
+ * never stored, so they cannot disagree with the visit's own status:
+ *   COMPLETED            the visit is completed.
+ *   WAITING_FOR_RENEWAL  not completed, and its contract has expired or passed
+ *                        its end date without a renewal that is not cancelled.
+ *   NOT_COMPLETED        every other scheduled, in-progress or postponed visit.
+ * Cancelled and historical visits are not on the page.
+ */
+export const SERVICE_STATUSES = ["NOT_COMPLETED", "COMPLETED", "WAITING_FOR_RENEWAL"] as const;
+export type ServiceStatus = (typeof SERVICE_STATUSES)[number];
+
+/** The statuses a user may choose on the Service Status page. Waiting for renewal is derived only. */
+export const SETTABLE_SERVICE_STATUSES = ["NOT_COMPLETED", "COMPLETED"] as const;
+
+/**
  * Technical safety limit on the validity period, so a mistyped year cannot
  * generate thousands of visits. It is not a business rule: the client's stated
  * need is contracts of up to 5 years.

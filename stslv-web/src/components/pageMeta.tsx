@@ -102,6 +102,8 @@ const PAGES: { prefix: string; meta: PageMeta }[] = [
   { prefix: '/clients', meta: { icon: ICON.users, from: '#1B8AD3', to: '#00A6C8', description: 'Master Data Center · Client records used by AMC contracts and projects' } },
   { prefix: '/amc/contracts', meta: { icon: ICON.contract, from: '#00A6C8', to: '#5BAF48', description: 'Contracts · Validity · Maintenance frequency · Cost per visit' } },
   { prefix: '/amc/schedule', meta: { icon: ICON.calendar, from: '#1B8AD3', to: '#F5C622', description: 'Scheduled maintenance visits generated from each contract' } },
+  { prefix: '/amc/service-status', meta: { icon: ICON.calendar, from: '#5BAF48', to: '#1B8AD3', description: 'One row per scheduled service · Completion · Service report number' } },
+  { prefix: '/amc/services-sales', meta: { icon: ICON.invoice, from: '#1B8AD3', to: '#5BAF48', description: 'One row per scheduled service · Completed services · Quotation numbers' } },
   { prefix: '/amc/calendar', meta: { icon: ICON.calendar, from: '#00A6C8', to: '#1B8AD3', description: 'Maintenance visits by date · Month view · Status at a glance' } },
   { prefix: '/expenses', meta: { icon: ICON.wallet, from: '#00A6C8', to: '#F5C622', description: 'Project costs recorded against each job' } },
   { prefix: '/invoices', meta: { icon: ICON.invoice, from: '#1B8AD3', to: '#D1428C', description: 'Zoho invoice details tracked against visits and projects' } },
