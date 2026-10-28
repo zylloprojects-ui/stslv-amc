@@ -40,7 +40,7 @@ export const NAVIGATION: NavSection[] = [
     ],
   },
   {
-    title: 'Operations',
+    title: 'AMC Operations',
     items: [
       { label: 'AMC Management', path: '/amc/management', module: 'AMC_CONTRACTS' },
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },

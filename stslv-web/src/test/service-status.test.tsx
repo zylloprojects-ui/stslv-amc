@@ -375,7 +375,7 @@ describe('service status page', () => {
     expect(api.find('GET', '/amc/service-status/export')[1]?.query.has('page')).toBe(false)
   })
 
-  it('is in the Operations navigation for roles that may view the schedule', async () => {
+  it('is in the AMC Operations navigation for roles that may view the schedule', async () => {
     serviceApi(VIEWER)
     renderApp('/amc/service-status')
     await table()
