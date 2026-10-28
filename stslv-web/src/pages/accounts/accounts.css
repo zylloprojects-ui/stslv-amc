@@ -1,0 +1,50 @@
+/*
+ * Accounts table only. The shared table styles (index.css) give even and
+ * hovered rows a cell background, which would cover a row's colour. These rules
+ * are scoped to .accounts-table and are more specific than the shared ones.
+ * Accounts has its own three colours, apart from Master AMC Status's four.
+ */
+.accounts-table.table-scroll tbody tr.acc-row[data-colour='RED'] {
+  --acc-edge: #dc2626;
+  --acc-tint: #fef2f2;
+  --acc-tint-hover: #fee2e2;
+}
+.accounts-table.table-scroll tbody tr.acc-row[data-colour='BLUE'] {
+  --acc-edge: #1479bd;
+  --acc-tint: #f0f9ff;
+  --acc-tint-hover: #e0f2fe;
+}
+.accounts-table.table-scroll tbody tr.acc-row[data-colour='GREEN'] {
+  --acc-edge: #16a34a;
+  --acc-tint: #f0fdf4;
+  --acc-tint-hover: #dcfce7;
+}
+
+.accounts-table.table-scroll tbody tr.acc-row[data-colour],
+.accounts-table.table-scroll tbody tr.acc-row[data-colour] > td {
+  background-color: var(--acc-tint);
+}
+.accounts-table.table-scroll tbody tr.acc-row[data-colour]:hover,
+.accounts-table.table-scroll tbody tr.acc-row[data-colour]:hover > td {
+  background-color: var(--acc-tint-hover);
+}
+.accounts-table.table-scroll tbody tr.acc-row[data-colour] > td:first-child {
+  box-shadow: inset 4px 0 0 var(--acc-edge);
+}
+
+/* Dark theme: translucent tints that read on the dark table. */
+.dark .accounts-table.table-scroll tbody tr.acc-row[data-colour='RED'] {
+  --acc-edge: #f87171;
+  --acc-tint: rgba(248, 113, 113, 0.13);
+  --acc-tint-hover: rgba(248, 113, 113, 0.21);
+}
+.dark .accounts-table.table-scroll tbody tr.acc-row[data-colour='BLUE'] {
+  --acc-edge: #4aa3df;
+  --acc-tint: rgba(74, 163, 223, 0.13);
+  --acc-tint-hover: rgba(74, 163, 223, 0.21);
+}
+.dark .accounts-table.table-scroll tbody tr.acc-row[data-colour='GREEN'] {
+  --acc-edge: #22c55e;
+  --acc-tint: rgba(34, 197, 94, 0.12);
+  --acc-tint-hover: rgba(34, 197, 94, 0.2);
+}

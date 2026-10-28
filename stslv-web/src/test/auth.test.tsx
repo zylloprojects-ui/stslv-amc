@@ -182,7 +182,7 @@ describe('permission-based navigation', () => {
     expect(await linksByGroup(nav)).toEqual({
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
       'AMC Operations': ['AMC Management', 'AMC Contracts', 'AMC Renewal', 'AMC Schedule', 'Monthly Calendar', 'Service Status', 'Services Sales', 'Master AMC Status'],
-      Finance: ['Invoice Tracking'],
+      Finance: ['Invoice Tracking', 'Accounts'],
       Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
     })
   })

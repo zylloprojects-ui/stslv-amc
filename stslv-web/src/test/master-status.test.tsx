@@ -201,7 +201,8 @@ describe('Master AMC Status page', () => {
     await waitFor(() => {
       expect(card('Total Services')).toHaveTextContent(/^Total Services1/)
       expect(card('Red Rows')).toHaveTextContent(/^Red Rows0/)
-    })
+      // The counts animate for 800 ms; a busy full run needs more than the default wait.
+    }, { timeout: 5000 })
     expect(card('Total Visit Value')).toHaveTextContent('1,234.500')
 
     await userEvent.click(screen.getByRole('button', { name: 'Reset' }))

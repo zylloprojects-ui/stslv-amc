@@ -57,6 +57,8 @@ export const NAVIGATION: NavSection[] = [
     title: 'Finance',
     items: [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
+      // Shows visit data next to invoice numbers, so it also needs view on the schedule (the API checks both).
+      { label: 'Accounts', path: '/finance/accounts', module: 'INVOICES', alsoRequires: ['AMC_SCHEDULE'] },
     ],
   },
   {

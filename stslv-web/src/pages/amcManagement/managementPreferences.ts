@@ -65,7 +65,10 @@ export function displayName(names: Record<string, string>, id: string, standard:
   return own ? own : standard
 }
 
-/** Names and order of one KPI group for this user, with setters that remember them and resets to the standard. */
+/**
+ * Names and order of one KPI group for this user, with setters that remember them and resets to the standard.
+ * `prefix` keeps another page's choices apart from AMC Management's.
+ */
 export function useKpiCustomization(userId: string, group: string, defaults: readonly string[], prefix = PREFIX) {
   const orderKey = `${prefix}.${group}.kpi-order.${userId}`
   const namesKey = `${prefix}.${group}.kpi-names.${userId}`

@@ -276,7 +276,8 @@ describe('Services Sales page', () => {
 
     expect(cardLabels()).toEqual(['Total Services', 'Not Completed', 'Quotes Sent', 'Completed / Quote Pending'])
     // The renamed card still shows the quoted figure.
-    await waitFor(() => expect(figures().getByText('Quotes Sent').closest('div')).toHaveTextContent('Quotes Sent1'))
+    // The count animates for 800 ms; a busy full run needs more than the default wait.
+    await waitFor(() => expect(figures().getByText('Quotes Sent').closest('div')).toHaveTextContent('Quotes Sent1'), { timeout: 5000 })
 
     await userEvent.click(screen.getByRole('button', { name: 'Customize KPIs' }))
     dialog = within(screen.getByRole('dialog', { name: 'Customize KPI cards' }))
