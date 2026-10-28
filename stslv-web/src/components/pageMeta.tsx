@@ -104,6 +104,7 @@ const PAGES: { prefix: string; meta: PageMeta }[] = [
   { prefix: '/amc/contracts', meta: { icon: ICON.contract, from: '#00A6C8', to: '#5BAF48', description: 'Contracts · Validity · Maintenance frequency · Cost per visit' } },
   { prefix: '/amc/schedule', meta: { icon: ICON.calendar, from: '#1B8AD3', to: '#F5C622', description: 'Scheduled maintenance visits generated from each contract' } },
   { prefix: '/amc/master-status', meta: { icon: ICON.calendar, from: '#dc2626', to: '#5BAF48', description: 'One row per scheduled service · Completion · Invoice · Quotation' } },
+  { prefix: '/finance/accounts', meta: { icon: ICON.invoice, from: '#dc2626', to: '#16a34a', description: 'Billing reconciliation · Completion · Service report · Invoice number' } },
   { prefix: '/amc/service-status', meta: { icon: ICON.calendar, from: '#5BAF48', to: '#1B8AD3', description: 'One row per scheduled service · Completion · Service report number' } },
   { prefix: '/amc/services-sales', meta: { icon: ICON.invoice, from: '#1B8AD3', to: '#5BAF48', description: 'One row per scheduled service · Completed services · Quotation numbers' } },
   { prefix: '/amc/calendar', meta: { icon: ICON.calendar, from: '#00A6C8', to: '#1B8AD3', description: 'Year and month views · Billing at a glance · Monthly downloads' } },
