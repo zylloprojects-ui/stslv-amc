@@ -5,7 +5,7 @@ import { currentMonth, formatDate, monthLabel, shiftMonth } from '../pages/amc/a
 import { ACCOUNTANT, ADMIN, renderApp } from './helpers'
 import { amcApi, EXECUTION, makeVisit } from './amc-helpers'
 
-// The AMC Calendar page. Every record here is invented test data.
+// The Monthly Calendar's Month view (the former AMC Calendar). Every record here is invented test data.
 
 const MONTH = currentMonth()
 const day = (n: number) => `${MONTH}-${String(n).padStart(2, '0')}`
@@ -23,10 +23,10 @@ async function monthGrid() {
   return within(await screen.findByRole('group', { name: `Visits in ${monthLabel(MONTH)}` }))
 }
 
-describe('AMC Calendar', () => {
+describe('Monthly Calendar, Month view', () => {
   it('places the month’s visits on their scheduled days, asking only for that month', async () => {
     const api = amcApi(ADMIN, { visits: VISITS })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
 
     const grid = await monthGrid()
     const third = within(grid.getByRole('group', { name: `${formatDate(day(3))}, 4 visits` }))
@@ -43,7 +43,7 @@ describe('AMC Calendar', () => {
 
   it('marks overdue visits and labels each visit with its status', async () => {
     amcApi(ADMIN, { visits: VISITS })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
 
     const grid = await monthGrid()
     expect(grid.getByRole('button', { name: 'Test Hotel One — FIRE, visit 5, Scheduled, overdue' })).toBeInTheDocument()
@@ -52,7 +52,7 @@ describe('AMC Calendar', () => {
 
   it('shows every visit of a busy day on request, with a link to the contract', async () => {
     amcApi(ADMIN, { visits: VISITS })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
 
     const grid = await monthGrid()
     await userEvent.click(grid.getByRole('button', { name: '+1 more' }))
@@ -64,7 +64,7 @@ describe('AMC Calendar', () => {
 
   it('opens the existing visit details from the calendar', async () => {
     amcApi(ADMIN, { visits: VISITS })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
 
     const grid = await monthGrid()
     await userEvent.click(grid.getByRole('button', { name: /visit 5, Scheduled, overdue/ }))
@@ -74,7 +74,7 @@ describe('AMC Calendar', () => {
 
   it('moves between months and back to the current one', async () => {
     const api = amcApi(ADMIN, { visits: VISITS })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
 
     await monthGrid()
     await userEvent.click(screen.getByRole('button', { name: 'Next month' }))
@@ -90,14 +90,14 @@ describe('AMC Calendar', () => {
 
   it('filters by status and client through the API', async () => {
     const api = amcApi(ADMIN, { visits: VISITS })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
 
     await monthGrid()
-    await userEvent.selectOptions(screen.getByLabelText('Status'), 'POSTPONED')
+    await userEvent.selectOptions(screen.getByLabelText('Visit status'), 'POSTPONED')
     await waitFor(() => expect(screen.getByText('1 visit this month')).toBeInTheDocument())
     expect(api.find('GET', '/amc/visits').at(-1)?.query.get('status')).toBe('POSTPONED')
 
-    await userEvent.selectOptions(screen.getByLabelText('Status'), '')
+    await userEvent.selectOptions(screen.getByLabelText('Visit status'), '')
     await userEvent.selectOptions(await screen.findByLabelText('Client'), '11')
     await waitFor(() => expect(api.find('GET', '/amc/visits').at(-1)?.query.get('clientId')).toBe('11'))
     expect(await screen.findByText('1 visit this month')).toBeInTheDocument()
@@ -105,20 +105,20 @@ describe('AMC Calendar', () => {
 
   it('says so when a month has no visits', async () => {
     amcApi(ADMIN, { visits: [] })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
 
     expect(await screen.findByText('No visits this month')).toBeInTheDocument()
   })
 
   it('is open to the Execution role', async () => {
     amcApi(EXECUTION, { visits: VISITS })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
     expect(await monthGrid()).toBeTruthy()
   })
 
   it('refuses the page to a role without schedule access, without requesting visits', async () => {
     const api = amcApi(ACCOUNTANT, { visits: VISITS })
-    renderApp('/amc/calendar')
+    renderApp('/amc/calendar?view=month')
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
     expect(api.find('GET', '/amc/visits')).toHaveLength(0)

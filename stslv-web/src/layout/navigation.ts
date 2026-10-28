@@ -45,7 +45,7 @@ export const NAVIGATION: NavSection[] = [
       { label: 'AMC Management', path: '/amc/management', module: 'AMC_CONTRACTS' },
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },
       { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
-      { label: 'AMC Calendar', path: '/amc/calendar', module: 'AMC_SCHEDULE' },
+      { label: 'Monthly Calendar', path: '/amc/calendar', module: 'AMC_SCHEDULE' },
       { label: 'Service Status', path: '/amc/service-status', module: 'AMC_SCHEDULE' },
       { label: 'Services Sales', path: '/amc/services-sales', module: 'SERVICES_SALES' },
       // Shows invoice and quotation numbers, so it needs view on those modules too (the API checks the same three).

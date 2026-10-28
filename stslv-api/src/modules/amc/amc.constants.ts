@@ -54,6 +54,20 @@ export const INVOICE_ELIGIBILITIES = [
 export type InvoiceEligibility = (typeof INVOICE_ELIGIBILITIES)[number];
 
 /**
+ * The billing status the Monthly Calendar shows for a visit. Derived on read
+ * from the visit status and v_amc_visit_billing, never stored:
+ *   INVOICED             completed, and at least one active (not cancelled) invoice covers it.
+ *   NOT_YET_INVOICED     completed, no active invoice (Ready for invoice, or Amount required).
+ *   NO_INVOICE_REQUIRED  completed with an amount of zero.
+ *   NOT_COMPLETED        scheduled, in progress or postponed: not billable yet.
+ *   CANCELLED            the visit was cancelled.
+ * An invoice is not a payment: INVOICED says nothing about money received.
+ * Historical visits have no billing status.
+ */
+export const BILLING_STATUSES = ["INVOICED", "NOT_YET_INVOICED", "NO_INVOICE_REQUIRED", "NOT_COMPLETED", "CANCELLED"] as const;
+export type BillingStatus = (typeof BILLING_STATUSES)[number];
+
+/**
  * The three states the Service Status page shows for a visit. Derived on read,
  * never stored, so they cannot disagree with the visit's own status:
  *   COMPLETED            the visit is completed.

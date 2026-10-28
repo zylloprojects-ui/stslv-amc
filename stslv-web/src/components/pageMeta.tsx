@@ -106,7 +106,7 @@ const PAGES: { prefix: string; meta: PageMeta }[] = [
   { prefix: '/amc/master-status', meta: { icon: ICON.calendar, from: '#dc2626', to: '#5BAF48', description: 'One row per scheduled service · Completion · Invoice · Quotation' } },
   { prefix: '/amc/service-status', meta: { icon: ICON.calendar, from: '#5BAF48', to: '#1B8AD3', description: 'One row per scheduled service · Completion · Service report number' } },
   { prefix: '/amc/services-sales', meta: { icon: ICON.invoice, from: '#1B8AD3', to: '#5BAF48', description: 'One row per scheduled service · Completed services · Quotation numbers' } },
-  { prefix: '/amc/calendar', meta: { icon: ICON.calendar, from: '#00A6C8', to: '#1B8AD3', description: 'Maintenance visits by date · Month view · Status at a glance' } },
+  { prefix: '/amc/calendar', meta: { icon: ICON.calendar, from: '#00A6C8', to: '#1B8AD3', description: 'Year and month views · Billing at a glance · Monthly downloads' } },
   { prefix: '/invoices', meta: { icon: ICON.invoice, from: '#1B8AD3', to: '#D1428C', description: 'Zoho invoice details tracked against visits and projects' } },
   { prefix: '/admin/login-history', meta: { icon: ICON.shield, from: '#1B8AD3', to: '#7E6FAC', description: 'Successful and failed sign-ins · Network address · Read-only' } },
   { prefix: '/admin/audit-log', meta: { icon: ICON.archive, from: '#7E6FAC', to: '#1B8AD3', description: 'Activity across every module · Who · What · When · Read-only' } },
