@@ -10,6 +10,7 @@ import type { Module } from './lib/types'
 import { AccountPage } from './pages/AccountPage'
 import { AmcContractsPage } from './pages/amc/AmcContractsPage'
 import { AmcCalendarPage } from './pages/amc/AmcCalendarPage'
+import { AmcRenewalPage } from './pages/amcRenewal/AmcRenewalPage'
 import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
 import { ContractDetailPage } from './pages/amc/ContractDetailPage'
 import { ServiceStatusPage } from './pages/amc/ServiceStatusPage'
@@ -159,6 +160,14 @@ export function AppRoutes() {
             element={
               <RequirePermission module="AMC_CONTRACTS">
                 <AmcManagementPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/renewal"
+            element={
+              <RequirePermission module="AMC_CONTRACTS">
+                <AmcRenewalPage />
               </RequirePermission>
             }
           />

@@ -63,26 +63,49 @@ export async function getContractRenewals(contractId: string) {
   };
 }
 
-/** Every renewal made, newest first: the source contract and the renewal contract. */
-export async function listRenewalHistory(query: RenewalHistoryQuery) {
-  const total = await pool.query<{ count: number }>("SELECT count(*)::int AS count FROM amc_contracts WHERE renewed_from_id IS NOT NULL");
-  const rows = await pool.query<SummaryRow & { source_valid_from: string; source_valid_to: string; source_status: string; source_id: string }>(
-    `SELECT ${SUMMARY}, s.id AS source_id, s.valid_from::text AS source_valid_from, s.valid_to::text AS source_valid_to, s.status AS source_status
+type HistoryRow = SummaryRow & { source_valid_from: string; source_valid_to: string; source_status: string; source_id: string; created_on: string };
+
+const HISTORY = `SELECT ${SUMMARY}, s.id AS source_id, s.valid_from::text AS source_valid_from, s.valid_to::text AS source_valid_to, s.status AS source_status,
+            c.created_at::date::text AS created_on
      FROM amc_contracts c
      JOIN clients cl ON cl.id = c.client_id
      JOIN amc_contracts s ON s.id = c.renewed_from_id
-     ORDER BY c.created_at DESC, c.id DESC
-     LIMIT $1 OFFSET $2`,
-    [query.pageSize, (query.page - 1) * query.pageSize]
-  );
+     ORDER BY c.created_at DESC, c.id DESC`;
 
+function toHistoryItem(row: HistoryRow) {
   return {
-    items: rows.rows.map((row) => ({
-      renewal: toSummary(row),
-      source: { id: row.source_id, validFrom: row.source_valid_from, validTo: row.source_valid_to, status: row.source_status },
-    })),
-    total: total.rows[0]?.count ?? 0,
-    page: query.page,
-    pageSize: query.pageSize,
+    renewal: toSummary(row),
+    /** The day the renewal was made, in the database's time zone (the same day current_date gives). */
+    createdOn: row.created_on,
+    source: { id: row.source_id, validFrom: row.source_valid_from, validTo: row.source_valid_to, status: row.source_status },
   };
+}
+
+export type RenewalHistoryItem = ReturnType<typeof toHistoryItem>;
+
+async function historyCount(): Promise<number> {
+  const total = await pool.query<{ count: number }>("SELECT count(*)::int AS count FROM amc_contracts WHERE renewed_from_id IS NOT NULL");
+
+  return total.rows[0]?.count ?? 0;
+}
+
+/** Every renewal made, newest first: the source contract and the renewal contract. */
+export async function listRenewalHistory(query: RenewalHistoryQuery) {
+  const [total, rows] = await Promise.all([
+    historyCount(),
+    pool.query<HistoryRow>(`${HISTORY} LIMIT $1 OFFSET $2`, [query.pageSize, (query.page - 1) * query.pageSize]),
+  ]);
+
+  return { items: rows.rows.map(toHistoryItem), total, page: query.page, pageSize: query.pageSize };
+}
+
+/** Every renewal made, newest first, for an export. `checkSize` throws when the export cannot hold that many rows. */
+export async function listAllRenewalHistory(checkSize: (count: number) => void) {
+  const total = await historyCount();
+
+  checkSize(total);
+
+  const rows = await pool.query<HistoryRow>(HISTORY);
+
+  return { items: rows.rows.map(toHistoryItem), total };
 }

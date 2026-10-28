@@ -14,28 +14,30 @@ const FIGURE = 'break-words font-bold tabular-nums text-[#0b3b66]'
 
 type CardState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; reading: KpiReading }
 
-interface KpiGroupProps {
-  group: KpiGroupDefinition
+interface KpiGroupProps<T> {
+  group: KpiGroupDefinition<T>
   userId: string
-  data: AmcManagementSummary | undefined
+  data: T | undefined
   failed: boolean
   canView: (module: Module) => boolean
+  /** Where the names and order are remembered; AMC Management's store unless another page gives its own. */
+  storagePrefix?: string
 }
 
 /**
  * One KPI group, drawn like the dashboard's figure cards. The user may rename
  * and reorder its cards; both are remembered per group, per user, in this browser.
  */
-export function KpiGroup({ group, userId, data, failed, canView }: KpiGroupProps) {
+export function KpiGroup<T = AmcManagementSummary>({ group, userId, data, failed, canView, storagePrefix }: KpiGroupProps<T>) {
   const headingId = useId()
   const [customizing, setCustomizing] = useState(false)
   const [dragging, setDragging] = useState<string | null>(null)
   const [defaults] = useState(() => group.kpis.map((kpi) => kpi.id))
-  const prefs = useKpiCustomization(userId, group.id, defaults)
+  const prefs = useKpiCustomization(userId, group.id, defaults, storagePrefix)
 
   const cards = prefs.order
     .map((id) => group.kpis.find((kpi) => kpi.id === id))
-    .filter((kpi): kpi is ManagementKpi => kpi !== undefined && kpi.visible(canView))
+    .filter((kpi): kpi is ManagementKpi<T> => kpi !== undefined && kpi.visible(canView))
     .flatMap((kpi) => {
       if (!data) return [{ kpi, state: (failed ? { kind: 'failed' } : { kind: 'loading' }) as CardState }]
       const reading = kpi.read(data)
