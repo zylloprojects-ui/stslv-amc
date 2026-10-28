@@ -181,8 +181,8 @@ describe('permission-based navigation', () => {
     expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center', 'Settings'])
     expect(await linksByGroup(nav)).toEqual({
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
-      Operations: ['AMC Management', 'AMC Contracts', 'AMC Schedule', 'Monthly Calendar', 'Service Status', 'Services Sales', 'Master AMC Status'],
-      Finance: ['Invoice Tracking'],
+      'AMC Operations': ['AMC Management', 'AMC Contracts', 'AMC Renewal', 'AMC Schedule', 'Monthly Calendar', 'Service Status', 'Services Sales', 'Master AMC Status'],
+      Finance: ['Invoice Tracking', 'Accounts'],
       Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
     })
   })
@@ -360,7 +360,7 @@ describe('sidebar', () => {
     expect(within(nav).getByRole('link', { name: 'Dashboard' })).toBeInTheDocument()
     expect(within(nav).getByRole('button', { name: 'Sign Out' })).toBeInTheDocument()
 
-    await userEvent.click(within(nav).getByRole('button', { name: 'Operations' }))
+    await userEvent.click(within(nav).getByRole('button', { name: 'AMC Operations' }))
 
     expect(localStorage.getItem('stslev.sidebar-collapsed')).toBe('0')
     expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()

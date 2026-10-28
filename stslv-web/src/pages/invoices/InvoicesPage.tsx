@@ -24,6 +24,8 @@ export function InvoicesPage() {
   // The project filter lives in the address, so a project page can link straight to its invoices.
   const [searchParams, setSearchParams] = useSearchParams()
   const projectId = searchParams.get('projectId') ?? ''
+  // Another page (Accounts) can ask for the form to open with one visit already ticked.
+  const recordForVisit = searchParams.get('recordForVisit') ?? ''
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -33,6 +35,7 @@ export function InvoicesPage() {
   const [page, setPage] = useState(1)
   const [dialog, setDialog] = useState<InvoiceDialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
+  const [handoffProblem, setHandoffProblem] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
 
   // Wait for a pause in typing before searching.
@@ -66,6 +69,40 @@ export function InvoicesPage() {
   const canEdit = auth.can('INVOICES', 'EDIT')
   const canExport = auth.can('INVOICES', 'EXPORT')
   const work = pending.data
+
+  // Opens the same form as the visit's own "Record invoice" button below, once the waiting work is loaded.
+  const [handledVisit, setHandledVisit] = useState('')
+
+  if (recordForVisit && work && handledVisit !== recordForVisit) {
+    setHandledVisit(recordForVisit)
+
+    const visit = work.amcVisits?.items.find((item) => item.id === recordForVisit && item.invoiceEligibility === 'READY_FOR_INVOICE')
+
+    if (visit && canCreate) {
+      setDialog({ kind: 'create', preset: { client: visit.client, key: `visit:${visit.id}`, amount: '' } })
+    } else {
+      setHandoffProblem(
+        canCreate
+          ? 'That service is not waiting for an invoice, so the form was not opened. An invoice can be recorded for a completed visit with an amount above zero and no active invoice.'
+          : 'Recording an invoice needs the Invoices create permission.',
+      )
+    }
+  }
+
+  // Then the request leaves the address, so a reload or a later visit does not open the form again.
+  useEffect(() => {
+    if (!handledVisit || recordForVisit !== handledVisit) return
+
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current)
+        next.delete('recordForVisit')
+        return next
+      },
+      { replace: true },
+    )
+  }, [handledVisit, recordForVisit, setSearchParams])
+
   const visits = work?.amcVisits ?? null
   const projects = work?.projects ?? null
   const nothingWaiting = work !== undefined && (visits?.items.length ?? 0) === 0 && (projects?.items.length ?? 0) === 0
@@ -94,6 +131,14 @@ export function InvoicesPage() {
       {notice && (
         <div className="mb-4">
           <Alert tone="success">{notice}</Alert>
+        </div>
+      )}
+
+      {handoffProblem && (
+        <div className="mb-4">
+          <Alert tone="info" onDismiss={() => setHandoffProblem(null)}>
+            {handoffProblem}
+          </Alert>
         </div>
       )}
 

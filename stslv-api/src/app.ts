@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import { checkDatabaseHealth } from "./config/database";
 import { env } from "./config/env";
+import { accountsRouter } from "./modules/accounts/accounts.routes";
 import { amcRouter } from "./modules/amc/amc.routes";
 import { attachmentsRouter } from "./modules/attachments/attachments.routes";
 import { auditRouter } from "./modules/audit/audit.routes";
@@ -81,6 +82,8 @@ export function createApp() {
   app.use("/api/procurement", procurementRouter);
   app.use("/api/expenses", expensesRouter);
   app.use("/api/invoices", invoicesRouter);
+  // Billing reconciliation of AMC visits: read only, over the visits and Invoice Tracking (needs migration 0077).
+  app.use("/api/accounts", accountsRouter);
   // Quotation numbers of completed AMC visits (migrations 0078 and 0079).
   app.use("/api/services-sales", servicesSalesRouter);
   app.use("/api/historical-data", historicalDataRouter);

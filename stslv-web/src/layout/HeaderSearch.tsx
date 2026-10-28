@@ -27,7 +27,7 @@ const GROUP_STYLE: Record<string, { from: string; to: string; icon: ReactNode }>
       </>
     ),
   },
-  Operations: {
+  'AMC Operations': {
     from: '#00A6C8',
     to: '#5BAF48',
     icon: (

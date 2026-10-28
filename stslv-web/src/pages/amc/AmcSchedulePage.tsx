@@ -20,7 +20,9 @@ import {
   type ScheduleVisit,
   type VisitList,
 } from './types'
+import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
+import { VisitActionsDialog } from './VisitActionsDialog'
 import { VisitDetailsModal, VisitEditModal } from './VisitModals'
 
 const PAGE_SIZE = 50
@@ -32,7 +34,7 @@ const statIcon = (path: ReactNode) => (
 )
 
 /** The visit figures from the dashboard summary, as a strip above the schedule. Hidden when the figures are not available to this user. */
-function ScheduleStats() {
+function ScheduleStats({ month }: { month: string }) {
   const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
   const visits = summary.data?.amc?.visits
   const invoicing = summary.data?.amc?.invoicing
@@ -42,7 +44,8 @@ function ScheduleStats() {
   }
 
   return (
-    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Visit figures">
+    <section aria-label="Visit figures" className="mb-5">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Visit figures">
       <StatTile
         label="Due this month"
         count={visits.dueThisMonth ?? visits.due}
@@ -85,10 +88,15 @@ function ScheduleStats() {
         />
       )}
     </div>
+    <KpiScopeNote
+      cards={`all clients and all dates; "this month" is the current calendar month (${monthLabel(currentMonth())}). The cards do not follow the filters below.`}
+      rows={month ? `visits scheduled in ${monthLabel(month)}, with the filters below.` : 'visits of all dates, with the filters below.'}
+    />
+    </section>
   )
 }
 
-type Dialog = { kind: 'none' } | { kind: 'view'; visitId: string } | { kind: 'edit'; visit: ScheduleVisit }
+type Dialog = { kind: 'none' } | { kind: 'view'; visitId: string } | { kind: 'edit'; visit: ScheduleVisit } | { kind: 'actions'; visitId: string }
 
 export function AmcSchedulePage() {
   const auth = useAuth()
@@ -118,6 +126,9 @@ export function AmcSchedulePage() {
   const canViewClients = auth.can('CLIENTS', 'VIEW')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const canEdit = auth.can('AMC_SCHEDULE', 'EDIT')
+  // Start, complete, postpone or cancel: the execution permissions, checked again by the API.
+  const canAct = auth.can('AMC_EXECUTION', 'VIEW') && auth.can('AMC_EXECUTION', 'EDIT')
+  const canReopen = auth.can('AMC_EXECUTION', 'APPROVE')
   const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
 
   const clients = useQuery({ queryKey: ['clients', 'all'], queryFn: () => fetchClients('all'), enabled: canViewClients })
@@ -171,7 +182,7 @@ export function AmcSchedulePage() {
         </div>
       )}
 
-      <ScheduleStats />
+      <ScheduleStats month={month} />
 
       <Card>
         <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
@@ -183,6 +194,7 @@ export function AmcSchedulePage() {
                   <rect x="3.5" y="5" width="17" height="15" rx="2.5" />
                   <path d="M3.5 10h17M8 3v4M16 3v4" strokeLinecap="round" />
                 </svg>
+                <span className="sr-only">Scheduled date: </span>
                 {month ? monthLabel(month) : 'All dates'}
               </span>
             </div>
@@ -209,7 +221,7 @@ export function AmcSchedulePage() {
                   <span aria-hidden="true">‹</span>
                 </button>
                 <label htmlFor="schedule-month" className="sr-only">
-                  Month
+                  Scheduled month
                 </label>
                 <input
                   id="schedule-month"
@@ -410,6 +422,9 @@ export function AmcSchedulePage() {
                         <ActionGroup>
                           <ActionButton label={`View ${label(visit)}`} icon="view" onClick={() => setDialog({ kind: 'view', visitId: visit.id })} />
                           {canEdit && visit.status !== 'HISTORICAL' && <ActionButton label={`Edit ${label(visit)}`} icon="edit" onClick={() => setDialog({ kind: 'edit', visit })} />}
+                          {canAct && visit.status !== 'HISTORICAL' && (
+                            <ActionButton label={`Visit actions for ${label(visit)}`} icon="visitActions" onClick={() => setDialog({ kind: 'actions', visitId: visit.id })} />
+                          )}
                         </ActionGroup>
                       </td>
                     </tr>
@@ -428,6 +443,18 @@ export function AmcSchedulePage() {
 
       {dialog.kind === 'view' && (
         <VisitDetailsModal visitId={dialog.visitId} canEdit={canEdit} onEdit={(visit) => setDialog({ kind: 'edit', visit })} onClose={closeDialog} />
+      )}
+
+      {dialog.kind === 'actions' && (
+        <VisitActionsDialog
+          visitId={dialog.visitId}
+          canReopen={canReopen}
+          onClose={closeDialog}
+          onSaved={(saved) => {
+            setNotice(`Visit ${saved.sequenceNo} for ${saved.client.name} (${saved.contract.systemDescription}) is now ${VISIT_STATUS_LABELS[saved.status].toLowerCase()}.`)
+            closeDialog()
+          }}
+        />
       )}
 
       {dialog.kind === 'edit' && (

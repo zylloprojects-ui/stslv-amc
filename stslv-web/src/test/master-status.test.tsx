@@ -186,8 +186,8 @@ describe('Master AMC Status page', () => {
     await userEvent.type(screen.getByLabelText('Search'), 'inv-3')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
-    await userEvent.selectOptions(screen.getByLabelText('Month'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Year'), '2026')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
     await userEvent.selectOptions(screen.getByLabelText('Row Colour'), 'GREEN')
     // Nothing is requested until Apply.
@@ -201,7 +201,8 @@ describe('Master AMC Status page', () => {
     await waitFor(() => {
       expect(card('Total Services')).toHaveTextContent(/^Total Services1/)
       expect(card('Red Rows')).toHaveTextContent(/^Red Rows0/)
-    })
+      // The counts animate for 800 ms; a busy full run needs more than the default wait.
+    }, { timeout: 5000 })
     expect(card('Total Visit Value')).toHaveTextContent('1,234.500')
 
     await userEvent.click(screen.getByRole('button', { name: 'Reset' }))

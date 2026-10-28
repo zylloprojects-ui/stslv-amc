@@ -40,10 +40,11 @@ export const NAVIGATION: NavSection[] = [
     ],
   },
   {
-    title: 'Operations',
+    title: 'AMC Operations',
     items: [
       { label: 'AMC Management', path: '/amc/management', module: 'AMC_CONTRACTS' },
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },
+      { label: 'AMC Renewal', path: '/amc/renewal', module: 'AMC_CONTRACTS' },
       { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
       { label: 'Monthly Calendar', path: '/amc/calendar', module: 'AMC_SCHEDULE' },
       { label: 'Service Status', path: '/amc/service-status', module: 'AMC_SCHEDULE' },
@@ -56,6 +57,8 @@ export const NAVIGATION: NavSection[] = [
     title: 'Finance',
     items: [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
+      // Shows visit data next to invoice numbers, so it also needs view on the schedule (the API checks both).
+      { label: 'Accounts', path: '/finance/accounts', module: 'INVOICES', alsoRequires: ['AMC_SCHEDULE'] },
     ],
   },
   {

@@ -10,11 +10,13 @@ import type { Module } from './lib/types'
 import { AccountPage } from './pages/AccountPage'
 import { AmcContractsPage } from './pages/amc/AmcContractsPage'
 import { AmcCalendarPage } from './pages/amc/AmcCalendarPage'
+import { AmcRenewalPage } from './pages/amcRenewal/AmcRenewalPage'
 import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
 import { ContractDetailPage } from './pages/amc/ContractDetailPage'
 import { ServiceStatusPage } from './pages/amc/ServiceStatusPage'
 import { ServicesSalesPage } from './pages/servicesSales/ServicesSalesPage'
 import { AmcManagementPage } from './pages/amcManagement/AmcManagementPage'
+import { AccountsPage } from './pages/accounts/AccountsPage'
 import { MasterStatusPage } from './pages/masterStatus/MasterStatusPage'
 import { AuditLogPage } from './pages/admin/AuditLogPage'
 import { LoginHistoryPage } from './pages/admin/LoginHistoryPage'
@@ -163,6 +165,14 @@ export function AppRoutes() {
             }
           />
           <Route
+            path="/amc/renewal"
+            element={
+              <RequirePermission module="AMC_CONTRACTS">
+                <AmcRenewalPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="/amc/contracts"
             element={
               <RequirePermission module="AMC_CONTRACTS">
@@ -218,6 +228,16 @@ export function AppRoutes() {
                   <RequirePermission module="SERVICES_SALES">
                     <MasterStatusPage />
                   </RequirePermission>
+                </RequirePermission>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/finance/accounts"
+            element={
+              <RequirePermission module="INVOICES">
+                <RequirePermission module="AMC_SCHEDULE">
+                  <AccountsPage />
                 </RequirePermission>
               </RequirePermission>
             }

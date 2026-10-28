@@ -50,6 +50,7 @@ const ICON_OF: Record<string, keyof typeof ICONS> = {
   contracts: 'contract',
   invoices: 'invoice',
   renewals: 'renew',
+  queue: 'renew',
   history: 'clock',
   documents: 'folder',
   details: 'info',

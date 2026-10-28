@@ -216,8 +216,8 @@ describe('Services Sales page', () => {
     await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
     await userEvent.selectOptions(screen.getByLabelText('System'), '3')
     await userEvent.selectOptions(screen.getByLabelText('Maintenance Frequency'), 'HALF_YEARLY')
-    await userEvent.selectOptions(screen.getByLabelText('Month'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Year'), '2026')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
 
     const expected = { search: 'alpha', clientId: '10', salesEngineerId: '4', systemTypeId: '3', frequency: 'HALF_YEARLY', month: '10', year: '2026', serviceStatus: 'COMPLETED' }
@@ -276,7 +276,8 @@ describe('Services Sales page', () => {
 
     expect(cardLabels()).toEqual(['Total Services', 'Not Completed', 'Quotes Sent', 'Completed / Quote Pending'])
     // The renamed card still shows the quoted figure.
-    await waitFor(() => expect(figures().getByText('Quotes Sent').closest('div')).toHaveTextContent('Quotes Sent1'))
+    // The count animates for 800 ms; a busy full run needs more than the default wait.
+    await waitFor(() => expect(figures().getByText('Quotes Sent').closest('div')).toHaveTextContent('Quotes Sent1'), { timeout: 5000 })
 
     await userEvent.click(screen.getByRole('button', { name: 'Customize KPIs' }))
     dialog = within(screen.getByRole('dialog', { name: 'Customize KPI cards' }))

@@ -5,7 +5,7 @@ import { todayIso } from '../pages/amc/amcFormat'
 import type { ServiceStatusItem, ServiceStatusList, ServiceStatusOptions } from '../pages/amc/serviceStatusTypes'
 import type { SessionUser } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
-import { EXECUTION, VIEWER } from './amc-helpers'
+import { EXECUTION, makeVisit, VIEWER } from './amc-helpers'
 
 const TODAY = todayIso()
 const MONTH = String(Number(TODAY.slice(5, 7)))
@@ -183,7 +183,7 @@ describe('service status page', () => {
     await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '7')
     await userEvent.selectOptions(screen.getByLabelText('System'), '1')
     await userEvent.selectOptions(screen.getByLabelText('Maintenance Frequency'), 'MONTHLY')
-    await userEvent.selectOptions(screen.getByLabelText('Month'), '')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
     await userEvent.type(screen.getByLabelText('Search'), 'SR-77')
 
@@ -375,11 +375,47 @@ describe('service status page', () => {
     expect(api.find('GET', '/amc/service-status/export')[1]?.query.has('page')).toBe(false)
   })
 
-  it('is in the Operations navigation for roles that may view the schedule', async () => {
+  it('is in the AMC Operations navigation for roles that may view the schedule', async () => {
     serviceApi(VIEWER)
     renderApp('/amc/service-status')
     await table()
 
     expect(screen.getAllByRole('link', { name: 'Service Status' }).length).toBeGreaterThan(0)
+  })
+})
+
+describe('service status visit actions and figure scope', () => {
+  const EXECUTION_VISIT = makeVisit({ id: '500', scheduledDate: day('01'), originalScheduledDate: day('01') })
+
+  it('opens Visit actions for a row, loading the visit from the execution API', async () => {
+    const api = serviceApi(EXECUTION, {
+      override: (request) => (request.method === 'GET' && request.path === '/amc/execution/visits/500' ? ok(EXECUTION_VISIT) : undefined),
+    })
+    renderApp('/amc/service-status')
+
+    await userEvent.click(within(await rowOf('AMC-0100')).getByRole('button', { name: /^Visit actions for AMC-0100/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Update visit' })
+    expect(within(dialog).getByLabelText(/^Status/)).toHaveValue('SCHEDULED')
+    expect(api.find('GET', '/amc/execution/visits/500')).toHaveLength(1)
+  })
+
+  it('offers no visit actions to a user who may only view', async () => {
+    serviceApi(VIEWER)
+    renderApp('/amc/service-status')
+
+    await table()
+    expect(screen.queryByRole('button', { name: /^Visit actions/ })).not.toBeInTheDocument()
+  })
+
+  it('says the cards and the list both follow the scheduled month and year', async () => {
+    serviceApi(ADMIN)
+    renderApp('/amc/service-status')
+
+    const note = await screen.findByRole('note', { name: 'What the figures count' })
+    const period = `${new Date(`${TODAY}T00:00:00`).toLocaleString('en-GB', { month: 'long' })} ${YEAR}`
+    expect(note).toHaveTextContent(`Cards: services scheduled in ${period}, with the filters below except Service Status.`)
+    expect(note).toHaveTextContent(`List: services scheduled in ${period}, with all the filters below.`)
+    expect(screen.getByLabelText('Scheduled month')).toHaveValue(MONTH)
+    expect(screen.getByLabelText('Scheduled year')).toHaveValue(YEAR)
   })
 })

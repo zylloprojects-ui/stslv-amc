@@ -6,7 +6,7 @@ import type { Theme } from '../lib/preferences'
 import { isAdmin } from '../auth/roles'
 import { NAVIGATION, navItemVisible } from './navigation'
 
-type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Master Data Center' | 'Operations' | 'Finance' | 'Administration' | 'settings' | 'logout'
+type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Master Data Center' | 'AMC Operations' | 'Finance' | 'Administration' | 'settings' | 'logout'
 
 const NAV_ICONS: Record<IconKey, ReactNode> = {
   close: <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />,
@@ -43,7 +43,7 @@ const NAV_ICONS: Record<IconKey, ReactNode> = {
       <path d="M4.5 6v6c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5V6M4.5 12v6c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-6" strokeLinecap="round" />
     </>
   ),
-  Operations: (
+  'AMC Operations': (
     <>
       <rect x="3.5" y="7" width="17" height="12.5" rx="2.5" />
       <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3.5 12.5h17" strokeLinecap="round" />

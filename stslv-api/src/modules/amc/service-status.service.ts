@@ -66,7 +66,7 @@ export function serviceStatusSql(f: Pick<Features, "renewals">): string {
 
 // Cancelled and historical visits are left out; so is outstanding work of a
 // cancelled contract (as on the execution list). Completed work always stays.
-const IN_SCOPE = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED') AND (v.status = 'COMPLETED' OR c.status <> 'CANCELLED')";
+export const IN_SCOPE = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED') AND (v.status = 'COMPLETED' OR c.status <> 'CANCELLED')";
 
 function fromSql(f: Features): string {
   return `

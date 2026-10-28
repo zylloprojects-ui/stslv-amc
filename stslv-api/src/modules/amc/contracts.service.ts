@@ -840,6 +840,27 @@ export function updateContract(
   });
 }
 
+/**
+ * A cancelled renewal may be reactivated only while its source has no other
+ * renewal that is not cancelled (the rule of 0072's unique index). The source is
+ * locked first, as when a renewal is created, so two requests cannot both pass.
+ */
+async function assertNoOtherOpenRenewal(db: Queryable, id: string): Promise<void> {
+  const own = await db.query<{ renewed_from_id: string | null }>("SELECT renewed_from_id FROM amc_contracts WHERE id = $1", [id]);
+  const sourceId = own.rows[0]?.renewed_from_id;
+
+  if (!sourceId) return;
+  await db.query("SELECT id FROM amc_contracts WHERE id = $1 FOR UPDATE", [sourceId]);
+  const other = await db.query(
+    "SELECT id FROM amc_contracts WHERE renewed_from_id = $1 AND id <> $2 AND status <> 'CANCELLED' LIMIT 1",
+    [sourceId, id]
+  );
+
+  if (other.rows[0]) {
+    throw conflict("The contract this renews already has another renewal. Cancel that renewal first, or keep this one cancelled.");
+  }
+}
+
 export function changeContractStatus(
   auth: AuthContext,
   id: string,
@@ -859,6 +880,10 @@ export function changeContractStatus(
     }
     if (!CONTRACT_TRANSITIONS[before.status].includes(input.status)) {
       throw conflict(`A ${before.status.toLowerCase()} contract cannot be changed to ${input.status.toLowerCase()}.`);
+    }
+    // Reactivating a cancelled renewal (0072): its source may have been renewed again since.
+    if (before.status === "CANCELLED" && (await schemaHas(["amc_contracts.renewed_from_id"]))) {
+      await assertNoOtherOpenRenewal(client, id);
     }
 
     await client.query("UPDATE amc_contracts SET status = $1, updated_by = $2 WHERE id = $3", [

@@ -155,6 +155,18 @@ async function lockUser(db: Queryable, id: string): Promise<void> {
 
 const isAdmin = (user: User) => user.roles.some((role) => role.code === ADMIN_ROLE_CODE);
 
+const ROLE_REQUIRED_TO_APPROVE = "Assign a role before approving this user.";
+
+/** Whether the user holds at least one active role. An inactive role grants nothing, so it does not count. */
+async function hasActiveRole(db: Queryable, userId: string): Promise<boolean> {
+  const result = await db.query(
+    "SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = $1 AND r.is_active LIMIT 1",
+    [userId]
+  );
+
+  return (result.rowCount ?? 0) > 0;
+}
+
 export async function createUser(auth: AuthContext, input: CreateUserInput): Promise<User> {
   const passwordHash = await hashPassword(input.password);
 
@@ -245,6 +257,11 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
 
     // Activating an account requested from the Sign up page is its approval.
     const approving = isActive && before.approvalStatus === "PENDING";
+
+    // An approval must give access: at least one active role is assigned first.
+    if (approving && !(await hasActiveRole(client, id))) {
+      throw conflict(ROLE_REQUIRED_TO_APPROVE, [{ field: "roleIds", message: ROLE_REQUIRED_TO_APPROVE }]);
+    }
 
     await client.query(
       "UPDATE users SET is_active = $1, approval_status = CASE WHEN $1 THEN 'APPROVED' ELSE approval_status END WHERE id = $2",

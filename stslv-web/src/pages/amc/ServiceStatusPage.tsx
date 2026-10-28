@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
+import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
@@ -13,6 +14,7 @@ import { formatDate, todayIso } from './amcFormat'
 import { Filter, Pager } from './components'
 import { HideColumnsDialog, KpiCustomizeDialog } from './ServiceStatusDialogs'
 import { useHiddenServiceColumns, useKpiLayout, type KpiId } from './serviceStatusPreferences'
+import { VisitActionsDialog } from './VisitActionsDialog'
 import {
   MONTH_NAMES,
   SERVICE_STATUSES,
@@ -128,9 +130,11 @@ interface RowProps {
   canViewContracts: boolean
   reportNumberAvailable: boolean
   onSaved: (item: ServiceStatusItem) => void
+  /** Opens Visit actions (start, postpone, cancel, work notes); absent without the execution permissions. */
+  onActions?: (() => void) | undefined
 }
 
-function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts, reportNumberAvailable, onSaved }: RowProps) {
+function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts, reportNumberAvailable, onSaved, onActions }: RowProps) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(item))
   const [base, setBase] = useState(item.updatedAt)
   const [problem, setProblem] = useState<string | null>(null)
@@ -278,9 +282,23 @@ function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts,
       )}
       {canSave && (
         <td className={cx(TABLE.td, 'min-w-32 whitespace-nowrap text-right')}>
-          <Button size="sm" disabled={!dirty} loading={mutation.isPending} aria-label={`Save ${label}`} onClick={save}>
-            Save
-          </Button>
+          <span className="inline-flex gap-1.5">
+            <Button size="sm" disabled={!dirty} loading={mutation.isPending} aria-label={`Save ${label}`} onClick={save}>
+              Save
+            </Button>
+            {onActions && (
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={dirty || mutation.isPending}
+                title={dirty ? 'Save or undo the changes in this row first.' : 'Start, postpone or cancel this visit, or record work notes.'}
+                aria-label={`Visit actions for ${label}`}
+                onClick={onActions}
+              >
+                Actions
+              </Button>
+            )}
+          </span>
           <div aria-live="polite" className="mt-1 max-w-48 whitespace-normal text-left text-xs">
             {problem && (
               <span role="alert" className="text-red-700">
@@ -297,7 +315,7 @@ function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts,
 }
 
 // --- Page -------------------------------------------------------------------------
-type Dialog = 'none' | 'kpis' | 'columns'
+type Dialog = 'none' | 'kpis' | 'columns' | { visitId: string }
 
 interface Filters {
   clientId: string
@@ -340,6 +358,8 @@ export function ServiceStatusPage() {
 
   const canSave = auth.can('AMC_EXECUTION', 'EDIT')
   const canReopen = auth.can('AMC_EXECUTION', 'APPROVE')
+  // Visit actions read the visit from the execution API, so they also need its view permission.
+  const canAct = canSave && auth.can('AMC_EXECUTION', 'VIEW')
   const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
 
@@ -428,6 +448,10 @@ export function ServiceStatusPage() {
             )
           })}
         </div>
+        <KpiScopeNote
+          cards={`services scheduled in ${period === 'All dates' ? 'any month (all dates)' : period}, with the filters below except Service Status.`}
+          rows={`services scheduled in ${period === 'All dates' ? 'any month (all dates)' : period}, with all the filters below. Overdue services are marked in the Due Date column.`}
+        />
       </section>
 
       <Card>
@@ -512,7 +536,7 @@ export function ServiceStatusPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Month">
+            <Filter label="Scheduled month">
               {(id, className) => (
                 <select id={id} value={filters.month} onChange={(event) => change('month')(event.target.value)} className={className}>
                   <option value="">All months</option>
@@ -524,7 +548,7 @@ export function ServiceStatusPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Year">
+            <Filter label="Scheduled year">
               {(id, className) => (
                 <select id={id} value={filters.year} onChange={(event) => change('year')(event.target.value)} className={className}>
                   <option value="">All years</option>
@@ -644,6 +668,7 @@ export function ServiceStatusPage() {
                       canViewContracts={canViewContracts}
                       reportNumberAvailable={reportNumberAvailable}
                       onSaved={onSaved}
+                      onActions={canAct ? () => setDialog({ visitId: item.id }) : undefined}
                     />
                   ))}
                 </tbody>
@@ -667,6 +692,10 @@ export function ServiceStatusPage() {
           }}
           onClose={() => setDialog('none')}
         />
+      )}
+
+      {typeof dialog === 'object' && (
+        <VisitActionsDialog visitId={dialog.visitId} canReopen={canReopen} onClose={() => setDialog('none')} onSaved={() => setDialog('none')} />
       )}
 
       {dialog === 'columns' && <HideColumnsDialog options={[...COLUMNS]} hidden={hidden} onChange={setHidden} onClose={() => setDialog('none')} />}

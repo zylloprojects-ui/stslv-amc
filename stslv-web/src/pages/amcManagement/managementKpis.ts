@@ -9,23 +9,25 @@ import type { AmcManagementSummary } from './managementTypes'
 // returned; none is calculated here. A card whose figure the API left out (no
 // permission) is not shown.
 
-export interface ManagementKpi {
+export interface ManagementKpi<T = AmcManagementSummary> {
   id: string
   /** The standard name. A user may show a different name; the meaning stays this one. */
   label: string
   icon: IconName
   /** Mirrors the API's permission check, so the right cards show while loading. The API decides. */
   visible: (canView: (module: Module) => boolean) => boolean
-  read: (data: AmcManagementSummary) => KpiReading | null
+  read: (data: T) => KpiReading | null
   link?: { to: string; label: string; module: Module }
 }
 
-export interface KpiGroupDefinition {
-  id: 'contracts' | 'schedule' | 'invoices'
+/** A group of KPI cards. T is the API answer its cards read; AMC Management's by default. */
+export interface KpiGroupDefinition<T = AmcManagementSummary> {
+  /** Also names the group's saved names and order in the browser. */
+  id: string
   title: string
   description: string
   visible: (canView: (module: Module) => boolean) => boolean
-  kpis: ManagementKpi[]
+  kpis: ManagementKpi<T>[]
 }
 
 const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`
