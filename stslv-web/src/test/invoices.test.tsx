@@ -553,3 +553,34 @@ describe('invoice reports', () => {
     expect(screen.queryByRole('group', { name: 'Export pending invoices' })).not.toBeInTheDocument()
   })
 })
+
+describe('opening Invoice Tracking from another page for one visit', () => {
+  it('opens the form with the visit ticked and nothing else filled in', async () => {
+    const api = invoicesApi(INVOICING)
+    renderApp('/invoices?recordForVisit=50')
+
+    const dialog = await screen.findByRole('dialog', { name: 'Record Invoice' })
+    expect(within(dialog).getByText('Test Hotel')).toBeInTheDocument()
+    expect(await within(dialog).findByRole('checkbox', { name: /AMC FIRE · visit 2/ })).toBeChecked()
+    expect(within(dialog).getByLabelText(/^Allocation for AMC FIRE/)).toHaveValue('')
+    expect(within(dialog).getByLabelText(/^VAT amount/)).toHaveValue('')
+    expect(api.find('POST', '/invoices')).toHaveLength(0)
+
+  })
+
+  it('explains, without opening the form, when the visit is not waiting for an invoice', async () => {
+    invoicesApi(INVOICING)
+    renderApp('/invoices?recordForVisit=999')
+
+    expect(await screen.findByText(/That service is not waiting for an invoice, so the form was not opened/)).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Record Invoice' })).not.toBeInTheDocument()
+  })
+
+  it('does not open the form for a user who may not record invoices', async () => {
+    invoicesApi(VIEWER)
+    renderApp('/invoices?recordForVisit=50')
+
+    expect(await screen.findByText('Recording an invoice needs the Invoices create permission.')).toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Record Invoice' })).not.toBeInTheDocument()
+  })
+})

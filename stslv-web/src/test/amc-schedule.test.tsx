@@ -100,7 +100,7 @@ describe('schedule', () => {
     expect(api.find('GET', '/amc/visits').at(-1)?.query.has('from')).toBe(false)
 
     // A month can also be picked directly.
-    fireEvent.change(screen.getByLabelText('Month'), { target: { value: '2027-02' } })
+    fireEvent.change(screen.getByLabelText('Scheduled month'), { target: { value: '2027-02' } })
     expect(await screen.findByText('No visits in February 2027')).toBeInTheDocument()
     expect(api.find('GET', '/amc/visits').at(-1)?.query.get('to')).toBe('2027-02-28')
   })

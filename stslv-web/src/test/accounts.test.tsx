@@ -230,8 +230,8 @@ describe('Accounts page', () => {
     await userEvent.type(screen.getByLabelText('Search'), 'sr-14')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
-    await userEvent.selectOptions(screen.getByLabelText('Month'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Year'), '2026')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Invoice Status'), 'NOT_RECORDED')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
     // Nothing is requested until Apply.
@@ -356,6 +356,8 @@ describe('Accounts page', () => {
     // Only a completed service without an invoice offers recording one; it opens Invoice Tracking and saves nothing here.
     expect(within(rowOf('AMC-0007')).queryByRole('link', { name: /Record an invoice/ })).not.toBeInTheDocument()
     expect(within(rowOf('AMC-0009')).queryByRole('link', { name: /Record an invoice/ })).not.toBeInTheDocument()
+    // The link names the visit, so Invoice Tracking opens its form with that visit ticked.
+    expect(within(rowOf('AMC-0008')).getByRole('link', { name: 'Record an invoice for AMC-0008 in Invoice Tracking' })).toHaveAttribute('href', `/invoices?recordForVisit=${BLUE.id}`)
     await userEvent.click(within(rowOf('AMC-0008')).getByRole('link', { name: 'Record an invoice for AMC-0008 in Invoice Tracking' }))
     expect(await screen.findByRole('heading', { name: 'Invoice Tracking stand-in' })).toBeInTheDocument()
   })

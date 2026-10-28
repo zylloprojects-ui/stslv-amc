@@ -2,9 +2,11 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
+import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
@@ -296,6 +298,9 @@ export function ServicesSalesPage() {
           />
         ))}
       </div>
+      <div className="-mt-3 mb-4">
+        <KpiScopeNote cards={`${scheduledPeriod(month, year)}, with every filter applied.`} rows={`the same ${scheduledPeriod(month, year)}, with every filter applied.`} />
+      </div>
 
       {data && data.kpis.quotationBeforeCompletion > 0 && (
         <div className="mb-4">
@@ -382,7 +387,7 @@ export function ServicesSalesPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Month">
+            <Filter label="Scheduled month">
               {(id, className) => (
                 <select id={id} value={month} onChange={(event) => change(setMonth)(event.target.value)} className={className}>
                   <option value="">All months</option>
@@ -394,7 +399,7 @@ export function ServicesSalesPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Year">
+            <Filter label="Scheduled year">
               {(id, className) => (
                 <select id={id} value={year} onChange={(event) => change(setYear)(event.target.value)} className={className}>
                   <option value="">All years</option>

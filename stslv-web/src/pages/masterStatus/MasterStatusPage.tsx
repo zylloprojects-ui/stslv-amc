@@ -3,9 +3,11 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
+import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, Modal, PageHeader, Spinner } from '../../components/ui'
+import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
@@ -248,6 +250,9 @@ export function MasterStatusPage() {
         ))}
         <ValueTile kpis={data?.kpis} />
       </div>
+      <div className="-mt-3 mb-4">
+        <KpiScopeNote cards={`${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} rows={`the same ${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} />
+      </div>
 
       <Card>
         <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
@@ -293,7 +298,7 @@ export function MasterStatusPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Month">
+            <Filter label="Scheduled month">
               {(id, className) => (
                 <select id={id} value={draft.month} onChange={(event) => set('month')(event.target.value)} className={className}>
                   <option value="">All months</option>
@@ -305,7 +310,7 @@ export function MasterStatusPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Year">
+            <Filter label="Scheduled year">
               {(id, className) => (
                 <select id={id} value={draft.year} onChange={(event) => set('year')(event.target.value)} className={className}>
                   <option value="">All years</option>
@@ -376,7 +381,9 @@ export function MasterStatusPage() {
 
         {data && data.items.length > 0 && (
           <>
-            <div className={cx(TABLE.wrapper, 'master-status-table')}>
+            {/* relative: the cells' screen-reader-only labels are positioned absolutely; without a positioned
+                scroll container they escape it and widen the whole page on a phone instead of scrolling with the table. */}
+            <div className={cx(TABLE.wrapper, 'master-status-table relative')}>
               <table className={TABLE.table}>
                 <caption className="sr-only">Master AMC Status</caption>
                 <thead>

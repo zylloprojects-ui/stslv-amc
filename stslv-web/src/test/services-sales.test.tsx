@@ -216,8 +216,8 @@ describe('Services Sales page', () => {
     await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
     await userEvent.selectOptions(screen.getByLabelText('System'), '3')
     await userEvent.selectOptions(screen.getByLabelText('Maintenance Frequency'), 'HALF_YEARLY')
-    await userEvent.selectOptions(screen.getByLabelText('Month'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Year'), '2026')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
 
     const expected = { search: 'alpha', clientId: '10', salesEngineerId: '4', systemTypeId: '3', frequency: 'HALF_YEARLY', month: '10', year: '2026', serviceStatus: 'COMPLETED' }

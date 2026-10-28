@@ -186,8 +186,8 @@ describe('Master AMC Status page', () => {
     await userEvent.type(screen.getByLabelText('Search'), 'inv-3')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
-    await userEvent.selectOptions(screen.getByLabelText('Month'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Year'), '2026')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
+    await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
     await userEvent.selectOptions(screen.getByLabelText('Row Colour'), 'GREEN')
     // Nothing is requested until Apply.

@@ -53,6 +53,12 @@ const ICONS = {
   archive: <path d="M4 5.5h16v4H4zM5.5 9.5V19h13V9.5M10 13h4" strokeLinecap="round" strokeLinejoin="round" />,
   approve: <path d="m5 12.5 4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" />,
   reject: <path d="m6 6 12 12M18 6 6 18" strokeLinecap="round" />,
+  visitActions: (
+    <>
+      <path d="M8.5 4.5H6a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1h-2.5" strokeLinejoin="round" />
+      <path d="M9 3.5h6v2.5H9zM9 13l2.2 2.2L15.5 11" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
 } as const
 
 export type ActionIconName = keyof typeof ICONS

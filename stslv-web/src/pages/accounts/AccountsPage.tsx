@@ -3,9 +3,11 @@ import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
+import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, Modal, PageHeader, Spinner } from '../../components/ui'
+import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
@@ -353,6 +355,9 @@ export function AccountsPage() {
 
       {/* Keyed by user: the saved names and order are read when the cards mount, so a change of user reads them again. */}
       <KpiCards key={userId} userId={userId} kpis={data?.kpis} />
+      <div className="-mt-3 mb-4">
+        <KpiScopeNote cards={`${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} rows={`the same ${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} />
+      </div>
 
       <Card>
         <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
@@ -405,7 +410,7 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Month">
+            <Filter label="Scheduled month">
               {(id, className) => (
                 <select id={id} value={draft.month} onChange={(event) => set('month')(event.target.value)} className={className}>
                   <option value="">All months</option>
@@ -417,7 +422,7 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Year">
+            <Filter label="Scheduled year">
               {(id, className) => (
                 <select id={id} value={draft.year} onChange={(event) => set('year')(event.target.value)} className={className}>
                   <option value="">All years</option>
@@ -636,8 +641,8 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
         <span className="inline-flex gap-2">
           {item.colour === 'BLUE' && canRecordInvoice && (
-            // Invoices are recorded, with their date and amounts, only in Invoice Tracking.
-            <Link to="/invoices" aria-label={`Record an invoice for ${item.reference} in Invoice Tracking`} className={ACTION_LINK}>
+            // Invoices are recorded, with their date and amounts, only in Invoice Tracking; it opens with this visit ticked.
+            <Link to={`/invoices?recordForVisit=${item.id}`} aria-label={`Record an invoice for ${item.reference} in Invoice Tracking`} className={ACTION_LINK}>
               Record invoice
             </Link>
           )}
