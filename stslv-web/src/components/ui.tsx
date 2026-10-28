@@ -269,6 +269,23 @@ export function PageHeader({ title, description, actions }: { title: string; des
   )
 }
 
+/** A text button for the page banner: a glass outline on the blue banner. A danger action carries a small red dot. */
+export function BannerButton({ danger = false, className, children, type = 'button', ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { danger?: boolean }) {
+  return (
+    <button
+      type={type}
+      className={cx(
+        'bn-chip inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition-all hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-60',
+        className,
+      )}
+      {...rest}
+    >
+      {danger && <span className="h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-red-500/30" aria-hidden="true" />}
+      {children}
+    </button>
+  )
+}
+
 export function Card({ children, className }: { children: ReactNode; className?: string }) {
   return <div className={cx('surface overflow-hidden rounded-xl', className)}>{children}</div>
 }

@@ -1010,3 +1010,24 @@ html:not(.dark) .table-scroll th:last-child {
   .loader-petal, .loader-turn, .loader-ripple, .skeleton { animation: none; }
   .loader-petal { opacity: 1; }
 }
+
+/* A framed box with a clear border that lights up in the brand blue on hover. */
+.frame-hover {
+  border-width: 1.5px;
+  transition: border-color 0.2s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+html:not(.dark) .frame-hover { border-color: #a9bdd4; }
+html:not(.dark) .frame-hover:hover,
+.dark .frame-hover:hover {
+  border-color: #1479BD;
+  box-shadow: 0 0 0 3px rgba(20, 121, 189, 0.16), 0 16px 32px -14px rgba(20, 121, 189, 0.45);
+}
+
+/* Date and time fields open their picker from a click anywhere on them (see lib/pickerOnClick.ts). */
+input[type="date"],
+input[type="month"],
+input[type="week"],
+input[type="time"],
+input[type="datetime-local"] {
+  cursor: pointer;
+}

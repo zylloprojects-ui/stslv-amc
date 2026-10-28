@@ -423,10 +423,18 @@ export function ServicesSalesPage() {
                 </select>
               )}
             </Filter>
-            <div className="flex items-end">
-              <Button variant="secondary" disabled={!filtered} onClick={resetFilters}>
+            <div className="flex items-stretch">
+              <button
+                type="button"
+                disabled={!filtered}
+                onClick={resetFilters}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl border-[1.5px] border-[#1479BD] bg-white px-5 text-sm font-bold text-[#0b3b66] shadow-sm transition-all hover:-translate-y-px hover:bg-[#1479BD] hover:text-white hover:shadow-md disabled:cursor-not-allowed disabled:border-slate-300 disabled:bg-slate-50 disabled:text-slate-400 disabled:shadow-none disabled:hover:translate-y-0 disabled:hover:bg-slate-50 disabled:hover:text-slate-400"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
                 Reset Filters
-              </Button>
+              </button>
             </div>
           </div>
         </div>
