@@ -69,11 +69,16 @@ interface ContractFormModalProps {
    * form starts from its details (not its validity); the source stays unchanged.
    */
   renewalOf?: Contract
+  /**
+   * The new contract is always added as a draft, with no status to choose: on
+   * AMC Renewal a renewal waits for client approval and is activated from there.
+   */
+  draftOnly?: boolean
   onClose: () => void
   onSaved: (contract: SavedContract) => void
 }
 
-export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: ContractFormModalProps) {
+export function ContractFormModal({ contract, renewalOf, draftOnly = false, onClose, onSaved }: ContractFormModalProps) {
   // The details a new contract starts from: the contract being edited, or the one being renewed (without its validity).
   const start = contract ?? renewalOf ?? null
   const queryClient = useQueryClient()
@@ -109,7 +114,7 @@ export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: Con
       description: start?.description ?? '',
       notes: contract?.notes ?? '',
       // A renewal starts as a draft, so nothing is scheduled until it is activated.
-      status: renewalOf ? 'DRAFT' : 'ACTIVE',
+      status: renewalOf || draftOnly ? 'DRAFT' : 'ACTIVE',
     },
   })
 
@@ -446,7 +451,12 @@ export function ContractFormModal({ contract, renewalOf, onClose, onSaved }: Con
           <TextAreaField label="Description" rows={2} error={errors.description?.message} {...register('description')} />
           <TextAreaField label="Notes" rows={2} error={errors.notes?.message} {...register('notes')} />
 
-          {!contract && (
+          {!contract && draftOnly && (
+            <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-slate-700">
+              Saved as a draft, under client approval. It has no schedule until it is approved, which activates it.
+            </p>
+          )}
+          {!contract && !draftOnly && (
             <SelectField
               label="Status"
               required

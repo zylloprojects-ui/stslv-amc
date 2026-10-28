@@ -101,6 +101,7 @@ const PAGES: { prefix: string; meta: PageMeta }[] = [
   { prefix: '/dashboard', meta: { icon: ICON.dashboard, from: '#1B8AD3', to: '#5BAF48', description: 'Operational figures across AMC and projects' } },
   { prefix: '/clients', meta: { icon: ICON.users, from: '#1B8AD3', to: '#00A6C8', description: 'Master Data Center · Client records used by AMC contracts and projects' } },
   { prefix: '/amc/management', meta: { icon: ICON.contract, from: '#1479BD', to: '#00A6C8', description: 'Contract master and automatic schedule control center' } },
+  { prefix: '/amc/renewal', meta: { icon: ICON.contract, from: '#F5C622', to: '#1479BD', description: 'Renewal queue · Client approval · Renewal history' } },
   { prefix: '/amc/contracts', meta: { icon: ICON.contract, from: '#00A6C8', to: '#5BAF48', description: 'Contracts · Validity · Maintenance frequency · Cost per visit' } },
   { prefix: '/amc/schedule', meta: { icon: ICON.calendar, from: '#1B8AD3', to: '#F5C622', description: 'Scheduled maintenance visits generated from each contract' } },
   { prefix: '/amc/master-status', meta: { icon: ICON.calendar, from: '#dc2626', to: '#5BAF48', description: 'One row per scheduled service · Completion · Invoice · Quotation' } },
