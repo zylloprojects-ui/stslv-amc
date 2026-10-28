@@ -14,6 +14,7 @@ import { AmcSchedulePage } from './pages/amc/AmcSchedulePage'
 import { ContractDetailPage } from './pages/amc/ContractDetailPage'
 import { ServiceStatusPage } from './pages/amc/ServiceStatusPage'
 import { ServicesSalesPage } from './pages/servicesSales/ServicesSalesPage'
+import { AmcManagementPage } from './pages/amcManagement/AmcManagementPage'
 import { MasterStatusPage } from './pages/masterStatus/MasterStatusPage'
 import { AuditLogPage } from './pages/admin/AuditLogPage'
 import { LoginHistoryPage } from './pages/admin/LoginHistoryPage'
@@ -151,6 +152,14 @@ export function AppRoutes() {
             element={
               <RequirePermission module="SETTINGS">
                 <SalesEngineerDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/amc/management"
+            element={
+              <RequirePermission module="AMC_CONTRACTS">
+                <AmcManagementPage />
               </RequirePermission>
             }
           />

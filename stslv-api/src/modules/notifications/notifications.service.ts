@@ -1,15 +1,18 @@
 import { pool } from "../../config/database";
 import { notFound } from "../../shared/errors";
 import { displayMoney } from "../../shared/export/report";
+import { getExpiryFigures, type ExpiryBand } from "../amc/management.service";
 import { getAmcSummary } from "../amc/summary.service";
 import type { AuthContext } from "../auth/access";
 import { getInvoiceSummary } from "../invoices/invoices.service";
 
 // In-app alerts. Every alert is a figure the application already defines and
-// shows elsewhere (the AMC and Invoice Tracking summaries), worked out on
-// request for the signed-in user's permissions. No threshold is introduced
-// here. Expiry warnings ahead of the end date wait for the business to confirm
-// its warning periods.
+// shows elsewhere (the AMC, AMC Management and Invoice Tracking summaries),
+// worked out on request for the signed-in user's permissions. Expiry warnings
+// use the AMC Management bands (90, 60, 45, 30 and 15 days before the end of
+// validity) and count only contracts with no renewal that is not cancelled.
+// Read state is per user (notification_reads); marking an alert read never
+// hides it, from this user or anyone else.
 
 export interface Alert {
   key: string;
@@ -21,6 +24,8 @@ export interface Alert {
   count: number;
   isRead: boolean;
   readAt: string | null;
+  /** The renewal warning: always listed while it applies, whatever other alerts were read. */
+  pinned: boolean;
 }
 
 interface Candidate {
@@ -32,7 +37,11 @@ interface Candidate {
   count: number;
   /** Changes whenever the alert's state changes, so a read alert shows again. */
   fingerprint: string;
+  pinned?: boolean;
 }
+
+// Alert keys cannot hold digits (notification_reads.alert_key_ck), so the bands are named in words.
+const BAND_KEYS: Record<ExpiryBand, string> = { 90: "ninety", 60: "sixty", 45: "forty_five", 30: "thirty", 15: "fifteen" };
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
 
@@ -60,11 +69,44 @@ async function candidates(auth: AuthContext): Promise<Candidate[]> {
       severity: "warning",
       title: "Active contracts past their validity",
       message: `${plural(amc.contracts.activePastValidity, "contract has", "contracts have")} passed the end of validity and ${amc.contracts.activePastValidity === 1 ? "is" : "are"} still marked Active.`,
-      link: "/reports",
+      link: "/amc/management",
       count: amc.contracts.activePastValidity,
       fingerprint: String(amc.contracts.activePastValidity),
     });
   }
+  if (auth.permissions.has("AMC_CONTRACTS:VIEW")) {
+    const expiry = await getExpiryFigures();
+
+    if (expiry.renewalWarning.count > 0) {
+      const count = expiry.renewalWarning.count;
+
+      list.push({
+        key: "contracts.renewal_warning",
+        severity: "warning",
+        title: `Renewal due: contracts ending within ${expiry.renewalWarning.days} days`,
+        message: `${plural(count, "active contract ends", "active contracts end")} within ${expiry.renewalWarning.days} days and ${count === 1 ? "has" : "have"} not been renewed.`,
+        link: "/amc/management",
+        count,
+        fingerprint: expiry.renewalWarning.ids.join(","),
+        pinned: true,
+      });
+    }
+
+    for (const band of expiry.bands) {
+      if (band.notRenewed === 0) continue;
+
+      list.push({
+        key: `contracts.expiry.${BAND_KEYS[band.days]}`,
+        severity: band.days <= 30 ? "warning" : "info",
+        title: `Contracts expiring in ${band.fromDays}–${band.days} days`,
+        message: `${plural(band.notRenewed, "active contract ends", "active contracts end")} in ${band.fromDays} to ${band.days} days and ${band.notRenewed === 1 ? "has" : "have"} not been renewed.`,
+        link: "/amc/management",
+        count: band.notRenewed,
+        fingerprint: band.notRenewedIds.join(","),
+      });
+    }
+  }
+
   if (amc?.invoicing && amc.invoicing.readyForInvoice.count > 0) {
     list.push({
       key: "invoicing.amc_ready",
@@ -120,6 +162,7 @@ export async function listAlerts(auth: AuthContext) {
       count: candidate.count,
       isRead,
       readAt: isRead && mark ? mark.readAt.toISOString() : null,
+      pinned: candidate.pinned === true,
     };
   });
 

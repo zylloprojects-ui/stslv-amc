@@ -101,3 +101,26 @@ describe('Notifications page', () => {
     expect(await screen.findByText(/migration 0073/)).toBeInTheDocument()
   })
 })
+
+describe('renewal warning', () => {
+  it('stays listed after it is read and says so', async () => {
+    const warning = {
+      key: 'contracts.renewal_warning',
+      severity: 'warning' as const,
+      title: 'Renewal due: contracts ending within 45 days',
+      message: '2 active contracts end within 45 days and have not been renewed.',
+      link: '/amc/management',
+      count: 2,
+      isRead: true,
+      readAt: '2026-10-28T08:00:00.000Z',
+      pinned: true,
+    }
+    alertsApi((request) => (request.method === 'GET' && request.path === '/notifications' ? ok({ items: [warning], unreadCount: 0 }) : undefined))
+    renderApp('/notifications')
+
+    const item = (await screen.findByText('Renewal due: contracts ending within 45 days')).closest('li') as HTMLElement
+    expect(within(item).getByText('Stays visible until renewed')).toBeInTheDocument()
+    expect(within(item).getByRole('link', { name: 'Open' })).toHaveAttribute('href', '/amc/management')
+    expect(within(item).queryByRole('button', { name: /Mark/ })).not.toBeInTheDocument()
+  })
+})

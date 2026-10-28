@@ -42,7 +42,7 @@ describe("GET /api/notifications", () => {
     const items = response.body.data.items as Record<string, unknown>[];
     expect(items.map((item) => item.key)).toEqual(["visits.overdue", "contracts.past_validity", "invoicing.amc_ready"]);
     expect(items[0]).toMatchObject({ severity: "warning", count: 3, isRead: false, readAt: null, link: "/amc/schedule" });
-    expect(items[1]).toMatchObject({ count: 1, link: "/reports" });
+    expect(items[1]).toMatchObject({ count: 1, link: "/amc/management" });
     expect(items[2]).toMatchObject({ count: 1, link: "/invoices", message: "1 completed visit is waiting for an invoice (visit amounts 405.000)." });
     expect(response.body.data.unreadCount).toBe(3);
   });

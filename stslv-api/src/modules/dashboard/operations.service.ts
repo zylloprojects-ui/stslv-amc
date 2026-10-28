@@ -121,7 +121,7 @@ export function percentOf(count: number, total: number): string | null {
   return `${Math.floor(tenths / 10)}.${tenths % 10}`;
 }
 
-async function contractKpis(renewals: boolean): Promise<NonNullable<OperationsKpis["contracts"]>> {
+export async function contractKpis(renewals: boolean): Promise<NonNullable<OperationsKpis["contracts"]>> {
   const renewalCount = renewals
     ? `count(*) FILTER (WHERE c.valid_to BETWEEN current_date AND current_date + $1::int
          AND EXISTS (SELECT 1 FROM amc_contracts r WHERE r.renewed_from_id = c.id AND r.status <> 'CANCELLED'))::int`
@@ -178,7 +178,7 @@ async function portfolio(): Promise<NonNullable<OperationsDashboard["portfolio"]
   };
 }
 
-async function expiring(renewals: boolean): Promise<NonNullable<OperationsDashboard["expiring"]>> {
+export async function expiring(renewals: boolean): Promise<NonNullable<OperationsDashboard["expiring"]>> {
   // Same contract dates as the KPI, a wider window. Active contracts already past
   // validity are listed first: they are the most urgent and are still marked Active.
   const window = "c.status = 'ACTIVE' AND c.valid_to <= current_date + $1::int";
@@ -230,7 +230,7 @@ async function expiring(renewals: boolean): Promise<NonNullable<OperationsDashbo
 
 // The visits the dashboard counts: dated (not historical), not cancelled, on a contract that is not cancelled.
 // The same rule as the workload report, so "Services This Month" equals the workload chart's first bar.
-const COUNTED_VISIT = `v.status NOT IN ('CANCELLED', 'HISTORICAL')
+export const COUNTED_VISIT = `v.status NOT IN ('CANCELLED', 'HISTORICAL')
   AND EXISTS (SELECT 1 FROM amc_contracts cc WHERE cc.id = v.amc_contract_id AND cc.status <> 'CANCELLED')`;
 
 const UPCOMING_DAYS = 7;

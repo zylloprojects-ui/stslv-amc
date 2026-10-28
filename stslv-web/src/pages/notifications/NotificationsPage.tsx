@@ -60,6 +60,7 @@ export function NotificationsPage() {
                     {!item.isRead && <span className="inline-block h-2 w-2 rounded-full bg-[#1479BD]" aria-hidden="true" />}
                     {item.title}
                     <Badge tone={item.severity === 'warning' ? 'amber' : 'blue'}>{item.severity === 'warning' ? 'Needs attention' : 'For information'}</Badge>
+                    {item.pinned && <Badge tone="slate">Stays visible until renewed</Badge>}
                     <span className="sr-only">{item.isRead ? '(read)' : '(unread)'}</span>
                   </p>
                   <p className="mt-1 text-sm text-slate-700">{item.message}</p>

@@ -9,6 +9,8 @@ export interface AppAlert {
   count: number
   isRead: boolean
   readAt: string | null
+  /** The renewal warning: listed for as long as it applies, read or not. Absent from an older API. */
+  pinned?: boolean
 }
 
 export interface AlertList {

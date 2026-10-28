@@ -38,6 +38,7 @@ import {
   updateContract,
 } from "./contracts.service";
 import { getContractMasters, setContractMasters } from "./contract-masters.service";
+import { getAmcManagementSummary } from "./management.service";
 import { buildMasterStatusExport } from "./master-status.export";
 import { exportMasterStatusSchema, listMasterStatusSchema } from "./master-status.schemas";
 import { getMasterStatusOptions, listMasterStatus } from "./master-status.service";
@@ -72,6 +73,14 @@ amcRouter.get("/summary", async (req, res) => {
   }
 
   res.json({ success: true, data: await getAmcSummary(auth, summarySchema.parse(req.query).upcomingDays) });
+});
+
+// --- AMC Management (read-only) ---------------------------------------------
+// The AMC Management page: contract, schedule, invoice and expiry figures in one
+// request. Contract view is required; schedule and invoice sections are filled
+// only for users holding those view permissions.
+amcRouter.get("/management/summary", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getAmcManagementSummary(requireAuth(req)) });
 });
 
 // --- Reports (read-only) ------------------------------------------------------
