@@ -24,6 +24,7 @@ import {
   updateContractSchema,
   updateExecutionSchema,
   updateVisitSchema,
+  visitYearSummarySchema,
   workloadSchema,
 } from "./amc.schemas";
 import {
@@ -47,6 +48,7 @@ import { canViewSummary, getAmcSummary } from "./summary.service";
 import {
   getExecutionVisit,
   getScheduleVisit,
+  getVisitYearSummary,
   listExecutionVisits,
   listVisits,
   updateExecution,
@@ -181,6 +183,11 @@ amcRouter.get("/visits/export", authorize("AMC_SCHEDULE", "VIEW"), authorize("AM
   const { report, recordExport } = await buildScheduleExport(requireAuth(req), query);
 
   await sendExport(res, report, query.format, recordExport);
+});
+
+// The Monthly Calendar's year: counts and amounts per month, with the schedule's filters. Read-only.
+amcRouter.get("/visits/year-summary", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getVisitYearSummary(visitYearSummarySchema.parse(req.query)) });
 });
 
 amcRouter.get("/visits/:id", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {

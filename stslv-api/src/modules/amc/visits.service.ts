@@ -1,7 +1,9 @@
 import { pool } from "../../config/database";
+import { featureUnavailable } from "../../middleware/require-schema";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
+import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { assertVisitNotInvoiced } from "../invoices/invoice-locks";
@@ -11,6 +13,7 @@ import type {
   ListVisitsQuery,
   UpdateExecutionInput,
   UpdateVisitInput,
+  VisitYearSummaryQuery,
 } from "./amc.schemas";
 
 interface VisitRow {
@@ -87,6 +90,20 @@ export interface ScheduleVisit extends ExecutionVisit {
 }
 
 const OVERDUE_SQL = "(v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < current_date)";
+
+/**
+ * The billing status of BILLING_STATUSES, from the visit status and the
+ * eligibility of v_amc_visit_billing (one row per visit, whatever the number of
+ * invoices allocated to it). Null for a historical visit.
+ */
+const BILLING_STATUS_SQL = `CASE
+    WHEN v.status = 'HISTORICAL' THEN NULL
+    WHEN v.status = 'CANCELLED' THEN 'CANCELLED'
+    WHEN b.invoice_eligibility = 'INVOICED' THEN 'INVOICED'
+    WHEN b.invoice_eligibility IN ('READY_FOR_INVOICE', 'AMOUNT_REQUIRED') THEN 'NOT_YET_INVOICED'
+    WHEN b.invoice_eligibility = 'NO_INVOICE_REQUIRED' THEN 'NO_INVOICE_REQUIRED'
+    ELSE 'NOT_COMPLETED'
+  END`;
 
 const VISIT_SELECT = `
   SELECT v.id, v.amc_contract_id, c.status AS contract_status, c.system_description, c.maintenance_frequency,
@@ -230,6 +247,18 @@ function visitFilter(query: VisitFilters): { where: string; params: unknown[] } 
     params.push(query.invoiceEligibility);
     conditions.push(`b.invoice_eligibility = $${params.length}`);
   }
+  if (query.salesEngineerId) {
+    params.push(query.salesEngineerId);
+    conditions.push(`c.sales_engineer_id = $${params.length}`);
+  }
+  if (query.frequency) {
+    params.push(query.frequency);
+    conditions.push(`c.maintenance_frequency = $${params.length}`);
+  }
+  if (query.billingStatus) {
+    params.push(query.billingStatus);
+    conditions.push(`(${BILLING_STATUS_SQL}) = $${params.length}`);
+  }
   if (query.overdue) {
     conditions.push(query.overdue === "true" ? OVERDUE_SQL : `NOT ${OVERDUE_SQL}`);
   }
@@ -238,6 +267,13 @@ function visitFilter(query: VisitFilters): { where: string; params: unknown[] } 
   }
 
   return { where: conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "", params };
+}
+
+/** The Sales Engineer filter needs the contract link of migration 0070; without it the request answers 503, not 500. */
+async function assertFiltersAvailable(query: VisitFilters): Promise<void> {
+  if (query.salesEngineerId && !(await schemaHas(["amc_contracts.sales_engineer_id"]))) {
+    throw featureUnavailable();
+  }
 }
 
 const VISIT_ORDER = "ORDER BY v.scheduled_date, lower(cl.name), v.id";
@@ -263,6 +299,7 @@ async function visitTotals(where: string, params: unknown[]) {
 }
 
 export async function listVisits(query: ListVisitsQuery) {
+  await assertFiltersAvailable(query);
   const { where, params } = visitFilter(query);
   const { total, totals } = await visitTotals(where, params);
   const rows = await pool.query<VisitRow>(
@@ -281,6 +318,7 @@ export async function listVisits(query: ListVisitsQuery) {
  * throws when that is more than the export can hold.
  */
 export async function listAllVisits(filters: VisitFilters, checkSize: (count: number) => void) {
+  await assertFiltersAvailable(filters);
   const { where, params } = visitFilter(filters);
   const { total, totals } = await visitTotals(where, params);
 
@@ -289,6 +327,160 @@ export async function listAllVisits(filters: VisitFilters, checkSize: (count: nu
   const rows = await pool.query<VisitRow>(`${VISIT_SELECT} ${VISIT_FROM} ${where} ${VISIT_ORDER}`, params);
 
   return { items: rows.rows.map(toScheduleVisit), total, totals };
+}
+
+// ---------------------------------------------------------------------------
+// Monthly Calendar: a year at a glance
+// ---------------------------------------------------------------------------
+
+/**
+ * The figures of one month, or of the whole year. Every count is a number of
+ * visits; amounts are visit_amount, as text with three decimals.
+ *
+ *   services = scheduled + inProgress + postponed + completed (cancelled visits are not services)
+ *   completed = invoiced + notYetInvoiced + noInvoiceRequired
+ *   notCompleted = scheduled + inProgress + postponed
+ *
+ * scheduledValue sums the amounts of the services; amountMissing counts the
+ * services that have no amount, so a total known to be incomplete says so.
+ * invoicedValue and notYetInvoicedValue are the visit amounts of those visits,
+ * not invoice amounts: whether visit amounts include VAT is unconfirmed.
+ */
+export interface VisitYearFigures {
+  services: number;
+  scheduledValue: string;
+  amountMissing: number;
+  scheduled: number;
+  inProgress: number;
+  postponed: number;
+  completed: number;
+  cancelled: number;
+  overdue: number;
+  invoiced: number;
+  invoicedValue: string;
+  notYetInvoiced: number;
+  notYetInvoicedValue: string;
+  noInvoiceRequired: number;
+  notCompleted: number;
+}
+
+export interface VisitYearSummary {
+  year: number;
+  /** Twelve entries, January first; a month without visits has zeros. */
+  months: (VisitYearFigures & { month: number })[];
+  totals: VisitYearFigures;
+}
+
+interface YearFigureRow {
+  month: number | null;
+  services: number;
+  scheduled_value: string;
+  amount_missing: number;
+  scheduled: number;
+  in_progress: number;
+  postponed: number;
+  completed: number;
+  cancelled: number;
+  overdue: number;
+  invoiced: number;
+  invoiced_value: string;
+  not_yet_invoiced: number;
+  not_yet_invoiced_value: string;
+  no_invoice_required: number;
+}
+
+const EMPTY_FIGURES: VisitYearFigures = {
+  services: 0,
+  scheduledValue: "0.000",
+  amountMissing: 0,
+  scheduled: 0,
+  inProgress: 0,
+  postponed: 0,
+  completed: 0,
+  cancelled: 0,
+  overdue: 0,
+  invoiced: 0,
+  invoicedValue: "0.000",
+  notYetInvoiced: 0,
+  notYetInvoicedValue: "0.000",
+  noInvoiceRequired: 0,
+  notCompleted: 0,
+};
+
+function toFigures(row: YearFigureRow): VisitYearFigures {
+  return {
+    services: row.services,
+    scheduledValue: row.scheduled_value,
+    amountMissing: row.amount_missing,
+    scheduled: row.scheduled,
+    inProgress: row.in_progress,
+    postponed: row.postponed,
+    completed: row.completed,
+    cancelled: row.cancelled,
+    overdue: row.overdue,
+    invoiced: row.invoiced,
+    invoicedValue: row.invoiced_value,
+    notYetInvoiced: row.not_yet_invoiced,
+    notYetInvoicedValue: row.not_yet_invoiced_value,
+    noInvoiceRequired: row.no_invoice_required,
+    notCompleted: row.scheduled + row.in_progress + row.postponed,
+  };
+}
+
+/**
+ * The visits of one calendar year, counted per month of their scheduled date,
+ * with the schedule's own filters. One query: the month rows and the year's
+ * total come from the same GROUP BY ROLLUP, so they always agree. Historical
+ * visits are left out, as on the calendar: their dates were not recorded.
+ * Nothing is generated or changed.
+ */
+export async function getVisitYearSummary(query: VisitYearSummaryQuery): Promise<VisitYearSummary> {
+  const { year, ...filters } = query;
+  const scoped = { ...filters, from: `${year}-01-01`, to: `${year}-12-31` };
+
+  await assertFiltersAvailable(scoped);
+
+  const { where, params } = visitFilter(scoped);
+  const billing = `(${BILLING_STATUS_SQL})`;
+  const active = "v.status <> 'CANCELLED'";
+  const result = await pool.query<YearFigureRow>(
+    `SELECT extract(month FROM v.scheduled_date)::int AS month,
+            count(*) FILTER (WHERE ${active})::int AS services,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${active}), 0)::numeric(16,3)::text AS scheduled_value,
+            count(*) FILTER (WHERE ${active} AND v.visit_amount IS NULL)::int AS amount_missing,
+            count(*) FILTER (WHERE v.status = 'SCHEDULED')::int AS scheduled,
+            count(*) FILTER (WHERE v.status = 'IN_PROGRESS')::int AS in_progress,
+            count(*) FILTER (WHERE v.status = 'POSTPONED')::int AS postponed,
+            count(*) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
+            count(*) FILTER (WHERE v.status = 'CANCELLED')::int AS cancelled,
+            count(*) FILTER (WHERE ${OVERDUE_SQL})::int AS overdue,
+            count(*) FILTER (WHERE ${billing} = 'INVOICED')::int AS invoiced,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${billing} = 'INVOICED'), 0)::numeric(16,3)::text AS invoiced_value,
+            count(*) FILTER (WHERE ${billing} = 'NOT_YET_INVOICED')::int AS not_yet_invoiced,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${billing} = 'NOT_YET_INVOICED'), 0)::numeric(16,3)::text AS not_yet_invoiced_value,
+            count(*) FILTER (WHERE ${billing} = 'NO_INVOICE_REQUIRED')::int AS no_invoice_required
+     ${VISIT_FROM}
+     ${where ? `${where} AND` : "WHERE"} v.status <> 'HISTORICAL'
+     GROUP BY ROLLUP (extract(month FROM v.scheduled_date))`,
+    params
+  );
+
+  const byMonth = new Map<number, VisitYearFigures>();
+  let totals = EMPTY_FIGURES;
+
+  for (const row of result.rows) {
+    if (row.month === null) {
+      totals = toFigures(row);
+    } else {
+      byMonth.set(row.month, toFigures(row));
+    }
+  }
+
+  return {
+    year,
+    months: Array.from({ length: 12 }, (_, index) => ({ month: index + 1, ...(byMonth.get(index + 1) ?? EMPTY_FIGURES) })),
+    totals,
+  };
 }
 
 /** Planning changes to one visit: amount, planned date, assignment and office notes. */

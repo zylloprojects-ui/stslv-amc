@@ -8,8 +8,9 @@ import {
   type ReportDefinition,
   type ReportRow,
 } from "../../shared/export/report";
+import { schemaHas } from "../../shared/schema-features";
 import type { AuthContext } from "../auth/access";
-import type { InvoiceEligibility, VisitStatus } from "./amc.constants";
+import type { BillingStatus, InvoiceEligibility, VisitStatus } from "./amc.constants";
 import type { ExportVisitsQuery } from "./amc.schemas";
 import { listAllVisits, type ScheduleVisit } from "./visits.service";
 
@@ -35,6 +36,25 @@ export const INVOICE_ELIGIBILITY_LABELS: Record<InvoiceEligibility, string> = {
   INVOICED: "Invoiced",
   HISTORICAL: "Historical",
 };
+
+export const BILLING_STATUS_LABELS: Record<BillingStatus, string> = {
+  INVOICED: "Invoiced",
+  NOT_YET_INVOICED: "Not yet invoiced",
+  NO_INVOICE_REQUIRED: "No invoice required",
+  NOT_COMPLETED: "Not completed",
+  CANCELLED: "Cancelled",
+};
+
+/** The frequency's name from the frequency master (migration 0075), or its code on a database without it. */
+async function frequencyLabel(code: string): Promise<string> {
+  if (!(await schemaHas(["maintenance_frequencies"]))) {
+    return code;
+  }
+
+  const result = await pool.query<{ label: string }>("SELECT label FROM maintenance_frequencies WHERE code = $1", [code]);
+
+  return result.rows[0]?.label ?? code;
+}
 
 export const SCHEDULE_COLUMNS: ReportColumn[] = [
   { key: "number", header: "#", kind: "count", width: 6 },
@@ -106,6 +126,18 @@ async function describeFilters(query: ExportVisitsQuery): Promise<ReportDefiniti
   }
   if (query.invoiceEligibility) {
     filters.push({ label: "Invoicing", value: INVOICE_ELIGIBILITY_LABELS[query.invoiceEligibility] });
+  }
+  if (query.salesEngineerId) {
+    // listAllVisits has already refused this filter on a database without the link (migration 0070).
+    const engineer = await pool.query<{ name: string }>("SELECT name FROM sales_engineers WHERE id = $1", [query.salesEngineerId]);
+
+    filters.push({ label: "Sales engineer", value: engineer.rows[0]?.name ?? "Unknown sales engineer" });
+  }
+  if (query.frequency) {
+    filters.push({ label: "Frequency", value: await frequencyLabel(query.frequency) });
+  }
+  if (query.billingStatus) {
+    filters.push({ label: "Billing status", value: BILLING_STATUS_LABELS[query.billingStatus] });
   }
   if (query.overdue) {
     filters.push({ label: "Overdue", value: query.overdue === "true" ? "Overdue only" : "Not overdue" });

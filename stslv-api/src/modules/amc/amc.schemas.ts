@@ -2,6 +2,7 @@ import { z } from "zod";
 import { exportFormatSchema } from "../../shared/export/report";
 import { idSchema, optionalText, requiredText } from "../../shared/validation";
 import {
+  BILLING_STATUSES,
   CONTRACT_STATUSES,
   INVOICE_ELIGIBILITIES,
   OPERATIONAL_VISIT_STATUSES,
@@ -229,6 +230,11 @@ export const listVisitsSchema = z.object({
   status: visitStatusList.optional(),
   system: z.string().trim().max(200).optional(),
   invoiceEligibility: z.enum(INVOICE_ELIGIBILITIES).optional(),
+  // Contracts linked to this Sales Engineer master record (migration 0070).
+  salesEngineerId: idSchema.optional(),
+  frequency: frequency.optional(),
+  // The Monthly Calendar's billing status; see BILLING_STATUSES.
+  billingStatus: z.enum(BILLING_STATUSES, { error: "Select a billing status." }).optional(),
   overdue: z.enum(["true", "false"]).optional(),
   search: z.string().trim().max(200).optional(),
   page,
@@ -237,6 +243,13 @@ export const listVisitsSchema = z.object({
 
 /** The schedule's own filters, without paging, plus the file format. */
 export const exportVisitsSchema = listVisitsSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+
+const YEAR_MESSAGE = "Year must be between 2000 and 2100.";
+
+/** The Monthly Calendar's year: the schedule's filters, with a calendar year in place of a date range. */
+export const visitYearSummarySchema = listVisitsSchema.omit({ page: true, pageSize: true, from: true, to: true }).extend({
+  year: z.coerce.number({ error: YEAR_MESSAGE }).int(YEAR_MESSAGE).min(2000, YEAR_MESSAGE).max(2100, YEAR_MESSAGE),
+});
 
 export const updateVisitSchema = z
   .strictObject({
@@ -336,6 +349,7 @@ export type WorkloadQuery = z.infer<typeof workloadSchema>;
 export type SchedulePreviewQuery = z.infer<typeof schedulePreviewSchema>;
 export type ListVisitsQuery = z.infer<typeof listVisitsSchema>;
 export type ExportVisitsQuery = z.infer<typeof exportVisitsSchema>;
+export type VisitYearSummaryQuery = z.infer<typeof visitYearSummarySchema>;
 export type UpdateVisitInput = z.infer<typeof updateVisitSchema>;
 export type ListExecutionQuery = z.infer<typeof listExecutionSchema>;
 export type UpdateExecutionInput = z.infer<typeof updateExecutionSchema>;
