@@ -4,13 +4,12 @@ import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
 import { LinkedContracts } from '../../components/LinkedContracts'
-import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { PageTabs, TabPanel, useTabsLayout } from '../../components/PageTabs'
 import { ContactChip } from '../../components/ProfileParts'
 import { LoadError, Money, OrDash } from '../../components/records'
 import { RecordHistory } from '../../components/RecordHistory'
 import { TABLE } from '../../components/table'
-import { Alert, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, BannerButton, Card, ConfirmDialog, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx, formatCount, formatDate, formatDateTime } from '../../lib/format'
 import type { PagedInvoices } from '../../lib/invoiceTypes'
@@ -436,6 +435,18 @@ export function ClientDetailPage() {
       <PageHeader
         title={client.name}
         description={`${client.code} · Client 360: details, AMC contracts, visits, invoices and history.`}
+        actions={
+          (auth.can('CLIENTS', 'EDIT') || auth.can('CLIENTS', 'DELETE')) && (
+            <>
+              {auth.can('CLIENTS', 'EDIT') && <BannerButton onClick={() => setEditing(true)}>Edit</BannerButton>}
+              {auth.can('CLIENTS', 'DELETE') && (
+                <BannerButton danger={client.isActive} onClick={() => setConfirmToggle(true)}>
+                  {client.isActive ? 'Disable' : 'Enable'}
+                </BannerButton>
+              )}
+            </>
+          )
+        }
       />
 
       {notice && (
@@ -466,16 +477,6 @@ export function ClientDetailPage() {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-md bg-sky-50 px-2 py-0.5 font-mono text-xs font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{client.code}</span>
                 <ClientStatusBadge active={client.isActive} />
-                {(auth.can('CLIENTS', 'EDIT') || auth.can('CLIENTS', 'DELETE')) && (
-                  <span className="ml-1">
-                    <ActionGroup>
-                      {auth.can('CLIENTS', 'EDIT') && <ActionButton label="Edit" icon="edit" onClick={() => setEditing(true)} />}
-                      {auth.can('CLIENTS', 'DELETE') && (
-                        <ActionButton label={client.isActive ? 'Disable' : 'Enable'} icon={client.isActive ? 'deactivate' : 'reactivate'} danger={client.isActive} onClick={() => setConfirmToggle(true)} />
-                      )}
-                    </ActionGroup>
-                  </span>
-                )}
               </div>
               {withDetails && <p className="mt-1.5 text-sm font-semibold text-slate-700">{client.clientType ? CLIENT_TYPE_LABELS[client.clientType] : 'Client type not set'}</p>}
             </div>

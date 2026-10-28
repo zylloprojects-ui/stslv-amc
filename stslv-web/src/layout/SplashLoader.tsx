@@ -38,7 +38,7 @@ function Splash() {
   return (
     <div
       className={`absolute inset-0 z-20 flex justify-center bg-white/60 backdrop-blur-[2px] transition-opacity duration-[350ms] ${
-        wide ? 'items-start px-4 py-6 sm:px-6 lg:px-8' : 'items-start pt-[16vh]'
+        wide ? 'items-start px-4 py-6 sm:px-6 lg:px-8' : 'items-start px-4 pt-[6vh] sm:pt-[12vh] lg:pt-[16vh]'
       } ${phase === 'fade' ? 'pointer-events-none opacity-0' : 'opacity-100'}`}
       aria-hidden="true"
     >
@@ -47,7 +47,7 @@ function Splash() {
           <BrandLoader label="Loading" announce={false} />
         </div>
       ) : (
-        <div className="rounded-2xl bg-white/85 px-12 py-3 shadow-xl shadow-sky-200/60 ring-1 ring-sky-100">
+        <div className="max-w-full rounded-2xl bg-white/85 px-4 py-3 sm:px-12 shadow-xl shadow-sky-200/60 ring-1 ring-sky-100">
           <BrandLoader label="Loading" announce={false} />
         </div>
       )}

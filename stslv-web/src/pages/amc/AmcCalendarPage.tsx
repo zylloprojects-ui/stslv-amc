@@ -28,10 +28,10 @@ const YEARS_BACK = 2
 const YEARS_AHEAD = 5
 
 const CHIP: Record<VisitStatus, string> = {
-  SCHEDULED: 'bg-sky-50 text-sky-900 ring-sky-200',
-  IN_PROGRESS: 'bg-amber-50 text-amber-900 ring-amber-200',
-  POSTPONED: 'bg-violet-50 text-violet-900 ring-violet-200',
-  COMPLETED: 'bg-emerald-50 text-emerald-900 ring-emerald-200',
+  SCHEDULED: 'bg-sky-50 text-sky-900 ring-sky-200 border-l-sky-500',
+  IN_PROGRESS: 'bg-amber-50 text-amber-900 ring-amber-200 border-l-amber-500',
+  POSTPONED: 'bg-violet-50 text-violet-900 ring-violet-200 border-l-violet-500',
+  COMPLETED: 'bg-emerald-50 text-emerald-900 ring-emerald-200 border-l-emerald-500',
   CANCELLED: 'bg-slate-100 text-slate-500 line-through ring-slate-200',
   HISTORICAL: 'bg-slate-100 text-slate-600 ring-slate-200',
 }
@@ -83,7 +83,7 @@ function VisitChip({ visit, onOpen }: { visit: ScheduleVisit; onOpen: (id: strin
       onClick={() => onOpen(visit.id)}
       aria-label={`${visitLabel(visit)}, visit ${visit.sequenceNo}, ${VISIT_STATUS_LABELS[visit.status]}${visit.isOverdue ? ', overdue' : ''}`}
       className={cx(
-        'block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium ring-1 ring-inset hover:brightness-95 focus-visible:outline-2 focus-visible:outline-[#1479BD]',
+        'block w-full truncate rounded-md border-l-[3px] px-1.5 py-1 text-left text-[11px] font-semibold shadow-sm ring-1 ring-inset transition-transform hover:-translate-y-px hover:shadow-md hover:ring-2 hover:ring-[#1479BD] focus-visible:outline-2 focus-visible:outline-[#1479BD]',
         CHIP[visit.status],
         visit.isOverdue && 'ring-red-300',
       )}
@@ -212,9 +212,10 @@ export function AmcCalendarPage() {
 
       {canViewContracts && <RenewalWarnings clientId={clientId} />}
 
-      <Card className="mb-4">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5">
-          <div role="group" aria-label="Calendar view" className="inline-flex rounded-lg border border-slate-300 bg-slate-50 p-0.5">
+      <Card className="frame-hover mb-5 overflow-hidden">
+        <div className="h-1 bg-gradient-to-r from-[#1479BD] via-[#00A6C8] to-[#4aa3df]" aria-hidden="true" />
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-3.5 sm:px-5">
+          <div role="group" aria-label="Calendar view" className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 shadow-inner">
             {(['year', 'month'] as const).map((value) => (
               <button
                 key={value}
@@ -222,8 +223,8 @@ export function AmcCalendarPage() {
                 aria-pressed={view === value}
                 onClick={() => navigate({ view: value })}
                 className={cx(
-                  'rounded-md px-3 py-1.5 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-[#1479BD]',
-                  view === value ? 'bg-white text-[#0b3b66] shadow-sm ring-1 ring-slate-200' : 'text-slate-600 hover:text-slate-900',
+                  'rounded-lg px-4 py-1.5 text-sm font-bold transition-all focus-visible:outline-2 focus-visible:outline-[#1479BD]',
+                  view === value ? 'bg-gradient-to-br from-[#1479BD] to-[#00A6C8] text-white shadow-md' : 'text-slate-600 hover:text-slate-900',
                 )}
               >
                 {value === 'year' ? 'Year view' : 'Month view'}
@@ -243,7 +244,7 @@ export function AmcCalendarPage() {
                 id="calendar-year"
                 value={year}
                 onChange={(event) => goToYear(Number(event.target.value))}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-base font-semibold text-slate-900 shadow-sm"
+                className="rounded-xl border border-sky-200 bg-white px-4 py-1.5 text-lg font-extrabold text-[#0b3b66] shadow-sm"
               >
                 {years.map((value) => (
                   <option key={value} value={value}>
@@ -263,7 +264,7 @@ export function AmcCalendarPage() {
               <Button variant="secondary" size="sm" onClick={() => goTo(shiftMonth(month, -1))} aria-label="Previous month">
                 ‹
               </Button>
-              <h2 className="min-w-40 text-center text-base font-semibold text-slate-900" aria-live="polite">
+              <h2 className="min-w-48 text-center text-xl font-extrabold tracking-tight text-[#0b3b66]" aria-live="polite">
                 {monthLabel(month)}
               </h2>
               <Button variant="secondary" size="sm" onClick={() => goTo(shiftMonth(month, 1))} aria-label="Next month">
@@ -276,13 +277,13 @@ export function AmcCalendarPage() {
           )}
 
           {view === 'month' && (
-            <p className="text-sm text-slate-600">
+            <p className="rounded-full bg-sky-50 px-3 py-1 text-sm font-semibold text-[#0b3b66] ring-1 ring-sky-100">
               {visits.data ? `${visits.data.total} visit${visits.data.total === 1 ? '' : 's'} this month` : 'Loading…'}
             </p>
           )}
         </div>
 
-        <div className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+        <div className="grid gap-4 bg-slate-50/50 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
           <Filter label="Search">
             {(id, className) => (
               <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Client, system or engineer" className={className} />
@@ -385,7 +386,7 @@ export function AmcCalendarPage() {
       )}
 
       {view === 'month' && (
-        <Card>
+        <Card className="frame-hover">
           {visits.isPending && <Spinner label="Loading visits" />}
           {visits.isError && <LoadError error={visits.error} onRetry={() => void visits.refetch()} />}
           {visits.data?.truncated && (
@@ -398,36 +399,48 @@ export function AmcCalendarPage() {
             <>
               {/* Month grid, from small tablets up. */}
               <div className="hidden p-3 sm:block" role="group" aria-label={`Visits in ${monthLabel(month)}`}>
-                <div className="grid grid-cols-7 gap-px" aria-hidden="true">
+                <div className="grid grid-cols-7 overflow-hidden rounded-t-xl bg-gradient-to-r from-[#0b3b66] via-[#0f5a96] to-[#1479BD]" aria-hidden="true">
                   {WEEKDAYS.map((day) => (
-                    <div key={day} className="px-2 py-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <div key={day} className={cx('px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.14em] text-white', (day === 'Sun' || day === 'Sat') && 'text-sky-200')}>
                       {day}
                     </div>
                   ))}
                 </div>
-                <div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border border-slate-200 bg-slate-200">
+                <div className="grid grid-cols-7 gap-px overflow-hidden rounded-b-xl border-2 border-slate-300 bg-slate-300 shadow-md">
                   {days.map((day) => {
                     const inMonth = day.startsWith(month)
                     const list = byDay.get(day) ?? []
+                    const weekend = [0, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay())
 
                     return (
                       <div
                         key={day}
                         role="group"
                         aria-label={`${formatDate(day)}, ${list.length} visit${list.length === 1 ? '' : 's'}`}
-                        className={cx('min-h-28 bg-white p-1.5', !inMonth && 'bg-slate-50 text-slate-400', selectedDay === day && 'ring-2 ring-inset ring-[#1479BD]')}
+                        className={cx(
+                          'relative min-h-32 bg-white p-2 transition-all duration-150 hover:z-10 hover:bg-sky-50 hover:shadow-[inset_0_0_0_2px_#1479BD]',
+                          weekend && 'bg-slate-50/80',
+                          !inMonth && 'bg-slate-100/70 text-slate-400',
+                          day === today && 'bg-sky-50 shadow-[inset_0_3px_0_#1479BD]',
+                          selectedDay === day && 'ring-2 ring-inset ring-[#1479BD]',
+                        )}
                       >
                         <div className="mb-1 flex items-center justify-between">
                           <span
                             className={cx(
-                              'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold',
-                              day === today ? 'bg-[#1479BD] text-white' : inMonth ? 'text-slate-700' : 'text-slate-400',
+                              'flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold',
+                              day === today ? 'bg-gradient-to-br from-[#1479BD] to-[#00A6C8] text-white shadow-md' : inMonth ? 'text-slate-700' : 'text-slate-400',
                             )}
                           >
                             {Number(day.slice(8))}
                           </span>
+                          {list.length > 0 && (
+                            <span className="rounded-full bg-[#1479BD]/10 px-1.5 text-[10px] font-extrabold tabular-nums text-[#0b3b66]" aria-hidden="true">
+                              {list.length}
+                            </span>
+                          )}
                         </div>
-                        <div className="space-y-0.5">
+                        <div className="space-y-1">
                           {list.slice(0, CELL_LIMIT).map((visit) => (
                             <VisitChip key={visit.id} visit={visit} onOpen={open} />
                           ))}
@@ -474,15 +487,15 @@ export function AmcCalendarPage() {
                 <EmptyState title="No visits this month" description={filtered ? 'Try different filters or another month.' : 'Move to another month to see its visits.'} />
               )}
 
-              <p className="flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-200 px-5 py-3 text-xs text-slate-600">
+              <p className="flex flex-wrap gap-2 border-t border-slate-200 bg-slate-50/60 px-5 py-3 text-xs font-medium text-slate-700">
                 {CALENDAR_STATUSES.map((value) => (
-                  <span key={value} className="inline-flex items-center gap-1.5">
+                  <span key={value} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 shadow-sm">
                     <span className={cx('inline-block h-3 w-3 rounded ring-1 ring-inset', CHIP[value])} aria-hidden="true" />
                     {VISIT_STATUS_LABELS[value]}
                   </span>
                 ))}
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-red-500" aria-hidden="true" />
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-white px-2.5 py-1 shadow-sm">
+                  <span className="inline-block h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
                   Overdue
                 </span>
               </p>

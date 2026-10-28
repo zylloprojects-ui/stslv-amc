@@ -38,7 +38,7 @@ export function YearView({ year, filters, canExport, onOpenMonth, onExportError 
     <>
       <YearKpis year={year} totals={totals} />
 
-      <section aria-label={`Months of ${year}`} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+      <section aria-label={`Months of ${year}`} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
         {months.map((figures) => {
           const month = `${year}-${pad(figures.month)}`
 
@@ -70,10 +70,11 @@ export function YearView({ year, filters, canExport, onOpenMonth, onExportError 
 
 function Kpi({ label, value, note, warn = false, tone }: { label: string; value: string; note: string; warn?: boolean; tone: string }) {
   return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white py-3.5 pl-5 pr-4 shadow-sm">
-      <span className={cx('absolute inset-y-0 left-0 w-1.5', tone)} aria-hidden="true" />
-      <dt className="text-xs font-semibold uppercase tracking-wider text-slate-600">{label}</dt>
-      <dd className="mt-1 text-2xl font-semibold tabular-nums text-slate-900">{value}</dd>
+    <div className="surface frame-hover relative overflow-hidden rounded-2xl py-4 pl-6 pr-4 hover:-translate-y-0.5">
+      <span className={cx('absolute inset-y-0 left-0 w-2', tone)} aria-hidden="true" />
+      <span className={cx('absolute -right-6 -top-6 h-20 w-20 rounded-full opacity-15', tone)} aria-hidden="true" />
+      <dt className="relative text-xs font-semibold uppercase tracking-wider text-slate-600">{label}</dt>
+      <dd className="relative mt-1 text-3xl font-extrabold tabular-nums text-[#0b3b66]">{value}</dd>
       <dd className={cx('mt-0.5 text-xs', warn ? 'font-medium text-amber-800' : 'text-slate-500')}>{note}</dd>
     </div>
   )
@@ -137,10 +138,11 @@ function MonthCard({ month, figures, isCurrent, onOpen, download }: MonthCardPro
   const open = figures.scheduled + figures.inProgress + figures.postponed
 
   return (
-    <Card className={cx('flex flex-col', isCurrent && 'ring-2 ring-[#1479BD]')}>
+    <Card className={cx('frame-hover flex flex-col overflow-hidden hover:-translate-y-1', isCurrent && 'ring-2 ring-[#1479BD]')}>
+      <div className={cx('h-1.5', isCurrent ? 'bg-gradient-to-r from-[#1479BD] to-[#00A6C8]' : 'bg-gradient-to-r from-slate-200 to-slate-100')} aria-hidden="true" />
       <article aria-label={monthLabel(month)} className="flex flex-1 flex-col p-4">
         <div className="flex items-baseline justify-between gap-2">
-          <h3 className="text-base font-semibold text-slate-900">
+          <h3 className="text-xl font-extrabold tracking-tight text-[#0b3b66]">
             <button
               type="button"
               onClick={onOpen}
@@ -150,11 +152,11 @@ function MonthCard({ month, figures, isCurrent, onOpen, download }: MonthCardPro
               {name}
             </button>
           </h3>
-          {isCurrent && <span className="text-xs font-semibold text-[#1479BD]">This month</span>}
+          {isCurrent && <span className="rounded-full bg-[#1479BD] px-2.5 py-0.5 text-xs font-bold text-white shadow-sm">This month</span>}
         </div>
 
         <p className="mt-1 text-sm text-slate-700">
-          <span className="text-xl font-semibold tabular-nums text-slate-900">{figures.services}</span> {figures.services === 1 ? 'service' : 'services'}
+          <span className="text-3xl font-extrabold tabular-nums text-[#0b3b66]">{figures.services}</span> {figures.services === 1 ? 'service' : 'services'}
         </p>
 
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
@@ -175,6 +177,13 @@ function MonthCard({ month, figures, isCurrent, onOpen, download }: MonthCardPro
           <StatusCount label="overdue" count={figures.overdue} className="bg-red-50 text-red-800 ring-red-200" />
           <StatusCount label="cancelled" count={figures.cancelled} className="bg-slate-100 text-slate-600 ring-slate-200" />
         </ul>
+        {figures.services > 0 && (
+          <span className="mt-3 flex h-2 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+            <span className="bg-emerald-500" style={{ width: `${(figures.completed / figures.services) * 100}%` }} />
+            <span className="bg-sky-400" style={{ width: `${(open / figures.services) * 100}%` }} />
+            <span className="bg-red-500" style={{ width: `${(figures.overdue / figures.services) * 100}%` }} />
+          </span>
+        )}
         {figures.services + figures.cancelled === 0 && <p className="mt-2 text-xs text-slate-500">No visits</p>}
 
         {download && <div className="mt-auto flex justify-end pt-3">{download}</div>}

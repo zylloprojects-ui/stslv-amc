@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { initialsOf } from '../../lib/format'
@@ -196,89 +196,118 @@ export function AmcSchedulePage() {
               )}
             </p>
           </div>
-          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-3">
-          <div>
-            <Filter label="Month">
-              {(id, className) => (
-                <input id={id} type="month" value={month} onChange={(event) => change(setMonth)(event.target.value)} className={className} />
-              )}
-            </Filter>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button variant="secondary" size="sm" disabled={!month} onClick={() => change(setMonth)(shiftMonth(month, -1))}>
-                Previous month
-              </Button>
-              <Button variant="secondary" size="sm" disabled={!month} onClick={() => change(setMonth)(shiftMonth(month, 1))}>
-                Next month
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => change(setMonth)(month ? '' : currentMonth())}>
+          <div className="space-y-3 px-4 pb-4 pt-3 sm:px-5">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center rounded-full border-[1.5px] border-sky-200 bg-white p-1 shadow-sm transition-all focus-within:border-[#1479BD] focus-within:ring-4 focus-within:ring-sky-100">
+                <button
+                  type="button"
+                  aria-label="Previous month"
+                  disabled={!month}
+                  onClick={() => change(setMonth)(shiftMonth(month, -1))}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold text-[#0b3b66] transition-colors hover:bg-[#1479BD] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#0b3b66]"
+                >
+                  <span aria-hidden="true">‹</span>
+                </button>
+                <label htmlFor="schedule-month" className="sr-only">
+                  Month
+                </label>
+                <input
+                  id="schedule-month"
+                  type="month"
+                  value={month}
+                  onChange={(event) => change(setMonth)(event.target.value)}
+                  className="border-0 bg-transparent px-2 text-sm font-bold text-[#0b3b66] shadow-none focus:outline-none focus:shadow-none focus-visible:border-transparent focus-visible:shadow-none"
+                />
+                <button
+                  type="button"
+                  aria-label="Next month"
+                  disabled={!month}
+                  onClick={() => change(setMonth)(shiftMonth(month, 1))}
+                  className="flex h-9 w-9 items-center justify-center rounded-full text-lg font-bold text-[#0b3b66] transition-colors hover:bg-[#1479BD] hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-[#0b3b66]"
+                >
+                  <span aria-hidden="true">›</span>
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => change(setMonth)(month ? '' : currentMonth())}
+                className="rounded-full bg-gradient-to-br from-[#1479BD] to-[#00A6C8] px-4 py-2 text-sm font-bold text-white shadow-md transition-all hover:-translate-y-px hover:shadow-lg"
+              >
                 {month ? 'All dates' : 'This month'}
-              </Button>
+              </button>
+              <div className="relative min-w-64 flex-1">
+                <svg viewBox="0 0 24 24" className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+                </svg>
+                <label htmlFor="schedule-search" className="sr-only">
+                  Search
+                </label>
+                <input
+                  id="schedule-search"
+                  type="search"
+                  value={searchInput}
+                  onChange={(event) => setSearchInput(event.target.value)}
+                  placeholder="Client, system or assigned person"
+                  className="block w-full rounded-full border-[1.5px] border-sky-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium shadow-sm transition-all placeholder:text-slate-400 hover:border-[#1479BD]/60 focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-100"
+                />
+              </div>
             </div>
-          </div>
-          {canViewClients && (
-            <Filter label="Client">
-              {(id, className) => (
-                <select id={id} value={clientId} onChange={(event) => change(setClientId)(event.target.value)} className={className}>
-                  <option value="">All clients</option>
-                  {(clients.data ?? []).map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </select>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {canViewClients && (
+                <Filter label="Client">
+                  {(id, className) => (
+                    <select id={id} value={clientId} onChange={(event) => change(setClientId)(event.target.value)} className={className}>
+                      <option value="">All clients</option>
+                      {(clients.data ?? []).map((client) => (
+                        <option key={client.id} value={client.id}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Filter>
               )}
-            </Filter>
-          )}
-          <Filter label="Status">
-            {(id, className) => (
-              <select id={id} value={status} onChange={(event) => change(setStatus)(event.target.value)} className={className}>
-                <option value="">All statuses</option>
-                {VISIT_STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {VISIT_STATUS_LABELS[value]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Filter>
-          {canViewContracts && (
-            <Filter label="System">
-              {(id, className) => (
-                <select id={id} value={system} onChange={(event) => change(setSystem)(event.target.value)} className={className}>
-                  <option value="">All systems</option>
-                  {(systems.data ?? []).map((value) => (
-                    <option key={value} value={value}>
-                      {value}
-                    </option>
-                  ))}
-                </select>
+              <Filter label="Status">
+                {(id, className) => (
+                  <select id={id} value={status} onChange={(event) => change(setStatus)(event.target.value)} className={className}>
+                    <option value="">All statuses</option>
+                    {VISIT_STATUSES.map((value) => (
+                      <option key={value} value={value}>
+                        {VISIT_STATUS_LABELS[value]}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Filter>
+              {canViewContracts && (
+                <Filter label="System">
+                  {(id, className) => (
+                    <select id={id} value={system} onChange={(event) => change(setSystem)(event.target.value)} className={className}>
+                      <option value="">All systems</option>
+                      {(systems.data ?? []).map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </Filter>
               )}
-            </Filter>
-          )}
-          <Filter label="Invoicing">
-            {(id, className) => (
-              <select id={id} value={invoiceEligibility} onChange={(event) => change(setInvoiceEligibility)(event.target.value)} className={className}>
-                <option value="">Any</option>
-                {INVOICE_ELIGIBILITIES.map((value) => (
-                  <option key={value} value={value}>
-                    {INVOICE_ELIGIBILITY_LABELS[value]}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Filter>
-          <Filter label="Search">
-            {(id, className) => (
-              <input
-                id={id}
-                type="search"
-                value={searchInput}
-                onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Client, system or assigned person"
-                className={className}
-              />
-            )}
-          </Filter>
+              <Filter label="Invoicing">
+                {(id, className) => (
+                  <select id={id} value={invoiceEligibility} onChange={(event) => change(setInvoiceEligibility)(event.target.value)} className={className}>
+                    <option value="">Any</option>
+                    {INVOICE_ELIGIBILITIES.map((value) => (
+                      <option key={value} value={value}>
+                        {INVOICE_ELIGIBILITY_LABELS[value]}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Filter>
+            </div>
           </div>
         </div>
 

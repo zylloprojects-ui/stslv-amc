@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
 import { cx } from '../lib/format'
 import { useLoaderStyle } from '../lib/loaderStyle'
@@ -70,9 +71,32 @@ const SIZES = {
   sm: { box: 164, ring: 82, radius: 69, badge: 30, glyph: 16, logo: 56 },
 } as const
 
+/**
+ * How much to shrink the loader so it fits the screen: the width of the window less its side gutters, and
+ * about two thirds of its height (a phone held sideways is short). Never above 1, never below a readable size.
+ */
+function useFit(box: number) {
+  const measure = () => (typeof window === 'undefined' ? 1 : Math.max(0.5, Math.min(1, (window.innerWidth - 48) / box, (window.innerHeight * 0.66) / box)))
+  const [fit, setFit] = useState(measure)
+
+  useEffect(() => {
+    const onResize = () => setFit(measure())
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [box])
+
+  return fit
+}
+
 function Bar() {
   return (
-    <span className="relative h-2 w-44 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+    <span className="relative h-2 w-44 max-w-full overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
       <span className="loader-bar absolute inset-y-0 w-1/2 rounded-full bg-gradient-to-r from-[#4aa3df] via-[#1479BD] to-[#4aa3df]" />
     </span>
   )
@@ -84,13 +108,16 @@ function Bar() {
  * The icons stay upright while they travel. Everything stops for people who ask for reduced motion.
  */
 function Brand({ label, size, announce }: Required<LoaderProps>) {
-  const s = SIZES[size]
+  const base = SIZES[size]
+  const fit = useFit(base.box)
+  const scaled = Object.fromEntries(Object.entries(base).map(([key, value]) => [key, Math.round(value * fit)])) as { [K in keyof typeof base]: number }
+  const s = scaled
   const inset = (s.box - s.ring) / 2
 
   return (
     <div
       role={announce ? 'status' : undefined}
-      className={cx('loader-delay flex flex-col items-center text-sm text-slate-600', size === 'lg' ? 'gap-5 py-8' : size === 'md' ? 'gap-4 py-10' : 'gap-3 py-6')}
+      className={cx('loader-delay flex max-w-full flex-col items-center text-sm text-slate-600', size === 'lg' ? 'gap-3 py-4 sm:gap-5 sm:py-8' : size === 'md' ? 'gap-3 py-6 sm:gap-4 sm:py-10' : 'gap-3 py-6')}
     >
       <div className="relative" style={{ width: s.box, height: s.box }} aria-hidden="true">
         <span className="loader-glow absolute rounded-full bg-sky-400/50 blur-2xl" style={{ inset: inset - 6 }} />
@@ -155,7 +182,7 @@ function Brand({ label, size, announce }: Required<LoaderProps>) {
           <p className="mt-0.5 text-xs text-slate-500">Smart Technical Service LLC</p>
         </div>
       )}
-      <span className="loader-shimmer-text text-sm font-bold uppercase tracking-[0.3em]">{label}…</span>
+      <span className="loader-shimmer-text text-center text-sm font-bold uppercase tracking-[0.2em] sm:tracking-[0.3em]">{label}…</span>
       {size !== 'sm' && <Bar />}
     </div>
   )
