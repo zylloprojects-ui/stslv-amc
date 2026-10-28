@@ -1022,3 +1022,12 @@ html:not(.dark) .frame-hover:hover,
   border-color: #1479BD;
   box-shadow: 0 0 0 3px rgba(20, 121, 189, 0.16), 0 16px 32px -14px rgba(20, 121, 189, 0.45);
 }
+
+/* Date and time fields open their picker from a click anywhere on them (see lib/pickerOnClick.ts). */
+input[type="date"],
+input[type="month"],
+input[type="week"],
+input[type="time"],
+input[type="datetime-local"] {
+  cursor: pointer;
+}
