@@ -159,7 +159,6 @@ export const METRIC_GROUPS: MetricGroup[] = [
         // The Projects summary gives its cost figures only to a user who holds both.
         visible: (canView) => canView('PROJECTS') && canView('EXPENSES'),
         source: 'Expenses',
-        links: [{ to: '/expenses', label: 'View expenses', module: 'EXPENSES' }],
         read: ({ projects }) => {
           const costs = projects?.costs
 

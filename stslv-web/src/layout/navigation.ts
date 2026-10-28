@@ -50,7 +50,6 @@ export const NAVIGATION: NavSection[] = [
   {
     title: 'Finance',
     items: [
-      { label: 'Expenses', path: '/expenses', module: 'EXPENSES' },
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
     ],
   },

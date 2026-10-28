@@ -186,9 +186,7 @@ describe('mobile menu', () => {
         .map((link) => link.textContent)
 
     // One group is open at a time; the role has no Administration group and no Settings link.
-    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Master Data Center', 'Finance'])
-    await userEvent.click(within(menu).getByRole('button', { name: 'Finance' }))
-    expect(links()).toEqual(['Dashboard', 'Master Data Center', 'Expenses'])
+    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Master Data Center'])
     await userEvent.click(within(menu).getByRole('button', { name: 'Master Data Center pages' }))
     expect(links()).toEqual(['Dashboard', 'Master Data Center', 'Clients'])
 

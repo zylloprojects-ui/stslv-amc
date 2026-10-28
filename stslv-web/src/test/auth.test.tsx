@@ -182,7 +182,7 @@ describe('permission-based navigation', () => {
     expect(await linksByGroup(nav)).toEqual({
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
       Operations: ['AMC Contracts', 'AMC Schedule', 'AMC Calendar', 'Service Status', 'Services Sales'],
-      Finance: ['Expenses', 'Invoice Tracking'],
+      Finance: ['Invoice Tracking'],
       Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
     })
   })
@@ -199,7 +199,7 @@ describe('permission-based navigation', () => {
     expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
 
     await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
-    expect(within(nav).getByRole('link', { name: 'Expenses' })).toBeInTheDocument()
+    expect(within(nav).getByRole('link', { name: 'Invoice Tracking' })).toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
     expect(within(nav).getByRole('button', { name: 'Master Data Center pages' })).toHaveAttribute('aria-expanded', 'false')
   })
@@ -222,7 +222,7 @@ describe('permission-based navigation', () => {
 
     // No Settings link: the role may not view it. Clients makes the Master Data Center hub available.
     expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center'])
-    expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'], Finance: ['Expenses'] })
+    expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'] })
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })
 
@@ -235,7 +235,7 @@ describe('permission-based navigation', () => {
     expect(api.find('GET', '/users')).toHaveLength(0)
   })
 
-  it.each(['/reports', '/historical-data'])('shows Not Found for the removed page %s', async (path) => {
+  it.each(['/reports', '/historical-data', '/expenses'])('shows Not Found for the removed page %s', async (path) => {
     session(ADMIN)
     renderApp(path)
 
@@ -403,7 +403,7 @@ describe('page search', () => {
     await userEvent.click(await screen.findByRole('combobox', { name: 'Search pages' }))
 
     const options = (await screen.findAllByRole('option')).map((option) => option.querySelector('span.font-semibold')?.textContent)
-    expect(options).toEqual(['Dashboard', 'Master Data Center', 'Clients', 'Expenses', 'My Account'])
+    expect(options).toEqual(['Dashboard', 'Master Data Center', 'Clients', 'My Account'])
   })
 })
 
