@@ -5,23 +5,10 @@ import { formatJobDate, formatMonth } from '../lib/format'
 import { ADMIN, mockApi, ok, renderApp, signIn } from './helpers'
 import { amcApi, makeContract, makeVisit } from './amc-helpers'
 import { currentMonth } from '../pages/amc/amcFormat'
-import { makeProject, projectsApi } from './projectsApi'
 
 // Historical records are imported from the client's earlier registers. The
 // application shows them as those registers recorded them and offers no way to
 // change them.
-
-const NORMAL = makeProject()
-const HISTORICAL = makeProject({
-  id: '200',
-  jobNumber: 'GPSA0901',
-  description: 'Panel repair',
-  status: 'HISTORICAL',
-  legacyStatus: 'Completed',
-  jobDate: '2025-02-01',
-  jobDatePrecision: 'MONTH',
-  jobValue: '500.000',
-})
 
 const MONTH = currentMonth()
 const NORMAL_VISIT = makeVisit({ scheduledDate: `${MONTH}-02`, originalScheduledDate: `${MONTH}-02` })
@@ -46,25 +33,6 @@ describe('month-only dates', () => {
     expect(formatJobDate({ jobDate: '2025-02-01', jobDatePrecision: 'MONTH' })).toBe('Feb 2025')
     // A real first of the month on an ordinary project is still shown as a day.
     expect(formatJobDate({ jobDate: '2025-02-01', jobDatePrecision: 'DAY' })).toMatch(/^1 Feb 2025$/)
-  })
-})
-
-describe('historical project', () => {
-  it('is not offered when choosing the job for a new expense', async () => {
-    projectsApi(ADMIN, { projects: [NORMAL, HISTORICAL] })
-    renderApp('/expenses')
-
-    await userEvent.click(await screen.findByRole('button', { name: 'Record Expense' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Record Expense' })
-    const picker = await within(dialog).findByLabelText(/^Project \/ job/)
-
-    await waitFor(() => expect(within(picker).getAllByRole('option').length).toBeGreaterThan(1))
-    const options = within(picker)
-      .getAllByRole('option')
-      .map((option) => option.textContent)
-
-    expect(options.some((text) => text?.includes('GPSA0001'))).toBe(true)
-    expect(options.some((text) => text?.includes('GPSA0901'))).toBe(false)
   })
 })
 

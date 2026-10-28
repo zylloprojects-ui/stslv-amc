@@ -31,7 +31,6 @@ import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
 import { SignUpPage } from './pages/auth/SignUpPage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
-import { ExpensesPage } from './pages/expenses/ExpensesPage'
 import { InvoicesPage } from './pages/invoices/InvoicesPage'
 import { AuthLayout, LoginPage } from './pages/LoginPage'
 import { LoaderPreviewPage } from './pages/LoaderPreviewPage'
@@ -220,14 +219,6 @@ export function AppRoutes() {
                     <MasterStatusPage />
                   </RequirePermission>
                 </RequirePermission>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="/expenses"
-            element={
-              <RequirePermission module="EXPENSES">
-                <ExpensesPage />
               </RequirePermission>
             }
           />
