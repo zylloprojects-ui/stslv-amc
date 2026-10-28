@@ -113,7 +113,8 @@ export function SalesEngineersPage() {
   const [sortKey, setSortKey] = useState('name-asc')
   const [page, setPage] = useState(1)
   const [editing, setEditing] = useState<{ engineer: EngineerRecord | null } | null>(null)
-  const [disabling, setDisabling] = useState<EngineerRecord | null>(null)
+  // The engineer whose status change from the row icon waits for confirmation.
+  const [confirming, setConfirming] = useState<EngineerRecord | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
@@ -157,21 +158,21 @@ export function SalesEngineersPage() {
     retry: false,
   })
 
-  // Applies the status chosen in a row. The only change a row can ask for is the opposite of the stored status.
+  // Applies the status confirmed for a row. The only change a row can ask for is the opposite of the stored status.
   const toggle = useMutation({
     mutationFn: (engineer: EngineerRecord) => api.post<EngineerRecord>(`/masters/sales-engineers/${engineer.id}/status`, { isActive: !engineer.isActive }),
     onMutate: () => setNotice(null),
     onSuccess: async (saved) => {
-      setDisabling(null)
+      setConfirming(null)
       await queryClient.invalidateQueries({ queryKey: ['masters'] })
       setNotice(`${saved.name} is now ${ENGINEER_STATUS_LABELS[saved.isActive ? 'active' : 'inactive']}.`)
     },
   })
 
-  // Disabling an engineer who still has active contracts asks first; anything else applies at once.
+  // Every status change asks first; disabling also shows the engineer's active contracts.
   const apply = (engineer: EngineerRecord) => {
-    if (engineer.isActive && engineer.activeContractCount > 0) setDisabling(engineer)
-    else toggle.mutate(engineer)
+    toggle.reset()
+    setConfirming(engineer)
   }
 
   const canCreate = auth.can('SETTINGS', 'CREATE')
@@ -197,7 +198,7 @@ export function SalesEngineersPage() {
           </Alert>
         </div>
       )}
-      {toggle.isError && !disabling && (
+      {toggle.isError && !confirming && (
         <div className="mb-4">
           <Alert onDismiss={() => toggle.reset()}>{errorMessage(toggle.error)}</Alert>
         </div>
@@ -480,18 +481,18 @@ export function SalesEngineersPage() {
           }}
         />
       )}
-      {disabling && (
+      {confirming && (
         <ConfirmDialog
-          title="Disable sales engineer"
-          message={<AssignmentWarning engineer={disabling} />}
-          confirmLabel="Disable"
-          danger
+          title={confirming.isActive ? 'Disable sales engineer' : 'Enable sales engineer'}
+          message={confirming.isActive ? <AssignmentWarning engineer={confirming} /> : `${confirming.name} will be offered again for new AMC assignments.`}
+          confirmLabel={confirming.isActive ? 'Disable' : 'Enable'}
+          danger={confirming.isActive}
           loading={toggle.isPending}
           error={toggle.isError ? errorMessage(toggle.error) : null}
-          onConfirm={() => toggle.mutate(disabling)}
+          onConfirm={() => toggle.mutate(confirming)}
           onCancel={() => {
             toggle.reset()
-            setDisabling(null)
+            setConfirming(null)
           }}
         />
       )}

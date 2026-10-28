@@ -258,11 +258,20 @@ describe('change client status inline', () => {
     expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(0)
   })
 
-  it('disables on Apply and removes the client from the active list', async () => {
+  it('asks before deactivating, Cancel saves nothing, and Deactivate removes the client from the active list', async () => {
     const api = clientApi(ADMIN, [ONE, TWO])
     renderApp('/clients')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
+    expect(dialog).toHaveTextContent('Test Client One will no longer be offered for new contracts.')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Client One' }))
+    dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
 
     await waitFor(() => expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(1))
     expect(await screen.findByRole('status')).toHaveTextContent('Test Client One is now Disabled.')
@@ -422,8 +431,11 @@ describe('client permissions', () => {
     renderApp('/clients')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
+    // The refusal is shown in the confirmation, which stays open.
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
     expect(screen.getByRole('button', { name: 'View Test Client One' })).toBeInTheDocument()
   })
 })

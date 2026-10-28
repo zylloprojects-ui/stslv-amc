@@ -5,7 +5,7 @@ import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Badge, Button, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
+import { Alert, Badge, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { FrequencyContractsModal, FrequencyFormModal, FrequencyStatusWarning } from './maintenanceFrequencyDialogs'
@@ -89,6 +89,10 @@ type Dialog =
   | { kind: 'edit'; frequency: MaintenanceFrequencyRule }
   | { kind: 'contracts'; frequency: MaintenanceFrequencyRule }
   | { kind: 'confirm-status'; frequency: MaintenanceFrequencyRule; status: Exclude<FrequencyStatus, 'active'> }
+  | { kind: 'status'; frequency: MaintenanceFrequencyRule; status: FrequencyStatus }
+
+// The row icon that leads to each status, as named in its confirmation.
+const STATUS_ACTION_LABELS: Record<FrequencyStatus, string> = { active: 'Reactivate', disabled: 'Deactivate', archived: 'Archive' }
 
 function ContractCount({ count, label, onOpen }: { count: number; label: string; onOpen: (() => void) | null }) {
   return count > 0 && onOpen ? (
@@ -170,12 +174,15 @@ export function MaintenanceFrequenciesPage() {
     },
   })
 
+  // Every status change from a row icon is confirmed first. With active contracts the warning lists them;
+  // otherwise a plain confirmation, and the API still asks for the warning if contracts appeared meanwhile.
   const applyStatus = (frequency: MaintenanceFrequencyRule, next: FrequencyStatus) => {
+    changeStatus.reset()
     if (next !== 'active' && frequency.activeContractCount > 0) {
       setDialog({ kind: 'confirm-status', frequency, status: next })
       return
     }
-    changeStatus.mutate({ frequency, status: next, confirm: false })
+    setDialog({ kind: 'status', frequency, status: next })
   }
 
   const canCreate = auth.can('SETTINGS', 'CREATE')
@@ -187,7 +194,7 @@ export function MaintenanceFrequenciesPage() {
   const unavailable = list.isError && isFeatureUnavailable(list.error)
   const data = list.data
   const filtered = search !== '' || status !== 'current'
-  const statusError = changeStatus.isError && dialog.kind !== 'confirm-status' ? errorMessage(changeStatus.error) : null
+  const statusError = changeStatus.isError && dialog.kind !== 'confirm-status' && dialog.kind !== 'status' ? errorMessage(changeStatus.error) : null
 
   return (
     <>
@@ -506,6 +513,26 @@ export function MaintenanceFrequenciesPage() {
       )}
 
       {dialog.kind === 'contracts' && <FrequencyContractsModal frequency={dialog.frequency} onClose={closeDialog} />}
+
+      {dialog.kind === 'status' && (
+        <ConfirmDialog
+          title={`${STATUS_ACTION_LABELS[dialog.status]} frequency`}
+          message={
+            dialog.status === 'active'
+              ? `${dialog.frequency.name} will be offered again for new contracts.`
+              : `${dialog.frequency.name} will be ${FREQUENCY_STATUS_LABELS[dialog.status].toLowerCase()}. Contracts that use it keep it and their visits are unchanged; it is no longer offered for new contracts.`
+          }
+          confirmLabel={STATUS_ACTION_LABELS[dialog.status]}
+          danger={dialog.status !== 'active'}
+          loading={changeStatus.isPending}
+          error={changeStatus.isError ? errorMessage(changeStatus.error) : null}
+          onConfirm={() => changeStatus.mutate({ frequency: dialog.frequency, status: dialog.status, confirm: false })}
+          onCancel={() => {
+            changeStatus.reset()
+            closeDialog()
+          }}
+        />
+      )}
 
       {dialog.kind === 'confirm-status' && (
         <FrequencyStatusWarning

@@ -4,7 +4,7 @@ import { useAuth } from '../../auth/context'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
-import { Alert, Button, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
+import { Alert, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { formatDate } from '../../lib/format'
@@ -29,7 +29,7 @@ const SORTS: Record<string, { label: string; sort: string; direction: 'asc' | 'd
 
 const PAGE_SIZE = 25
 
-type Dialog = { kind: 'none' } | { kind: 'create' } | { kind: 'edit'; client: Client } | { kind: 'view'; clientId: string }
+type Dialog = { kind: 'none' } | { kind: 'create' } | { kind: 'edit'; client: Client } | { kind: 'view'; clientId: string } | { kind: 'status'; client: Client }
 
 // The columns a user may hide. Client name always shows, so every row stays identifiable.
 type ColumnKey = 'code' | 'type' | 'vat' | 'contact' | 'phone' | 'status'
@@ -153,11 +153,12 @@ export function ClientsPage() {
     placeholderData: keepPreviousData,
   })
 
-  // Applies the status chosen in a row. The only change a row can ask for is the opposite of the stored status.
+  // Applies the status confirmed for a row. The only change a row can ask for is the opposite of the stored status.
   const toggle = useMutation({
     mutationFn: (client: Client) => api.post<Client>(`/clients/${client.id}/${client.isActive ? 'deactivate' : 'reactivate'}`),
     onMutate: () => setNotice(null),
     onSuccess: async (updated) => {
+      setDialog({ kind: 'none' })
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['clients'] }),
         queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
@@ -193,7 +194,7 @@ export function ClientsPage() {
           </Alert>
         </div>
       )}
-      {toggle.isError && (
+      {toggle.isError && dialog.kind !== 'status' && (
         <div className="mb-4">
           <Alert onDismiss={() => toggle.reset()}>{errorMessage(toggle.error)}</Alert>
         </div>
@@ -439,7 +440,10 @@ export function ClientsPage() {
                               label={`${client.isActive ? 'Deactivate' : 'Reactivate'} ${client.name}`}
                               icon={client.isActive ? 'deactivate' : 'reactivate'}
                               disabled={toggle.isPending && toggle.variables?.id === client.id}
-                              onClick={() => toggle.mutate(client)}
+                              onClick={() => {
+                                toggle.reset()
+                                setDialog({ kind: 'status', client })
+                              }}
                             />
                           )}
                         </ActionGroup>
@@ -468,6 +472,27 @@ export function ClientsPage() {
 
       {dialog.kind === 'view' && (
         <ClientDetailsModal clientId={dialog.clientId} canEdit={canEdit} onEdit={(client) => setDialog({ kind: 'edit', client })} onClose={closeDialog} />
+      )}
+
+      {/* A status change from the row icon is confirmed first, as on the client page. */}
+      {dialog.kind === 'status' && (
+        <ConfirmDialog
+          title={dialog.client.isActive ? 'Deactivate client' : 'Reactivate client'}
+          message={
+            dialog.client.isActive
+              ? `${dialog.client.name} will no longer be offered for new contracts. Existing contracts, invoices and history are kept.`
+              : `${dialog.client.name} will be offered again for new contracts.`
+          }
+          confirmLabel={dialog.client.isActive ? 'Deactivate' : 'Reactivate'}
+          danger={dialog.client.isActive}
+          loading={toggle.isPending}
+          error={toggle.isError ? errorMessage(toggle.error) : null}
+          onConfirm={() => toggle.mutate(dialog.client)}
+          onCancel={() => {
+            toggle.reset()
+            closeDialog()
+          }}
+        />
       )}
     </>
   )

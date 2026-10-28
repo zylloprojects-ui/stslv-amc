@@ -5,7 +5,7 @@ import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Badge, Button, EmptyState, Modal, PageHeader, Spinner, TableScroll } from '../../components/ui'
+import { Alert, Badge, Button, ConfirmDialog, EmptyState, Modal, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { MasterFormModal, type AnyRecord } from './MasterDataPage'
@@ -75,6 +75,7 @@ type Dialog =
   | { kind: 'contracts'; type: SystemType }
   | { kind: 'delete'; type: SystemType }
   | { kind: 'in-use'; type: SystemType }
+  | { kind: 'status'; type: SystemType }
 
 export function SystemTypesPage() {
   const auth = useAuth()
@@ -126,11 +127,12 @@ export function SystemTypesPage() {
     retry: false,
   })
 
-  // Applies the status chosen in a row. The only change a row can ask for is the opposite of the stored status.
+  // Applies the status confirmed for a row. The only change a row can ask for is the opposite of the stored status.
   const toggle = useMutation({
     mutationFn: (type: SystemType) => api.post<SystemType>(`/masters/system-types/${type.id}/status`, { isActive: !type.isActive }),
     onMutate: () => setNotice(null),
     onSuccess: async (saved) => {
+      setDialog({ kind: 'none' })
       await queryClient.invalidateQueries({ queryKey: ['masters'] })
       setNotice(`${saved.name} is now ${STATUS_LABELS[saved.isActive ? 'active' : 'inactive']}.${saved.isActive ? '' : ' Contracts that use it keep it; it is no longer offered for new contracts.'}`)
     },
@@ -162,7 +164,7 @@ export function SystemTypesPage() {
           </Alert>
         </div>
       )}
-      {toggle.isError && (
+      {toggle.isError && dialog.kind !== 'status' && (
         <div className="mb-4">
           <Alert onDismiss={() => toggle.reset()}>{errorMessage(toggle.error)}</Alert>
         </div>
@@ -364,7 +366,10 @@ export function SystemTypesPage() {
                                     label={`${type.isActive ? 'Deactivate' : 'Reactivate'} ${type.name}`}
                                     icon={type.isActive ? 'deactivate' : 'reactivate'}
                                     disabled={toggle.isPending && toggle.variables?.id === type.id}
-                                    onClick={() => toggle.mutate(type)}
+                                    onClick={() => {
+                                      toggle.reset()
+                                      setDialog({ kind: 'status', type })
+                                    }}
                                   />
                                 )}
                                 {canDelete && (
@@ -399,6 +404,27 @@ export function SystemTypesPage() {
       )}
 
       {dialog.kind === 'contracts' && <LinkedContractsModal type={dialog.type} onClose={closeDialog} />}
+
+      {/* A status change from the row icon is confirmed first. */}
+      {dialog.kind === 'status' && (
+        <ConfirmDialog
+          title={dialog.type.isActive ? 'Deactivate system type' : 'Reactivate system type'}
+          message={
+            dialog.type.isActive
+              ? `${dialog.type.name} will no longer be offered for new contracts. Contracts that use it keep it.`
+              : `${dialog.type.name} will be offered again for new contracts.`
+          }
+          confirmLabel={dialog.type.isActive ? 'Deactivate' : 'Reactivate'}
+          danger={dialog.type.isActive}
+          loading={toggle.isPending}
+          error={toggle.isError ? errorMessage(toggle.error) : null}
+          onConfirm={() => toggle.mutate(dialog.type)}
+          onCancel={() => {
+            toggle.reset()
+            closeDialog()
+          }}
+        />
+      )}
 
       {dialog.kind === 'delete' && (
         <DeleteSystemTypeModal

@@ -161,7 +161,7 @@ describe('form', () => {
 })
 
 describe('status', () => {
-  it('changes status from the row icon action', async () => {
+  it('changes status from the row icon action after confirmation', async () => {
     const api = typesApi(ADMIN, [FA], (request) => (request.path === '/masters/system-types/4/status' ? ok({ ...FA, isActive: false }) : undefined))
     renderPage()
     await table()
@@ -170,6 +170,13 @@ describe('status', () => {
     expect(api.find('POST', '/masters/system-types/4/status')).toHaveLength(0)
 
     await userEvent.click(screen.getByRole('button', { name: 'Deactivate Fire Alarm' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Deactivate system type' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(api.find('POST', '/masters/system-types/4/status')).toHaveLength(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Fire Alarm' }))
+    dialog = await screen.findByRole('dialog', { name: 'Deactivate system type' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
 
     await waitFor(() => expect(api.find('POST', '/masters/system-types/4/status')[0]?.body).toEqual({ isActive: false }))
     expect(await screen.findByText(/Fire Alarm is now Disabled\. Contracts that use it keep it/)).toBeInTheDocument()

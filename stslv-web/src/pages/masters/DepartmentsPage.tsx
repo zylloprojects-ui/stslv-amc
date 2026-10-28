@@ -5,7 +5,7 @@ import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Badge, Button, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
+import { Alert, Badge, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { DepartmentFormModal, DisableDepartmentModal, LinkedEngineersModal, type DepartmentRecord } from './departmentDialogs'
@@ -73,6 +73,7 @@ type Dialog =
   | { kind: 'edit'; department: DepartmentRecord }
   | { kind: 'engineers'; department: DepartmentRecord }
   | { kind: 'disable'; department: DepartmentRecord }
+  | { kind: 'reactivate'; department: DepartmentRecord }
 
 export function DepartmentsPage() {
   const auth = useAuth()
@@ -139,11 +140,10 @@ export function DepartmentsPage() {
     },
   })
 
-  // Reactivating changes nothing for anyone, so it applies at once; disabling is confirmed first.
+  // A status change from the row icon is confirmed first; disabling also shows the linked engineers.
   const apply = (department: DepartmentRecord) => {
     toggle.reset()
-    if (department.isActive) setDialog({ kind: 'disable', department })
-    else toggle.mutate(department)
+    setDialog({ kind: department.isActive ? 'disable' : 'reactivate', department })
   }
 
   const cancelDisable = () => {
@@ -175,7 +175,7 @@ export function DepartmentsPage() {
           </Alert>
         </div>
       )}
-      {toggle.isError && dialog.kind !== 'disable' && (
+      {toggle.isError && dialog.kind !== 'disable' && dialog.kind !== 'reactivate' && (
         <div className="mb-4">
           <Alert onDismiss={() => toggle.reset()}>{errorMessage(toggle.error)}</Alert>
         </div>
@@ -409,6 +409,18 @@ export function DepartmentsPage() {
           onViewEngineers={() => {
             setDialog({ kind: 'engineers', department: dialog.department })
           }}
+        />
+      )}
+
+      {dialog.kind === 'reactivate' && (
+        <ConfirmDialog
+          title="Reactivate department"
+          message={`${dialog.department.name} can be chosen for sales engineers again.`}
+          confirmLabel="Reactivate"
+          loading={toggle.isPending}
+          error={toggle.isError ? errorMessage(toggle.error) : null}
+          onConfirm={() => toggle.mutate(dialog.department)}
+          onCancel={cancelDisable}
         />
       )}
 

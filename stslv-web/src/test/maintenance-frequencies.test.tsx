@@ -381,7 +381,7 @@ describe('form', () => {
 })
 
 describe('status', () => {
-  it('archives an unused frequency from its row action, without a warning', async () => {
+  it('archives an unused frequency from its row action after a plain confirmation', async () => {
     const api = frequenciesApi(ADMIN, [ANNUALLY], (request) => (request.method === 'POST' && request.path === `${PATH}/4/status` ? ok({ ...ANNUALLY, status: 'archived', isActive: false, archivedAt: '2026-10-27T00:00:00.000Z' }) : undefined))
     renderPage()
 
@@ -389,8 +389,15 @@ describe('status', () => {
     expect(within(row).queryByRole('combobox')).not.toBeInTheDocument()
     expect(api.find('POST', `${PATH}/4/status`)).toHaveLength(0)
 
-    // Unused: no warning, no confirmation sent.
+    // Unused: a plain confirmation instead of the contracts warning, and no confirm flag sent.
     await userEvent.click(within(row).getByRole('button', { name: 'Archive Annually' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Archive frequency' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(api.find('POST', `${PATH}/4/status`)).toHaveLength(0)
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Archive Annually' }))
+    dialog = await screen.findByRole('dialog', { name: 'Archive frequency' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Archive' }))
     await waitFor(() => expect(api.find('POST', `${PATH}/4/status`)).toHaveLength(1))
     expect(api.find('POST', `${PATH}/4/status`)[0]?.body).toEqual({ status: 'archived' })
     expect(await screen.findByText(/Annually is now Archived/)).toBeInTheDocument()
@@ -410,6 +417,21 @@ describe('status', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Disable' }))
     await waitFor(() => expect(api.find('POST', `${PATH}/2/status`)).toHaveLength(1))
     expect(api.find('POST', `${PATH}/2/status`)[0]?.body).toEqual({ status: 'disabled', confirm: true })
+  })
+
+  it('reactivates a disabled frequency only after confirmation', async () => {
+    const disabled = { ...ANNUALLY, status: 'disabled' as const, isActive: false }
+    const api = frequenciesApi(ADMIN, [disabled], (request) => (request.method === 'POST' && request.path === `${PATH}/4/status` ? ok({ ...ANNUALLY }) : undefined))
+    renderPage()
+
+    const row = await rowOf('Annually')
+    await userEvent.click(within(row).getByRole('button', { name: 'Reactivate Annually' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Reactivate frequency' })
+    expect(api.find('POST', `${PATH}/4/status`)).toHaveLength(0)
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reactivate' }))
+    await waitFor(() => expect(api.find('POST', `${PATH}/4/status`)[0]?.body).toEqual({ status: 'active' }))
+    expect(await screen.findByText(/Annually is now Active/)).toBeInTheDocument()
   })
 
   it('does not allow reactivating when the API reports the engine cannot generate the rule', async () => {

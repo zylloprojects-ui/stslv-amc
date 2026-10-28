@@ -248,12 +248,19 @@ describe('status', () => {
     expect(await within(dialog).findByText('You do not have permission to do that.')).toBeInTheDocument()
   })
 
-  it('reactivates at once, without a confirmation', async () => {
+  it('reactivates only after confirmation', async () => {
     const api = departmentsApi(ADMIN, [SALES], (request) => (request.path === '/masters/departments/3/status' ? ok({ ...SALES, isActive: true }) : undefined))
     renderPage()
     const row = within(await table()).getAllByRole('row')[1] as HTMLElement
 
     await userEvent.click(within(row).getByRole('button', { name: 'Reactivate Sales' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Reactivate department' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(api.find('POST', '/masters/departments/3/status')).toHaveLength(0)
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Reactivate Sales' }))
+    dialog = await screen.findByRole('dialog', { name: 'Reactivate department' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reactivate' }))
 
     expect(await screen.findByText(/Sales is now Active/)).toBeInTheDocument()
     expect(api.find('POST', '/masters/departments/3/status')[0]?.body).toEqual({ isActive: true })

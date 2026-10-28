@@ -175,7 +175,7 @@ describe('Sales Engineers list', () => {
 })
 
 describe('status row action', () => {
-  it('deactivates at once from the row icon when no active contract depends on the engineer', async () => {
+  it('asks before deactivating from the row icon even when no active contract depends on the engineer', async () => {
     const api = engineersApi(ADMIN, [makeEngineer({ activeContractCount: 0 })])
     renderApp('/master-data/sales-engineers')
     await table()
@@ -183,6 +183,14 @@ describe('status row action', () => {
     expect(api.find('POST', '/masters/sales-engineers/5/status')).toHaveLength(0)
 
     await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Engineer' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Disable sales engineer' })
+    expect(dialog).toHaveTextContent('Test Engineer has no active AMC contracts.')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(api.find('POST', '/masters/sales-engineers/5/status')).toHaveLength(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Engineer' }))
+    dialog = await screen.findByRole('dialog', { name: 'Disable sales engineer' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Disable' }))
     await waitFor(() => expect(api.find('POST', '/masters/sales-engineers/5/status')[0]?.body).toEqual({ isActive: false }))
     expect(await screen.findByRole('status')).toHaveTextContent('Test Engineer is now Disabled.')
   })
