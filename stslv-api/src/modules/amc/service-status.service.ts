@@ -52,7 +52,7 @@ const BUILT_IN_FREQUENCY_LABELS: Record<string, string> = {
 };
 
 /** The derived service status. See SERVICE_STATUSES for the rule. */
-function serviceStatusSql(f: Features): string {
+export function serviceStatusSql(f: Pick<Features, "renewals">): string {
   const noOpenRenewal = f.renewals
     ? "AND NOT EXISTS (SELECT 1 FROM amc_contracts r WHERE r.renewed_from_id = c.id AND r.status <> 'CANCELLED')"
     : "";

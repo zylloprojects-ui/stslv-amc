@@ -38,6 +38,9 @@ import {
   updateContract,
 } from "./contracts.service";
 import { getContractMasters, setContractMasters } from "./contract-masters.service";
+import { buildMasterStatusExport } from "./master-status.export";
+import { exportMasterStatusSchema, listMasterStatusSchema } from "./master-status.schemas";
+import { getMasterStatusOptions, listMasterStatus } from "./master-status.service";
 import { getContractRenewals, listRenewalHistory } from "./renewals.service";
 import { getWorkload, listExpiringContracts } from "./reports.service";
 import { buildScheduleExport } from "./schedule.export";
@@ -235,4 +238,28 @@ amcRouter.patch("/service-status/:id", authorize("AMC_EXECUTION", "EDIT"), async
   const item = await saveServiceStatus(requireAuth(req), parseIdParam(req.params.id), saveServiceStatusSchema.parse(req.body));
 
   res.json({ success: true, data: item });
+});
+
+// --- Master AMC Status ---------------------------------------------------------
+// Read only: one row per scheduled visit with its invoice and quotation numbers.
+// It shows invoice numbers (Invoice Tracking) and quotation numbers (Services
+// Sales), so viewing needs VIEW on AMC_SCHEDULE, INVOICES and SERVICES_SALES:
+// no role sees through this page what its own grants hide. Needs migration 0078.
+const masterStatusReady = requireSchema(["amc_visits.quotation_no"]);
+const masterStatusView = [authorize("AMC_SCHEDULE", "VIEW"), authorize("INVOICES", "VIEW"), authorize("SERVICES_SALES", "VIEW"), masterStatusReady];
+
+amcRouter.get("/master-status", ...masterStatusView, async (req, res) => {
+  res.json({ success: true, data: await listMasterStatus(listMasterStatusSchema.parse(req.query)) });
+});
+
+amcRouter.get("/master-status/options", ...masterStatusView, async (_req, res) => {
+  res.json({ success: true, data: await getMasterStatusOptions() });
+});
+
+// Every row that matches the page's filters, across all pages, with the page's visible columns.
+amcRouter.get("/master-status/export", ...masterStatusView, authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+  const query = exportMasterStatusSchema.parse(req.query);
+  const { report, recordExport } = await buildMasterStatusExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
 });

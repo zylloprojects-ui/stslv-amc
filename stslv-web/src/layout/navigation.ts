@@ -9,11 +9,13 @@ export interface NavItem {
   pending?: true
   /** Shown only to the built-in Admin role, whatever else the user is granted. */
   adminOnly?: true
+  /** Further modules the user must also hold VIEW on, for a page that shows data of several modules. */
+  alsoRequires?: Module[]
 }
 
 /** Whether a navigation item is offered to the user. A convenience only: the API enforces every permission. */
 export function navItemVisible(item: NavItem, can: (module: Module, action: 'VIEW') => boolean, isAdmin: boolean): boolean {
-  return can(item.module, 'VIEW') && (!item.adminOnly || isAdmin)
+  return can(item.module, 'VIEW') && (item.alsoRequires ?? []).every((module) => can(module, 'VIEW')) && (!item.adminOnly || isAdmin)
 }
 
 export interface NavSection {
@@ -45,6 +47,8 @@ export const NAVIGATION: NavSection[] = [
       { label: 'AMC Calendar', path: '/amc/calendar', module: 'AMC_SCHEDULE' },
       { label: 'Service Status', path: '/amc/service-status', module: 'AMC_SCHEDULE' },
       { label: 'Services Sales', path: '/amc/services-sales', module: 'SERVICES_SALES' },
+      // Shows invoice and quotation numbers, so it needs view on those modules too (the API checks the same three).
+      { label: 'Master AMC Status', path: '/amc/master-status', module: 'AMC_SCHEDULE', alsoRequires: ['INVOICES', 'SERVICES_SALES'] },
     ],
   },
   {

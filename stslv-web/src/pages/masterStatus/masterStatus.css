@@ -1,0 +1,60 @@
+/*
+ * Master AMC Status table only. The shared table styles (index.css) give even
+ * rows and hovered rows a cell background, which would cover a row's colour.
+ * These rules are scoped to .master-status-table and are more specific than the
+ * shared ones, so every row shows its colour the same way, odd or even.
+ */
+.master-status-table.table-scroll tbody tr.ms-row[data-colour='RED'] {
+  --ms-edge: #dc2626;
+  --ms-tint: #fef2f2;
+  --ms-tint-hover: #fee2e2;
+}
+.master-status-table.table-scroll tbody tr.ms-row[data-colour='YELLOW'] {
+  --ms-edge: #ca8a04;
+  --ms-tint: #fefce8;
+  --ms-tint-hover: #fef9c3;
+}
+.master-status-table.table-scroll tbody tr.ms-row[data-colour='BLUE'] {
+  --ms-edge: #1479bd;
+  --ms-tint: #f0f9ff;
+  --ms-tint-hover: #e0f2fe;
+}
+.master-status-table.table-scroll tbody tr.ms-row[data-colour='GREEN'] {
+  --ms-edge: #16a34a;
+  --ms-tint: #f0fdf4;
+  --ms-tint-hover: #dcfce7;
+}
+
+.master-status-table.table-scroll tbody tr.ms-row[data-colour],
+.master-status-table.table-scroll tbody tr.ms-row[data-colour] > td {
+  background-color: var(--ms-tint);
+}
+.master-status-table.table-scroll tbody tr.ms-row[data-colour]:hover,
+.master-status-table.table-scroll tbody tr.ms-row[data-colour]:hover > td {
+  background-color: var(--ms-tint-hover);
+}
+.master-status-table.table-scroll tbody tr.ms-row[data-colour] > td:first-child {
+  box-shadow: inset 4px 0 0 var(--ms-edge);
+}
+
+/* Dark theme: translucent tints that read on the dark table. */
+.dark .master-status-table.table-scroll tbody tr.ms-row[data-colour='RED'] {
+  --ms-edge: #f87171;
+  --ms-tint: rgba(248, 113, 113, 0.13);
+  --ms-tint-hover: rgba(248, 113, 113, 0.21);
+}
+.dark .master-status-table.table-scroll tbody tr.ms-row[data-colour='YELLOW'] {
+  --ms-edge: #facc15;
+  --ms-tint: rgba(250, 204, 21, 0.12);
+  --ms-tint-hover: rgba(250, 204, 21, 0.2);
+}
+.dark .master-status-table.table-scroll tbody tr.ms-row[data-colour='BLUE'] {
+  --ms-edge: #4aa3df;
+  --ms-tint: rgba(74, 163, 223, 0.13);
+  --ms-tint-hover: rgba(74, 163, 223, 0.21);
+}
+.dark .master-status-table.table-scroll tbody tr.ms-row[data-colour='GREEN'] {
+  --ms-edge: #22c55e;
+  --ms-tint: rgba(34, 197, 94, 0.12);
+  --ms-tint-hover: rgba(34, 197, 94, 0.2);
+}
