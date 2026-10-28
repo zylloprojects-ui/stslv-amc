@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react'
 
-// Which loader design is shown, remembered in this browser only. A tiny shared store keeps every
+// Which loader design is shown. A tiny shared store keeps every
 // loader on the page in step when the user picks a different style.
 const STYLE_KEY = 'stslev.loader'
 
@@ -15,14 +15,9 @@ export const LOADERS = [
 
 export type LoaderStyle = (typeof LOADERS)[number]['id']
 
+// The Logo ring is the only loader offered; a style saved earlier in this browser is ignored.
 function initial(): LoaderStyle {
-  try {
-    const saved = localStorage.getItem(STYLE_KEY)
-
-    return LOADERS.some((item) => item.id === saved) ? (saved as LoaderStyle) : 'brand'
-  } catch {
-    return 'brand'
-  }
+  return 'brand'
 }
 
 let style: LoaderStyle = initial()
