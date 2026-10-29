@@ -68,6 +68,8 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Login History', path: '/admin/login-history', module: 'USERS' },
       { label: 'Audit Log', path: '/admin/audit-log', module: 'USERS', adminOnly: true },
+      // Reviewers are the Admin role until a Suggestions permission is approved (the API checks the same).
+      { label: 'Suggestions Review', path: '/admin/suggestions', module: 'USERS', adminOnly: true },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
     ],
   },

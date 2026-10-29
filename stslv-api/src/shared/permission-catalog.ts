@@ -311,11 +311,13 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
 export const FIXED_ACCESS = {
   adminOnly: [
     { label: "Audit Log", path: "/admin/audit-log" },
+    { label: "Suggestions Review", path: "/admin/suggestions" },
     { label: "System readiness (Dashboard)", path: "/dashboard" },
     { label: "Historical import audit", path: "/api/historical-data/audit" },
   ],
   everyone: [
     { label: "Notifications (only for the modules the user may view)", path: "/notifications" },
+    { label: "My Suggestions and the suggestion popup", path: "/suggestions" },
     { label: "My account", path: "/account" },
   ],
 };

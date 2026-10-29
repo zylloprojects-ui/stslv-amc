@@ -96,6 +96,12 @@ export function UserMenu() {
               </MenuIcon>
               My Profile
             </Link>
+            <Link to="/suggestions" onClick={() => setOpen(false)} className={ITEM}>
+              <MenuIcon>
+                <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3Z" strokeLinecap="round" strokeLinejoin="round" />
+              </MenuIcon>
+              My Suggestions
+            </Link>
             {auth.can('DASHBOARD', 'VIEW') && (
               <Link to="/dashboard" onClick={() => setOpen(false)} className={ITEM}>
                 <MenuIcon>

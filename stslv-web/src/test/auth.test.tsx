@@ -183,7 +183,7 @@ describe('permission-based navigation', () => {
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
       'AMC Operations': ['AMC Management', 'AMC Contracts', 'AMC Renewal', 'AMC Schedule', 'Monthly Calendar', 'Service Status', 'Services Sales', 'Master AMC Status'],
       Finance: ['Invoice Tracking', 'Accounts'],
-      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
+      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log', 'Suggestions Review'],
     })
   })
 
@@ -424,7 +424,7 @@ describe('loader style', () => {
 })
 
 describe('suggestions popup', () => {
-  it('opens from the header, asks for enough detail, and says plainly that nothing is sent', async () => {
+  it('opens from the header and asks for a subject and enough detail before sending anything', async () => {
     const api = session(ADMIN)
     renderApp('/dashboard')
 
@@ -432,15 +432,14 @@ describe('suggestions popup', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Suggestions & Improvements' })
     expect(dialog).toHaveTextContent('propose an improvement for STSLEV AMC.')
 
+    const before = api.requests.length
     await userEvent.type(within(dialog).getByLabelText('Description'), 'short')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Submit Feedback' }))
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('at least 10 characters')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('short subject')
 
-    const before = api.requests.length
-    await userEvent.type(within(dialog).getByLabelText('Description'), ' but now long enough')
+    await userEvent.type(within(dialog).getByLabelText('Subject'), 'Slow export')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Submit Feedback' }))
-
-    expect(dialog).toHaveTextContent('Suggestions are not stored or sent yet.')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('at least 10 characters')
     expect(api.requests).toHaveLength(before)
   })
 })

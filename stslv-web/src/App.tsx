@@ -39,6 +39,9 @@ import { LoaderPreviewPage } from './pages/LoaderPreviewPage'
 import { ModulePlaceholderPage } from './pages/ModulePlaceholderPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { MySuggestionsPage } from './pages/suggestions/MySuggestionsPage'
+import { SuggestionDetailPage } from './pages/suggestions/SuggestionDetailPage'
+import { SuggestionReviewPage } from './pages/suggestions/SuggestionReviewPage'
 import { UsersPage } from './pages/users/UsersPage'
 
 function createQueryClient() {
@@ -293,7 +296,18 @@ export function AppRoutes() {
               </RequireAdmin>
             }
           />
+          <Route
+            path="/admin/suggestions"
+            element={
+              <RequireAdmin>
+                <SuggestionReviewPage />
+              </RequireAdmin>
+            }
+          />
           <Route path="/notifications" element={<NotificationsPage />} />
+          {/* Every signed-in user's own suggestions. The API shows another user's suggestion to reviewers only. */}
+          <Route path="/suggestions" element={<MySuggestionsPage />} />
+          <Route path="/suggestions/:id" element={<SuggestionDetailPage />} />
           {/* The former combined System Types & Departments page. */}
           <Route path="/admin/master-data" element={<Navigate to="/master-data" replace />} />
           <Route
