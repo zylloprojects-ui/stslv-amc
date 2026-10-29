@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { testOutbox } from "../src/shared/mailer";
-import { api, closePool, insertUser, PASSWORD, resetData, roleId, signedIn } from "./helpers";
+import { api, closePool, insertUser, PASSWORD, resetData, roleId, signedIn, withoutOneRoleConstraint } from "./helpers";
 
 let admin: Awaited<ReturnType<typeof signedIn>>;
 
@@ -473,19 +473,21 @@ describe("an approval gives exactly one role", () => {
     expect(response.body.error.message).toBe("Assign a role before approving this user.");
   });
 
-  it("refuses to approve a request that holds several roles from before the rule, without removing any", async () => {
-    const id = await pendingUser("Max Many", "max@example.com");
-    await pool.query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2), ($1, $3)", [id, await roleId("ACCOUNTANT"), await roleId("INVOICING")]);
+  it("refuses to approve a request that holds several roles from before the rule, without removing any (database before 0082)", async () => {
+    await withoutOneRoleConstraint(async () => {
+      const id = await pendingUser("Max Many", "max@example.com");
+      await pool.query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2), ($1, $3)", [id, await roleId("ACCOUNTANT"), await roleId("INVOICING")]);
 
-    const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
+      const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
 
-    expect(response.status).toBe(409);
-    expect(response.body.error.message).toBe("This user has more than one role. Choose one role before approving.");
-    expect(await userRow("max@example.com")).toMatchObject({ approval_status: "PENDING", is_active: false, roles: ["ACCOUNTANT", "INVOICING"] });
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toBe("This user has more than one role. Choose one role before approving.");
+      expect(await userRow("max@example.com")).toMatchObject({ approval_status: "PENDING", is_active: false, roles: ["ACCOUNTANT", "INVOICING"] });
 
-    // Choosing one role replaces both; then the approval goes through.
-    expect((await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("INVOICING")] })).status).toBe(200);
-    expect((await api().post(`/api/users/${id}/activate`).set(admin.headers)).status).toBe(200);
-    expect(await userRow("max@example.com")).toMatchObject({ approval_status: "APPROVED", roles: ["INVOICING"] });
+      // Choosing one role replaces both; then the approval goes through.
+      expect((await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("INVOICING")] })).status).toBe(200);
+      expect((await api().post(`/api/users/${id}/activate`).set(admin.headers)).status).toBe(200);
+      expect(await userRow("max@example.com")).toMatchObject({ approval_status: "APPROVED", roles: ["INVOICING"] });    });
+
   });
 });

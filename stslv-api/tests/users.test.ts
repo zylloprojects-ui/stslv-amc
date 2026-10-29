@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { api, bearer, closePool, loginToken, PASSWORD, resetData, roleId, signedIn } from "./helpers";
+import { api, bearer, closePool, loginToken, PASSWORD, resetData, roleId, signedIn, withoutOneRoleConstraint } from "./helpers";
 
 let admin: Awaited<ReturnType<typeof signedIn>>;
 
@@ -231,24 +231,26 @@ describe("one role per user", () => {
     expect(roles.rows).toEqual([{ code: "EXECUTION" }]);
   });
 
-  it("replaces several roles held from before the rule with the one chosen", async () => {
-    const created = await api()
-      .post("/api/users")
-      .set(admin.headers)
-      .send({ email: "legacy@example.com", fullName: "Legacy Roles", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
-    const id = created.body.data.id;
-    // Assigned directly, as data from before the rule may be.
-    await pool.query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)", [id, await roleId("INVOICING")]);
+  it("replaces several roles held from before the rule with the one chosen (database before 0082)", async () => {
+    await withoutOneRoleConstraint(async () => {
+      const created = await api()
+        .post("/api/users")
+        .set(admin.headers)
+        .send({ email: "legacy@example.com", fullName: "Legacy Roles", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
+      const id = created.body.data.id;
+      // Assigned directly, as data from before the rule may be.
+      await pool.query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)", [id, await roleId("INVOICING")]);
 
-    const response = await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("ACCOUNTANT")] });
+      const response = await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("ACCOUNTANT")] });
 
-    expect(response.status).toBe(200);
-    expect(response.body.data.roles.map((role: { code: string }) => role.code)).toEqual(["ACCOUNTANT"]);
-    const log = await pool.query<{ metadata: { added: string[]; removed: string[] } }>(
-      "SELECT metadata FROM activity_logs WHERE action = 'user.roles_changed' AND entity_id = $1",
-      [id]
-    );
-    expect(log.rows[0]?.metadata.added).toEqual(["ACCOUNTANT"]);
-    expect([...(log.rows[0]?.metadata.removed ?? [])].sort()).toEqual(["EXECUTION", "INVOICING"]);
+      expect(response.status).toBe(200);
+      expect(response.body.data.roles.map((role: { code: string }) => role.code)).toEqual(["ACCOUNTANT"]);
+      const log = await pool.query<{ metadata: { added: string[]; removed: string[] } }>(
+        "SELECT metadata FROM activity_logs WHERE action = 'user.roles_changed' AND entity_id = $1",
+        [id]
+      );
+      expect(log.rows[0]?.metadata.added).toEqual(["ACCOUNTANT"]);
+      expect([...(log.rows[0]?.metadata.removed ?? [])].sort()).toEqual(["EXECUTION", "INVOICING"]);    });
+
   });
 });

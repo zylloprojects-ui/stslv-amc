@@ -7,8 +7,9 @@ Decisions (2026-10-29):
 - **A — approved:** separate permission modules for AMC Renewal, Monthly Calendar, Service Status, Sales Engineers, System Types, Maintenance Frequencies and Departments; existing access preserved by copying grants.
 - **B — approved:** Users: Approve governs approving and rejecting sign-up requests; Users: Edit stays for normal user editing.
 - **C — deferred:** legacy grants, APIs and records of PROJECTS, PROCUREMENT, EXPENSES, HISTORICAL_DATA and REPORTS are kept, shown in a Retired section, pending a later cleanup.
+- **One role per user — approved:** enforced in the API and UI (section 9) and by migration 0082 in the database.
 
-Migrations 0080 and 0081 are **not applied** to `stslv_amc_dev` or Neon. They were applied to a throwaway copy of `stslv_amc_dev` (`stslv_amc_smoke_permissions`) to verify them.
+Migrations 0080, 0081 and 0082 are **not applied** to `stslv_amc_dev` or Neon. They were applied to a throwaway copy of `stslv_amc_dev` (`stslv_amc_smoke_permissions`) to verify them. Order and prerequisites: section 10.
 
 ## 1. How permissions work
 
@@ -154,7 +155,7 @@ When merging, in the same change:
 
 ## 9. One role per user (approved 2026-10-29)
 
-Every user holds exactly one role. Enforced in the API and the UI; the database is unchanged (see the proposal below).
+Every user holds exactly one role. Enforced in the API and the UI (commit 4717f4e) and, from migration 0082, by the database (at most one role per user).
 
 - `POST /api/users` and `PUT /api/users/:id/roles` take `roleIds` as a list of **exactly one** role id (the shape the API already used). No role, or several, answers 400 `Select exactly one role.` on the field `roleIds`; the same id twice counts as one. The services check the rule again.
 - Changing a role replaces whatever the user held, in one transaction under the user's row lock, and is recorded as `user.roles_changed` with `added` / `removed`.
@@ -165,20 +166,50 @@ Every user holds exactly one role. Enforced in the API and the UI; the database 
 
 Existing data: read-only audit of local `stslv_amc_dev` (2026-10-29): 1 user, 1 role, 0 users with several roles, 0 pending. No cleanup needed there. Neon was not queried.
 
-### Proposal (not implemented): a database constraint
+### Migration 0082_one_role_per_user (approved 2026-10-29)
 
-The API is the only writer of `user_roles` besides `npm run admin:create` (one role) and the rejection (removes all), so the rule holds. A constraint would also stop a direct database write from adding a second role:
+`ALTER TABLE user_roles ADD CONSTRAINT user_roles_one_role_uq UNIQUE (user_id)`: the database refuses a second role for a user from any writer (error 23505 on `user_roles_one_role_uq`). At most one, not exactly one: a sign-up request has no role until one is assigned, and a rejected request keeps none. The primary key `(user_id, role_id)` stays.
 
-```sql
--- 0082_one_role_per_user (proposal)
--- Stops if any user holds several roles, so nothing is removed silently.
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM user_roles GROUP BY user_id HAVING count(*) > 1) THEN
-    RAISE EXCEPTION 'Some users hold several roles. Choose one for each before applying 0082.';
-  END IF;
-END $$;
-CREATE UNIQUE INDEX user_roles_one_per_user_uq ON user_roles (user_id);
-```
+- **Fails safely.** A guard first counts the users holding several roles; if any, it raises `0082: N user(s) hold more than one role. Choose one role for each in Users & Access, then apply 0082 again. Nothing was changed.` The runner wraps each migration in a transaction and rolls it back: no assignment is removed, no constraint is created, 0082 is not recorded. Only a count is reported, no personal data.
+- **Changes no data.** Replacing a role through the API still works with the constraint: the old row is deleted and the new one inserted in the same transaction.
+- **Reverse** (only with approval; the API keeps enforcing one role):
+  ```sql
+  BEGIN;
+  ALTER TABLE user_roles DROP CONSTRAINT user_roles_one_role_uq;
+  DELETE FROM schema_migrations WHERE version = '0082';
+  COMMIT;
+  ```
+  Every assignment is kept; `npm run migrate` applies 0082 again afterwards.
 
-Needs approval, and on each database first a read-only count of users with several roles (Neon included). It would be numbered before Suggestions' 0085. Nothing in the application depends on it.
+Verified 2026-10-29 on isolated databases only:
+
+| Check | Where | Result |
+|---|---|---|
+| Applied after 0080/0081 from an empty schema | `stslv_amc_test_permissions` (test schema rebuilt by every API run) | applied in order; `UNIQUE (user_id)` |
+| Guard with a user holding two roles, real runner | `stslv_amc_smoke_permissions` (copy of local dev data, already at 0081) | stopped, rolled back; 8 assignments unchanged; no constraint; 0082 not recorded |
+| Recovery: one role chosen through the API, then `npm run migrate` | same | applied |
+| Direct `INSERT` of a second role | same | refused, `duplicate key value violates unique constraint "user_roles_one_role_uq"`; first role kept |
+| API replace role, refuse two roles, create user with one role | same, API on port 3301 | 200 / 400 / 201 |
+| Reverse statement, then `npm run migrate` again | same | constraint removed then re-created; assignments identical throughout |
+| Automated: `tests/one-role-constraint.test.ts` | test schema | constraint, direct insert refused, API replace, guard stops and leaves data, applies after one role is chosen, reverse and re-apply |
+
+Tests that cover databases where 0082 is not applied yet (a user with several roles from before the rule) run inside `withoutOneRoleConstraint()` in `tests/helpers.ts`, which drops the constraint on the test schema only and restores it afterwards.
+
+## 10. Migration order and deployment prerequisites
+
+Order on every database: **0080 → 0081 → 0082 → (Suggestions) 0085**. The runner refuses a pending migration numbered below one already applied, so 0080–0082 must be applied before 0085 anywhere both are applied. 0080 and 0081 belong together (0081 needs 0080's module codes); 0082 is independent of them but numbered after.
+
+None of 0080–0082 is applied to `stslv_amc_dev` or Neon. Before applying to a shared or production database (each step separately approved):
+
+1. **Backup** taken and its restore checked (custom-format `pg_dump`, timestamped, never overwriting an earlier dump).
+2. **Read-only audit** of role assignments, counts only:
+   ```sql
+   SELECT count(*) AS users_with_several_roles FROM (SELECT user_id FROM user_roles GROUP BY user_id HAVING count(*) > 1) x;
+   SELECT count(*) AS users_without_role FROM users u WHERE NOT EXISTS (SELECT 1 FROM user_roles ur WHERE ur.user_id = u.id);
+   ```
+   If any user holds several roles, an administrator chooses one in Users & Access before 0082 (the migration stops otherwise). Users without a role do not block it.
+3. **Grant check** for 0081: record `SELECT r.code, rp.module, rp.action FROM role_permissions rp JOIN roles r ON r.id = rp.role_id` before, compare after; only additions on the seven new modules and `USERS:APPROVE` are expected, nothing removed (section 3).
+4. `npm run migrate:status` shows exactly the expected pending migrations, then `npm run migrate`.
+5. The API version that knows the new modules (this branch) is deployed together with the migrations: an older API does not know the new module codes, and the web app of this branch hides pages whose new codes the user does not hold.
+
+Local `stslv_amc_dev` audit 2026-10-29: 1 user with 1 role; 0 with several; 0 pending. Neon has not been audited.

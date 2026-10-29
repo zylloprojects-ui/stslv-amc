@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { loadMigrationFiles } from "../src/db/migrate";
 import { ACTIONS, MODULES } from "../src/shared/permissions";
-import { api, closePool, insertUser, PASSWORD, resetData, roleId, signedIn } from "./helpers";
+import { api, closePool, insertUser, PASSWORD, resetData, roleId, signedIn, withoutOneRoleConstraint } from "./helpers";
 
 type Session = Awaited<ReturnType<typeof signedIn>>;
 
@@ -77,12 +77,14 @@ describe("permission enforcement on client routes", () => {
     expect((await api().get("/api/clients").set(accountant.headers)).status).toBe(403);
   });
 
-  it("combines the permissions of several roles", async () => {
-    const both = await signedIn("both@example.com", ["PROCUREMENT", "INVOICING"]);
-    const me = await api().get("/api/auth/me").set(both.headers);
+  it("combines the permissions of several roles, on a database before migration 0082", async () => {
+    await withoutOneRoleConstraint(async () => {
+      const both = await signedIn("both@example.com", ["PROCUREMENT", "INVOICING"]);
+      const me = await api().get("/api/auth/me").set(both.headers);
 
-    expect(me.body.data.user.permissions).toEqual(expect.arrayContaining(["PROCUREMENT:CREATE", "INVOICES:CREATE"]));
-    expect(me.body.data.user.permissions).not.toContain("EXPENSES:CREATE");
+      expect(me.body.data.user.permissions).toEqual(expect.arrayContaining(["PROCUREMENT:CREATE", "INVOICES:CREATE"]));
+      expect(me.body.data.user.permissions).not.toContain("EXPENSES:CREATE");    });
+
   });
 });
 

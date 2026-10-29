@@ -33,6 +33,27 @@ export async function resetData(): Promise<void> {
   await restoreSeededFrequencies();
 }
 
+/**
+ * Runs `test` as on a database where migration 0082 (one role per user) is not applied yet, so a
+ * user can hold several roles, as data from before the rule may. Test schema only. Afterwards the
+ * extra roles the test left are removed (keeping each user's first) and the constraint is restored.
+ */
+export async function withoutOneRoleConstraint(test: () => Promise<void>): Promise<void> {
+  const schema = await pool.query<{ schema: string }>("SELECT current_schema() AS schema");
+
+  if (schema.rows[0]?.schema !== "stslv_test") {
+    throw new Error("Refusing to drop a constraint: not connected to the stslv_test schema.");
+  }
+
+  await pool.query("ALTER TABLE user_roles DROP CONSTRAINT user_roles_one_role_uq");
+  try {
+    await test();
+  } finally {
+    await pool.query("DELETE FROM user_roles a USING user_roles b WHERE a.user_id = b.user_id AND a.role_id > b.role_id");
+    await pool.query("ALTER TABLE user_roles ADD CONSTRAINT user_roles_one_role_uq UNIQUE (user_id)");
+  }
+}
+
 /** Inserts a user directly, bypassing the API. Returns the new id. */
 export async function insertUser(options: {
   email: string;
