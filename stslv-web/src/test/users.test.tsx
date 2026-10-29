@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ACTIONS, MODULES, type Role, type SessionUser, type User } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply } from './helpers'
 
@@ -65,7 +65,7 @@ function usersApi(user: SessionUser = ADMIN, onReset: ResetReply = () => ok(null
       users[1] = { ...(users[1] as User), isActive: false }
       return ok(users[1])
     }
-    if (request.method === 'POST' && request.path === '/users/2/reset-password') return onReset()
+    if (request.method === 'POST' && request.path === '/users/2/temporary-password') return onReset()
     if (request.method === 'PUT' && request.path === '/users/2/roles') {
       const { roleIds } = request.body as { roleIds: string[] }
       users[1] = { ...(users[1] as User), roles: ROLES.filter((role) => roleIds.includes(role.id)) }
@@ -139,94 +139,131 @@ describe('users', () => {
     expect(await screen.findByRole('button', { name: 'Activate Arun Accountant' })).toBeInTheDocument()
   })
 
-  describe('reset password', () => {
-    const NEW_PASSWORD = 'a-good-long-password'
+  describe('temporary password', () => {
+    const TEMPORARY = 'Kp7r-Xw2m-Tq9a-Hd4e'
+    const ISSUED = { temporaryPassword: TEMPORARY, expiresAt: '2026-10-29T10:15:00.000Z' }
 
-    const resetApi = (onReset?: ResetReply) => usersApi(ADMIN, onReset)
+    const issueApi = (onIssue?: ResetReply) => usersApi(ADMIN, onIssue ?? (() => ok(ISSUED)))
 
-    async function openConfirmation() {
+    async function openDialog() {
       renderApp('/admin/users')
-      await userEvent.click(await screen.findByRole('button', { name: 'Reset password of Arun Accountant' }))
+      await userEvent.click(await screen.findByRole('button', { name: 'Generate temporary password for Arun Accountant' }))
 
-      return screen.findByRole('dialog', { name: 'Reset Password?' })
+      return screen.findByRole('dialog', { name: 'Generate temporary password' })
     }
 
-    async function confirmAndFill() {
-      await userEvent.click(within(await openConfirmation()).getByRole('button', { name: 'Yes, Reset Password' }))
-      const form = await screen.findByRole('dialog', { name: 'Reset password for Arun Accountant' })
+    it('names the user and requires the identity check before anything is sent', async () => {
+      const api = issueApi()
+      const dialog = await openDialog()
 
-      await userEvent.type(within(form).getByLabelText(/^New password/), NEW_PASSWORD)
-      await userEvent.type(within(form).getByLabelText(/^Repeat new password/), NEW_PASSWORD)
-
-      return form
-    }
-
-    it('asks for confirmation first, naming the user', async () => {
-      const api = resetApi()
-      const dialog = await openConfirmation()
-
-      expect(dialog).toHaveTextContent('Are you sure you want to reset the password for this user?')
       expect(dialog).toHaveTextContent('Arun Accountant')
       expect(dialog).toHaveTextContent('accountant@example.com')
-      expect(within(dialog).getByRole('button', { name: 'Cancel' })).toBeEnabled()
-      expect(within(dialog).getByRole('button', { name: 'Yes, Reset Password' })).toBeEnabled()
+      expect(dialog).toHaveTextContent('It works for 15 minutes')
+
+      const generate = within(dialog).getByRole('button', { name: 'Generate temporary password' })
+
+      expect(generate).toBeDisabled()
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: /I have verified that the person asking is Arun Accountant/ }))
+      expect(generate).toBeEnabled()
       expect(api.requests.filter((request) => request.method !== 'GET')).toHaveLength(0)
     })
 
     it('changes nothing when cancelled', async () => {
-      const api = resetApi()
-      const dialog = await openConfirmation()
+      const api = issueApi()
+      const dialog = await openDialog()
 
       await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
       expect(api.requests.filter((request) => request.method !== 'GET')).toHaveLength(0)
-      expect(screen.queryByRole('status')).not.toBeInTheDocument()
     })
 
-    it('resets the password of the chosen user exactly once, and confirms only after the API does', async () => {
+    it('issues it once, shows it once with Copy, and forgets it when closed', async () => {
       let release: (reply: MockReply) => void = () => {}
-      const api = resetApi(
+      const api = issueApi(
         () =>
           new Promise<MockReply>((resolve) => {
             release = resolve
           }),
       )
-      const form = await confirmAndFill()
+      const writeText = vi.fn(async () => {})
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+      const dialog = await openDialog()
 
-      await userEvent.click(within(form).getByRole('button', { name: 'Reset password' }))
+      await userEvent.click(within(dialog).getByRole('checkbox'))
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Generate temporary password' }))
 
-      await waitFor(() => expect(api.find('POST', '/users/2/reset-password')).toHaveLength(1))
-      expect(screen.queryByText(/Password reset successfully/)).not.toBeInTheDocument()
+      await waitFor(() => expect(api.find('POST', '/users/2/temporary-password')).toHaveLength(1))
+      expect(api.find('POST', '/users/2/temporary-password')[0]?.body).toEqual({ identityVerified: true })
+      expect(screen.queryByText(TEMPORARY)).not.toBeInTheDocument()
 
-      release(ok(null))
+      release(ok(ISSUED))
 
-      expect(await screen.findByRole('status')).toHaveTextContent(
-        'Password reset successfully for Arun Accountant. They have been signed out and must sign in again using the new password.',
+      const shown = await screen.findByRole('dialog', { name: 'Temporary password issued' })
+
+      expect(within(shown).getByLabelText('Temporary password')).toHaveTextContent(TEMPORARY)
+      expect(shown).toHaveTextContent('It is shown only now')
+      await userEvent.click(within(shown).getByRole('button', { name: 'Copy' }))
+      expect(writeText).toHaveBeenCalledWith(TEMPORARY)
+      expect(await within(shown).findByRole('button', { name: 'Copied' })).toBeInTheDocument()
+
+      await userEvent.click(within(shown).getByRole('button', { name: 'Done' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'A temporary password was issued for Arun Accountant. They have been signed out and must change it at sign-in.',
       )
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-      expect(api.requests.filter((request) => request.path.endsWith('/reset-password'))).toHaveLength(1)
-      expect(api.find('POST', '/users/2/reset-password')[0]?.body).toEqual({ password: NEW_PASSWORD })
+      // Gone from the page once the dialog is closed.
+      expect(document.body).not.toHaveTextContent(TEMPORARY)
       // The administrator stays signed in, on the same page.
       expect(localStorage.getItem('stslv-amc.token')).not.toBeNull()
-      expect(screen.getByRole('table', { name: 'Users' })).toBeInTheDocument()
+      expect(api.find('POST', '/users/2/temporary-password')).toHaveLength(1)
     })
 
-    it('shows a failed reset and lets the administrator retry', async () => {
+    it('shows a refusal and lets the administrator retry', async () => {
       let failing = true
-      const api = resetApi(() => (failing ? fail(403, 'FORBIDDEN', 'You cannot manage a user who holds permissions you do not hold.') : ok(null)))
-      const form = await confirmAndFill()
+      const api = issueApi(() => (failing ? fail(403, 'FORBIDDEN', 'You cannot manage a user who holds permissions you do not hold.') : ok(ISSUED)))
+      const dialog = await openDialog()
 
-      await userEvent.click(within(form).getByRole('button', { name: 'Reset password' }))
+      await userEvent.click(within(dialog).getByRole('checkbox'))
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Generate temporary password' }))
 
-      expect(await within(form).findByRole('alert')).toHaveTextContent('You cannot manage a user who holds permissions you do not hold.')
-      expect(screen.queryByText(/Password reset successfully/)).not.toBeInTheDocument()
+      expect(await within(dialog).findByRole('alert')).toHaveTextContent('You cannot manage a user who holds permissions you do not hold.')
 
       failing = false
-      await userEvent.click(within(form).getByRole('button', { name: 'Reset password' }))
+      await userEvent.click(within(dialog).getByRole('button', { name: 'Generate temporary password' }))
 
-      expect(await screen.findByRole('status')).toHaveTextContent('Password reset successfully for Arun Accountant.')
-      expect(api.find('POST', '/users/2/reset-password')).toHaveLength(2)
+      expect(await screen.findByRole('dialog', { name: 'Temporary password issued' })).toBeInTheDocument()
+      expect(api.find('POST', '/users/2/temporary-password')).toHaveLength(2)
+    })
+
+    it('is not offered for your own account, and only to Admins', async () => {
+      usersApi()
+      const view = renderApp('/admin/users')
+
+      expect(await screen.findByRole('button', { name: 'Generate temporary password for Asha Admin' })).toBeDisabled()
+      view.unmount()
+
+      // A non-Admin role holding user editing does not see the action at all.
+      usersApi({ ...ADMIN, roles: [{ id: '9', code: 'USER_EDITOR', name: 'User editor' }] })
+      renderApp('/admin/users')
+
+      expect(await screen.findByRole('button', { name: 'Change roles of Arun Accountant' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /Generate temporary password/ })).not.toBeInTheDocument()
+    })
+
+    it('shows an outstanding temporary password in the user list', async () => {
+      const future = new Date(Date.now() + 10 * 60_000).toISOString()
+
+      USERS[1] = { ...(USERS[1] as User), temporaryCredentialExpiresAt: future }
+      try {
+        usersApi()
+        renderApp('/admin/users')
+
+        expect(await screen.findByText(/Temporary password · expires/)).toBeInTheDocument()
+      } finally {
+        USERS[1] = { ...(USERS[1] as User), temporaryCredentialExpiresAt: null }
+      }
     })
   })
 

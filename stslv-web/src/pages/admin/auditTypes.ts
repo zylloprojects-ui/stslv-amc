@@ -48,6 +48,7 @@ export const FAILURE_REASON_LABELS: Record<string, string> = {
   unknown_account: 'No account with this email',
   wrong_password: 'Wrong password',
   inactive_account: 'Account inactive or awaiting approval',
+  temporary_password_expired: 'Temporary password expired',
 }
 
 const MODULE_LABELS: Record<string, string> = {

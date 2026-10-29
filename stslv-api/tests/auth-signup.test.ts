@@ -156,12 +156,15 @@ describe("a pending sign-up has no access", () => {
     expect(pending.body.error.code).toBe("INVALID_CREDENTIALS");
   });
 
-  it("cannot obtain a password reset link", async () => {
-    const response = await api().post("/api/auth/forgot-password").send({ email: "new.person@example.com" });
+  it("cannot be issued a temporary password", async () => {
+    const pending = await userRow("new.person@example.com");
+    const response = await api()
+      .post(`/api/users/${pending?.id}/temporary-password`)
+      .set(admin.headers)
+      .send({ identityVerified: true });
 
-    expect(response.status).toBe(200);
-    expect(testOutbox).toHaveLength(0);
-    expect((await pool.query("SELECT 1 FROM password_reset_tokens")).rowCount).toBe(0);
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toMatch(/not been approved/);
   });
 
   it("cannot be made active while pending, even directly in the database", async () => {

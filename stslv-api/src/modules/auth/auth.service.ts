@@ -1,4 +1,5 @@
 import { pool } from "../../config/database";
+import { TEMPORARY_PASSWORD_EXPIRED_MESSAGE } from "../../middleware/authenticate";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction } from "../../shared/db";
 import { AppError, unauthorized, validationError } from "../../shared/errors";
@@ -10,7 +11,7 @@ import { issueToken } from "./token";
 // One message for every failure, so the response does not reveal whether the email exists.
 const invalidCredentials = () => new AppError(401, "INVALID_CREDENTIALS", "Incorrect email or password.");
 
-type LoginFailureReason = "unknown_account" | "wrong_password" | "inactive_account";
+type LoginFailureReason = "unknown_account" | "wrong_password" | "inactive_account" | "temporary_password_expired";
 
 /**
  * Records a failed sign-in. Every failure writes one entry, so the response takes
@@ -40,7 +41,14 @@ export async function login(email: string, password: string, context: { ip: stri
     full_name: string;
     password_hash: string;
     is_active: boolean;
-  }>("SELECT id, email, full_name, password_hash, is_active FROM users WHERE lower(email) = $1", [email]);
+    must_change_password: boolean;
+    temporary_password_expired: boolean;
+  }>(
+    `SELECT id, email, full_name, password_hash, is_active, must_change_password,
+            COALESCE(temporary_password_expires_at <= now(), false) AS temporary_password_expired
+     FROM users WHERE lower(email) = $1`,
+    [email]
+  );
   const user = result.rows[0];
 
   if (!user) {
@@ -55,6 +63,11 @@ export async function login(email: string, password: string, context: { ip: stri
     await recordFailedLogin(user, passwordMatches ? "inactive_account" : "wrong_password", context.ip);
     throw invalidCredentials();
   }
+  // Said plainly, because only someone who typed the right temporary password gets this far.
+  if (user.must_change_password && user.temporary_password_expired) {
+    await recordFailedLogin(user, "temporary_password_expired", context.ip);
+    throw new AppError(401, "TEMPORARY_PASSWORD_EXPIRED", TEMPORARY_PASSWORD_EXPIRED_MESSAGE);
+  }
 
   await pool.query("UPDATE users SET last_login_at = now() WHERE id = $1", [user.id]);
   await logActivity(pool, {
@@ -63,8 +76,10 @@ export async function login(email: string, password: string, context: { ip: stri
     module: "AUTH",
     entityType: "users",
     entityId: user.id,
-    description: `${user.full_name} signed in.`,
-    metadata: { ip: context.ip },
+    description: user.must_change_password
+      ? `${user.full_name} signed in with a temporary password.`
+      : `${user.full_name} signed in.`,
+    metadata: user.must_change_password ? { ip: context.ip, temporaryPassword: true } : { ip: context.ip },
   });
 
   const [roles, permissions] = await Promise.all([loadUserRoles(pool, user.id), loadUserPermissions(pool, user.id)]);
@@ -72,9 +87,59 @@ export async function login(email: string, password: string, context: { ip: stri
     user: { id: user.id, email: user.email, fullName: user.full_name },
     roles,
     permissions,
+    mustChangePassword: user.must_change_password,
   };
 
-  return { ...issueToken(user.id), user: toSessionUser(auth) };
+  return { ...issueToken(user.id, { passwordChange: user.must_change_password }), user: toSessionUser(auth) };
+}
+
+/**
+ * Replaces a temporary password with one the user chooses. Every session of the
+ * account ends, including the one used here: the user signs in again with the new password.
+ */
+export async function completeRequiredPasswordChange(auth: AuthContext, newPassword: string): Promise<void> {
+  if (!auth.mustChangePassword) {
+    throw new AppError(409, "PASSWORD_CHANGE_NOT_REQUIRED", "Your password does not need to be changed. Use My account instead.");
+  }
+
+  const current = await pool.query<{ password_hash: string }>("SELECT password_hash FROM users WHERE id = $1", [auth.user.id]);
+  const row = current.rows[0];
+
+  if (!row) {
+    throw unauthorized();
+  }
+  if (await verifyPassword(newPassword, row.password_hash)) {
+    throw validationError("Choose a password different from the temporary one.", [
+      { field: "newPassword", message: "Choose a password different from the temporary one." },
+    ]);
+  }
+
+  const passwordHash = await hashPassword(newPassword);
+
+  await withTransaction(async (client) => {
+    // Matches only while the temporary password is still outstanding and unexpired, so
+    // two submissions at once, or one after a reissue or expiry, cannot both succeed.
+    const updated = await client.query(
+      `UPDATE users
+       SET password_hash = $1, must_change_password = false, temporary_password_expires_at = NULL, password_changed_at = now()
+       WHERE id = $2 AND is_active AND must_change_password AND temporary_password_expires_at > now()`,
+      [passwordHash, auth.user.id]
+    );
+
+    if (updated.rowCount !== 1) {
+      throw unauthorized("Your session is no longer valid. Please sign in again.");
+    }
+
+    await revokeResetTokens(client, auth.user.id);
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: "auth.temporary_password_replaced",
+      module: "AUTH",
+      entityType: "users",
+      entityId: auth.user.id,
+      description: `${auth.user.fullName} replaced their temporary password with a new password.`,
+    });
+  });
 }
 
 export async function changeOwnPassword(auth: AuthContext, currentPassword: string, newPassword: string) {

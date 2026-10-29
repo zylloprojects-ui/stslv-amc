@@ -1,17 +1,26 @@
 import { Router } from "express";
+import { env } from "../../config/env";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
+import { rateLimit } from "../../middleware/rate-limit";
 import { parseIdParam } from "../../shared/validation";
-import { createUserSchema, resetPasswordSchema, setUserRolesSchema, updateUserSchema } from "./users.schemas";
+import { createUserSchema, issueTemporaryPasswordSchema, setUserRolesSchema, updateUserSchema } from "./users.schemas";
 import {
   createUser,
+  issueTemporaryPassword,
   listUsers,
   rejectRegistration,
-  resetUserPassword,
   setUserActive,
   setUserRoles,
   updateUser,
 } from "./users.service";
+
+// Temporary passwords one administrator may issue per 15 minutes, whatever the network address.
+const temporaryPasswordLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: () => env.temporaryPasswordRateLimit,
+  key: (req) => `user:${req.auth?.user.id ?? "unknown"}`,
+});
 
 export const usersRouter = Router();
 
@@ -52,9 +61,13 @@ usersRouter.put("/:id/roles", authorize("USERS", "EDIT"), async (req, res) => {
   res.json({ success: true, data: await setUserRoles(requireAuth(req), parseIdParam(req.params.id), roleIds) });
 });
 
-usersRouter.post("/:id/reset-password", authorize("USERS", "EDIT"), async (req, res) => {
-  const { password } = resetPasswordSchema.parse(req.body);
+// Admin only (checked in the service, on top of USERS:EDIT). The password is in this
+// response and nowhere else, so the response must not be cached.
+usersRouter.post("/:id/temporary-password", authorize("USERS", "EDIT"), temporaryPasswordLimit, async (req, res) => {
+  issueTemporaryPasswordSchema.parse(req.body);
 
-  await resetUserPassword(requireAuth(req), parseIdParam(req.params.id), password);
-  res.json({ success: true, data: null });
+  const issued = await issueTemporaryPassword(requireAuth(req), parseIdParam(req.params.id));
+
+  res.set("Cache-Control", "no-store");
+  res.json({ success: true, data: issued });
 });

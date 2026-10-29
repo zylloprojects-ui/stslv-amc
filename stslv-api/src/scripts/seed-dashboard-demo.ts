@@ -42,6 +42,7 @@ async function actor(): Promise<AuthContext> {
     user: { id: user.id, email: user.email, fullName: user.full_name },
     roles: await loadUserRoles(pool, user.id),
     permissions: await loadUserPermissions(pool, user.id),
+    mustChangePassword: false,
   };
 }
 

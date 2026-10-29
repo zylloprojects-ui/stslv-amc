@@ -18,11 +18,11 @@ export default defineConfig({
       // Email is captured in memory (shared/mailer.ts testOutbox); nothing is sent or printed.
       MAIL_TRANSPORT: "memory",
       APP_URL: "http://app.test",
-      PASSWORD_RESET_EXPIRES_MINUTES: "30",
       // Every test request comes from one address; the limiter has its own test.
       PUBLIC_AUTH_RATE_LIMIT: "100000",
       LOGIN_RATE_LIMIT: "100000",
       LOGIN_FAILURE_LIMIT: "100000",
+      TEMPORARY_PASSWORD_RATE_LIMIT: "100000",
     },
   },
 });

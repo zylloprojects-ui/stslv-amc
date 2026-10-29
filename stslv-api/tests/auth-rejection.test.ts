@@ -124,8 +124,6 @@ describe("POST /api/users/:id/reject", () => {
       "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, now() + interval '30 minutes')",
       [id, createHash("sha256").update(token).digest("hex")]
     );
-    expect((await api().post("/api/auth/reset-password/check").send({ token })).body.data.status).toBe("invalid");
-
     await reject(id);
 
     const stored = await pool.query<{ revoked: boolean; used: boolean }>(
@@ -134,14 +132,10 @@ describe("POST /api/users/:id/reject", () => {
     );
     expect(stored.rows).toEqual([{ revoked: true, used: false }]);
 
-    const attempt = await api().post("/api/auth/reset-password").send({ token, password: "A-Brand-New-Password-7" });
-    expect(attempt.status).toBe(400);
-    expect(attempt.body.error.code).toBe("RESET_TOKEN_INVALID");
-
-    // A rejected person cannot obtain a new link either.
-    expect((await api().post("/api/auth/forgot-password").send({ email: "tara@example.com" })).status).toBe(200);
+    // A rejected person cannot be issued a temporary password either.
+    const temporary = await api().post(`/api/users/${id}/temporary-password`).set(admin.headers).send({ identityVerified: true });
+    expect(temporary.status).toBe(409);
     expect(testOutbox).toHaveLength(0);
-    expect((await pool.query("SELECT 1 FROM password_reset_tokens WHERE user_id = $1", [id])).rowCount).toBe(1);
   });
 
   it("records the rejection in the activity log, without any secret", async () => {

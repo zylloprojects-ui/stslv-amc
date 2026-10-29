@@ -8,7 +8,8 @@ import { api, errorMessage } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
 import type { RolesResponse, User } from '../../lib/types'
 import { RolesPanel } from './RolesPanel'
-import { CreateUserModal, EditRolesModal, ResetPasswordModal } from './UserDialogs'
+import { isAdmin } from '../../auth/roles'
+import { CreateUserModal, EditRolesModal, TemporaryPasswordModal } from './UserDialogs'
 
 type Tab = 'users' | 'roles'
 
@@ -25,12 +26,23 @@ const needsRoleToApprove = (user: User) => isPending(user) && user.roles.length 
 
 const ROLE_REQUIRED_TO_APPROVE = 'Assign a role before approving this user.'
 
+/** Why an administrator cannot issue a temporary password to this user, if they cannot. The API enforces the same. */
+function temporaryPasswordBlock(user: User, isSelf: boolean): string | undefined {
+  if (isSelf) return 'You cannot issue a temporary password for your own account. Change your password under My account.'
+  if (!user.isActive) return 'Only an active account can be issued a temporary password.'
+  return undefined
+}
+
+/** Shown while a temporary password is outstanding: not yet replaced by the user's own. After the time it no longer signs in. */
+function TemporaryPasswordBadge({ expiresAt }: { expiresAt: string }) {
+  return <Badge tone="amber">Temporary password · expires {formatDateTime(expiresAt)}</Badge>
+}
+
 type Dialog =
   | { kind: 'none' }
   | { kind: 'create' }
   | { kind: 'roles'; user: User }
-  | { kind: 'confirm-password'; user: User }
-  | { kind: 'password'; user: User }
+  | { kind: 'temporary-password'; user: User }
   | { kind: 'toggle'; user: User }
   | { kind: 'reject'; user: User }
 
@@ -75,6 +87,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
 
   const canCreate = auth.can('USERS', 'CREATE')
   const canEdit = auth.can('USERS', 'EDIT')
+  // Issuing temporary passwords is reserved to the Admin role, on top of user editing.
+  const canIssueTemporaryPassword = canEdit && isAdmin(auth.user)
   const roleList = roles.data?.roles ?? []
   const pendingCount = users.data?.filter(isPending).length ?? 0
 
@@ -205,6 +219,11 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                             ) : (
                               <StatusBadge active={user.isActive} />
                             )}
+                            {user.temporaryCredentialExpiresAt && (
+                              <div className="mt-1">
+                                <TemporaryPasswordBadge expiresAt={user.temporaryCredentialExpiresAt} />
+                              </div>
+                            )}
                           </td>
                           <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>
                           {canEdit && (
@@ -220,7 +239,15 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                   hint={isSelf ? 'You cannot change your own roles.' : undefined}
                                   onClick={() => setDialog({ kind: 'roles', user })}
                                 />
-                                <ActionButton label={`Reset password of ${user.fullName}`} icon="key" onClick={() => setDialog({ kind: 'confirm-password', user })} />
+                                {canIssueTemporaryPassword && (
+                                  <ActionButton
+                                    label={`Generate temporary password for ${user.fullName}`}
+                                    icon="key"
+                                    disabled={temporaryPasswordBlock(user, isSelf) !== undefined}
+                                    hint={temporaryPasswordBlock(user, isSelf)}
+                                    onClick={() => setDialog({ kind: 'temporary-password', user })}
+                                  />
+                                )}
                                 <ActionButton
                                   danger={user.isActive && !isSelf}
                                   label={`${toggleLabel(user)} ${user.fullName}`}
@@ -277,35 +304,13 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
         />
       )}
 
-      {dialog.kind === 'confirm-password' && (
-        <ConfirmDialog
-          title="Reset Password?"
-          message={
-            <>
-              <p>Are you sure you want to reset the password for this user?</p>
-              <p className="mt-3">
-                <strong>{dialog.user.fullName}</strong>
-                <span className="block break-all">{dialog.user.email}</span>
-              </p>
-              <p className="mt-3">Nothing changes until you set the new password in the next step.</p>
-            </>
-          }
-          confirmLabel="Yes, Reset Password"
-          onConfirm={() => setDialog({ kind: 'password', user: dialog.user })}
-          onCancel={closeDialog}
-        />
-      )}
-
-      {dialog.kind === 'password' && (
-        <ResetPasswordModal
+      {dialog.kind === 'temporary-password' && (
+        <TemporaryPasswordModal
           user={dialog.user}
           onClose={closeDialog}
-          onSaved={() => {
-            setNotice(
-              `Password reset successfully for ${dialog.user.fullName}. They have been signed out and must sign in again using the new password.`,
-            )
-            setDialog({ kind: 'none' })
-          }}
+          onIssued={() =>
+            setNotice(`A temporary password was issued for ${dialog.user.fullName}. They have been signed out and must change it at sign-in.`)
+          }
         />
       )}
 

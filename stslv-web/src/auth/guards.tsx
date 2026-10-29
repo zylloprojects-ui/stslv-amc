@@ -38,8 +38,16 @@ export function ProtectedRoute() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
+  // Signed in with a temporary password: nothing else until a new password is chosen.
+  // The API refuses such a session everywhere else as well.
+  if (auth.user?.credentialChangeRequired) {
+    return <Navigate to={CHANGE_PASSWORD_PATH} replace />
+  }
+
   return <Outlet />
 }
+
+export const CHANGE_PASSWORD_PATH = '/change-password'
 
 /** Shows its children only to users holding the permission; otherwise an access-denied message. */
 export function RequirePermission({ module, action = 'VIEW', children }: { module: Module; action?: Action; children: ReactNode }) {
