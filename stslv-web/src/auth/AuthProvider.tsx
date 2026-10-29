@@ -15,17 +15,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [token, setTokenState] = useState<string | null>(() => getToken())
 
+  // Why the last session was ended by the API, when the user needs to be told.
+  const [signOutNotice, setSignOutNotice] = useState<string | null>(null)
+
   const logout = useCallback(() => {
     setToken(null)
     setTokenState(null)
     queryClient.clear()
   }, [queryClient])
 
-  // Any request rejected with 401 ends the session.
+  // Any request rejected with 401 ends the session. A temporary password that expired
+  // while the user was signed in (for example on the change-password screen) is
+  // explained on the sign-in page instead of leaving them there without a reason.
   useEffect(() => {
-    setUnauthorizedHandler(logout)
+    setUnauthorizedHandler((error) => {
+      if (error.code === 'TEMPORARY_PASSWORD_EXPIRED' && getToken() !== null) {
+        setSignOutNotice(error.message)
+      }
+      logout()
+    })
     return () => setUnauthorizedHandler(null)
   }, [logout])
+
+  const clearSignOutNotice = useCallback(() => setSignOutNotice(null), [])
 
   // The user and permissions always come from the API, and are refreshed
   // periodically so a role change by an administrator shows up without a new login.
@@ -41,6 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       const result = await api.post<LoginResponse>('/auth/login', { email, password })
 
+      setSignOutNotice(null)
       setToken(result.token)
       queryClient.setQueryData(ME_KEY, { user: result.user })
       setTokenState(result.token)
@@ -75,11 +88,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       login,
       logout,
+      signOutNotice,
+      clearSignOutNotice,
       replaceToken,
       retry: () => void refetch(),
       can: (module: Module, action: Action) => permissions.has(`${module}:${action}`),
     }
-  }, [token, user, me.isError, login, logout, replaceToken, refetch])
+  }, [token, user, me.isError, login, logout, signOutNotice, clearSignOutNotice, replaceToken, refetch])
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

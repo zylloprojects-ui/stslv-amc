@@ -300,6 +300,7 @@ export function LoginPage() {
   const onSubmit = handleSubmit(async (values) => {
     setFailure(null)
     clearPasswordReset()
+    auth.clearSignOutNotice()
 
     try {
       await auth.login(values.email, values.password)
@@ -320,6 +321,8 @@ export function LoginPage() {
           Your password has been changed. Please sign in again using your new password.
         </Alert>
       )}
+      {/* The session ended because its temporary password expired, for example while choosing a new password. */}
+      {auth.signOutNotice && <Alert onDismiss={auth.clearSignOutNotice}>{auth.signOutNotice}</Alert>}
       {failure && (
         <div key={attempts} className="login-shake">
           <Alert>{failure}</Alert>

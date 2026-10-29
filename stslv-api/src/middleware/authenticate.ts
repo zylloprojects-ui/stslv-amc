@@ -14,7 +14,7 @@ declare global {
 }
 
 export const TEMPORARY_PASSWORD_EXPIRED_MESSAGE =
-  "Your temporary password has expired. Ask your administrator for a new one.";
+  "Your temporary password has expired. Please contact your system administrator to receive a new temporary password.";
 
 /**
  * Requires a valid "Authorization: Bearer <token>" header. The user, roles and

@@ -7,6 +7,9 @@ export interface AuthValue {
   user: SessionUser | null
   login: (email: string, password: string) => Promise<void>
   logout: () => void
+  /** Why the API ended the last session, when the user must be told (an expired temporary password). */
+  signOutNotice: string | null
+  clearSignOutNotice: () => void
   /** Replaces the stored token, for example after a password change. */
   replaceToken: (token: string) => void
   retry: () => void

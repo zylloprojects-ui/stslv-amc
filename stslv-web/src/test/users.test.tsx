@@ -257,7 +257,7 @@ describe('users', () => {
       usersApi({ ...ADMIN, roles: [{ id: '9', code: 'USER_EDITOR', name: 'User editor' }] })
       renderApp('/admin/users')
 
-      expect(await screen.findByRole('button', { name: 'Change roles of Arun Accountant' })).toBeInTheDocument()
+      expect(await screen.findByRole('button', { name: 'Change role of Arun Accountant' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: /Generate temporary password/ })).not.toBeInTheDocument()
     })
 

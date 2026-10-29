@@ -51,10 +51,11 @@ export function setToken(token: string | null): void {
   }
 }
 
-// Called when the API rejects the session (expired, deactivated, password changed).
-let unauthorizedHandler: (() => void) | null = null
+// Called when the API rejects the session (expired, deactivated, password changed),
+// with the refusal, so the sign-in page can say why when that matters.
+let unauthorizedHandler: ((error: ApiError) => void) | null = null
 
-export function setUnauthorizedHandler(handler: (() => void) | null): void {
+export function setUnauthorizedHandler(handler: ((error: ApiError) => void) | null): void {
   unauthorizedHandler = handler
 }
 
@@ -102,7 +103,7 @@ async function request<T>(method: string, path: string, body?: unknown, raw?: Ra
     )
 
     if (response.status === 401 && error.code !== 'INVALID_CREDENTIALS') {
-      unauthorizedHandler?.()
+      unauthorizedHandler?.(error)
     }
 
     throw error
@@ -147,7 +148,7 @@ export async function download(path: string): Promise<DownloadedFile> {
     const error = new ApiError(response.status, payload?.error?.code ?? 'UNKNOWN_ERROR', payload?.error?.message ?? 'The file could not be produced. Please try again.')
 
     if (response.status === 401) {
-      unauthorizedHandler?.()
+      unauthorizedHandler?.(error)
     }
 
     throw error

@@ -188,7 +188,7 @@ describe("who may issue a temporary password", () => {
       `INSERT INTO role_permissions (role_id, module, action)
        SELECT id, 'USERS', unnest(ARRAY['VIEW', 'EDIT']) FROM roles WHERE code = 'USER_EDITOR'`
     );
-    const editor = await signedIn("user.editor@example.com", ["USER_EDITOR", "ACCOUNTANT"]);
+    const editor = await signedIn("user.editor@example.com", ["USER_EDITOR"]);
     const target = await employee("target2@example.com");
     const response = await issue(editor.headers, target);
 
@@ -304,9 +304,15 @@ describe("signing in with a temporary password", () => {
     expect(signIn.status).toBe(401);
     expect(signIn.body.error).toEqual({
       code: "TEMPORARY_PASSWORD_EXPIRED",
-      message: "Your temporary password has expired. Ask your administrator for a new one.",
+      message: "Your temporary password has expired. Please contact your system administrator to receive a new temporary password.",
     });
-    expect((await complete(token)).status).toBe(401);
+    // Expired while on the change-password screen: the same plain explanation, not a generic sign-in error.
+    const midChange = await complete(token);
+
+    expect(midChange.status).toBe(401);
+    expect(midChange.body.error).toEqual(signIn.body.error);
+    // Refusing it neither clears nor extends the expiry.
+    expect((await userState(id))?.minutes).toBeLessThanOrEqual(0);
     expect((await api().get("/api/auth/me").set(bearer(token))).status).toBe(401);
     // A wrong password still gets the ordinary answer, so expiry is not revealed to a guesser.
     expect((await login("expired@example.com", "Not-The-Password-1")).body.error.code).toBe("INVALID_CREDENTIALS");

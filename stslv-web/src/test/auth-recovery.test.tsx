@@ -15,6 +15,7 @@ const styles: string = readFileSync('src/index.css', 'utf8')
 const SIGNUP_MESSAGE = 'Your registration has been submitted. An administrator will review it before you can sign in.'
 const FORGOT_MESSAGE = 'Forgot your password? Please contact your system administrator to receive a temporary password.'
 const CHANGED_MESSAGE = 'Your password has been changed. Please sign in again using your new password.'
+const EXPIRED_MESSAGE = 'Your temporary password has expired. Please contact your system administrator to receive a new temporary password.'
 
 /** Holds back the reply to one request until the test releases it. */
 function deferred() {
@@ -426,7 +427,7 @@ describe('required password change after a temporary password', () => {
   it('explains an expired temporary password at sign in', async () => {
     mockApi((request) =>
       request.path === '/auth/login'
-        ? fail(401, 'TEMPORARY_PASSWORD_EXPIRED', 'Your temporary password has expired. Ask your administrator for a new one.')
+        ? fail(401, 'TEMPORARY_PASSWORD_EXPIRED', EXPIRED_MESSAGE)
         : undefined,
     )
     renderApp('/login')
@@ -435,8 +436,51 @@ describe('required password change after a temporary password', () => {
     await userEvent.type(screen.getByLabelText(/Password/), TEMPORARY)
     await userEvent.click(screen.getByRole('button', { name: 'Login' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Your temporary password has expired. Ask your administrator for a new one.')
+    expect(await screen.findByRole('alert')).toHaveTextContent(EXPIRED_MESSAGE)
     expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
+  })
+
+  it('explains a temporary password that expired while the new password was being chosen', async () => {
+    const api = forcedApi(() => fail(401, 'TEMPORARY_PASSWORD_EXPIRED', EXPIRED_MESSAGE))
+    await signInWithTemporaryPassword()
+
+    await fill(GOOD_PASSWORD)
+
+    // Signed out, back on sign in, with the reason instead of a bare login form.
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(EXPIRED_MESSAGE)
+    expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
+    expect(localStorage.getItem('stslv-amc.token')).toBeNull()
+    expect(api.find('POST', '/auth/complete-password-change')).toHaveLength(1)
+  })
+
+  it('explains the expiry when the session check finds it, and drops the message on the next attempt', async () => {
+    signIn()
+    mockApi((request) => {
+      if (request.path === '/auth/me') return fail(401, 'TEMPORARY_PASSWORD_EXPIRED', EXPIRED_MESSAGE)
+      if (request.path === '/auth/login') return fail(401, 'INVALID_CREDENTIALS', 'Invalid email or password.')
+      return undefined
+    })
+    renderApp('/change-password')
+
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(EXPIRED_MESSAGE)
+
+    await userEvent.type(screen.getByLabelText(/Email/), 'accountant@example.com')
+    await userEvent.type(screen.getByLabelText(/Password/), 'Wrong-Password-1')
+    await userEvent.click(screen.getByRole('button', { name: 'Login' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.')
+    expect(screen.queryByText(EXPIRED_MESSAGE)).not.toBeInTheDocument()
+  })
+
+  it('does not show the expiry message for a session that ended for another reason', async () => {
+    signIn()
+    mockApi((request) => (request.path === '/auth/me' ? fail(401, 'UNAUTHORIZED', 'Your session is missing or has expired. Please sign in again.') : undefined))
+    renderApp('/dashboard')
+
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('sends a visitor who is not signed in from the change-password screen to sign in', async () => {
