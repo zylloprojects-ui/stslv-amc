@@ -41,6 +41,8 @@ describe("migrations", () => {
       "roles",
       "sales_engineers",
       "schema_migrations",
+      "suggestion_events",
+      "suggestions",
       "system_types",
       "user_roles",
       "users",

@@ -22,6 +22,7 @@ import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
 import { rolesRouter } from "./modules/roles/roles.routes";
 import { servicesSalesRouter } from "./modules/services-sales/services-sales.routes";
+import { suggestionsRouter } from "./modules/suggestions/suggestions.routes";
 import { usersRouter } from "./modules/users/users.routes";
 import { errorHandler, notFoundHandler } from "./shared/errors";
 
@@ -98,6 +99,8 @@ export function createApp() {
   app.use("/api/masters", mastersRouter);
   app.use("/api/attachments", attachmentsRouter);
   app.use("/api/notifications", notificationsRouter);
+  // Suggestions & feedback (migration 0085): every user's own submissions; review for Admin.
+  app.use("/api/suggestions", suggestionsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

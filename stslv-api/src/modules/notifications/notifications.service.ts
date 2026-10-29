@@ -5,6 +5,9 @@ import { getExpiryFigures, type ExpiryBand } from "../amc/management.service";
 import { getAmcSummary } from "../amc/summary.service";
 import type { AuthContext } from "../auth/access";
 import { getInvoiceSummary } from "../invoices/invoices.service";
+import { schemaHas } from "../../shared/schema-features";
+import { awaitingReview, responsesFor } from "../suggestions/suggestions.service";
+import { isReviewer } from "../suggestions/suggestions.workflow";
 
 // In-app alerts. Every alert is a figure the application already defines and
 // shows elsewhere (the AMC, AMC Management and Invoice Tracking summaries),
@@ -131,6 +134,39 @@ async function candidates(auth: AuthContext): Promise<Candidate[]> {
         link: "/invoices",
         count: invoices.projects.pending.count,
         fingerprint: `${invoices.projects.pending.count}:${invoices.projects.pending.uninvoicedValue}`,
+      });
+    }
+  }
+
+  // Suggestions (migration 0085): new or reopened ones for reviewers, responses for the submitter.
+  if (await schemaHas(["suggestions", "suggestion_events"])) {
+    if (isReviewer(auth)) {
+      const waiting = await awaitingReview();
+
+      if (waiting.count > 0) {
+        list.push({
+          key: "suggestions.awaiting_review",
+          severity: "info",
+          title: "Suggestions waiting for review",
+          message: `${plural(waiting.count, "suggestion is", "suggestions are")} new or reopened and waiting for review.`,
+          link: "/admin/suggestions",
+          count: waiting.count,
+          fingerprint: waiting.fingerprint,
+        });
+      }
+    }
+
+    const responses = await responsesFor(auth.user.id);
+
+    if (responses.count > 0) {
+      list.push({
+        key: "suggestions.responses",
+        severity: "info",
+        title: "Updates on your suggestions",
+        message: `${plural(responses.count, "of your suggestions has", "of your suggestions have")} a new response or status change.`,
+        link: "/suggestions",
+        count: responses.count,
+        fingerprint: responses.fingerprint,
       });
     }
   }
