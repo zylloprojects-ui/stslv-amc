@@ -74,7 +74,7 @@ export const KPIS: KpiDefinition[] = [
     code: 'SVC',
     label: 'Services This Month',
     visible: (canView) => canView('AMC_SCHEDULE') || canView('AMC_EXECUTION'),
-    link: { to: '/amc/calendar', label: 'Open calendar', module: 'AMC_SCHEDULE' },
+    link: { to: '/amc/calendar', label: 'Open calendar', module: 'MONTHLY_CALENDAR' },
     read: ({ kpis: { services } }) =>
       services && {
         kind: 'value',

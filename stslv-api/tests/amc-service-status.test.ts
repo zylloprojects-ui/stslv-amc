@@ -83,14 +83,8 @@ beforeAll(async () => {
   // One cancelled CCTV visit: it is not a service on this page.
   await pool.query("UPDATE amc_visits SET status = 'CANCELLED' WHERE id = $1", [(await visitsOf(cctv))[5]?.id]);
 });
-afterAll(async () => {
-  // Leave the isolated test schema as the migrations built it.
-  const schema = await pool.query<{ schema: string }>("SELECT current_schema() AS schema");
-  if (schema.rows[0]?.schema === "stslv_test") {
-    await pool.query("ALTER TABLE amc_visits DROP COLUMN IF EXISTS service_report_no");
-  }
-  await closePool();
-});
+// The schema is left as the migrations built it: service_report_no comes from 0077, and later files (Accounts) need it.
+afterAll(closePool);
 
 describe("listing", () => {
   it("lists one row per scheduled visit, never one per contract", async () => {

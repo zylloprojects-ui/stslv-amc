@@ -75,6 +75,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
 
   const canCreate = auth.can('USERS', 'CREATE')
   const canEdit = auth.can('USERS', 'EDIT')
+  // Approving and rejecting sign-up requests (USERS:APPROVE); the API checks the same.
+  const canApprove = auth.can('USERS', 'APPROVE')
   const roleList = roles.data?.roles ?? []
   const pendingCount = users.data?.filter(isPending).length ?? 0
 
@@ -131,7 +133,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
           <div className="mb-4">
             <Alert tone="info">
               {pendingCount === 1 ? '1 sign-up request is' : `${pendingCount} sign-up requests are`} waiting for approval. A pending account cannot
-              sign in.{canEdit && ' Assign a role, then approve it.'}
+              sign in.{canApprove && (canEdit ? ' Assign a role, then approve it.' : ' Approve it once it has a role.')}
             </Alert>
           </div>
         )}
@@ -168,7 +170,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                       <th scope="col" className={TABLE.th}>
                         Last sign-in
                       </th>
-                      {canEdit && (
+                      {(canEdit || canApprove) && (
                         <th scope="col" className={cx(TABLE.th, 'text-right')}>
                           Actions
                         </th>
@@ -207,20 +209,23 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                             )}
                           </td>
                           <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>
-                          {canEdit && (
+                          {(canEdit || canApprove) && (
                             <td className={cx(TABLE.td, 'whitespace-nowrap text-right')}>
                               {isRejected(user) ? (
                                 <span className="text-xs text-slate-500">No actions</span>
                               ) : (
                               <ActionGroup>
-                                <ActionButton
-                                  label={`Change roles of ${user.fullName}`}
-                                  icon="roles"
-                                  disabled={isSelf || !roles.data}
-                                  hint={isSelf ? 'You cannot change your own roles.' : undefined}
-                                  onClick={() => setDialog({ kind: 'roles', user })}
-                                />
-                                <ActionButton label={`Reset password of ${user.fullName}`} icon="key" onClick={() => setDialog({ kind: 'confirm-password', user })} />
+                                {canEdit && (
+                                  <ActionButton
+                                    label={`Change roles of ${user.fullName}`}
+                                    icon="roles"
+                                    disabled={isSelf || !roles.data}
+                                    hint={isSelf ? 'You cannot change your own roles.' : undefined}
+                                    onClick={() => setDialog({ kind: 'roles', user })}
+                                  />
+                                )}
+                                {canEdit && <ActionButton label={`Reset password of ${user.fullName}`} icon="key" onClick={() => setDialog({ kind: 'confirm-password', user })} />}
+                                {(isPending(user) ? canApprove : canEdit) && (
                                 <ActionButton
                                   danger={user.isActive && !isSelf}
                                   label={`${toggleLabel(user)} ${user.fullName}`}
@@ -229,10 +234,11 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                   hint={isSelf ? 'You cannot deactivate your own account.' : needsRoleToApprove(user) ? ROLE_REQUIRED_TO_APPROVE : undefined}
                                   onClick={() => setDialog({ kind: 'toggle', user })}
                                 />
-                                {isPending(user) && <ActionButton danger label={`Reject ${user.fullName}`} icon="reject" onClick={() => setDialog({ kind: 'reject', user })} />}
+                                )}
+                                {isPending(user) && canApprove && <ActionButton danger label={`Reject ${user.fullName}`} icon="reject" onClick={() => setDialog({ kind: 'reject', user })} />}
                               </ActionGroup>
                               )}
-                              {needsRoleToApprove(user) && <p className="mt-1 text-xs text-amber-800">{ROLE_REQUIRED_TO_APPROVE}</p>}
+                              {needsRoleToApprove(user) && canApprove && <p className="mt-1 text-xs text-amber-800">{ROLE_REQUIRED_TO_APPROVE}</p>}
                             </td>
                           )}
                         </tr>

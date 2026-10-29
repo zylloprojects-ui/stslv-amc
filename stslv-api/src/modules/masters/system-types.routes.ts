@@ -17,7 +17,7 @@ export const systemTypesRouter = Router();
 const ready = requireSchema(["system_types", "amc_contracts.system_type_id"]);
 
 // Declared before "/:id" routes. Exports the list with the page's filters and order.
-systemTypesRouter.get("/export", authenticate, ready, authorize("SETTINGS", "VIEW"), authorize("SETTINGS", "EXPORT"), async (req, res) => {
+systemTypesRouter.get("/export", authenticate, ready, authorize("SYSTEM_TYPES", "VIEW"), authorize("SYSTEM_TYPES", "EXPORT"), async (req, res) => {
   const query = exportSystemTypesSchema.parse(req.query);
   const { report, recordExport } = await buildSystemTypesExport(requireAuth(req), query);
 
@@ -32,7 +32,7 @@ systemTypesRouter.get("/:id/contracts", authenticate, ready, authorize("AMC_CONT
 });
 
 // Only a type that no contract uses; otherwise 409 with a reason.
-systemTypesRouter.delete("/:id", authenticate, ready, authorize("SETTINGS", "DELETE"), async (req, res) => {
+systemTypesRouter.delete("/:id", authenticate, ready, authorize("SYSTEM_TYPES", "DELETE"), async (req, res) => {
   await deleteSystemType(requireAuth(req), parseIdParam(req.params.id));
 
   res.json({ success: true, data: { deleted: true } });

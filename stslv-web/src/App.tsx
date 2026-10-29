@@ -111,7 +111,7 @@ export function AppRoutes() {
           <Route
             path="/master-data"
             element={
-              <RequireAnyPermission modules={['CLIENTS', 'SETTINGS']}>
+              <RequireAnyPermission modules={['CLIENTS', 'SALES_ENGINEERS', 'SYSTEM_TYPES', 'MAINTENANCE_FREQUENCIES', 'DEPARTMENTS']}>
                 <MasterDataCenterPage />
               </RequireAnyPermission>
             }
@@ -119,7 +119,7 @@ export function AppRoutes() {
           <Route
             path="/master-data/maintenance-frequencies"
             element={
-              <RequirePermission module="SETTINGS">
+              <RequirePermission module="MAINTENANCE_FREQUENCIES">
                 <MaintenanceFrequenciesPage />
               </RequirePermission>
             }
@@ -127,7 +127,7 @@ export function AppRoutes() {
           <Route
             path="/master-data/system-types"
             element={
-              <RequirePermission module="SETTINGS">
+              <RequirePermission module="SYSTEM_TYPES">
                 <SystemTypesPage />
               </RequirePermission>
             }
@@ -135,7 +135,7 @@ export function AppRoutes() {
           <Route
             path="/master-data/departments"
             element={
-              <RequirePermission module="SETTINGS">
+              <RequirePermission module="DEPARTMENTS">
                 <DepartmentsPage />
               </RequirePermission>
             }
@@ -143,7 +143,7 @@ export function AppRoutes() {
           <Route
             path="/master-data/sales-engineers"
             element={
-              <RequirePermission module="SETTINGS">
+              <RequirePermission module="SALES_ENGINEERS">
                 <SalesEngineersPage />
               </RequirePermission>
             }
@@ -151,7 +151,7 @@ export function AppRoutes() {
           <Route
             path="/master-data/sales-engineers/:id"
             element={
-              <RequirePermission module="SETTINGS">
+              <RequirePermission module="SALES_ENGINEERS">
                 <SalesEngineerDetailPage />
               </RequirePermission>
             }
@@ -167,7 +167,7 @@ export function AppRoutes() {
           <Route
             path="/amc/renewal"
             element={
-              <RequirePermission module="AMC_CONTRACTS">
+              <RequirePermission module="AMC_RENEWAL">
                 <AmcRenewalPage />
               </RequirePermission>
             }
@@ -199,7 +199,7 @@ export function AppRoutes() {
           <Route
             path="/amc/calendar"
             element={
-              <RequirePermission module="AMC_SCHEDULE">
+              <RequirePermission module="MONTHLY_CALENDAR">
                 <AmcCalendarPage />
               </RequirePermission>
             }
@@ -207,7 +207,7 @@ export function AppRoutes() {
           <Route
             path="/amc/service-status"
             element={
-              <RequirePermission module="AMC_SCHEDULE">
+              <RequirePermission module="SERVICE_STATUS">
                 <ServiceStatusPage />
               </RequirePermission>
             }

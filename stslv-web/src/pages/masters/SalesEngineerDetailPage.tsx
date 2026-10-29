@@ -186,7 +186,7 @@ export function SalesEngineerDetailPage() {
   }
 
   const engineer = query.data
-  const canEdit = auth.can('SETTINGS', 'EDIT')
+  const canEdit = auth.can('SALES_ENGINEERS', 'EDIT')
 
   const PANEL: Record<typeof tab, [string, string]> = {
     contracts: ['AMC contracts', 'Contracts this engineer is responsible for.'],

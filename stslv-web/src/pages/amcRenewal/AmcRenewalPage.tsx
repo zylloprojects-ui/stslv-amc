@@ -162,7 +162,7 @@ function QueueTab({ userId, onNotice }: { userId: string; onNotice: (message: st
           <Button variant="secondary" size="sm" onClick={() => setColumnsOpen(true)}>
             Hide Columns · {visible.length} of {COLUMN_IDS.length} shown
           </Button>
-          {auth.can('AMC_CONTRACTS', 'EXPORT') && (
+          {auth.can('AMC_RENEWAL', 'EXPORT') && (
             <ExportButtons
               what="Renewal Queue"
               fileStem="amc-renewal-queue"
@@ -286,7 +286,8 @@ function QueueTab({ userId, onNotice }: { userId: string; onNotice: (message: st
 
 function QueueRow({ item, number, shown, onAction }: { item: RenewalQueueItem; number: number; shown: (id: ColumnId) => boolean; onAction: (action: Action) => void }) {
   const auth = useAuth()
-  const canCreate = auth.can('AMC_CONTRACTS', 'CREATE')
+  // Renewing needs AMC_RENEWAL:CREATE, and the contract itself is read to prefill the renewal (AMC_CONTRACTS:VIEW).
+  const canCreate = auth.can('AMC_RENEWAL', 'CREATE') && auth.can('AMC_CONTRACTS', 'VIEW')
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
   const canCancel = canEdit && auth.can('AMC_CONTRACTS', 'DELETE')
   const renewal = item.renewal
@@ -476,7 +477,7 @@ function HistoryTab() {
       title="Renewal History"
       description="Every renewal made, newest first, cancelled ones included. The contract renewed and its visits, invoices and history are kept unchanged."
       actions={
-        auth.can('AMC_CONTRACTS', 'EXPORT') ? (
+        auth.can('AMC_RENEWAL', 'EXPORT') ? (
           <ExportButtons what="Renewal History" fileStem="amc-renewal-history" size="sm" path={(format) => `/amc/reports/renewals/export${queryString({ format })}`} onError={setExportError} />
         ) : undefined
       }

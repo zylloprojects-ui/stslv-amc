@@ -138,10 +138,10 @@ export function SystemTypesPage() {
     },
   })
 
-  const canCreate = auth.can('SETTINGS', 'CREATE')
-  const canEdit = auth.can('SETTINGS', 'EDIT')
-  const canDelete = auth.can('SETTINGS', 'DELETE')
-  const canExport = auth.can('SETTINGS', 'EXPORT')
+  const canCreate = auth.can('SYSTEM_TYPES', 'CREATE')
+  const canEdit = auth.can('SYSTEM_TYPES', 'EDIT')
+  const canDelete = auth.can('SYSTEM_TYPES', 'DELETE')
+  const canExport = auth.can('SYSTEM_TYPES', 'EXPORT')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const closeDialog = () => setDialog({ kind: 'none' })
 

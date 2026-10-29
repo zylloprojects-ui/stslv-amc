@@ -1,6 +1,7 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
+import { forbidden } from "../../shared/errors";
 import { parseIdParam } from "../../shared/validation";
 import { createUserSchema, resetPasswordSchema, setUserRolesSchema, updateUserSchema } from "./users.schemas";
 import {
@@ -16,6 +17,16 @@ import {
 export const usersRouter = Router();
 
 usersRouter.use(authenticate);
+
+const canEditOrApprove: RequestHandler = (req, _res, next) => {
+  const { permissions } = requireAuth(req);
+
+  if (!permissions.has("USERS:EDIT") && !permissions.has("USERS:APPROVE")) {
+    throw forbidden();
+  }
+
+  next();
+};
 
 usersRouter.get("/", authorize("USERS", "VIEW"), async (_req, res) => {
   res.json({ success: true, data: await listUsers() });
@@ -33,7 +44,9 @@ usersRouter.patch("/:id", authorize("USERS", "EDIT"), async (req, res) => {
   res.json({ success: true, data: await updateUser(requireAuth(req), parseIdParam(req.params.id), fullName) });
 });
 
-usersRouter.post("/:id/activate", authorize("USERS", "EDIT"), async (req, res) => {
+// Activating a pending sign-up request is its approval, which needs USERS:APPROVE instead
+// of USERS:EDIT (checked in the service, which knows the account's state).
+usersRouter.post("/:id/activate", canEditOrApprove, async (req, res) => {
   res.json({ success: true, data: await setUserActive(requireAuth(req), parseIdParam(req.params.id), true) });
 });
 
@@ -41,8 +54,8 @@ usersRouter.post("/:id/deactivate", authorize("USERS", "EDIT"), async (req, res)
   res.json({ success: true, data: await setUserActive(requireAuth(req), parseIdParam(req.params.id), false) });
 });
 
-// Refuses a pending sign-up request. Approval is the activate route above.
-usersRouter.post("/:id/reject", authorize("USERS", "EDIT"), async (req, res) => {
+// Refuses a pending sign-up request. Approval is the activate route above. Both need USERS:APPROVE.
+usersRouter.post("/:id/reject", authorize("USERS", "APPROVE"), async (req, res) => {
   res.json({ success: true, data: await rejectRegistration(requireAuth(req), parseIdParam(req.params.id)) });
 });
 

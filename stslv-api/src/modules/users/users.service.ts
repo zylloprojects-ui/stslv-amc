@@ -238,6 +238,13 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
     await lockUser(client, id);
     const before = await findUser(client, id);
 
+    // Approving a sign-up request needs USERS:APPROVE; activating or deactivating an account needs USERS:EDIT.
+    const required: PermissionKey = isActive && before.approvalStatus === "PENDING" ? "USERS:APPROVE" : "USERS:EDIT";
+
+    if (!auth.permissions.has(required)) {
+      throw forbidden();
+    }
+
     if (!isActive && id === auth.user.id) {
       throw conflict("You cannot deactivate your own account.");
     }

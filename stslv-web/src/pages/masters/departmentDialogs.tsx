@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../../auth/context'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Badge, Button, EmptyState, Modal, Spinner, TableScroll, TextAreaField, TextField } from '../../components/ui'
@@ -175,6 +176,8 @@ const PAGE_SIZE = 10
 
 /** The engineers linked to a department, from the Sales Engineers list filtered by it. Read only. */
 export function LinkedEngineersModal({ department, onClose }: { department: DepartmentRecord; onClose: () => void }) {
+  // Engineer 360 has its own permission (SALES_ENGINEERS).
+  const canOpenEngineers = useAuth().can('SALES_ENGINEERS', 'VIEW')
   const [page, setPage] = useState(1)
   const list = useQuery({
     queryKey: ['masters', 'departments', department.id, 'engineers', page],
@@ -223,9 +226,13 @@ export function LinkedEngineersModal({ department, onClose }: { department: Depa
                 {data.items.map((engineer) => (
                   <tr key={engineer.id} className={TABLE.row}>
                     <td className={`${TABLE.td} ${TABLE.text}`}>
-                      <Link to={`/master-data/sales-engineers/${engineer.id}`} className="font-semibold text-slate-900 hover:text-[#1479BD] hover:underline">
-                        {engineer.name}
-                      </Link>
+                      {canOpenEngineers ? (
+                        <Link to={`/master-data/sales-engineers/${engineer.id}`} className="font-semibold text-slate-900 hover:text-[#1479BD] hover:underline">
+                          {engineer.name}
+                        </Link>
+                      ) : (
+                        <span className="font-semibold text-slate-900">{engineer.name}</span>
+                      )}
                     </td>
                     <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs font-semibold text-slate-600`}>{engineer.code}</td>
                     <td className={`${TABLE.td} whitespace-nowrap`}>{engineer.employeeNo ?? '—'}</td>

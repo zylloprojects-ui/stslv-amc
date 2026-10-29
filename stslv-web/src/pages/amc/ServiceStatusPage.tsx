@@ -360,7 +360,7 @@ export function ServiceStatusPage() {
   const canReopen = auth.can('AMC_EXECUTION', 'APPROVE')
   // Visit actions read the visit from the execution API, so they also need its view permission.
   const canAct = canSave && auth.can('AMC_EXECUTION', 'VIEW')
-  const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
+  const canExport = auth.can('SERVICE_STATUS', 'EXPORT')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
 
   const options = useQuery({ queryKey: ['amc', 'service-status', 'options'], queryFn: () => api.get<ServiceStatusOptions>('/amc/service-status/options') })

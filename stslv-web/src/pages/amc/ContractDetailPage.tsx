@@ -533,7 +533,7 @@ export function ContractDetailPage() {
 
                 </>
               )}
-              {activeTab === 'renewals' && <ContractRenewalsPanel contractId={contract.id} canRenew={auth.can('AMC_CONTRACTS', 'CREATE')} onRenew={() => setDialog({ kind: 'renew' })} />}
+              {activeTab === 'renewals' && <ContractRenewalsPanel contractId={contract.id} canRenew={auth.can('AMC_RENEWAL', 'CREATE')} onRenew={() => setDialog({ kind: 'renew' })} />}
               {activeTab === 'documents' && <AttachmentsPanel entityType="amc_contracts" entityId={contract.id} canUpload={canEdit} />}
               {activeTab === 'history' && (
                 <>

@@ -133,7 +133,7 @@ export function AmcCalendarPage() {
   const canViewClients = auth.can('CLIENTS', 'VIEW')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const canEdit = auth.can('AMC_SCHEDULE', 'EDIT')
-  const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
+  const canExport = auth.can('MONTHLY_CALENDAR', 'EXPORT')
   const clients = useQuery({ queryKey: ['clients', 'all'], queryFn: () => fetchClients('all'), enabled: canViewClients })
   // Sales engineers, frequencies and years present on scheduled visits; open to every schedule viewer.
   const options = useQuery({ queryKey: ['amc', 'service-status', 'options'], queryFn: () => api.get<CalendarOptions>('/amc/service-status/options') })

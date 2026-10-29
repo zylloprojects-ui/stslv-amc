@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
+import { useAuth } from '../../auth/context'
 import { Link } from 'react-router-dom'
 import { LoadError } from '../../components/records'
 import { Button, Spinner } from '../../components/ui'
@@ -70,6 +71,8 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
   const [day, setDay] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const open = canSchedule ? setSelected : null
+  // The Monthly Calendar has its own permission (MONTHLY_CALENDAR).
+  const canOpenCalendar = useAuth().can('MONTHLY_CALENDAR', 'VIEW')
 
   const calendar = useQuery({
     queryKey: ['dashboard', 'calendar', month],
@@ -94,7 +97,7 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
         <Button variant="secondary" size="sm" aria-expanded={expanded} aria-controls="dashboard-mini-calendar" onClick={() => onToggle(!expanded)}>
           {expanded ? 'Hide calendar ▴' : 'Show calendar ▾'}
         </Button>
-        {canSchedule && (
+        {canOpenCalendar && (
           <Link to="/amc/calendar" className="rounded-lg bg-sky-50 px-3 py-1.5 text-sm font-semibold text-[#0b3b66] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
             Open full calendar →
           </Link>

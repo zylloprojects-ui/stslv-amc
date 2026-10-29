@@ -7,7 +7,7 @@ import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDateTime, initialsOf } from '../../lib/format'
-import { ACTION_LABELS, MODULE_LABELS, type Action, type Module, type Role, type RolesResponse, type User } from '../../lib/types'
+import { ACTION_LABELS, permissionSections, type Action, type Module, type PermissionCatalogEntry, type Role, type RolesResponse, type User } from '../../lib/types'
 
 const icon = (path: ReactNode) => (
   <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -217,6 +217,14 @@ function Attention({ items }: { items: { key: string; tone: 'amber' | 'rose' | '
 
 type Level = 'FULL' | 'PARTIAL' | 'VIEW' | 'NONE'
 
+/** The modules of the current application, in sidebar order, each with the actions it uses. Retired modules are left out. */
+function currentModules(catalogue: RolesResponse): (PermissionCatalogEntry & { used: Action[] })[] {
+  return permissionSections(catalogue)
+    .filter((section) => !section.retired)
+    .flatMap((section) => section.modules)
+    .map((entry) => ({ ...entry, used: ACTION_ORDER.filter((action) => catalogue.actions.includes(action) && entry.actions[action] !== undefined) }))
+}
+
 function levelOf(role: Role, module: Module, actions: Action[]): { level: Level; count: number } {
   const held = new Set(role.permissions.filter((permission) => permission.module === module).map((permission) => permission.action))
   const count = actions.filter((action) => held.has(action)).length
@@ -233,8 +241,9 @@ const LEVEL_STYLE: Record<Level, { label: string; cell: string }> = {
 }
 
 /** Every role against every module on one grid: who can do how much, at a glance. */
-function CoverageGrid({ catalogue, actions }: { catalogue: RolesResponse; actions: Action[] }) {
+function CoverageGrid({ catalogue }: { catalogue: RolesResponse }) {
   const roles = catalogue.roles.filter((role) => role.isActive)
+  const modules = currentModules(catalogue)
 
   return (
     <Section
@@ -266,18 +275,18 @@ function CoverageGrid({ catalogue, actions }: { catalogue: RolesResponse; action
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {catalogue.modules.map((module) => (
+            {modules.map(({ module, label, used }) => (
               <tr key={module} className={TABLE.row}>
                 <th scope="row" className={cx(TABLE.td, 'whitespace-nowrap text-left font-semibold text-slate-900')}>
-                  {MODULE_LABELS[module]}
+                  {label}
                 </th>
                 {roles.map((role) => {
-                  const { level, count } = levelOf(role, module, actions)
+                  const { level, count } = levelOf(role, module, used)
 
                   return (
                     <td key={role.id} className={cx(TABLE.td, 'text-center')}>
                       <span
-                        title={`${role.name}: ${count} of ${actions.length} actions in ${MODULE_LABELS[module]}`}
+                        title={`${role.name}: ${count} of ${used.length} actions in ${label}`}
                         className={cx('inline-block min-w-16 rounded-md px-2 py-1 text-xs font-bold ring-1 ring-inset', LEVEL_STYLE[level].cell)}
                       >
                         {LEVEL_STYLE[level].label}
@@ -298,7 +307,11 @@ function AccessMatrix({ catalogue }: { catalogue: RolesResponse }) {
   const [selectedId, setSelectedId] = useState<string>(catalogue.roles[0]?.id ?? '')
   const role = catalogue.roles.find((candidate) => candidate.id === selectedId) ?? catalogue.roles[0]
   const actions = ACTION_ORDER.filter((action) => catalogue.actions.includes(action))
-  const totalPairs = catalogue.modules.length * actions.length
+  const modules = currentModules(catalogue)
+  // Only the permissions the application uses count; a grant on a retired module or an unused action does nothing.
+  const pairs = new Set(modules.flatMap((entry) => entry.used.map((action) => `${entry.module}:${action}`)))
+  const totalPairs = pairs.size
+  const usedCount = (candidate: Role) => candidate.permissions.filter((permission) => pairs.has(`${permission.module}:${permission.action}`)).length
 
   if (!role) {
     return <EmptyState title="No roles" />
@@ -311,17 +324,17 @@ function AccessMatrix({ catalogue }: { catalogue: RolesResponse }) {
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3" role="group" aria-label="Access figures">
         <StatTile label="Roles" count={catalogue.roles.length} hint={`${catalogue.roles.filter((candidate) => candidate.isActive).length} active`} icon={ICONS.key} tone="from-[#1479BD] to-[#4aa3df]" edge="#1B8AD3" position={0} />
-        <StatTile label="Modules" count={catalogue.modules.length} hint="Areas of the system" icon={ICONS.grid} tone="from-violet-600 to-violet-400" edge="#8b5cf6" position={1} />
-        <StatTile label="Permissions" count={totalPairs} hint={`${actions.length} actions per module`} icon={ICONS.shield} tone="from-emerald-600 to-emerald-400" edge="#10b981" position={2} />
+        <StatTile label="Modules" count={modules.length} hint="Areas of the system" icon={ICONS.grid} tone="from-violet-600 to-violet-400" edge="#8b5cf6" position={1} />
+        <StatTile label="Permissions" count={totalPairs} hint="Actions the application uses" icon={ICONS.shield} tone="from-emerald-600 to-emerald-400" edge="#10b981" position={2} />
       </div>
 
-      <CoverageGrid catalogue={catalogue} actions={actions} />
+      <CoverageGrid catalogue={catalogue} />
 
       <div>
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">Look at one role</h3>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" role="group" aria-label="Choose a role">
           {catalogue.roles.map((candidate) => {
-            const count = candidate.permissions.length
+            const count = usedCount(candidate)
             const share = totalPairs > 0 ? Math.round((count / totalPairs) * 100) : 0
             const on = candidate.id === role.id
 
@@ -388,16 +401,25 @@ function AccessMatrix({ catalogue }: { catalogue: RolesResponse }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {catalogue.modules.map((module) => {
-                const { level } = levelOf(role, module, actions)
+              {modules.map(({ module, label, used }) => {
+                const { level } = levelOf(role, module, used)
 
                 return (
                   <tr key={module} className={TABLE.row}>
                     <th scope="row" className={cx(TABLE.td, 'whitespace-nowrap text-left font-semibold text-slate-900')}>
-                      {MODULE_LABELS[module]}
+                      {label}
                     </th>
                     {actions.map((action) => {
                       const yes = held.has(`${module}:${action}`)
+
+                      if (!used.includes(action)) {
+                        return (
+                          <td key={action} className={cx(TABLE.td, 'text-center text-xs text-slate-300')}>
+                            <span aria-hidden="true">n/a</span>
+                            <span className="sr-only">Not used</span>
+                          </td>
+                        )
+                      }
 
                       return (
                         <td key={action} className={cx(TABLE.td, 'text-center')}>

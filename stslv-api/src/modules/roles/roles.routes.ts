@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
+import { FIXED_ACCESS, PERMISSION_CATALOG } from "../../shared/permission-catalog";
 import { ACTIONS, MODULES } from "../../shared/permissions";
 import { parseIdParam } from "../../shared/validation";
 import { createRole, deleteRole, listRoles, setRolePermissions, updateRole } from "./roles.service";
@@ -41,7 +42,8 @@ rolesRouter.use(authenticate);
 // Roles and their permissions are part of user administration, so they are
 // governed by the USERS module permissions. In the business they are the departments.
 rolesRouter.get("/", authorize("USERS", "VIEW"), async (_req, res) => {
-  res.json({ success: true, data: { roles: await listRoles(), modules: MODULES, actions: ACTIONS } });
+  // catalog: what each module governs and which of its actions are used, for Roles & Permissions.
+  res.json({ success: true, data: { roles: await listRoles(), modules: MODULES, actions: ACTIONS, catalog: PERMISSION_CATALOG, fixedAccess: FIXED_ACCESS } });
 });
 
 rolesRouter.post("/", authorize("USERS", "CREATE"), async (req, res) => {

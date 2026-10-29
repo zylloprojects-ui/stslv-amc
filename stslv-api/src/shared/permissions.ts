@@ -18,6 +18,14 @@ export const MODULES = [
   "HISTORICAL_DATA",
   // Migration 0078 (module), grants 0079.
   "SERVICES_SALES",
+  // Migration 0080 (modules), grants 0081: pages that used to share another module's permissions.
+  "AMC_RENEWAL",
+  "MONTHLY_CALENDAR",
+  "SERVICE_STATUS",
+  "SALES_ENGINEERS",
+  "SYSTEM_TYPES",
+  "MAINTENANCE_FREQUENCIES",
+  "DEPARTMENTS",
 ] as const;
 
 export const ACTIONS = ["VIEW", "CREATE", "EDIT", "DELETE", "APPROVE", "EXPORT"] as const;

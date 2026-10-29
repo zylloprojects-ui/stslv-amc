@@ -5,19 +5,19 @@ import type { RenewalQueue } from './renewalTypes'
 // The four cards of the Renewal Queue. Each reads one figure the API returned;
 // none is calculated here. A card links to the queue filtered on its state.
 
-const link = (status: string) => ({ to: `/amc/renewal?status=${status}`, label: 'Show', module: 'AMC_CONTRACTS' as const })
+const link = (status: string) => ({ to: `/amc/renewal?status=${status}`, label: 'Show', module: 'AMC_RENEWAL' as const })
 
 export const RENEWAL_KPIS: KpiGroupDefinition<RenewalQueue> = {
   id: 'renewal-queue',
   title: 'Renewal KPIs',
   description: 'Counted over the search applied, whatever status is selected.',
-  visible: (canView) => canView('AMC_CONTRACTS'),
+  visible: (canView) => canView('AMC_RENEWAL'),
   kpis: [
     {
       id: 'due',
       label: 'Due / Expired',
       icon: 'calendar',
-      visible: (canView) => canView('AMC_CONTRACTS'),
+      visible: (canView) => canView('AMC_RENEWAL'),
       link: link('DUE'),
       read: ({ kpis, windowDays }) => ({
         kind: 'value',
@@ -29,7 +29,7 @@ export const RENEWAL_KPIS: KpiGroupDefinition<RenewalQueue> = {
       id: 'under-approval',
       label: 'Under Client Approval',
       icon: 'pulse',
-      visible: (canView) => canView('AMC_CONTRACTS'),
+      visible: (canView) => canView('AMC_RENEWAL'),
       link: link('UNDER_APPROVAL'),
       read: ({ kpis }) => ({ kind: 'value', value: formatCount(kpis.underApproval), detail: 'Renewal drafted, waiting for the client' }),
     },
@@ -37,7 +37,7 @@ export const RENEWAL_KPIS: KpiGroupDefinition<RenewalQueue> = {
       id: 'renewed',
       label: 'Renewed',
       icon: 'contract',
-      visible: (canView) => canView('AMC_CONTRACTS'),
+      visible: (canView) => canView('AMC_RENEWAL'),
       link: link('RENEWED'),
       read: ({ kpis }) => ({ kind: 'value', value: formatCount(kpis.renewed), detail: 'Renewal approved and active' }),
     },
@@ -45,7 +45,7 @@ export const RENEWAL_KPIS: KpiGroupDefinition<RenewalQueue> = {
       id: 'cancelled',
       label: 'Cancelled',
       icon: 'shield',
-      visible: (canView) => canView('AMC_CONTRACTS'),
+      visible: (canView) => canView('AMC_RENEWAL'),
       link: link('CANCELLED'),
       read: ({ kpis }) => ({ kind: 'value', value: formatCount(kpis.cancelled), detail: 'Renewal cancelled, none started since' }),
     },

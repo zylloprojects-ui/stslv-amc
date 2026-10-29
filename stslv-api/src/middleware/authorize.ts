@@ -15,3 +15,20 @@ export function authorize(module: Module, action: Action): RequestHandler {
     next();
   };
 }
+
+/**
+ * For a route that serves several pages, each governed by its own module (the visit list
+ * serves AMC Schedule and Monthly Calendar): requires every given action on at least one
+ * of the modules. Holding VIEW on one and EXPORT on another is not enough. Use after authenticate.
+ */
+export function authorizeOnAny(modules: Module[], ...actions: Action[]): RequestHandler {
+  return (req, _res, next) => {
+    const held = requireAuth(req).permissions;
+
+    if (!modules.some((module) => actions.every((action) => held.has(permissionKey(module, action))))) {
+      throw forbidden();
+    }
+
+    next();
+  };
+}

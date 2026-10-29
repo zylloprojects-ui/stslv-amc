@@ -7,7 +7,7 @@ import { AppProviders } from '../App'
 import type { SessionUser } from '../lib/types'
 import { MasterStatusPage } from '../pages/masterStatus/MasterStatusPage'
 import type { MasterStatusItem } from '../pages/masterStatus/masterStatusTypes'
-import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
 // Most tests render the page on its own; the routing tests go through App.tsx and the menu.
 
@@ -16,7 +16,7 @@ const VIEWER: SessionUser = {
   email: 'invoicing@example.com',
   fullName: 'Ines Invoicing',
   roles: [{ id: '5', code: 'INVOICING', name: 'Invoicing' }],
-  permissions: ['AMC_SCHEDULE:VIEW', 'INVOICES:VIEW', 'SERVICES_SALES:VIEW', 'AMC_CONTRACTS:VIEW'],
+  permissions: afterPageSplit(['AMC_SCHEDULE:VIEW', 'INVOICES:VIEW', 'SERVICES_SALES:VIEW', 'AMC_CONTRACTS:VIEW']),
 }
 const EXPORTER: SessionUser = { ...VIEWER, id: '8', permissions: [...VIEWER.permissions, 'AMC_SCHEDULE:EXPORT'] }
 
@@ -320,7 +320,7 @@ describe('Master AMC Status routing and permissions', () => {
 
   it('stays hidden and closed for a user who may not view invoices, who still has Service Status', async () => {
     // Execution holds AMC_SCHEDULE and SERVICES_SALES view but not INVOICES.
-    const user: SessionUser = { ...VIEWER, id: '9', roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }], permissions: ['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW'] }
+    const user: SessionUser = { ...VIEWER, id: '9', roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }], permissions: afterPageSplit(['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW']) }
     const api = statusApi(user, [RED])
     renderApp('/amc/master-status')
 
