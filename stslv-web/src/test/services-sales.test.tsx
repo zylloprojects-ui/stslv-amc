@@ -7,7 +7,7 @@ import { AppProviders } from '../App'
 import type { SessionUser } from '../lib/types'
 import { ServicesSalesPage } from '../pages/servicesSales/ServicesSalesPage'
 import type { ServicesSalesItem } from '../pages/servicesSales/servicesSalesTypes'
-import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
 // Most tests render the page on its own; the routing tests go through App.tsx and the menu.
 
@@ -311,8 +311,8 @@ describe('Services Sales page', () => {
   })
 
   it('stays hidden and closed for a user without SERVICES_SALES, who still has Service Status', async () => {
-    // Procurement holds no SERVICES_SALES grant (migration 0079); Service Status needs AMC_SCHEDULE:VIEW.
-    const user: SessionUser = { ...EDITOR, id: '9', roles: [{ id: '3', code: 'PROCUREMENT', name: 'Procurement' }], permissions: ['AMC_SCHEDULE:VIEW'] }
+    // Procurement holds no SERVICES_SALES grant (migration 0079); Service Status needs SERVICE_STATUS:VIEW (from AMC_SCHEDULE:VIEW, 0081).
+    const user: SessionUser = { ...EDITOR, id: '9', roles: [{ id: '3', code: 'PROCUREMENT', name: 'Procurement' }], permissions: afterPageSplit(['AMC_SCHEDULE:VIEW']) }
     const api = salesApi(user, [PENDING])
     renderApp('/amc/services-sales')
 

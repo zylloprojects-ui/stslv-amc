@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
 import type { RenewalHistory, RenewalQueue, RenewalQueueItem } from '../pages/amcRenewal/renewalTypes'
 import { amcApi, makeContract } from './amc-helpers'
-import { ADMIN, fail, ok, renderApp } from './helpers'
+import { afterPageSplit, ADMIN, fail, ok, renderApp } from './helpers'
 
 // AMC Renewal. The API is mocked: every record here is invented, and each test
 // checks that the page shows what the API sent and calls the contract routes.
@@ -77,7 +77,7 @@ const VIEW_ONLY: SessionUser = {
   email: 'viewer@example.com',
   fullName: 'Vera Viewer',
   roles: [{ id: '5', code: 'VIEWER', name: 'Viewer' }],
-  permissions: ['DASHBOARD:VIEW', 'AMC_CONTRACTS:VIEW'],
+  permissions: afterPageSplit(['DASHBOARD:VIEW', 'AMC_CONTRACTS:VIEW']),
 }
 
 function renewalApi(user: SessionUser = ADMIN, queue: () => ReturnType<typeof ok> = () => ok(QUEUE)) {

@@ -49,7 +49,7 @@ const MASTER_CATEGORIES: Category[] = [
     label: 'Sales Engineers',
     description: 'Engineers assigned to AMC contracts.',
     path: '/master-data/sales-engineers',
-    module: 'SETTINGS',
+    module: 'SALES_ENGINEERS',
     edge: '#5BAF48',
     icon: svg(
       <>
@@ -63,7 +63,7 @@ const MASTER_CATEGORIES: Category[] = [
     label: 'System Types',
     description: 'The kinds of system an AMC contract covers.',
     path: '/master-data/system-types',
-    module: 'SETTINGS',
+    module: 'SYSTEM_TYPES',
     edge: '#00A6C8',
     icon: svg(
       <>
@@ -77,7 +77,7 @@ const MASTER_CATEGORIES: Category[] = [
     label: 'Maintenance Frequencies',
     description: 'How often visits are scheduled: labels and availability for new contracts.',
     path: '/master-data/maintenance-frequencies',
-    module: 'SETTINGS',
+    module: 'MAINTENANCE_FREQUENCIES',
     edge: '#F5A623',
     icon: svg(
       <>
@@ -91,7 +91,7 @@ const MASTER_CATEGORIES: Category[] = [
     label: 'Departments',
     description: 'The departments sales engineers belong to. Not user roles.',
     path: '/master-data/departments',
-    module: 'SETTINGS',
+    module: 'DEPARTMENTS',
     edge: '#7E6FAC',
     icon: svg(
       <>

@@ -11,36 +11,53 @@ import type { Role, User } from '../../lib/types'
 
 const PASSWORD_HINT = 'At least 10 characters. Give it to the user privately; they can change it under My account.'
 
-function RoleCheckboxes({ roles, selected, onChange }: { roles: Role[]; selected: string[]; onChange: (ids: string[]) => void }) {
+/** The API's message when a request names no role or several: each user holds exactly one role. */
+export const ONE_ROLE_MESSAGE = 'Select exactly one role.'
+
+/** Exactly one role per user (approved 2026-10-29), chosen from the active roles. The API enforces the same rule. */
+function RolePicker({ roles, selected, onChange, error }: { roles: Role[]; selected: string; onChange: (id: string) => void; error?: string }) {
   return (
-    <fieldset>
-      <legend className="mb-1.5 text-sm font-bold text-slate-800">Roles</legend>
-      <div className="divide-y divide-slate-200 overflow-hidden rounded-lg border border-slate-300">
+    <fieldset aria-describedby={error ? 'role-picker-error' : undefined}>
+      <legend className="mb-1.5 text-sm font-bold text-slate-800">
+        Role <span className="font-normal text-slate-500">(one per user)</span>
+      </legend>
+      <div className={cx('divide-y divide-slate-200 overflow-hidden rounded-lg border', error ? 'border-red-400' : 'border-slate-300')}>
         {roles.map((role) => {
-          const on = selected.includes(role.id)
+          const on = selected === role.id
 
           return (
             <label
               key={role.id}
-              title={role.description ?? undefined}
               className={cx(
-                'flex items-center gap-3 px-3.5 py-2',
+                'flex items-start gap-3 px-3.5 py-2',
                 role.isActive ? 'cursor-pointer hover:bg-sky-50/60' : 'cursor-not-allowed opacity-60',
                 on && 'bg-sky-50',
               )}
             >
               <input
-                type="checkbox"
-                className="h-[18px] w-[18px] shrink-0 cursor-pointer rounded border-slate-300 accent-[#1479BD]"
+                type="radio"
+                name="role"
+                className="mt-0.5 h-[18px] w-[18px] shrink-0 cursor-pointer accent-[#1479BD]"
                 checked={on}
                 disabled={!role.isActive}
-                onChange={(event) => onChange(event.target.checked ? [...selected, role.id] : selected.filter((id) => id !== role.id))}
+                onChange={() => onChange(role.id)}
               />
-              <span className="text-sm font-semibold text-slate-900">{role.name}</span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-slate-900">
+                  {role.name}
+                  {!role.isActive && <span className="ml-1.5 text-xs font-normal">(inactive)</span>}
+                </span>
+                {role.description && <span className="block text-xs text-slate-500">{role.description}</span>}
+              </span>
             </label>
           )
         })}
       </div>
+      {error && (
+        <p id="role-picker-error" className="mt-1.5 text-sm text-red-700">
+          {error}
+        </p>
+      )}
     </fieldset>
   )
 }
@@ -55,7 +72,8 @@ type CreateUserForm = z.infer<typeof createUserSchema>
 
 export function CreateUserModal({ roles, onClose, onSaved }: { roles: Role[]; onClose: () => void; onSaved: (user: User) => void }) {
   const queryClient = useQueryClient()
-  const [roleIds, setRoleIds] = useState<string[]>([])
+  const [roleId, setRoleId] = useState('')
+  const [roleError, setRoleError] = useState<string | undefined>()
   const [failure, setFailure] = useState<string | null>(null)
   const {
     register,
@@ -68,7 +86,7 @@ export function CreateUserModal({ roles, onClose, onSaved }: { roles: Role[]; on
   })
 
   const save = useMutation({
-    mutationFn: (values: CreateUserForm) => api.post<User>('/users', { ...values, roleIds }),
+    mutationFn: (values: CreateUserForm) => api.post<User>('/users', { ...values, roleIds: [roleId] }),
     onSuccess: async (user) => {
       await queryClient.invalidateQueries({ queryKey: ['users'] })
       await queryClient.invalidateQueries({ queryKey: ['roles'] })
@@ -81,6 +99,9 @@ export function CreateUserModal({ roles, onClose, onSaved }: { roles: Role[]; on
         for (const detail of error.details) {
           if (detail.field === 'fullName' || detail.field === 'email' || detail.field === 'password') {
             setError(detail.field, { message: detail.message })
+            shownOnField = true
+          } else if (detail.field === 'roleIds') {
+            setRoleError(detail.message)
             shownOnField = true
           }
         }
@@ -111,6 +132,10 @@ export function CreateUserModal({ roles, onClose, onSaved }: { roles: Role[]; on
         className="space-y-4"
         onSubmit={handleSubmit((values) => {
           setFailure(null)
+          if (!roleId) {
+            setRoleError(ONE_ROLE_MESSAGE)
+            return
+          }
           save.mutate(values)
         })}
       >
@@ -126,7 +151,15 @@ export function CreateUserModal({ roles, onClose, onSaved }: { roles: Role[]; on
           error={errors.password?.message}
           {...register('password')}
         />
-        <RoleCheckboxes roles={roles} selected={roleIds} onChange={setRoleIds} />
+        <RolePicker
+          roles={roles}
+          selected={roleId}
+          error={roleError}
+          onChange={(id) => {
+            setRoleId(id)
+            setRoleError(undefined)
+          }}
+        />
       </form>
     </Modal>
   )
@@ -134,10 +167,13 @@ export function CreateUserModal({ roles, onClose, onSaved }: { roles: Role[]; on
 
 export function EditRolesModal({ user, roles, onClose, onSaved }: { user: User; roles: Role[]; onClose: () => void; onSaved: (user: User) => void }) {
   const queryClient = useQueryClient()
-  const [roleIds, setRoleIds] = useState<string[]>(() => user.roles.map((role) => role.id))
+  // Preselected only when the user holds exactly one role; several (from before the rule) must be resolved by a choice.
+  const current = user.roles.length === 1 ? (user.roles[0]?.id ?? '') : ''
+  const [roleId, setRoleId] = useState(current)
+  const unchanged = roleId === current && user.roles.length === 1
 
   const save = useMutation({
-    mutationFn: () => api.put<User>(`/users/${user.id}/roles`, { roleIds }),
+    mutationFn: () => api.put<User>(`/users/${user.id}/roles`, { roleIds: [roleId] }),
     onSuccess: async (updated) => {
       await queryClient.invalidateQueries({ queryKey: ['users'] })
       await queryClient.invalidateQueries({ queryKey: ['roles'] })
@@ -147,23 +183,30 @@ export function EditRolesModal({ user, roles, onClose, onSaved }: { user: User; 
 
   return (
     <Modal
-      title={`Roles for ${user.fullName}`}
+      title={`Role for ${user.fullName}`}
       onClose={onClose}
       footer={
         <>
           <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
             Cancel
           </Button>
-          <Button onClick={() => save.mutate()} loading={save.isPending}>
-            Save roles
+          <Button onClick={() => save.mutate()} loading={save.isPending} disabled={!roleId || unchanged}>
+            Save role
           </Button>
         </>
       }
     >
       <div className="space-y-4">
         {save.isError && <Alert>{errorMessage(save.error)}</Alert>}
-        <RoleCheckboxes roles={roles} selected={roleIds} onChange={setRoleIds} />
-        <p className="text-xs text-slate-500">Changes apply immediately.</p>
+        <p className="text-sm text-slate-700">
+          Current role:{' '}
+          <strong>{user.roles.length === 0 ? 'none' : user.roles.map((role) => role.name).join(', ')}</strong>
+        </p>
+        {user.roles.length > 1 && (
+          <Alert tone="info">This user holds {user.roles.length} roles from before the one-role rule. Choose one: it replaces all of them.</Alert>
+        )}
+        <RolePicker roles={roles} selected={roleId} onChange={setRoleId} />
+        <p className="text-xs text-slate-500">The chosen role replaces the current one. Changes apply immediately.</p>
       </div>
     </Modal>
   )

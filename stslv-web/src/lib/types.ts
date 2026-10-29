@@ -13,6 +13,14 @@ export const MODULES = [
   'SETTINGS',
   'HISTORICAL_DATA',
   'SERVICES_SALES',
+  // Migration 0080: pages that used to share another module's permissions.
+  'AMC_RENEWAL',
+  'MONTHLY_CALENDAR',
+  'SERVICE_STATUS',
+  'SALES_ENGINEERS',
+  'SYSTEM_TYPES',
+  'MAINTENANCE_FREQUENCIES',
+  'DEPARTMENTS',
 ] as const
 
 export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE', 'EXPORT'] as const
@@ -35,6 +43,13 @@ export const MODULE_LABELS: Record<Module, string> = {
   SETTINGS: 'Settings',
   HISTORICAL_DATA: 'Historical Data',
   SERVICES_SALES: 'Services Sales',
+  AMC_RENEWAL: 'AMC Renewal',
+  MONTHLY_CALENDAR: 'Monthly Calendar',
+  SERVICE_STATUS: 'Service Status',
+  SALES_ENGINEERS: 'Sales Engineers',
+  SYSTEM_TYPES: 'System Types',
+  MAINTENANCE_FREQUENCIES: 'Maintenance Frequencies',
+  DEPARTMENTS: 'Departments',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -158,4 +173,41 @@ export interface RolesResponse {
   roles: Role[]
   modules: Module[]
   actions: Action[]
+  /** What each module governs and which of its actions are used (API: shared/permission-catalog.ts). Absent from an older API. */
+  catalog?: PermissionSection[]
+  fixedAccess?: { adminOnly: CatalogPage[]; everyone: CatalogPage[] }
+}
+
+export interface CatalogPage {
+  label: string
+  path: string
+  /** Further modules the user must also be able to view. */
+  alsoRequires?: Module[]
+}
+
+export interface PermissionCatalogEntry {
+  module: Module
+  label: string
+  description: string
+  pages: CatalogPage[]
+  /** The actions the application checks for this module, with what each allows. Only these can be granted. */
+  actions: Partial<Record<Action, string>>
+}
+
+export interface PermissionSection {
+  title: string
+  /** Pages removed from the application: existing grants are shown and may be removed; nothing new can be granted. */
+  retired?: true
+  modules: PermissionCatalogEntry[]
+}
+
+/** The catalog to draw permissions from. An older API sends none: every module and action is then offered, as before. */
+export function permissionSections(response: RolesResponse): PermissionSection[] {
+  if (response.catalog) {
+    return response.catalog
+  }
+
+  const everyAction = Object.fromEntries(response.actions.map((action) => [action, ACTION_LABELS[action]])) as Partial<Record<Action, string>>
+
+  return [{ title: 'Permissions', modules: response.modules.map((module) => ({ module, label: MODULE_LABELS[module], description: '', pages: [], actions: everyAction })) }]
 }

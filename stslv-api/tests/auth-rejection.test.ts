@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { testOutbox } from "../src/shared/mailer";
-import { api, closePool, insertUser, PASSWORD, resetData, roleId, signedIn } from "./helpers";
+import { api, closePool, insertUser, PASSWORD, resetData, roleId, signedIn, withoutOneRoleConstraint } from "./helpers";
 
 let admin: Awaited<ReturnType<typeof signedIn>>;
 
@@ -106,8 +106,8 @@ describe("POST /api/users/:id/reject", () => {
     await api()
       .put(`/api/users/${id}/roles`)
       .set(admin.headers)
-      .send({ roleIds: [await roleId("ACCOUNTANT"), await roleId("PROCUREMENT")] });
-    expect((await userRow("rob@example.com"))?.roles).toEqual(["ACCOUNTANT", "PROCUREMENT"]);
+      .send({ roleIds: [await roleId("ACCOUNTANT")] });
+    expect((await userRow("rob@example.com"))?.roles).toEqual(["ACCOUNTANT"]);
 
     const response = await reject(id);
 
@@ -156,7 +156,7 @@ describe("POST /api/users/:id/reject", () => {
         user_id: admin.id,
         module: "USERS",
         description: 'Sign-up request of "Rob Roled" (rob@example.com) rejected.',
-        metadata: { removedRoles: ["ACCOUNTANT", "PROCUREMENT"] },
+        metadata: { removedRoles: ["ACCOUNTANT"] },
       },
     ]);
 
@@ -381,5 +381,113 @@ describe("signing up again after a rejection", () => {
     }
     expect(await userRow("eve@example.com")).toMatchObject({ approval_status: "REJECTED", is_active: false, roles: [] });
     expect((await pool.query("SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE r.code = 'ADMIN'")).rowCount).toBe(1);
+  });
+});
+
+describe("approving and rejecting need USERS:APPROVE; other user changes need USERS:EDIT", () => {
+  // Two user-management roles beside the seeded ones: one that edits users, one that approves sign-ups.
+  // Both also hold DASHBOARD:VIEW, the only permission of the role given to the pending people.
+  let editor: Awaited<ReturnType<typeof signedIn>>;
+  let approver: Awaited<ReturnType<typeof signedIn>>;
+
+  const makeRole = async (code: string, permissions: [string, string][]) => {
+    await pool.query("INSERT INTO roles (code, name) VALUES ($1, $1)", [code]);
+    for (const [module, action] of permissions) {
+      await pool.query("INSERT INTO role_permissions (role_id, module, action) SELECT id, $2, $3 FROM roles WHERE code = $1", [code, module, action]);
+    }
+  };
+  const pendingWithRole = async (name: string, email: string) => {
+    const id = await pendingUser(name, email);
+    expect((await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("DASH_ONLY")] })).status).toBe(200);
+    return id;
+  };
+
+  beforeAll(async () => {
+    await resetData();
+    admin = await signedIn("admin@example.com", ["ADMIN"]);
+    await makeRole("DASH_ONLY", [["DASHBOARD", "VIEW"]]);
+    await makeRole("USER_EDITOR", [["USERS", "VIEW"], ["USERS", "EDIT"], ["DASHBOARD", "VIEW"]]);
+    await makeRole("USER_APPROVER", [["USERS", "VIEW"], ["USERS", "APPROVE"], ["DASHBOARD", "VIEW"]]);
+    editor = await signedIn("editor@example.com", ["USER_EDITOR"]);
+    approver = await signedIn("approver@example.com", ["USER_APPROVER"]);
+  });
+
+  it("does not let USERS:EDIT alone approve or reject a sign-up request", async () => {
+    const id = await pendingWithRole("Paula Pending", "paula@example.com");
+
+    expect((await api().post(`/api/users/${id}/activate`).set(editor.headers)).status).toBe(403);
+    expect((await reject(id, editor.headers)).status).toBe(403);
+    expect(await userRow("paula@example.com")).toMatchObject({ approval_status: "PENDING", is_active: false });
+  });
+
+  it("lets USERS:APPROVE approve one request and reject another", async () => {
+    const approved = await pendingWithRole("Ada Approved", "ada@example.com");
+    const rejected = await pendingUser("Rex Rejected", "rex@example.com");
+
+    expect((await api().post(`/api/users/${approved}/activate`).set(approver.headers)).status).toBe(200);
+    expect((await reject(rejected, approver.headers)).status).toBe(200);
+    expect(await userRow("ada@example.com")).toMatchObject({ approval_status: "APPROVED", is_active: true });
+    expect(await userRow("rex@example.com")).toMatchObject({ approval_status: "REJECTED" });
+  });
+
+  it("still requires a role before approval, for an approver too", async () => {
+    const id = await pendingUser("Nora Norole", "nora@example.com");
+
+    expect((await api().post(`/api/users/${id}/activate`).set(approver.headers)).status).toBe(409);
+  });
+
+  it("keeps deactivating, reactivating and role changes on USERS:EDIT, not USERS:APPROVE", async () => {
+    const id = (await userRow("ada@example.com"))?.id as string;
+
+    expect((await api().post(`/api/users/${id}/deactivate`).set(approver.headers)).status).toBe(403);
+    expect((await api().put(`/api/users/${id}/roles`).set(approver.headers).send({ roleIds: [] })).status).toBe(403);
+
+    expect((await api().post(`/api/users/${id}/deactivate`).set(editor.headers)).status).toBe(200);
+    expect((await api().post(`/api/users/${id}/activate`).set(approver.headers)).status).toBe(403);
+    expect((await api().post(`/api/users/${id}/activate`).set(editor.headers)).status).toBe(200);
+  });
+});
+
+describe("an approval gives exactly one role", () => {
+  beforeAll(async () => {
+    await resetData();
+    admin = await signedIn("admin@example.com", ["ADMIN"]);
+  });
+
+  it("approves a request with one role, which then gives that role's permissions", async () => {
+    const id = await pendingUser("Olive One", "olive@example.com");
+
+    expect((await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("INVOICING")] })).status).toBe(200);
+    expect((await api().post(`/api/users/${id}/activate`).set(admin.headers)).status).toBe(200);
+
+    const signedInAsOlive = await login("olive@example.com");
+    expect(signedInAsOlive.status).toBe(200);
+    expect(signedInAsOlive.body.data.user.permissions).toContain("INVOICES:CREATE");
+  });
+
+  it("refuses approval without a role", async () => {
+    const id = await pendingUser("Nell Norole", "nell@example.com");
+    const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toBe("Assign a role before approving this user.");
+  });
+
+  it("refuses to approve a request that holds several roles from before the rule, without removing any (database before 0082)", async () => {
+    await withoutOneRoleConstraint(async () => {
+      const id = await pendingUser("Max Many", "max@example.com");
+      await pool.query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2), ($1, $3)", [id, await roleId("ACCOUNTANT"), await roleId("INVOICING")]);
+
+      const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
+
+      expect(response.status).toBe(409);
+      expect(response.body.error.message).toBe("This user has more than one role. Choose one role before approving.");
+      expect(await userRow("max@example.com")).toMatchObject({ approval_status: "PENDING", is_active: false, roles: ["ACCOUNTANT", "INVOICING"] });
+
+      // Choosing one role replaces both; then the approval goes through.
+      expect((await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("INVOICING")] })).status).toBe(200);
+      expect((await api().post(`/api/users/${id}/activate`).set(admin.headers)).status).toBe(200);
+      expect(await userRow("max@example.com")).toMatchObject({ approval_status: "APPROVED", roles: ["INVOICING"] });    });
+
   });
 });

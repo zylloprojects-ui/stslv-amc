@@ -33,10 +33,10 @@ export const NAVIGATION: NavSection[] = [
     path: '/master-data',
     items: [
       { label: 'Clients', path: '/clients', module: 'CLIENTS' },
-      { label: 'Sales Engineers', path: '/master-data/sales-engineers', module: 'SETTINGS' },
-      { label: 'System Types', path: '/master-data/system-types', module: 'SETTINGS' },
-      { label: 'Maintenance Frequencies', path: '/master-data/maintenance-frequencies', module: 'SETTINGS' },
-      { label: 'Departments', path: '/master-data/departments', module: 'SETTINGS' },
+      { label: 'Sales Engineers', path: '/master-data/sales-engineers', module: 'SALES_ENGINEERS' },
+      { label: 'System Types', path: '/master-data/system-types', module: 'SYSTEM_TYPES' },
+      { label: 'Maintenance Frequencies', path: '/master-data/maintenance-frequencies', module: 'MAINTENANCE_FREQUENCIES' },
+      { label: 'Departments', path: '/master-data/departments', module: 'DEPARTMENTS' },
     ],
   },
   {
@@ -44,10 +44,10 @@ export const NAVIGATION: NavSection[] = [
     items: [
       { label: 'AMC Management', path: '/amc/management', module: 'AMC_CONTRACTS' },
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },
-      { label: 'AMC Renewal', path: '/amc/renewal', module: 'AMC_CONTRACTS' },
+      { label: 'AMC Renewal', path: '/amc/renewal', module: 'AMC_RENEWAL' },
       { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
-      { label: 'Monthly Calendar', path: '/amc/calendar', module: 'AMC_SCHEDULE' },
-      { label: 'Service Status', path: '/amc/service-status', module: 'AMC_SCHEDULE' },
+      { label: 'Monthly Calendar', path: '/amc/calendar', module: 'MONTHLY_CALENDAR' },
+      { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },
       { label: 'Services Sales', path: '/amc/services-sales', module: 'SERVICES_SALES' },
       // Shows invoice and quotation numbers, so it needs view on those modules too (the API checks the same three).
       { label: 'Master AMC Status', path: '/amc/master-status', module: 'AMC_SCHEDULE', alsoRequires: ['INVOICES', 'SERVICES_SALES'] },

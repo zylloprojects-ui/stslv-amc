@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { ACTIONS, MODULES, type Role, type SessionUser, type User } from '../lib/types'
+import { ACTIONS, MODULES, type PermissionSection, type Role, type SessionUser, type User } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply } from './helpers'
 
 const ROLES: Role[] = [
@@ -93,7 +93,7 @@ describe('users', () => {
     expect(rows[1]).toHaveTextContent('Never')
 
     expect(screen.getByRole('button', { name: 'Deactivate Asha Admin' })).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Change roles of Asha Admin' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Change role of Asha Admin' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Deactivate Arun Accountant' })).toBeEnabled()
   })
 
@@ -113,7 +113,16 @@ describe('users', () => {
     expect(api.find('POST', '/users')).toHaveLength(0)
 
     await userEvent.type(within(dialog).getByLabelText(/Temporary password/), '-but-now-long-enough')
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: /Accountant/ }))
+    // No role chosen: refused before anything is sent.
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Create user' }))
+    expect(await within(dialog).findByText('Select exactly one role.')).toBeInTheDocument()
+    expect(api.find('POST', '/users')).toHaveLength(0)
+
+    // One role, chosen with a radio button: picking another replaces it.
+    await userEvent.click(within(dialog).getByRole('radio', { name: /Admin/ }))
+    await userEvent.click(within(dialog).getByRole('radio', { name: /Accountant/ }))
+    expect(within(dialog).getByRole('radio', { name: /Admin/ })).not.toBeChecked()
+    expect(within(dialog).queryByRole('checkbox')).not.toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create user' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
@@ -230,17 +239,20 @@ describe('users', () => {
     })
   })
 
-  it('assigns and removes roles', async () => {
+  it('replaces the current role with the one chosen', async () => {
     const api = usersApi()
     renderApp('/admin/users')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Change roles of Arun Accountant' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Roles for Arun Accountant' })
+    await userEvent.click(await screen.findByRole('button', { name: 'Change role of Arun Accountant' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Role for Arun Accountant' })
 
-    expect(within(dialog).getByRole('checkbox', { name: /Accountant/ })).toBeChecked()
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: /Accountant/ }))
-    await userEvent.click(within(dialog).getByRole('checkbox', { name: /Admin/ }))
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save roles' }))
+    expect(within(dialog).getByText('Accountant', { selector: 'strong' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('radio', { name: /Accountant/ })).toBeChecked()
+    // Unchanged: nothing to save.
+    expect(within(dialog).getByRole('button', { name: 'Save role' })).toBeDisabled()
+    await userEvent.click(within(dialog).getByRole('radio', { name: /Admin/ }))
+    expect(within(dialog).getByRole('radio', { name: /Accountant/ })).not.toBeChecked()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save role' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('PUT', '/users/2/roles')[0]?.body).toEqual({ roleIds: ['1'] })
@@ -308,7 +320,7 @@ describe('sign-up requests', () => {
     expect(within(row).getByText('Assign a role before approving this user.')).toBeInTheDocument()
     // Reject and Change roles stay available.
     expect(within(row).getByRole('button', { name: 'Reject Nadia Newcomer' })).toBeEnabled()
-    expect(within(row).getByRole('button', { name: 'Change roles of Nadia Newcomer' })).toBeEnabled()
+    expect(within(row).getByRole('button', { name: 'Change role of Nadia Newcomer' })).toBeEnabled()
     expect(screen.getByRole('status')).toHaveTextContent('1 sign-up request is waiting for approval. A pending account cannot sign in. Assign a role, then approve it.')
   })
 
@@ -354,10 +366,10 @@ describe('sign-up requests', () => {
     const api = pendingApi()
     renderApp('/admin/users')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Change roles of Nadia Newcomer' }))
-    const roles = await screen.findByRole('dialog', { name: 'Roles for Nadia Newcomer' })
-    await userEvent.click(within(roles).getByRole('checkbox', { name: /Accountant/ }))
-    await userEvent.click(within(roles).getByRole('button', { name: 'Save roles' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Change role of Nadia Newcomer' }))
+    const roles = await screen.findByRole('dialog', { name: 'Role for Nadia Newcomer' })
+    await userEvent.click(within(roles).getByRole('radio', { name: /Accountant/ }))
+    await userEvent.click(within(roles).getByRole('button', { name: 'Save role' }))
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('PUT', '/users/7/roles')[0]?.body).toEqual({ roleIds: ['2'] })
 
@@ -379,6 +391,49 @@ describe('sign-up requests', () => {
     expect(await screen.findByText('The sign-up request of Nadia Newcomer was approved. They can now sign in.')).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Deactivate Nadia Newcomer' })).toBeInTheDocument()
     expect(screen.queryByText('Pending approval')).not.toBeInTheDocument()
+  })
+
+  it('marks several roles from before the rule and keeps Approve disabled until one is chosen', async () => {
+    const api = pendingApi(ADMIN, { pending: { roles: [{ id: '1', code: 'ADMIN', name: 'Admin' }, { id: '2', code: 'ACCOUNTANT', name: 'Accountant' }] } })
+    renderApp('/admin/users')
+
+    const row = within(await screen.findByRole('table', { name: 'Users' })).getByRole('row', { name: /Nadia Newcomer/ })
+    expect(within(row).getByText('Several roles: choose one')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' })).toBeDisabled()
+    expect(within(row).getByText('This user has more than one role. Choose one role before approving.')).toBeInTheDocument()
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Change role of Nadia Newcomer' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Role for Nadia Newcomer' })
+    expect(within(dialog).getByText(/holds 2 roles from before the one-role rule/)).toBeInTheDocument()
+    // Nothing preselected: an administrator chooses.
+    expect(within(dialog).getByRole('button', { name: 'Save role' })).toBeDisabled()
+    await userEvent.click(within(dialog).getByRole('radio', { name: /Accountant/ }))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save role' }))
+    await waitFor(() => expect(api.find('PUT', '/users/7/roles')[0]?.body).toEqual({ roleIds: ['2'] }))
+  })
+
+  it('offers approving and rejecting only with Users: Approve, and keeps role and account changes on Users: Edit', async () => {
+    // Edit without Approve: roles can be prepared, the request cannot be decided.
+    pendingApi({ ...ADMIN, permissions: ['USERS:VIEW', 'USERS:EDIT'] }, { pending: { roles: [{ id: '2', code: 'ACCOUNTANT', name: 'Accountant' }] } })
+    const { unmount } = renderApp('/admin/users')
+    let row = within(await screen.findByRole('table', { name: 'Users' })).getByRole('row', { name: /Nadia Newcomer/ })
+
+    expect(within(row).getByRole('button', { name: 'Change role of Nadia Newcomer' })).toBeEnabled()
+    expect(within(row).queryByRole('button', { name: 'Approve Nadia Newcomer' })).not.toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Reject Nadia Newcomer' })).not.toBeInTheDocument()
+    unmount()
+
+    // Approve without Edit: the request can be decided, nothing else changed.
+    pendingApi({ ...ADMIN, permissions: ['USERS:VIEW', 'USERS:APPROVE'] }, { pending: { roles: [{ id: '2', code: 'ACCOUNTANT', name: 'Accountant' }] } })
+    renderApp('/admin/users')
+    row = within(await screen.findByRole('table', { name: 'Users' })).getByRole('row', { name: /Nadia Newcomer/ })
+
+    expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' })).toBeEnabled()
+    expect(within(row).getByRole('button', { name: 'Reject Nadia Newcomer' })).toBeEnabled()
+    expect(within(row).queryByRole('button', { name: 'Change role of Nadia Newcomer' })).not.toBeInTheDocument()
+    const arun = within(screen.getByRole('table', { name: 'Users' })).getByRole('row', { name: /Arun Accountant/ })
+    expect(within(arun).queryByRole('button', { name: 'Deactivate Arun Accountant' })).not.toBeInTheDocument()
+    expect(within(arun).queryByRole('button', { name: 'Reset password of Arun Accountant' })).not.toBeInTheDocument()
   })
 
   it('shows a view-only user the pending request without a way to approve it', async () => {
@@ -458,6 +513,151 @@ describe('roles and permissions', () => {
   })
 })
 
+describe('roles and permissions drawn from the permission catalog', () => {
+  // A part of the API's catalog (shared/permission-catalog.ts): the shapes that matter here.
+  const CATALOG: PermissionSection[] = [
+    { title: 'Dashboard', modules: [{ module: 'DASHBOARD', label: 'Dashboard', description: '', pages: [{ label: 'Dashboard', path: '/dashboard' }], actions: { VIEW: 'Open the Dashboard' } }] },
+    {
+      title: 'AMC Operations',
+      modules: [
+        {
+          module: 'AMC_CONTRACTS',
+          label: 'AMC Contracts',
+          description: 'Contracts and renewals.',
+          pages: [
+            { label: 'AMC Contracts', path: '/amc/contracts' },
+            { label: 'AMC Renewal', path: '/amc/renewal' },
+          ],
+          actions: { VIEW: 'See contracts', CREATE: 'Add and renew contracts', EDIT: 'Edit contracts', DELETE: 'Cancel contracts (nothing is deleted; also needs Edit)', EXPORT: 'Export renewals' },
+        },
+      ],
+    },
+    {
+      title: 'Retired modules',
+      retired: true,
+      modules: [
+        { module: 'EXPENSES', label: 'Expenses', description: 'No page.', pages: [], actions: { VIEW: 'Read', CREATE: 'Add', EDIT: 'Edit', DELETE: 'Void' } },
+        { module: 'REPORTS', label: 'Reports', description: 'Not checked anywhere.', pages: [], actions: {} },
+      ],
+    },
+  ]
+  const ACCOUNTANT: Role = {
+    ...(ROLES[1] as Role),
+    permissions: [
+      { module: 'AMC_CONTRACTS', action: 'VIEW' },
+      { module: 'EXPENSES', action: 'CREATE' },
+      { module: 'REPORTS', action: 'VIEW' },
+    ],
+  }
+
+  // Stateful, as the API is: a saved permission set is what the roles list returns next.
+  function catalogApi() {
+    let accountant = ACCOUNTANT
+
+    signIn()
+
+    return mockApi((request) => {
+      if (request.path === '/auth/me') return ok({ user: ADMIN })
+      if (request.method === 'GET' && request.path === '/users') return ok(USERS)
+      if (request.method === 'GET' && request.path === '/roles') {
+        return ok({
+          roles: [ROLES[0], accountant],
+          modules: MODULES,
+          actions: ACTIONS,
+          catalog: CATALOG,
+          fixedAccess: { adminOnly: [{ label: 'Audit Log', path: '/admin/audit-log' }], everyone: [{ label: 'My account', path: '/account' }] },
+        })
+      }
+      if (request.method === 'PUT' && request.path === '/roles/2/permissions') {
+        accountant = { ...accountant, permissions: (request.body as { permissions: Role['permissions'] }).permissions }
+        return ok(accountant)
+      }
+      return undefined
+    })
+  }
+
+  async function openAccountant() {
+    renderApp('/admin/roles')
+    await userEvent.click(await screen.findByRole('button', { name: 'Accountant' }))
+    await screen.findByRole('checkbox', { name: 'AMC Contracts: View' })
+  }
+
+  it('offers only the actions a module uses, with the pages it governs and what each action allows', async () => {
+    catalogApi()
+    await openAccountant()
+
+    expect(screen.getByRole('checkbox', { name: 'Dashboard: View' })).toBeEnabled()
+    expect(screen.queryByRole('checkbox', { name: 'Dashboard: Create' })).not.toBeInTheDocument()
+    expect(screen.getByText('Dashboard: Create is not used')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'AMC Contracts: Approve' })).not.toBeInTheDocument()
+    expect(screen.getByText('AMC Renewal')).toBeInTheDocument()
+    expect(screen.getByText('Cancel contracts (nothing is deleted; also needs Edit)')).toBeInTheDocument()
+    expect(screen.getByText(/Admin role only:/).parentElement).toHaveTextContent('Audit Log')
+  })
+
+  it('confirms a save after the roles list reloads with the new permissions, and keeps them ticked', async () => {
+    catalogApi()
+    await openAccountant()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'AMC Contracts: Export' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
+
+    expect(await screen.findByText('Permissions saved. They apply immediately.')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'AMC Contracts: Export' })).toBeChecked()
+    expect(screen.getByRole('button', { name: 'Save permissions' })).toBeDisabled()
+
+    // A further change hides the confirmation until it is saved too.
+    await userEvent.click(screen.getByRole('checkbox', { name: 'AMC Contracts: Edit' }))
+    expect(screen.queryByText('Permissions saved. They apply immediately.')).not.toBeInTheDocument()
+  })
+
+  it('keeps grants on retired modules, lets them be removed, and grants nothing new there', async () => {
+    const api = catalogApi()
+    await openAccountant()
+
+    expect(screen.getByText(/this role holds 2 grants, kept unchanged/)).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Expenses: Create' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Expenses: Create' })).toBeEnabled()
+    expect(screen.getByRole('checkbox', { name: 'Expenses: View' })).toBeDisabled()
+    // REPORTS uses no action: the grant is shown as having no effect, and can only be removed.
+    expect(screen.getByRole('checkbox', { name: 'Reports: View (not used)' })).toBeChecked()
+    expect(screen.queryByRole('button', { name: 'Grant all permissions for Expenses' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Reports: View (not used)' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
+
+    await waitFor(() => expect(api.find('PUT', '/roles/2/permissions')).toHaveLength(1))
+    expect(api.find('PUT', '/roles/2/permissions')[0]?.body).toEqual({
+      permissions: [
+        { module: 'AMC_CONTRACTS', action: 'VIEW' },
+        { module: 'EXPENSES', action: 'CREATE' },
+      ],
+    })
+  })
+
+  it('grants a whole module with only the actions it uses, and keeps every other grant', async () => {
+    const api = catalogApi()
+    await openAccountant()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Grant all permissions for AMC Contracts' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
+
+    await waitFor(() => expect(api.find('PUT', '/roles/2/permissions')).toHaveLength(1))
+    const sent = (api.find('PUT', '/roles/2/permissions')[0]?.body as { permissions: Role['permissions'] } | undefined)?.permissions ?? []
+
+    expect(sent).toHaveLength(7)
+    expect(sent).toEqual(
+      expect.arrayContaining([
+        { module: 'AMC_CONTRACTS', action: 'DELETE' },
+        { module: 'AMC_CONTRACTS', action: 'EXPORT' },
+        { module: 'EXPENSES', action: 'CREATE' },
+        { module: 'REPORTS', action: 'VIEW' },
+      ]),
+    )
+    expect(sent).not.toContainEqual({ module: 'AMC_CONTRACTS', action: 'APPROVE' })
+  })
+})
+
 describe('rejecting a sign-up request', () => {
   const pending = (id: string, fullName: string, email: string, roles: User['roles'] = []): User => ({
     id,
@@ -525,7 +725,7 @@ describe('rejecting a sign-up request', () => {
       'Reject Omar Other',
     ])
     // Pending: roles and reject; approve is shown but waits for a role.
-    for (const action of ['Change roles of Nadia Newcomer', 'Reject Nadia Newcomer']) {
+    for (const action of ['Change role of Nadia Newcomer', 'Reject Nadia Newcomer']) {
       expect(within(row('Nadia Newcomer')).getByRole('button', { name: action })).toBeEnabled()
     }
     expect(within(row('Nadia Newcomer')).getByRole('button', { name: 'Approve Nadia Newcomer' })).toBeDisabled()

@@ -1,7 +1,7 @@
 import type { Invoice } from '../lib/invoiceTypes'
 import type { Contract, ContractHistoryEntry, ExecutionVisit, SchedulePreview, ScheduleVisit } from '../pages/amc/types'
 import type { SessionUser } from '../lib/types'
-import { fail, makeClient, mockApi, ok, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, fail, makeClient, mockApi, ok, signIn, type MockReply, type MockRequest } from './helpers'
 
 /** The seeded Execution role: sees contracts and the schedule, updates execution only. */
 export const EXECUTION: SessionUser = {
@@ -9,7 +9,7 @@ export const EXECUTION: SessionUser = {
   email: 'execution@example.com',
   fullName: 'Esa Execution',
   roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }],
-  permissions: ['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW', 'AMC_EXECUTION:EDIT'],
+  permissions: afterPageSplit(['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW', 'AMC_EXECUTION:EDIT']),
 }
 
 /** A role that can only look. */
@@ -18,7 +18,7 @@ export const VIEWER: SessionUser = {
   email: 'viewer@example.com',
   fullName: 'Vera Viewer',
   roles: [{ id: '5', code: 'INVOICING', name: 'Invoicing' }],
-  permissions: ['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW'],
+  permissions: afterPageSplit(['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW']),
 }
 
 export const CLIENTS = [makeClient({ id: '10', name: 'Test Hotel One' }), makeClient({ id: '11', name: 'Test Hotel Two' })]

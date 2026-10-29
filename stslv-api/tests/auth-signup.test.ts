@@ -316,7 +316,7 @@ describe("administrator-created users are unaffected", () => {
     const response = await api()
       .post("/api/users")
       .set(admin.headers)
-      .send({ email: "waiting@example.com", fullName: "Duplicate", password: PASSWORD });
+      .send({ email: "waiting@example.com", fullName: "Duplicate", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
 
     expect(response.status).toBe(409);
   });

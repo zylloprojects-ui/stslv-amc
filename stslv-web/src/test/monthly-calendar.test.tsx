@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { currentMonth, monthLabel, monthRange } from '../pages/amc/amcFormat'
 import type { ExpiringContracts, VisitYearFigures, VisitYearSummary } from '../pages/amc/calendar/calendarTypes'
 import type { SessionUser } from '../lib/types'
-import { ACCOUNTANT, ADMIN, fail, ok, renderApp, type MockRequest } from './helpers'
+import { afterPageSplit, ACCOUNTANT, ADMIN, fail, ok, renderApp, type MockRequest } from './helpers'
 import { amcApi, EXECUTION, makeVisit, VIEWER } from './amc-helpers'
 
 // The Monthly Calendar's Year view, filters, monthly downloads and renewal
@@ -312,7 +312,7 @@ describe('Monthly Calendar renewal warnings', () => {
   })
 
   it('is not requested for a role that cannot view contracts', async () => {
-    const scheduleOnly: SessionUser = { ...EXECUTION, permissions: ['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW'] }
+    const scheduleOnly: SessionUser = { ...EXECUTION, permissions: afterPageSplit(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']) }
     const api = calendarApi({ user: scheduleOnly })
     renderApp(`/amc/calendar?month=${YEAR}-03`)
 

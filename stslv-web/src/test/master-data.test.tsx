@@ -3,12 +3,12 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
 import type { Department, SalesEngineer, SystemType } from '../pages/masters/masterTypes'
-import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 import { amcApi, EXECUTION, makeContract } from './amc-helpers'
 
 // Master Data page and the contract page's master links. Every record here is invented.
 
-const SETTINGS_VIEWER: SessionUser = { ...ADMIN, id: '9', roles: [{ id: '9', code: 'CUSTOM', name: 'Custom' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW'] }
+const SETTINGS_VIEWER: SessionUser = { ...ADMIN, id: '9', roles: [{ id: '9', code: 'CUSTOM', name: 'Custom' }], permissions: afterPageSplit(['DASHBOARD:VIEW', 'SETTINGS:VIEW']) }
 
 const stamp = { createdAt: '2026-10-20T08:00:00.000Z', updatedAt: '2026-10-20T08:00:00.000Z' }
 const DEPARTMENT: Department = { id: '1', code: 'AMC', name: 'AMC Team', description: null, engineerCount: 1, isActive: true, ...stamp }

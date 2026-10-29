@@ -1,7 +1,8 @@
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
-import { conflict, forbidden, notFound } from "../../shared/errors";
+import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
+import { isGrantable } from "../../shared/permission-catalog";
 import { ADMIN_ROLE_CODE, permissionKey, type Action, type Module, type PermissionKey } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
 
@@ -92,6 +93,14 @@ export function setRolePermissions(auth: AuthContext, roleId: string, permission
 
     if (added.length === 0 && removed.length === 0) {
       return role;
+    }
+
+    // Deny by default: only a permission the current application checks can be newly granted.
+    // Grants already held (of a retired module, say) are kept as they are and may be removed.
+    const unused = added.find((permission) => !isGrantable(permission.module, permission.action));
+
+    if (unused) {
+      throw validationError(`The permission ${keyOf(unused)} is not used by the current application and cannot be granted.`);
     }
 
     // Nobody may grant or revoke a permission they do not hold themselves.

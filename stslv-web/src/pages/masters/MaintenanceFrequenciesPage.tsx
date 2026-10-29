@@ -185,9 +185,9 @@ export function MaintenanceFrequenciesPage() {
     setDialog({ kind: 'status', frequency, status: next })
   }
 
-  const canCreate = auth.can('SETTINGS', 'CREATE')
-  const canEdit = auth.can('SETTINGS', 'EDIT')
-  const canExport = auth.can('SETTINGS', 'EXPORT')
+  const canCreate = auth.can('MAINTENANCE_FREQUENCIES', 'CREATE')
+  const canEdit = auth.can('MAINTENANCE_FREQUENCIES', 'EDIT')
+  const canExport = auth.can('MAINTENANCE_FREQUENCIES', 'EXPORT')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const closeDialog = () => setDialog({ kind: 'none' })
 

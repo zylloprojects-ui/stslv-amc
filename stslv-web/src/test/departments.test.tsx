@@ -7,12 +7,12 @@ import { AppProviders } from '../App'
 import type { SessionUser } from '../lib/types'
 import type { DepartmentRecord } from '../pages/masters/departmentDialogs'
 import { DepartmentsPage } from '../pages/masters/DepartmentsPage'
-import { ADMIN, fail, mockApi, ok, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, ADMIN, fail, mockApi, ok, signIn, type MockReply, type MockRequest } from './helpers'
 
 // The Departments page. It is rendered on its own here: its route is added in
 // App.tsx as a separate, approved step. Every record is invented.
 
-const SETTINGS_VIEWER: SessionUser = { ...ADMIN, id: '9', roles: [{ id: '9', code: 'CUSTOM', name: 'Custom' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW'] }
+const SETTINGS_VIEWER: SessionUser = { ...ADMIN, id: '9', roles: [{ id: '9', code: 'CUSTOM', name: 'Custom' }], permissions: afterPageSplit(['DASHBOARD:VIEW', 'SETTINGS:VIEW']) }
 
 const stamp = { createdAt: '2026-10-20T08:00:00.000Z', updatedAt: '2026-10-20T08:00:00.000Z' }
 const AMC: DepartmentRecord = { id: '1', code: 'AMC', name: 'AMC', description: 'Annual Maintenance Contract operations', engineerCount: 3, activeEngineerCount: 2, isActive: true, ...stamp }

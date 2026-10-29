@@ -6,7 +6,7 @@ import { ADMIN_ROLE_CODE, type PermissionKey } from "../../shared/permissions";
 import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth/access";
 import { hashPassword } from "../auth/password";
 import { revokeResetTokens } from "../auth/password-reset.service";
-import type { CreateUserInput } from "./users.schemas";
+import { ONE_ROLE_MESSAGE, type CreateUserInput } from "./users.schemas";
 
 /**
  * PENDING: requested from the Sign up page and not yet decided by an administrator.
@@ -156,18 +156,36 @@ async function lockUser(db: Queryable, id: string): Promise<void> {
 const isAdmin = (user: User) => user.roles.some((role) => role.code === ADMIN_ROLE_CODE);
 
 const ROLE_REQUIRED_TO_APPROVE = "Assign a role before approving this user.";
+const ONE_ROLE_TO_APPROVE = "This user has more than one role. Choose one role before approving.";
 
-/** Whether the user holds at least one active role. An inactive role grants nothing, so it does not count. */
-async function hasActiveRole(db: Queryable, userId: string): Promise<boolean> {
-  const result = await db.query(
-    "SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = $1 AND r.is_active LIMIT 1",
+/**
+ * Why the user cannot be approved yet, or null: an approval gives exactly one active role
+ * (one role per user, approved 2026-10-29). An inactive role grants nothing, so it does not count.
+ * An account given several roles before the rule is not changed here; an administrator chooses one.
+ */
+async function approvalRoleProblem(db: Queryable, userId: string): Promise<string | null> {
+  const result = await db.query<{ total: number; active: number }>(
+    `SELECT count(*)::int AS total, count(*) FILTER (WHERE r.is_active)::int AS active
+     FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = $1`,
     [userId]
   );
+  const { total, active } = result.rows[0] ?? { total: 0, active: 0 };
 
-  return (result.rowCount ?? 0) > 0;
+  if (total > 1) return ONE_ROLE_TO_APPROVE;
+  if (active === 0) return ROLE_REQUIRED_TO_APPROVE;
+
+  return null;
+}
+
+/** One role per user: the routes' schema checks it, and so does every service that assigns roles. */
+function assertOneRole(roleIds: string[]): void {
+  if (roleIds.length !== 1) {
+    throw validationError(ONE_ROLE_MESSAGE, [{ field: "roleIds", message: ONE_ROLE_MESSAGE }]);
+  }
 }
 
 export async function createUser(auth: AuthContext, input: CreateUserInput): Promise<User> {
+  assertOneRole(input.roleIds);
   const passwordHash = await hashPassword(input.password);
 
   try {
@@ -238,6 +256,13 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
     await lockUser(client, id);
     const before = await findUser(client, id);
 
+    // Approving a sign-up request needs USERS:APPROVE; activating or deactivating an account needs USERS:EDIT.
+    const required: PermissionKey = isActive && before.approvalStatus === "PENDING" ? "USERS:APPROVE" : "USERS:EDIT";
+
+    if (!auth.permissions.has(required)) {
+      throw forbidden();
+    }
+
     if (!isActive && id === auth.user.id) {
       throw conflict("You cannot deactivate your own account.");
     }
@@ -258,9 +283,11 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
     // Activating an account requested from the Sign up page is its approval.
     const approving = isActive && before.approvalStatus === "PENDING";
 
-    // An approval must give access: at least one active role is assigned first.
-    if (approving && !(await hasActiveRole(client, id))) {
-      throw conflict(ROLE_REQUIRED_TO_APPROVE, [{ field: "roleIds", message: ROLE_REQUIRED_TO_APPROVE }]);
+    // An approval must give access through exactly one active role, assigned first.
+    const roleProblem = approving ? await approvalRoleProblem(client, id) : null;
+
+    if (roleProblem) {
+      throw conflict(roleProblem, [{ field: "roleIds", message: roleProblem }]);
     }
 
     await client.query(
@@ -331,13 +358,19 @@ export function rejectRegistration(auth: AuthContext, id: string): Promise<User>
   });
 }
 
+/**
+ * Gives the user exactly one role (roleIds holds one id; the schema checks it), replacing
+ * whatever they held before, in one transaction under the user's row lock.
+ */
 export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): Promise<User> {
+  assertOneRole(roleIds);
+
   return withTransaction(async (client) => {
     await lockUser(client, id);
     const before = await findUser(client, id);
 
     if (id === auth.user.id) {
-      throw conflict("You cannot change your own roles. Ask another administrator.");
+      throw conflict("You cannot change your own role. Ask another administrator.");
     }
     if (before.approvalStatus === "REJECTED") {
       throw conflict("This registration was rejected and cannot be given a role.");
@@ -377,7 +410,7 @@ export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): 
       module: "USERS",
       entityType: "users",
       entityId: id,
-      description: `Roles changed for user "${before.fullName}".`,
+      description: `Role of user "${before.fullName}" changed to ${updated.roles.map((role) => role.name).join(", ") || "none"}.`,
       metadata: {
         added: updated.roles.filter((role) => added.includes(role.id)).map((role) => role.code),
         removed: removed.map((role) => role.code),

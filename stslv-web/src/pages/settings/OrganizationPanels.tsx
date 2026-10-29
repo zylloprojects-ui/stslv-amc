@@ -47,11 +47,12 @@ function NotSetUp({ what, why }: { what: string; why: string }) {
 
 function VatRate() {
   const auth = useAuth()
-  const allowed = auth.can('PROJECTS', 'VIEW')
+  // GET /projects/defaults needs PROJECTS:CREATE.
+  const allowed = auth.can('PROJECTS', 'CREATE')
   const defaults = useQuery({ queryKey: ['projects', 'defaults'], queryFn: () => api.get<{ defaultVatRate: string }>('/projects/defaults'), enabled: allowed })
 
   if (!allowed) {
-    return <span className="text-slate-500">Visible to people who may view Projects</span>
+    return <span className="text-slate-500">Visible to people who may add Projects</span>
   }
   if (defaults.isPending) {
     return <span className="text-slate-500">Loading…</span>

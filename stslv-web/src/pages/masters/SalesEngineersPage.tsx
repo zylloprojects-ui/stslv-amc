@@ -175,9 +175,9 @@ export function SalesEngineersPage() {
     setConfirming(engineer)
   }
 
-  const canCreate = auth.can('SETTINGS', 'CREATE')
-  const canEdit = auth.can('SETTINGS', 'EDIT')
-  const canExport = auth.can('SETTINGS', 'EXPORT')
+  const canCreate = auth.can('SALES_ENGINEERS', 'CREATE')
+  const canEdit = auth.can('SALES_ENGINEERS', 'EDIT')
+  const canExport = auth.can('SALES_ENGINEERS', 'EXPORT')
   const unavailable = list.isError && isFeatureUnavailable(list.error)
   const data = list.data
   const filtered = search !== '' || status !== 'active' || departmentId !== ''

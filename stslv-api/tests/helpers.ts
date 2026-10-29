@@ -11,7 +11,7 @@ export const api = () => request(app);
 export const PASSWORD = "Correct-Horse-42";
 
 // The seed migrations, in order. Each is idempotent, so they can be run again after the grants are emptied.
-const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_permission", "seed_services_sales_permission"];
+const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_permission", "seed_services_sales_permission", "seed_page_permissions"];
 const seedSql = SEED_MIGRATIONS.map((name) => loadMigrationFiles().find((migration) => migration.name === name)?.sql ?? "").join("\n");
 const seedsFound = SEED_MIGRATIONS.every((name) => loadMigrationFiles().some((migration) => migration.name === name));
 
@@ -31,6 +31,27 @@ export async function resetData(): Promise<void> {
   // The TRUNCATE above also empties maintenance_frequencies (its created_by refers to users).
   // From migration 0076 contracts refer to its codes, so the seeded rows are put back.
   await restoreSeededFrequencies();
+}
+
+/**
+ * Runs `test` as on a database where migration 0082 (one role per user) is not applied yet, so a
+ * user can hold several roles, as data from before the rule may. Test schema only. Afterwards the
+ * extra roles the test left are removed (keeping each user's first) and the constraint is restored.
+ */
+export async function withoutOneRoleConstraint(test: () => Promise<void>): Promise<void> {
+  const schema = await pool.query<{ schema: string }>("SELECT current_schema() AS schema");
+
+  if (schema.rows[0]?.schema !== "stslv_test") {
+    throw new Error("Refusing to drop a constraint: not connected to the stslv_test schema.");
+  }
+
+  await pool.query("ALTER TABLE user_roles DROP CONSTRAINT user_roles_one_role_uq");
+  try {
+    await test();
+  } finally {
+    await pool.query("DELETE FROM user_roles a USING user_roles b WHERE a.user_id = b.user_id AND a.role_id > b.role_id");
+    await pool.query("ALTER TABLE user_roles ADD CONSTRAINT user_roles_one_role_uq UNIQUE (user_id)");
+  }
 }
 
 /** Inserts a user directly, bypassing the API. Returns the new id. */
