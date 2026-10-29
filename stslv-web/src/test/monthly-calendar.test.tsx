@@ -93,7 +93,7 @@ function calendarApi({ user = ADMIN, expiring = EXPIRING, summary }: Setup = {})
       if (request.path === '/amc/visits/year-summary') {
         return summary === 'error' ? fail(500, 'INTERNAL_ERROR', 'Something went wrong.') : ok(summaryFor(Number(request.query.get('year'))))
       }
-      if (request.path === '/amc/service-status/options') return ok(OPTIONS)
+      if (request.path === '/amc/calendar/options') return ok(OPTIONS)
       if (request.path === '/amc/reports/expiring') return expiring === 'error' ? fail(500, 'INTERNAL_ERROR', 'Something went wrong.') : ok(expiring)
       if (request.path === '/amc/visits/export') return ok({})
       return undefined
@@ -318,9 +318,12 @@ describe('Monthly Calendar renewal warnings', () => {
 
     await monthsOf(YEAR)
     expect(api.find('GET', '/amc/reports/expiring')).toHaveLength(0)
-    // Without contract or client access, those filters are not offered either.
-    expect(screen.queryByLabelText('System')).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Client')).not.toBeInTheDocument()
+    // Without contract or client access, those filters are shown greyed out with the reason, not as empty lists.
+    expect(screen.getByLabelText('System')).toBeDisabled()
+    expect(screen.getByLabelText('System')).toHaveTextContent('Not available for your role (needs AMC Contracts)')
+    expect(screen.getByLabelText('Client')).toBeDisabled()
+    expect(screen.getByLabelText('Client')).toHaveTextContent('Not available for your role (needs the client list)')
+    expect(api.find('GET', '/amc/contracts/systems')).toHaveLength(0)
   })
 })
 

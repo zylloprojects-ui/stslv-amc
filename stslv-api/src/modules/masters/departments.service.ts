@@ -114,7 +114,7 @@ export async function buildDepartmentsExport(auth: AuthContext, query: ExportDep
     logActivity(pool, {
       userId: auth.user.id,
       action: "departments.exported",
-      module: "SETTINGS",
+      module: DEPARTMENTS.module,
       entityType: DEPARTMENTS.entityType,
       entityId: null,
       description: `Exported the department list as ${format === "xlsx" ? "Excel" : "PDF"} (${total} ${noun(total)}).`,

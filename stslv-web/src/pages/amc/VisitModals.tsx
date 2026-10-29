@@ -27,7 +27,7 @@ function VisitInvoices({ visitId }: { visitId: string }) {
   const query = useQuery({
     queryKey: ['invoices', 'visit', visitId],
     queryFn: () => api.get<PagedInvoices>(`/invoices?amcVisitId=${visitId}&status=ISSUED&pageSize=100`),
-    enabled: auth.can('INVOICES', 'VIEW'),
+    enabled: auth.canRead('INVOICES'),
   })
 
   if (!query.data || query.data.items.length === 0) {

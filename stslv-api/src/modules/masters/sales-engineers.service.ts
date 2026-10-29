@@ -266,7 +266,7 @@ export async function buildSalesEngineersExport(auth: AuthContext, query: Export
     logActivity(pool, {
       userId: auth.user.id,
       action: "sales_engineers.exported",
-      module: "SETTINGS",
+      module: SALES_ENGINEERS.module,
       entityType: "sales_engineers",
       entityId: null,
       description: `Exported the sales engineer list as ${format === "xlsx" ? "Excel" : "PDF"} (${total} ${noun}).`,

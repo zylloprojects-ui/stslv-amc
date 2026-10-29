@@ -294,9 +294,24 @@ export async function listAllServiceStatus(filters: ServiceStatusFilters, checkS
 }
 
 /** The lists for the page's filters, taken from the contracts that have visits on the page. */
-export async function getServiceStatusOptions() {
+export function getServiceStatusOptions() {
+  return filterOptions(IN_SCOPE);
+}
+
+/**
+ * Every visit the Monthly Calendar can show: the operational statuses, cancelled visits included, whatever the
+ * contract's status. Imported HISTORICAL periods are not on the calendar. Service Status keeps IN_SCOPE.
+ */
+export const CALENDAR_SCOPE = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED', 'CANCELLED')";
+
+/** The calendar's filter lists, taken from the visits it can show (see CALENDAR_SCOPE). */
+export function getCalendarOptions() {
+  return filterOptions(CALENDAR_SCOPE);
+}
+
+async function filterOptions(scope: string) {
   const f = await features();
-  const from = `FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id WHERE ${IN_SCOPE}`;
+  const from = `FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id WHERE ${scope}`;
   const frequencyColumns = f.frequencies
     ? "(SELECT mf.label FROM maintenance_frequencies mf WHERE mf.code = c.maintenance_frequency) AS label, (SELECT mf.sort_order FROM maintenance_frequencies mf WHERE mf.code = c.maintenance_frequency) AS sort_order"
     : "NULL::text AS label, 0 AS sort_order";

@@ -21,6 +21,18 @@ export async function createClient(session: Session, name: string): Promise<stri
 }
 
 /** A valid contract body; a 12-month quarterly contract unless overridden. */
+/** An active sales engineer, which every renewal must name. Made active again if a test deactivated it. */
+export async function renewalEngineer(name = "Renewal Test Engineer"): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    `INSERT INTO sales_engineers (name, is_active) VALUES ($1, true)
+     ON CONFLICT ((lower(btrim(name)))) DO UPDATE SET is_active = true
+     RETURNING id`,
+    [name]
+  );
+
+  return (result.rows[0] as { id: string }).id;
+}
+
 export function contractBody(clientId: string, overrides: Record<string, unknown> = {}) {
   return {
     clientId,

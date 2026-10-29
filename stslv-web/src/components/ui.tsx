@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type Inp
 import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import { cx } from '../lib/format'
+import { isForbidden } from '../lib/api'
 import { useDialogBehavior, usePageTitle } from './hooks'
 import { BrandLoader } from './loaders'
 import { pageMetaFor } from './pageMeta'
@@ -158,6 +159,40 @@ export function SelectField({ label, error, hint, required, className, children,
       </select>
     </FieldShell>
   )
+}
+
+/** The value of the {@link OptionsNotice} entry. It can never be chosen, so no page ever receives it. */
+export const OPTIONS_NOTICE_VALUE = '__options-notice__'
+
+interface OptionsNoticeProps {
+  /** The query that supplies the list. */
+  source: { isPending: boolean; isError: boolean; error?: unknown }
+  /** How many real entries the list has. */
+  count: number
+  /** Why the list is empty, e.g. "No clients have visits yet". */
+  empty: string
+}
+
+/**
+ * A greyed-out entry for a list filled from the server, so an open list says why it has nothing to choose:
+ * still loading, could not be loaded, or nothing qualifies. Renders nothing once there are entries.
+ */
+export function OptionsNotice({ source, count, empty }: OptionsNoticeProps) {
+  const text = source.isPending
+    ? 'Loading…'
+    : source.isError
+      ? isForbidden(source.error)
+        ? 'Not available for your role'
+        : 'The list could not be loaded'
+      : count === 0
+        ? empty
+        : null
+
+  return text ? (
+    <option value={OPTIONS_NOTICE_VALUE} disabled>
+      {text}
+    </option>
+  ) : null
 }
 
 type BadgeTone = 'green' | 'slate' | 'blue' | 'amber'

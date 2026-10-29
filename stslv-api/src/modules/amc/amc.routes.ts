@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
-import { authorize, authorizeOnAny } from "../../middleware/authorize";
+import { authorize, authorizeOnAny, authorizeRead } from "../../middleware/authorize";
 import { requireSchema } from "../../middleware/require-schema";
 import { forbidden } from "../../shared/errors";
 import { sendExport } from "../../shared/export/send";
@@ -51,7 +51,7 @@ import { getContractRenewals, listRenewalHistory } from "./renewals.service";
 import { getWorkload, listExpiringContracts } from "./reports.service";
 import { buildScheduleExport } from "./schedule.export";
 import { buildServiceStatusExport } from "./service-status.export";
-import { getServiceStatusOptions, listServiceStatus, saveServiceStatus } from "./service-status.service";
+import { getCalendarOptions, getServiceStatusOptions, listServiceStatus, saveServiceStatus } from "./service-status.service";
 import { canViewSummary, getAmcSummary } from "./summary.service";
 import {
   getExecutionVisit,
@@ -285,6 +285,11 @@ amcRouter.get("/service-status/options", authorizeOnAny(["SERVICE_STATUS", "MONT
   res.json({ success: true, data: await getServiceStatusOptions() });
 });
 
+// The Monthly Calendar's filter lists: from every visit it can show, cancelled visits included.
+amcRouter.get("/calendar/options", authorizeOnAny(["MONTHLY_CALENDAR", "AMC_SCHEDULE"], "VIEW"), async (_req, res) => {
+  res.json({ success: true, data: await getCalendarOptions() });
+});
+
 // Every row that matches the page's filters, across all pages.
 amcRouter.get("/service-status/export", authorize("SERVICE_STATUS", "VIEW"), authorize("SERVICE_STATUS", "EXPORT"), async (req, res) => {
   const query = exportServiceStatusSchema.parse(req.query);
@@ -302,10 +307,11 @@ amcRouter.patch("/service-status/:id", authorize("AMC_EXECUTION", "EDIT"), async
 // --- Master AMC Status ---------------------------------------------------------
 // Read only: one row per scheduled visit with its invoice and quotation numbers.
 // It shows invoice numbers (Invoice Tracking) and quotation numbers (Services
-// Sales), so viewing needs VIEW on AMC_SCHEDULE, INVOICES and SERVICES_SALES:
-// no role sees through this page what its own grants hide. Needs migration 0078.
+// Sales), so viewing needs VIEW on AMC_SCHEDULE and SERVICES_SALES, and invoice
+// data-only read (INVOICES View or Read, which opens no Finance page): no role
+// sees through this page what its own grants hide. Needs migration 0078.
 const masterStatusReady = requireSchema(["amc_visits.quotation_no"]);
-const masterStatusView = [authorize("AMC_SCHEDULE", "VIEW"), authorize("INVOICES", "VIEW"), authorize("SERVICES_SALES", "VIEW"), masterStatusReady];
+const masterStatusView = [authorize("AMC_SCHEDULE", "VIEW"), authorizeRead("INVOICES"), authorize("SERVICES_SALES", "VIEW"), masterStatusReady];
 
 amcRouter.get("/master-status", ...masterStatusView, async (req, res) => {
   res.json({ success: true, data: await listMasterStatus(listMasterStatusSchema.parse(req.query)) });

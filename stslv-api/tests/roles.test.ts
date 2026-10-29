@@ -49,7 +49,8 @@ describe("departments (roles): add, edit, delete", () => {
     const id = await roleId("EXECUTION");
 
     expect((await api().patch(`/api/roles/${id}`).set(admin.headers).send({ isActive: false })).status).toBe(409);
-    expect((await api().delete(`/api/roles/${id}`).set(admin.headers)).status).toBe(409);
+    // A built-in role is never deleted, held or not (approved 2026-10-29).
+    expect((await api().delete(`/api/roles/${id}`).set(admin.headers)).status).toBe(403);
     expect((await pool.query("SELECT 1 FROM roles WHERE id = $1", [id])).rowCount).toBe(1);
   });
 

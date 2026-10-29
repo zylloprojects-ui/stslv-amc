@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../../auth/context'
+import { isSuperAdmin } from '../../auth/roles'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Alert, Badge, Button, ConfirmDialog, EmptyState, Modal, SelectField, TableScroll, TextAreaField, TextField } from '../../components/ui'
 import { TABLE } from '../../components/table'
@@ -139,9 +140,11 @@ export function RoleListPanel() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const allowed = auth.can('USERS', 'VIEW')
-  const canAdd = auth.can('USERS', 'CREATE')
-  const canEdit = auth.can('USERS', 'EDIT')
-  const canDelete = auth.can('USERS', 'DELETE')
+  // Adding, renaming, deactivating and deleting roles is reserved to Super Admin; the API checks the same.
+  const superAdmin = isSuperAdmin(auth.user)
+  const canAdd = superAdmin
+  const canEdit = superAdmin
+  const canDelete = superAdmin
   const roles = useQuery({ queryKey: ['roles'], queryFn: () => api.get<RolesResponse>('/roles'), enabled: allowed })
 
   const remove = useMutation({
@@ -247,6 +250,8 @@ export function RoleListPanel() {
                               danger
                               label={`Delete ${role.name}`}
                               icon="delete"
+                              disabled={role.builtIn === true}
+                              hint={role.builtIn ? 'A built-in role cannot be deleted. Deactivate it instead.' : undefined}
                               onClick={() => {
                                 setDeleteError(null)
                                 setDialog({ kind: 'delete', role })
@@ -267,7 +272,7 @@ export function RoleListPanel() {
       </div>
 
       <p className="text-xs text-slate-500">
-        What a role may do is set under Roles &amp; access. A new role starts with no permissions. A role that still has people, and the Admin role, cannot be deleted.
+        What a role may do is set under Roles &amp; access. A new role starts with no permissions. Only Super Admin changes roles. A role that still has people, and any built-in role, cannot be deleted.
       </p>
 
       {dialog.kind === 'add' && (

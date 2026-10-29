@@ -62,6 +62,7 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
           EDIT: "Edit client details",
           DELETE: "Deactivate and reactivate clients (nothing is deleted)",
           EXPORT: "Export the client list",
+          READ: "Data only: pick and filter by client on AMC pages (contract form, schedule and calendar filters), without the Clients pages",
         },
       },
       {
@@ -155,12 +156,13 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         description: "Scheduled maintenance visits.",
         pages: [
           { label: "AMC Schedule", path: "/amc/schedule" },
-          { label: "Master AMC Status", path: "/amc/master-status", alsoRequires: ["INVOICES", "SERVICES_SALES"] },
+          { label: "Master AMC Status", path: "/amc/master-status", alsoRequires: ["SERVICES_SALES"] },
         ],
         actions: {
           VIEW: "See the visit schedule",
           EDIT: "Edit scheduled visits, also from the Monthly Calendar",
           EXPORT: "Export the schedule and Master AMC Status",
+          READ: "Data only: visit details inside Invoice Tracking and Accounts, without the schedule pages",
         },
       },
       {
@@ -200,7 +202,7 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         description: "Quotation numbers of completed visits.",
         pages: [
           { label: "Services Sales", path: "/amc/services-sales" },
-          { label: "Master AMC Status", path: "/amc/master-status", alsoRequires: ["AMC_SCHEDULE", "INVOICES"] },
+          { label: "Master AMC Status", path: "/amc/master-status", alsoRequires: ["AMC_SCHEDULE"] },
         ],
         actions: {
           VIEW: "See quotation numbers",
@@ -219,13 +221,14 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         description: "Zoho invoice details recorded against completed work, and the Accounts reconciliation.",
         pages: [
           { label: "Invoice Tracking", path: "/invoices" },
-          { label: "Accounts", path: "/finance/accounts", alsoRequires: ["AMC_SCHEDULE"] },
+          { label: "Accounts", path: "/finance/accounts" },
         ],
         actions: {
           VIEW: "See invoice records",
           CREATE: "Record Zoho invoices",
           EDIT: "Edit and cancel invoice records",
           EXPORT: "Export invoices and Accounts",
+          READ: "Data only: invoice numbers inside AMC pages (Master AMC Status, AMC Management, contract and visit details), without Invoice Tracking",
         },
       },
     ],
@@ -236,7 +239,7 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
       {
         module: "USERS",
         label: "Users & Access",
-        description: "People, roles and their permissions. Nobody can grant a permission or role beyond their own.",
+        description: "People and their roles. Roles and role permissions are changed by Super Admin only; Super Admin and Admin accounts are managed by Super Admin only.",
         pages: [
           { label: "Users & Access", path: "/admin/users" },
           { label: "Roles & Permissions", path: "/admin/roles" },
@@ -244,9 +247,8 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         ],
         actions: {
           VIEW: "See users, roles and login history",
-          CREATE: "Add users and roles",
-          EDIT: "Edit users, activate and deactivate accounts, assign roles, change role permissions, reset passwords",
-          DELETE: "Delete unused roles",
+          CREATE: "Add users",
+          EDIT: "Edit users, activate and deactivate accounts, assign existing roles, issue temporary passwords",
           APPROVE: "Approve or reject sign-up requests",
         },
       },
@@ -307,8 +309,13 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
   },
 ];
 
-/** Access no role can be granted or refused: it follows from being signed in, or from holding the built-in Admin role. */
+/** Access no role can be granted or refused: it follows from being signed in, or from holding the Super Admin or Admin role. */
 export const FIXED_ACCESS = {
+  superAdminOnly: [
+    { label: "Changing any role's permissions", path: "/admin/roles" },
+    { label: "Adding, renaming, deactivating or reactivating roles", path: "/api/roles" },
+    { label: "Managing Super Admin and Admin accounts", path: "/admin/users" },
+  ],
   adminOnly: [
     { label: "Audit Log", path: "/admin/audit-log" },
     { label: "Suggestions Review", path: "/admin/suggestions" },

@@ -1,6 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { LoadError, Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Card, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
@@ -17,6 +17,7 @@ import {
   SUGGESTIONS_QUERY_KEY,
   type ReviewList,
   type ReviewOptions,
+  userOptionLabel,
   type SuggestionStatus,
 } from './suggestionTypes'
 
@@ -33,7 +34,10 @@ const COUNT_TILES: { status: SuggestionStatus; tone: string }[] = [
 
 /** Every suggestion, for reviewers (the Admin role): filter, open, respond, change status. */
 export function SuggestionReviewPage() {
-  const [view, setView] = useState<'OPEN' | 'ALL'>('OPEN')
+  // The tab lives in the URL (?view=all), so a link back from a resolved or closed suggestion opens All, where it still shows.
+  const [params, setParams] = useSearchParams()
+  const view = params.get('view') === 'all' ? 'ALL' : 'OPEN'
+  const setView = (next: 'OPEN' | 'ALL') => setParams(next === 'ALL' ? { view: 'all' } : {}, { replace: true })
   const [status, setStatus] = useState('')
   const [category, setCategory] = useState('')
   const [submittedBy, setSubmittedBy] = useState('')
@@ -155,9 +159,9 @@ export function SuggestionReviewPage() {
             {(id, className) => (
               <select id={id} value={submittedBy} onChange={change(setSubmittedBy)} className={className}>
                 <option value="">Everyone</option>
-                {(options.data?.submitters ?? []).map((user) => (
+                {(options.data?.submitters ?? []).map((user, _, users) => (
                   <option key={user.id} value={user.id}>
-                    {user.fullName}
+                    {userOptionLabel(user, users)}
                   </option>
                 ))}
               </select>
@@ -168,9 +172,9 @@ export function SuggestionReviewPage() {
               <select id={id} value={assignedTo} onChange={change(setAssignedTo)} className={className}>
                 <option value="">Anyone</option>
                 <option value="none">Not assigned</option>
-                {(options.data?.reviewers ?? []).map((user) => (
+                {(options.data?.reviewers ?? []).map((user, _, users) => (
                   <option key={user.id} value={user.id}>
-                    {user.fullName}
+                    {userOptionLabel(user, users)}
                   </option>
                 ))}
               </select>

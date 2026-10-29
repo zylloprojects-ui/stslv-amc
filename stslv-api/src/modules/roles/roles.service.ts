@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { isGrantable } from "../../shared/permission-catalog";
-import { ADMIN_ROLE_CODE, permissionKey, type Action, type Module, type PermissionKey } from "../../shared/permissions";
+import { ADMIN_ROLE_CODE, holdsPermission, permissionKey, type Action, type Module, type PermissionKey } from "../../shared/permissions";
+import { dependencyProblem, isBuiltInRole, isInRoleScope, isPrivilegedRole, isSuperAdmin, roleScope } from "../../shared/role-model";
 import type { AuthContext } from "../auth/access";
 
 export interface Permission {
@@ -29,9 +31,28 @@ export interface Role {
   isActive: boolean;
   userCount: number;
   permissions: Permission[];
-  /** False for the built-in Admin role, whose permissions are fixed. */
+  /** Whether the signed-in user may change this role's permissions: only Super Admin, and never Super Admin's own. */
   permissionsEditable: boolean;
+  /** Why the signed-in user cannot change the permissions, or null. */
+  lockedReason: string | null;
+  /**
+   * Identifies the saved permission set. A save sends the version it started from and is refused
+   * (409) when the set has changed since, so two administrators never silently overwrite each other.
+   */
+  permissionsVersion: string;
+  /** Defined by the migrations: never deleted; renamed, deactivated or reactivated only by Super Admin. */
+  builtIn: boolean;
+  /** The permissions this role may hold ("MODULE:ACTION"), or null when it may hold any grantable permission. */
+  scope: PermissionKey[] | null;
+  /** Whether the signed-in user may give this role to someone: active, and within their own authority. */
+  assignable: boolean;
 }
+
+const SUPER_ADMIN_LOCKED = "Super Admin always has full access. Its permissions cannot be changed.";
+const SUPER_ADMIN_ONLY = "Only Super Admin can change role permissions.";
+const ROLE_CHANGES_SUPER_ADMIN_ONLY = "Only Super Admin can change roles and their permissions.";
+const STALE_PERMISSIONS =
+  "These permissions were changed by someone else since you opened them. Load the latest permissions and make your change again.";
 
 const ROLE_SELECT = `
   SELECT r.id, r.code, r.name, r.description, r.is_active,
@@ -43,7 +64,22 @@ const ROLE_SELECT = `
          ) AS permissions
   FROM roles r`;
 
-function toRole(row: RoleRow): Role {
+/** Why the signed-in user may not change this role's permissions: only Super Admin may, and never Super Admin's own. */
+function lockedReason(auth: AuthContext, code: string): string | null {
+  if (code === ADMIN_ROLE_CODE) return SUPER_ADMIN_LOCKED;
+  if (!isSuperAdmin(auth.roles)) return SUPER_ADMIN_ONLY;
+  return null;
+}
+
+/** A short fingerprint of a permission set, independent of order. */
+export function permissionsVersionOf(permissions: Permission[]): string {
+  const keys = permissions.map((permission) => keyOf(permission)).sort();
+  return createHash("sha256").update(keys.join(",")).digest("hex").slice(0, 16);
+}
+
+function toRole(auth: AuthContext, row: RoleRow): Role {
+  const locked = lockedReason(auth, row.code);
+
   return {
     id: row.id,
     code: row.code,
@@ -52,17 +88,25 @@ function toRole(row: RoleRow): Role {
     isActive: row.is_active,
     userCount: row.user_count,
     permissions: row.permissions,
-    permissionsEditable: row.code !== ADMIN_ROLE_CODE,
+    permissionsEditable: locked === null,
+    lockedReason: locked,
+    permissionsVersion: permissionsVersionOf(row.permissions),
+    builtIn: isBuiltInRole(row.code),
+    scope: roleScope(row.code),
+    assignable:
+      row.is_active &&
+      (!isPrivilegedRole(row.code) || isSuperAdmin(auth.roles)) &&
+      row.permissions.every((permission) => holdsPermission(auth.permissions, keyOf(permission))),
   };
 }
 
-export async function listRoles(): Promise<Role[]> {
+export async function listRoles(auth: AuthContext): Promise<Role[]> {
   const result = await pool.query<RoleRow>(`${ROLE_SELECT} ORDER BY r.id`);
 
-  return result.rows.map(toRole);
+  return result.rows.map((row) => toRole(auth, row));
 }
 
-async function findRole(db: Queryable, id: string): Promise<Role> {
+async function findRole(auth: AuthContext, db: Queryable, id: string): Promise<Role> {
   const result = await db.query<RoleRow>(`${ROLE_SELECT} WHERE r.id = $1`, [id]);
   const row = result.rows[0];
 
@@ -70,20 +114,33 @@ async function findRole(db: Queryable, id: string): Promise<Role> {
     throw notFound("Role not found.");
   }
 
-  return toRole(row);
+  return toRole(auth, row);
+}
+
+/** Role definitions are changed by Super Admin only (the routes check the same). */
+function assertSuperAdmin(auth: AuthContext): void {
+  if (!isSuperAdmin(auth.roles)) {
+    throw forbidden(ROLE_CHANGES_SUPER_ADMIN_ONLY);
+  }
 }
 
 const keyOf = (permission: Permission): PermissionKey => permissionKey(permission.module, permission.action);
 
-/** Replaces a role's permission set with the given one. */
-export function setRolePermissions(auth: AuthContext, roleId: string, permissions: Permission[]): Promise<Role> {
+/**
+ * Replaces a role's permission set with the given one. Super Admin only. expectedVersion is the
+ * permissionsVersion the change started from: a set changed meanwhile is not overwritten (409).
+ */
+export function setRolePermissions(auth: AuthContext, roleId: string, permissions: Permission[], expectedVersion: string): Promise<Role> {
   return withTransaction(async (client) => {
     // Lock the role so two concurrent edits cannot interleave.
     await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
-    const role = await findRole(client, roleId);
+    const role = await findRole(auth, client, roleId);
 
-    if (!role.permissionsEditable) {
-      throw forbidden("The Admin role always has full access. Its permissions cannot be changed.");
+    if (role.lockedReason) {
+      throw forbidden(role.lockedReason);
+    }
+    if (role.permissionsVersion !== expectedVersion) {
+      throw conflict(STALE_PERMISSIONS);
     }
 
     const wanted = new Map(permissions.map((permission) => [keyOf(permission), permission]));
@@ -104,10 +161,24 @@ export function setRolePermissions(auth: AuthContext, roleId: string, permission
     }
 
     // Nobody may grant or revoke a permission they do not hold themselves.
-    const beyond = [...added, ...removed].find((permission) => !auth.permissions.has(keyOf(permission)));
+    const beyond = [...added, ...removed].find((permission) => !holdsPermission(auth.permissions, keyOf(permission)));
 
     if (beyond) {
       throw forbidden(`You cannot change the permission ${keyOf(beyond)} because you do not hold it yourself.`);
+    }
+
+    // A role limited to one section (Finance Executive, say) cannot be given access outside it.
+    const outside = added.find((permission) => !isInRoleScope(role.code, permission.module, permission.action));
+
+    if (outside) {
+      throw validationError(`The role "${role.name}" cannot be given ${keyOf(outside)}: it is outside the access this role is limited to.`);
+    }
+
+    // Every action needs View of its module (and cancelling a contract needs Edit), so no role is left half-able.
+    const problem = dependencyProblem(new Set(wanted.keys()));
+
+    if (problem) {
+      throw validationError(`${problem.key} also needs ${problem.missing}. Grant both, or neither.`);
     }
 
     for (const permission of removed) {
@@ -135,7 +206,7 @@ export function setRolePermissions(auth: AuthContext, roleId: string, permission
       metadata: { added: added.map(keyOf), removed: removed.map(keyOf) },
     });
 
-    return findRole(client, roleId);
+    return findRole(auth, client, roleId);
   });
 }
 
@@ -151,13 +222,15 @@ export interface RoleChanges {
   isActive?: boolean;
 }
 
-/** Adds a department (a role). It starts with no permissions; they are granted separately, so a new department can do nothing until an administrator decides. */
+/** Adds a custom role. Super Admin only. It starts with no permissions; they are granted separately, so a new role can do nothing until Super Admin decides. */
 export function createRole(auth: AuthContext, input: NewRole): Promise<Role> {
+  assertSuperAdmin(auth);
+
   return withTransaction(async (client) => {
     const existing = await client.query("SELECT 1 FROM roles WHERE code = $1 OR lower(name) = lower($2)", [input.code, input.name]);
 
     if ((existing.rowCount ?? 0) > 0) {
-      throw conflict("A department with this code or name already exists.");
+      throw conflict("A role with this code or name already exists.");
     }
 
     const inserted = await client.query<{ id: string }>("INSERT INTO roles (code, name, description) VALUES ($1, $2, $3) RETURNING id", [
@@ -173,23 +246,28 @@ export function createRole(auth: AuthContext, input: NewRole): Promise<Role> {
       module: "USERS",
       entityType: "roles",
       entityId: id,
-      description: `Department "${input.name}" (${input.code}) was added.`,
+      description: `Role "${input.name}" (${input.code}) was added.`,
       metadata: { code: input.code },
     });
 
-    return findRole(client, id);
+    return findRole(auth, client, id);
   });
 }
 
-/** Changes a department's name, description or status. Its code never changes: permissions and history refer to it. */
+/**
+ * Changes a role's name, description or status (renaming, deactivating, reactivating). Super Admin
+ * only, built-in roles included. Its code never changes: permissions and history refer to it.
+ */
 export function updateRole(auth: AuthContext, roleId: string, changes: RoleChanges): Promise<Role> {
+  assertSuperAdmin(auth);
+
   return withTransaction(async (client) => {
     await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
-    const role = await findRole(client, roleId);
+    const role = await findRole(auth, client, roleId);
 
     if (changes.isActive === false && role.isActive) {
       if (role.code === ADMIN_ROLE_CODE) {
-        throw forbidden("The Admin department cannot be deactivated.");
+        throw forbidden("The Super Admin role cannot be deactivated.");
       }
       if (role.userCount > 0) {
         throw conflict(`${role.userCount} ${role.userCount === 1 ? "person still has" : "people still have"} this role. Move them to another role first.`);
@@ -199,7 +277,7 @@ export function updateRole(auth: AuthContext, roleId: string, changes: RoleChang
       const taken = await client.query("SELECT 1 FROM roles WHERE lower(name) = lower($1) AND id <> $2", [changes.name, roleId]);
 
       if ((taken.rowCount ?? 0) > 0) {
-        throw conflict("A department with this name already exists.");
+        throw conflict("A role with this name already exists.");
       }
     }
 
@@ -219,7 +297,7 @@ export function updateRole(auth: AuthContext, roleId: string, changes: RoleChang
       module: "USERS",
       entityType: "roles",
       entityId: roleId,
-      description: `Department "${role.name}" was updated.`,
+      description: `Role "${role.name}" was updated.`,
       metadata: {
         ...(name !== role.name ? { name: { from: role.name, to: name } } : {}),
         ...(description !== role.description ? { description: "changed" } : {}),
@@ -227,18 +305,20 @@ export function updateRole(auth: AuthContext, roleId: string, changes: RoleChang
       },
     });
 
-    return findRole(client, roleId);
+    return findRole(auth, client, roleId);
   });
 }
 
-/** Deletes a department that nobody holds. The Admin department can never be deleted. */
+/** Deletes a custom role that nobody holds. Super Admin only. A built-in role is never deleted. */
 export function deleteRole(auth: AuthContext, roleId: string): Promise<void> {
+  assertSuperAdmin(auth);
+
   return withTransaction(async (client) => {
     await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
-    const role = await findRole(client, roleId);
+    const role = await findRole(auth, client, roleId);
 
-    if (role.code === ADMIN_ROLE_CODE) {
-      throw forbidden("The Admin department cannot be deleted.");
+    if (role.builtIn) {
+      throw forbidden("A built-in role cannot be deleted. Deactivate it instead.");
     }
     if (role.userCount > 0) {
       throw conflict(`${role.userCount} ${role.userCount === 1 ? "person still has" : "people still have"} this role. Move them to another role first.`);
@@ -253,7 +333,7 @@ export function deleteRole(auth: AuthContext, roleId: string): Promise<void> {
       module: "USERS",
       entityType: "roles",
       entityId: roleId,
-      description: `Department "${role.name}" (${role.code}) was deleted.`,
+      description: `Role "${role.name}" (${role.code}) was deleted.`,
       metadata: { code: role.code, permissionsRemoved: role.permissions.length },
     });
   });

@@ -354,7 +354,7 @@ function AccessMatrix({ catalogue }: { catalogue: RolesResponse }) {
                       {candidate.userCount} {candidate.userCount === 1 ? 'user' : 'users'}
                     </span>
                   </span>
-                  {!candidate.isActive ? <Badge>Inactive</Badge> : !candidate.permissionsEditable ? <Badge tone="blue">Full access</Badge> : null}
+                  {!candidate.isActive ? <Badge>Inactive</Badge> : candidate.code === 'ADMIN' ? <Badge tone="blue">Full access</Badge> : null}
                 </span>
                 <span className="mt-3 block pl-2">
                   <span className="flex items-baseline justify-between text-xs text-slate-500">

@@ -3,6 +3,8 @@ import { createApp } from "../src/app";
 import { pool } from "../src/config/database";
 import { loadMigrationFiles } from "../src/db/migrate";
 import { hashPassword } from "../src/modules/auth/password";
+import { permissionsVersionOf } from "../src/modules/roles/roles.service";
+import type { Action, Module } from "../src/shared/permissions";
 import { restoreSeededFrequencies } from "./frequency-fixtures";
 
 export const app = createApp();
@@ -11,7 +13,7 @@ export const api = () => request(app);
 export const PASSWORD = "Correct-Horse-42";
 
 // The seed migrations, in order. Each is idempotent, so they can be run again after the grants are emptied.
-const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_permission", "seed_services_sales_permission", "seed_page_permissions"];
+const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_permission", "seed_services_sales_permission", "seed_page_permissions", "six_role_model", "role_model_refinements"];
 const seedSql = SEED_MIGRATIONS.map((name) => loadMigrationFiles().find((migration) => migration.name === name)?.sql ?? "").join("\n");
 const seedsFound = SEED_MIGRATIONS.every((name) => loadMigrationFiles().some((migration) => migration.name === name));
 
@@ -25,8 +27,20 @@ export async function resetData(): Promise<void> {
 
   await pool.query("TRUNCATE activity_logs, clients, user_roles, users RESTART IDENTITY CASCADE");
   await pool.query("DELETE FROM role_permissions");
-  await pool.query("DELETE FROM roles WHERE code NOT IN ('ADMIN', 'ACCOUNTANT', 'PROCUREMENT', 'EXECUTION', 'INVOICING')");
+  await pool.query(
+    "DELETE FROM roles WHERE code NOT IN ('ADMIN', 'ADMINISTRATOR', 'FINANCE_EXECUTIVE', 'MASTER_DATA_EXECUTIVE', 'AMC_OPERATIONS_EXECUTIVE', 'VIEWER', 'ACCOUNTANT', 'PROCUREMENT', 'EXECUTION', 'INVOICING')"
+  );
+  // Migration 0088 makes the legacy roles inactive. The tests keep them active: their fixed grant
+  // sets are what most permission tests sign in with. tests/role-model.test.ts covers 0088 itself.
   await pool.query("UPDATE roles SET is_active = true");
+  // Tests may rename a built-in role (Super Admin is allowed to); put the seeded names back.
+  await pool.query(
+    `UPDATE roles r SET name = v.name FROM (VALUES
+       ('ADMIN', 'Super Admin'), ('ACCOUNTANT', 'Accountant'), ('PROCUREMENT', 'Procurement'), ('EXECUTION', 'Execution'), ('INVOICING', 'Invoicing'),
+       ('ADMINISTRATOR', 'Admin'), ('FINANCE_EXECUTIVE', 'Finance Executive'), ('MASTER_DATA_EXECUTIVE', 'Master Data Executive'),
+       ('AMC_OPERATIONS_EXECUTIVE', 'AMC Operations Executive'), ('VIEWER', 'Viewer')
+     ) AS v (code, name) WHERE r.code = v.code AND r.name <> v.name`
+  );
   await pool.query(seedSql);
   // The TRUNCATE above also empties maintenance_frequencies (its created_by refers to users).
   // From migration 0076 contracts refer to its codes, so the seeded rows are put back.
@@ -102,4 +116,11 @@ export async function roleId(code: string): Promise<string> {
 
 export async function closePool(): Promise<void> {
   await pool.end();
+}
+
+/** The permissionsVersion a permission save must send: the role's current set, as GET /api/roles reports it. */
+export async function permissionsVersion(id: string): Promise<string> {
+  const result = await pool.query<{ module: Module; action: Action }>("SELECT module, action FROM role_permissions WHERE role_id = $1", [id]);
+
+  return permissionsVersionOf(result.rows);
 }

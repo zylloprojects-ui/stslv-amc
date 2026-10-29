@@ -113,11 +113,13 @@ function suggestionsApi(user: SessionUser, initial: SuggestionDetail[] = [], ove
       return ok({ items, total: items.length, page: 1, pageSize: 20 })
     }
     if (request.method === 'GET' && request.path === '/suggestions/review/options') {
-      return ok({ submitters: [SUBMITTER], reviewers: [REVIEWER, { id: '9', fullName: 'Second Admin' }] })
+      return ok({ submitters: [{ ...SUBMITTER, email: ACCOUNTANT.email }], reviewers: [{ ...REVIEWER, email: ADMIN.email }, { id: '9', fullName: 'Second Admin', email: 'second.admin@example.com' }] })
     }
     if (request.method === 'GET' && request.path === '/suggestions/review') {
+      // As the API: a status filter wins; otherwise view=OPEN leaves out Resolved and Closed.
       const status = request.query.get('status')
-      const items = [...records.values()].filter((record) => !status || record.status === status)
+      const openOnly = !status && request.query.get('view') === 'OPEN'
+      const items = [...records.values()].filter((record) => (status ? record.status === status : !openOnly || !['RESOLVED', 'CLOSED'].includes(record.status)))
       const counts = { SUBMITTED: 0, UNDER_REVIEW: 0, IN_PROGRESS: 0, RESOLVED: 0, CLOSED: 0, REOPENED: 0 }
       for (const record of records.values()) counts[record.status] += 1
       return ok({ items, total: items.length, page: 1, pageSize: 25, counts })
@@ -314,8 +316,13 @@ describe('Suggestions Review', () => {
 
     expect(await screen.findByRole('link', { name: 'Suggestions Review' })).toHaveAttribute('href', '/admin/suggestions')
     const table = await screen.findByRole('table')
-    expect(within(table).getAllByText('Arun Accountant', { selector: 'td' })).toHaveLength(2)
+    expect(within(table).getAllByText('Arun Accountant', { selector: 'td' })).toHaveLength(1)
+    expect(within(table).queryByText('Show contract number')).not.toBeInTheDocument()
     expect(api.requests.find((request) => request.path === '/suggestions/review')?.query.get('view')).toBe('OPEN')
+
+    await userEvent.click(within(screen.getByRole('group', { name: 'Show' })).getByRole('button', { name: 'All' }))
+    expect(await within(screen.getByRole('table')).findByText('Show contract number')).toBeInTheDocument()
+    expect(within(screen.getByRole('table')).getAllByText('Arun Accountant', { selector: 'td' })).toHaveLength(2)
 
     await userEvent.click(within(screen.getByLabelText('Suggestions by status')).getByRole('button', { name: /Closed/ }))
     await waitFor(() => expect(api.requests.some((request) => request.path === '/suggestions/review' && request.query.get('status') === 'CLOSED')).toBe(true))
@@ -360,6 +367,81 @@ describe('Suggestions Review', () => {
     expect(api.records.get('7')?.status).toBe('CLOSED')
   })
 
+  it('opens the All tab from a link with view=all', async () => {
+    const api = suggestionsApi(ADMIN, [suggestion({ status: 'RESOLVED' })])
+    renderApp('/admin/suggestions?view=all')
+
+    const table = await screen.findByRole('table')
+    expect(within(table).getByText('Resolved')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Show' })).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+    expect(api.requests.find((request) => request.path === '/suggestions/review')?.query.get('view')).toBe('ALL')
+  })
+
+  it('confirms a resolve, and leads to the All tab where the suggestion still shows and opens', async () => {
+    const api = suggestionsApi(ADMIN, [suggestion({ status: 'IN_PROGRESS' })])
+    renderApp('/admin/suggestions')
+
+    // Open tab: listed while In Progress.
+    await userEvent.click(within(await screen.findByRole('table')).getByRole('link', { name: 'SUG-00007' }))
+    expect(await screen.findByRole('heading', { name: 'SUG-00007 · Export button is slow' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Suggestions Review' }).every((link) => link.getAttribute('href') === '/admin/suggestions')).toBe(true)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Resolve' }))
+    await userEvent.type(screen.getByLabelText(/^Resolution notes/), 'Export now starts at once.')
+    await userEvent.click(screen.getAllByRole('button', { name: 'Resolve' }).at(-1)!)
+
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent('SUG-00007 is now Resolved.')
+    expect(notice).toHaveTextContent('stays listed under All')
+    expect(within(notice).getByRole('link', { name: 'View in All suggestions' })).toHaveAttribute('href', '/admin/suggestions?view=all')
+    const bannerLinks = screen.getAllByRole('link', { name: 'Suggestions Review' })
+    expect(bannerLinks.some((link) => link.getAttribute('href') === '/admin/suggestions?view=all')).toBe(true)
+
+    await userEvent.click(within(notice).getByRole('link', { name: 'View in All suggestions' }))
+    const table = await screen.findByRole('table')
+    expect(within(table).getByText('Resolved')).toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: 'Show' })).getByRole('button', { name: 'All' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(screen.getByLabelText('Suggestions by status')).getByRole('button', { name: /Resolved/ })).toHaveTextContent('1')
+
+    // Still opens, with its resolution, history and the next actions.
+    await userEvent.click(within(table).getByRole('link', { name: 'SUG-00007' }))
+    expect(await screen.findByRole('heading', { name: 'Resolution' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: /Responses and history/ })).toHaveTextContent('Export now starts at once.')
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reopen' })).toBeInTheDocument()
+
+    // The Open tab still leaves it out.
+    await userEvent.click(screen.getAllByRole('link', { name: 'Suggestions Review' }).find((link) => link.getAttribute('href') === '/admin/suggestions?view=all')!)
+    await userEvent.click(within(await screen.findByRole('group', { name: 'Show' })).getByRole('button', { name: 'Open' }))
+    expect(await screen.findByText('No open suggestions')).toBeInTheDocument()
+    expect(api.records.get('7')?.status).toBe('RESOLVED')
+  })
+
+  it('confirms a close with the same pointer to All', async () => {
+    suggestionsApi(ADMIN, [suggestion({ status: 'RESOLVED', resolutionNotes: 'Fixed.', resolvedAt: '2026-10-29T08:00:00.000Z', resolvedBy: REVIEWER })])
+    renderApp('/suggestions/7')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Close' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Close' }).at(-1)!)
+
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent('SUG-00007 is now Closed.')
+    expect(within(notice).getByRole('link', { name: 'View in All suggestions' })).toHaveAttribute('href', '/admin/suggestions?view=all')
+  })
+
+  it('confirms other status changes without the All pointer', async () => {
+    suggestionsApi(ADMIN, [suggestion()])
+    renderApp('/suggestions/7')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Start Work' }))
+    await userEvent.click(screen.getAllByRole('button', { name: 'Start Work' }).at(-1)!)
+
+    const notice = await screen.findByRole('status')
+    expect(notice).toHaveTextContent('SUG-00007 is now In Progress.')
+    expect(within(notice).queryByRole('link')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Suggestions Review' }).every((link) => link.getAttribute('href') === '/admin/suggestions')).toBe(true)
+  })
+
   it('reports a change made by someone else meanwhile and reloads', async () => {
     const api = suggestionsApi(ADMIN, [suggestion()], (request) =>
       request.method === 'PATCH' && request.path === '/suggestions/7/status'
@@ -373,5 +455,27 @@ describe('Suggestions Review', () => {
 
     expect(await screen.findByText(/updated by someone else/)).toBeInTheDocument()
     await waitFor(() => expect(api.find('GET', '/suggestions/7').length).toBeGreaterThanOrEqual(2))
+  })
+})
+
+describe('Suggestions Review people lists', () => {
+  it('adds the email only where two people share a name, in the filters and the assignment list', async () => {
+    const people = {
+      submitters: [
+        { id: '21', fullName: 'Ravi Kumar', email: 'ravi@example.com' },
+        { id: '22', fullName: 'ravi kumar', email: 'ravi.k@example.com' },
+        { id: '23', fullName: 'Arun Accountant', email: 'arun@example.com' },
+      ],
+      reviewers: [
+        { id: '1', fullName: 'Asha Admin', email: 'asha@example.com' },
+        { id: '9', fullName: 'Asha Admin', email: 'asha.two@example.com' },
+      ],
+    }
+    suggestionsApi(ADMIN, [suggestion()], (request) => (request.method === 'GET' && request.path === '/suggestions/review/options' ? ok(people) : undefined))
+    renderApp('/admin/suggestions')
+
+    const texts = (label: string) => [...(screen.getByLabelText(label) as HTMLSelectElement).options].map((option) => option.textContent)
+    await waitFor(() => expect(texts('Submitted by')).toEqual(['Everyone', 'Ravi Kumar (ravi@example.com)', 'ravi kumar (ravi.k@example.com)', 'Arun Accountant']))
+    expect(texts('Assigned to')).toEqual(['Anyone', 'Not assigned', 'Asha Admin (asha@example.com)', 'Asha Admin (asha.two@example.com)'])
   })
 })

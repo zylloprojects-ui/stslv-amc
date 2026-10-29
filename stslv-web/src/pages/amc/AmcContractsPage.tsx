@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { initialsOf } from '../../lib/format'
@@ -279,6 +279,7 @@ export function AmcContractsPage() {
             {(id, className) => (
               <select id={id} value={clientId} onChange={choose(setClientId)} className={className}>
                 <option value="">All clients</option>
+                <OptionsNotice source={options} count={options.data?.clients.length ?? 0} empty="No clients have AMC contracts yet" />
                 {(options.data?.clients ?? []).map((client) => (
                   <option key={client.id} value={client.id}>
                     {client.name}
@@ -291,6 +292,7 @@ export function AmcContractsPage() {
             {(id, className) => (
               <select id={id} value={system} onChange={choose(setSystem)} className={className}>
                 <option value="">All systems</option>
+                <OptionsNotice source={options} count={options.data?.systems.length ?? 0} empty="No systems on AMC contracts yet" />
                 {(options.data?.systems ?? []).map((value) => (
                   <option key={value} value={value}>
                     {value}
@@ -303,6 +305,7 @@ export function AmcContractsPage() {
             {(id, className) => (
               <select id={id} value={year} onChange={choose(setYear)} title="Contracts whose validity period covers any day of the year" className={className}>
                 <option value="">All years</option>
+                <OptionsNotice source={options} count={options.data?.years.length ?? 0} empty="No contract years yet" />
                 {(options.data?.years ?? []).map((value) => (
                   <option key={value} value={value}>
                     {value}
@@ -311,12 +314,13 @@ export function AmcContractsPage() {
               </select>
             )}
           </Filter>
-          {options.data?.salesEngineers && (
+          {options.data?.salesEngineers !== null && (
             <Filter label="Sales engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={choose(setSalesEngineerId)} className={className}>
                   <option value="">All sales engineers</option>
-                  {options.data.salesEngineers?.map((engineer) => (
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers linked to AMC contracts" />
+                  {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
                     </option>
@@ -329,6 +333,7 @@ export function AmcContractsPage() {
             {(id, className) => (
               <select id={id} value={frequency} onChange={choose(setFrequency)} className={className}>
                 <option value="">All frequencies</option>
+                <OptionsNotice source={options} count={options.data?.frequencies.length ?? 0} empty="No frequencies on AMC contracts yet" />
                 {(options.data?.frequencies ?? []).map((item) => (
                   <option key={item.code} value={item.code}>
                     {item.label}

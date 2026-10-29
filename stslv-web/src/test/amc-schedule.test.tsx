@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { currentMonth, formatDate, formatMoney, isZeroMoney, monthLabel, monthRange, shiftMonth } from '../pages/amc/amcFormat'
-import { ACCOUNTANT, ADMIN, fail, ok, renderApp } from './helpers'
+import { ACCOUNTANT, ADMIN, afterPageSplit, fail, ok, renderApp } from './helpers'
 import { amcApi, makeVisit, VIEWER } from './amc-helpers'
 
 // Visits are placed in the current month, which is what the schedule opens on.
@@ -296,5 +296,21 @@ describe('schedule export', () => {
     await screen.findByRole('button', { name: 'View Test Hotel One FIRE visit 1' })
     expect(screen.queryByRole('group', { name: 'Export AMC schedule' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Export/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('schedule filters a role may not use', () => {
+  it('shows the client and system filters greyed out with the reason, and does not ask for their lists', async () => {
+    const scheduleOnly = { ...VIEWER, permissions: afterPageSplit(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']) }
+    const api = amcApi(scheduleOnly, { visits: [FIRST] })
+    renderApp('/amc/schedule')
+
+    await screen.findByRole('table', { name: `AMC schedule for ${monthLabel(MONTH)}` })
+    expect(screen.getByLabelText('Client')).toBeDisabled()
+    expect(screen.getByLabelText('Client')).toHaveTextContent('Not available for your role (needs the client list)')
+    expect(screen.getByLabelText('System')).toBeDisabled()
+    expect(screen.getByLabelText('System')).toHaveTextContent('Not available for your role (needs AMC Contracts)')
+    expect(api.find('GET', '/clients')).toHaveLength(0)
+    expect(api.find('GET', '/amc/contracts/systems')).toHaveLength(0)
   })
 })

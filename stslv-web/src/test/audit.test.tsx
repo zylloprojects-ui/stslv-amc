@@ -57,7 +57,7 @@ function auditApi(user: SessionUser, override?: (request: MockRequest) => Return
       return ok({ items, total: items.length, failedTotal: items.filter((login) => login.outcome === 'FAILED').length, page: 1, pageSize: 25 })
     }
     if (request.path === '/audit/activity/options') {
-      return ok({ modules: ['AMC_CONTRACTS', 'CLIENTS'], entityTypes: ['amc_contracts', 'clients'], users: [{ id: '1', fullName: 'Asha Admin' }] })
+      return ok({ modules: ['AMC_CONTRACTS', 'CLIENTS'], entityTypes: ['amc_contracts', 'clients'], users: [{ id: '1', fullName: 'Asha Admin', email: 'asha@example.com' }] })
     }
     if (request.path === '/audit/activity') {
       const module = request.query.get('module')
@@ -183,5 +183,55 @@ describe('Audit Log', () => {
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
     expect(api.find('GET', '/audit/activity')).toHaveLength(0)
+  })
+})
+
+describe('Audit Log user filter', () => {
+  it('tells apart two accounts with the same name by their email, and leaves unique names as they are', async () => {
+    auditApi(ADMIN, (request) =>
+      request.path === '/audit/activity/options'
+        ? ok({
+            modules: ['CLIENTS'],
+            entityTypes: ['clients'],
+            users: [
+              { id: '1', fullName: 'Asha Admin', email: 'asha@example.com' },
+              { id: '4', fullName: 'Ravi Kumar', email: 'ravi@example.com' },
+              { id: '6', fullName: 'Ravi Kumar', email: 'ravi.k@example.com' },
+            ],
+          })
+        : undefined,
+    )
+    renderApp('/admin/audit-log')
+
+    await waitFor(() =>
+      expect([...(screen.getByLabelText('User') as HTMLSelectElement).options].map((option) => option.textContent)).toEqual([
+        'All users',
+        'Asha Admin',
+        'Ravi Kumar (ravi@example.com)',
+        'Ravi Kumar (ravi.k@example.com)',
+      ]),
+    )
+  })
+})
+
+describe('Audit Log module filter', () => {
+  it('names each master list as its own module, and still offers Settings for older entries', async () => {
+    auditApi(ADMIN, (request) =>
+      request.path === '/audit/activity/options'
+        ? ok({ modules: ['DEPARTMENTS', 'MAINTENANCE_FREQUENCIES', 'SALES_ENGINEERS', 'SETTINGS', 'SYSTEM_TYPES'], entityTypes: [], users: [] })
+        : undefined,
+    )
+    renderApp('/admin/audit-log')
+
+    await waitFor(() =>
+      expect([...(screen.getByLabelText('Module') as HTMLSelectElement).options].map((option) => option.textContent)).toEqual([
+        'All modules',
+        'Departments',
+        'Maintenance frequencies',
+        'Sales engineers',
+        'Settings',
+        'System types',
+      ]),
+    )
   })
 })

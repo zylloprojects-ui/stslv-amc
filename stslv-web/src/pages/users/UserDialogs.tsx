@@ -14,23 +14,44 @@ const PASSWORD_HINT = 'At least 10 characters. Give it to the user privately; th
 /** The API's message when a request names no role or several: each user holds exactly one role. */
 export const ONE_ROLE_MESSAGE = 'Select exactly one role.'
 
-/** Exactly one role per user (approved 2026-10-29), chosen from the active roles. The API enforces the same rule. */
-function RolePicker({ roles, selected, onChange, error }: { roles: Role[]; selected: string; onChange: (id: string) => void; error?: string }) {
+/** Whether the signed-in user may give this role: active and within their authority (Super Admin and Admin only by Super Admin). */
+const canAssign = (role: Role) => role.assignable ?? role.isActive
+
+/**
+ * Exactly one role per user (approved 2026-10-29), chosen from the roles the signed-in user may assign.
+ * The user's current role is listed too, even when it cannot be chosen again. The API enforces the same rules.
+ */
+function RolePicker({
+  roles,
+  selected,
+  onChange,
+  error,
+  currentIds = [],
+}: {
+  roles: Role[]
+  selected: string
+  onChange: (id: string) => void
+  error?: string
+  currentIds?: string[]
+}) {
+  const listed = roles.filter((role) => canAssign(role) || currentIds.includes(role.id))
+
   return (
     <fieldset aria-describedby={error ? 'role-picker-error' : undefined}>
       <legend className="mb-1.5 text-sm font-bold text-slate-800">
         Role <span className="font-normal text-slate-500">(one per user)</span>
       </legend>
       <div className={cx('divide-y divide-slate-200 overflow-hidden rounded-lg border', error ? 'border-red-400' : 'border-slate-300')}>
-        {roles.map((role) => {
+        {listed.map((role) => {
           const on = selected === role.id
+          const choosable = canAssign(role)
 
           return (
             <label
               key={role.id}
               className={cx(
                 'flex items-start gap-3 px-3.5 py-2',
-                role.isActive ? 'cursor-pointer hover:bg-sky-50/60' : 'cursor-not-allowed opacity-60',
+                choosable ? 'cursor-pointer hover:bg-sky-50/60' : 'cursor-not-allowed opacity-60',
                 on && 'bg-sky-50',
               )}
             >
@@ -39,13 +60,14 @@ function RolePicker({ roles, selected, onChange, error }: { roles: Role[]; selec
                 name="role"
                 className="mt-0.5 h-[18px] w-[18px] shrink-0 cursor-pointer accent-[#1479BD]"
                 checked={on}
-                disabled={!role.isActive}
+                disabled={!choosable}
                 onChange={() => onChange(role.id)}
               />
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-slate-900">
                   {role.name}
                   {!role.isActive && <span className="ml-1.5 text-xs font-normal">(inactive)</span>}
+                  {currentIds.includes(role.id) && <span className="ml-1.5 text-xs font-normal text-slate-500">(current)</span>}
                 </span>
                 {role.description && <span className="block text-xs text-slate-500">{role.description}</span>}
               </span>
@@ -205,7 +227,7 @@ export function EditRolesModal({ user, roles, onClose, onSaved }: { user: User; 
         {user.roles.length > 1 && (
           <Alert tone="info">This user holds {user.roles.length} roles from before the one-role rule. Choose one: it replaces all of them.</Alert>
         )}
-        <RolePicker roles={roles} selected={roleId} onChange={setRoleId} />
+        <RolePicker roles={roles} selected={roleId} onChange={setRoleId} currentIds={user.roles.map((role) => role.id)} />
         <p className="text-xs text-slate-500">The chosen role replaces the current one. Changes apply immediately.</p>
       </div>
     </Modal>

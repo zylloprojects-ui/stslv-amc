@@ -123,7 +123,7 @@ describe("list and form", () => {
 
     const logs = await logsFor("departments", id);
     expect(logs.map((log) => log.action)).toEqual(["department.created", "department.updated"]);
-    expect(logs[1]).toMatchObject({ user_id: admin.id, module: "SETTINGS", metadata: { changes: { name: { from: "finance", to: "Finance Projects" } } } });
+    expect(logs[1]).toMatchObject({ user_id: admin.id, module: "DEPARTMENTS", metadata: { changes: { name: { from: "finance", to: "Finance Projects" } } } });
   });
 
   it("searches by code, name or description, filters by status and sorts on request", async () => {

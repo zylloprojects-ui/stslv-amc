@@ -6,7 +6,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, Modal, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
@@ -390,6 +390,7 @@ export function AccountsPage() {
               {(id, className) => (
                 <select id={id} value={draft.clientId} onChange={(event) => set('clientId')(event.target.value)} className={className}>
                   <option value="">All clients</option>
+                  <OptionsNotice source={options} count={options.data?.clients.length ?? 0} empty="No clients with current AMC visits" />
                   {(options.data?.clients ?? []).map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -402,6 +403,7 @@ export function AccountsPage() {
               {(id, className) => (
                 <select id={id} value={draft.salesEngineerId} onChange={(event) => set('salesEngineerId')(event.target.value)} className={className}>
                   <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -426,6 +428,7 @@ export function AccountsPage() {
               {(id, className) => (
                 <select id={id} value={draft.year} onChange={(event) => set('year')(event.target.value)} className={className}>
                   <option value="">All years</option>
+                  <OptionsNotice source={options} count={options.data?.years.length ?? 0} empty="No years with current AMC visits" />
                   {(options.data?.years ?? []).map((value) => (
                     <option key={value} value={String(value)}>
                       {value}

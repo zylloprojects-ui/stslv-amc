@@ -6,7 +6,7 @@ import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActi
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Badge, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
+import { Alert, Badge, Button, ConfirmDialog, EmptyState, OptionsNotice, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { AssignmentWarning, SalesEngineerFormModal } from './SalesEngineerFormModal'
@@ -154,7 +154,20 @@ export function SalesEngineersPage() {
   // Every department, inactive ones too: an engineer may still belong to one.
   const departments = useQuery({
     queryKey: ['masters', 'departments', 'filter'],
-    queryFn: () => api.get<MasterList<Department>>('/masters/departments?status=all&pageSize=100'),
+    // Read page by page: the list endpoint returns at most 100 at a time.
+    queryFn: async () => {
+      const all: Department[] = []
+
+      for (let page = 1; ; page += 1) {
+        const result = await api.get<MasterList<Department>>(`/masters/departments?status=all&pageSize=100&page=${page}`)
+
+        all.push(...result.items)
+
+        if (result.items.length === 0 || all.length >= result.total) {
+          return all
+        }
+      }
+    },
     retry: false,
   })
 
@@ -181,7 +194,7 @@ export function SalesEngineersPage() {
   const unavailable = list.isError && isFeatureUnavailable(list.error)
   const data = list.data
   const filtered = search !== '' || status !== 'active' || departmentId !== ''
-  const departmentList = departments.data?.items ?? []
+  const departmentList = departments.data ?? []
 
   return (
     <>
@@ -291,6 +304,7 @@ export function SalesEngineersPage() {
                       className={`block px-3 py-2.5 ${FIELD}`}
                     >
                       <option value="">All departments</option>
+                      <OptionsNotice source={departments} count={departmentList.length} empty="No departments yet" />
                       {departmentList.map((department) => (
                         <option key={department.id} value={department.id}>
                           {department.code} — {department.name}

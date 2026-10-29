@@ -41,6 +41,13 @@ function checkedPermissions(): Map<string, string[]> {
         found.set(key, [...(found.get(key) ?? []), file]);
       }
     }
+    // Data-only read: canRead(permissions, "MODULE") / authorizeRead("MODULE") in the API, auth.canRead('MODULE') in the web app.
+    for (const pattern of [/canRead\([^,()]+, "([A-Z_]+)"\)/g, /authorizeRead\("([A-Z_]+)"\)/g, /canRead\('([A-Z_]+)'\)/g]) {
+      for (const match of text.matchAll(pattern)) {
+        const key = `${match[1]}:READ`;
+        found.set(key, [...(found.get(key) ?? []), file]);
+      }
+    }
   }
 
   return found;

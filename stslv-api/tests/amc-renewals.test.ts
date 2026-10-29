@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -14,12 +14,14 @@ let execution: Session;
 let clientId: string;
 let otherClientId: string;
 let sourceId: string;
+// Every renewal names an active sales engineer; this one is used unless a test says otherwise.
+let defaultEngineerId: string;
 
 const renew = (id: string, overrides: Record<string, unknown> = {}, session: Session = admin) =>
   api()
     .post(`/api/amc/contracts/${id}/renewals`)
     .set(session.headers)
-    .send(contractBody(clientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", ...overrides }));
+    .send(contractBody(clientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: defaultEngineerId, ...overrides }));
 
 beforeAll(async () => {
   await resetProjectData();
@@ -27,6 +29,7 @@ beforeAll(async () => {
   execution = await signedIn("execution@example.com", ["EXECUTION"]);
   clientId = await createClient(admin, "Renewal Test Client");
   otherClientId = await createClient(admin, "Other Test Client");
+  defaultEngineerId = await renewalEngineer();
   sourceId = await activeContract(admin, clientId, { validFrom: "2027-01-01", validTo: "2027-12-31" });
 });
 afterAll(closePool);
@@ -100,5 +103,95 @@ describe("GET /api/amc/reports/renewals", () => {
     expect(response.body.data.total).toBe(2);
     expect(response.body.data.items[0]).toMatchObject({ renewal: { client: { name: "Renewal Test Client" } }, source: { id: sourceId, status: "ACTIVE" } });
     expect((await api().get("/api/amc/reports/renewals").set(execution.headers)).status).toBe(200);
+  });
+});
+
+describe("the sales engineer of a renewal", () => {
+  const engineer = async (name: string, isActive = true) =>
+    (await pool.query<{ id: string }>("INSERT INTO sales_engineers (name, is_active) VALUES ($1, $2) RETURNING id", [name, isActive])).rows[0]!.id;
+  const linkedTo = async (contractId: string) =>
+    (await api().get(`/api/amc/contracts/${contractId}/masters`).set(admin.headers)).body.data.salesEngineer as { id: string; name: string; isActive: boolean } | null;
+  // A fresh source per case, linked to the given engineer.
+  const sourceWith = async (engineerId: string | null, systemDescription: string) => {
+    const id = await activeContract(admin, clientId, { validFrom: "2027-01-01", validTo: "2027-12-31", systemDescription });
+    if (engineerId) await pool.query("UPDATE amc_contracts SET sales_engineer_id = $1 WHERE id = $2", [engineerId, id]);
+    return id;
+  };
+  const contractCount = async () => (await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM amc_contracts")).rows[0]!.n;
+
+  let alpha: string;
+  let beta: string;
+
+  beforeAll(async () => {
+    alpha = await engineer("Renewal Engineer Alpha");
+    beta = await engineer("Renewal Engineer Beta");
+  });
+
+  it("keeps the active engineer of the renewed contract when the renewal names them", async () => {
+    const source = await sourceWith(alpha, "SE-ACTIVE");
+    const response = await renew(source, { systemDescription: "SE-ACTIVE", salesEngineerId: alpha });
+
+    expect(response.status).toBe(201);
+    expect(await linkedTo(response.body.data.id)).toMatchObject({ id: alpha, name: "Renewal Engineer Alpha", isActive: true });
+    expect(await linkedTo(source)).toMatchObject({ id: alpha });
+  });
+
+  it("saves a different active engineer chosen for the renewal, and leaves the renewed contract as it was", async () => {
+    const source = await sourceWith(alpha, "SE-CHANGED");
+    const response = await renew(source, { systemDescription: "SE-CHANGED", salesEngineerId: beta });
+
+    expect(response.status).toBe(201);
+    expect(await linkedTo(response.body.data.id)).toMatchObject({ id: beta });
+    expect(await linkedTo(source)).toMatchObject({ id: alpha });
+  });
+
+  it("requires an active engineer when the renewed contract's engineer is no longer active, and never fills one in", async () => {
+    const former = await engineer("Renewal Engineer Former", false);
+    const source = await sourceWith(former, "SE-INACTIVE");
+    const before = await contractCount();
+
+    for (const overrides of [{ salesEngineerId: undefined }, { salesEngineerId: null }]) {
+      const refused = await renew(source, { systemDescription: "SE-INACTIVE", ...overrides });
+      expect(refused.status).toBe(400);
+      expect(refused.body.error.details).toEqual([
+        {
+          field: "salesEngineerId",
+          message: "Renewal Engineer Former, the sales engineer of the contract being renewed, is no longer active. Select an active sales engineer.",
+        },
+      ]);
+    }
+    // The inactive engineer cannot be chosen either.
+    const inactive = await renew(source, { systemDescription: "SE-INACTIVE", salesEngineerId: former });
+    expect(inactive.status).toBe(400);
+    expect(inactive.body.error.details[0].field).toBe("salesEngineerId");
+    expect(await contractCount()).toBe(before);
+
+    const chosen = await renew(source, { systemDescription: "SE-INACTIVE", salesEngineerId: beta });
+    expect(chosen.status).toBe(201);
+    expect(await linkedTo(chosen.body.data.id)).toMatchObject({ id: beta });
+    expect(await linkedTo(source)).toMatchObject({ id: former, isActive: false });
+  });
+
+  it("requires an active engineer even when the renewed contract had none", async () => {
+    const source = await sourceWith(null, "SE-NONE");
+    const before = await contractCount();
+
+    for (const overrides of [{ salesEngineerId: undefined }, { salesEngineerId: null }]) {
+      const refused = await renew(source, { systemDescription: "SE-NONE", ...overrides });
+      expect(refused.status).toBe(400);
+      expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select an active sales engineer for the renewal." }]);
+    }
+    expect(await contractCount()).toBe(before);
+
+    const chosen = await renew(source, { systemDescription: "SE-NONE", salesEngineerId: alpha });
+    expect(chosen.status).toBe(201);
+    expect(await linkedTo(chosen.body.data.id)).toMatchObject({ id: alpha });
+  });
+
+  it("does not let a new contract that is not a renewal need an engineer", async () => {
+    const created = await api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { systemDescription: "SE-NEW", status: "DRAFT" }));
+
+    expect(created.status).toBe(201);
+    expect(await linkedTo(created.body.data.id)).toBeNull();
   });
 });

@@ -82,6 +82,22 @@ export function Filter({ label, children, className }: FilterProps) {
   )
 }
 
+/**
+ * A filter the user's role may not use. It stays in the filter bar, greyed out with the reason, so the user is not
+ * left thinking there is nothing to filter by when the list is only out of their reach.
+ */
+export function RestrictedFilter({ label, reason }: { label: string; reason: string }) {
+  return (
+    <Filter label={label} className="opacity-70">
+      {(id, className) => (
+        <select id={id} disabled title={reason} className={cx(className, 'cursor-not-allowed text-slate-500')}>
+          <option>{reason}</option>
+        </select>
+      )}
+    </Filter>
+  )
+}
+
 type Tone = 'green' | 'slate' | 'blue' | 'amber' | 'red'
 
 const TONES: Record<Tone, string> = {

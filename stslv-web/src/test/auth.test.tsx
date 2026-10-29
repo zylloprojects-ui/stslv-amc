@@ -113,7 +113,7 @@ describe('protected routes', () => {
     expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
     const header = screen.getByRole('banner')
     expect(within(header).getByText('Asha Admin')).toBeInTheDocument()
-    expect(within(header).getByText('Admin')).toBeInTheDocument()
+    expect(within(header).getByText('Super Admin')).toBeInTheDocument()
   })
 
   it('signs out, clears the session and returns to the login page', async () => {

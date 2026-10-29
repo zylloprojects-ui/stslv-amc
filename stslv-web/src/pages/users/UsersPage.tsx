@@ -8,8 +8,9 @@ import { api, errorMessage } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
 import type { RolesResponse, User } from '../../lib/types'
 import { RolesPanel } from './RolesPanel'
-import { isAdmin } from '../../auth/roles'
+import { isAdmin, isPrivilegedRole, isSuperAdmin } from '../../auth/roles'
 import { CreateUserModal, EditRolesModal, TemporaryPasswordModal } from './UserDialogs'
+import { UnsavedChangesGuard } from '../../lib/unsavedChanges'
 
 type Tab = 'users' | 'roles'
 
@@ -28,6 +29,8 @@ const hasSeveralRoles = (user: User) => user.roles.length > 1
 const ONE_ROLE_TO_APPROVE = 'This user has more than one role. Choose one role before approving.'
 
 const ROLE_REQUIRED_TO_APPROVE = 'Assign a role before approving this user.'
+
+const PRIVILEGED_ACCOUNT_ONLY = 'Only Super Admin can manage Super Admin and Admin accounts.'
 
 /** Why an administrator cannot issue a temporary password to this user, if they cannot. The API enforces the same. */
 function temporaryPasswordBlock(user: User, isSelf: boolean): string | undefined {
@@ -55,6 +58,9 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
   const [tab, setTab] = useState<Tab>(initialTab)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
+  // Unsaved permission changes on the Roles & Permissions tab, and the tab asked for meanwhile.
+  const [rolesDirty, setRolesDirty] = useState(false)
+  const [pendingTab, setPendingTab] = useState<Tab | null>(null)
 
   const users = useQuery({ queryKey: ['users'], queryFn: () => api.get<User[]>('/users') })
   const roles = useQuery({ queryKey: ['roles'], queryFn: () => api.get<RolesResponse>('/roles') })
@@ -92,8 +98,10 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
   const canEdit = auth.can('USERS', 'EDIT')
   // Approving and rejecting sign-up requests (USERS:APPROVE); the API checks the same.
   const canApprove = auth.can('USERS', 'APPROVE')
-  // Issuing temporary passwords is reserved to the Admin role, on top of user editing.
+  // Issuing temporary passwords is reserved to Super Admin and Admin, on top of user editing.
   const canIssueTemporaryPassword = canEdit && isAdmin(auth.user)
+  // Super Admin and Admin accounts are managed by Super Admin only; the API enforces the same.
+  const lockedForMe = (user: User) => !isSuperAdmin(auth.user) && user.roles.some((role) => isPrivilegedRole(role.code))
   const roleList = roles.data?.roles ?? []
   const pendingCount = users.data?.filter(isPending).length ?? 0
 
@@ -105,6 +113,11 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
       aria-selected={tab === value}
       aria-controls="users-tabpanel"
       onClick={() => {
+        if (value === tab) return
+        if (tab === 'roles' && rolesDirty) {
+          setPendingTab(value)
+          return
+        }
         setTab(value)
         setNotice(null)
       }}
@@ -197,6 +210,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                   <tbody className="divide-y divide-slate-100">
                     {users.data.map((user, index) => {
                       const isSelf = user.id === auth.user?.id
+                      const locked = lockedForMe(user)
 
                       return (
                         <tr key={user.id} className={TABLE.row}>
@@ -242,8 +256,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                   <ActionButton
                                     label={`Change role of ${user.fullName}`}
                                     icon="roles"
-                                    disabled={isSelf || !roles.data}
-                                    hint={isSelf ? 'You cannot change your own role.' : undefined}
+                                    disabled={isSelf || locked || !roles.data}
+                                    hint={isSelf ? 'You cannot change your own role.' : locked ? PRIVILEGED_ACCOUNT_ONLY : undefined}
                                     onClick={() => setDialog({ kind: 'roles', user })}
                                   />
                                 )}
@@ -251,8 +265,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                   <ActionButton
                                     label={`Generate temporary password for ${user.fullName}`}
                                     icon="key"
-                                    disabled={temporaryPasswordBlock(user, isSelf) !== undefined}
-                                    hint={temporaryPasswordBlock(user, isSelf)}
+                                    disabled={locked || temporaryPasswordBlock(user, isSelf) !== undefined}
+                                    hint={locked ? PRIVILEGED_ACCOUNT_ONLY : temporaryPasswordBlock(user, isSelf)}
                                     onClick={() => setDialog({ kind: 'temporary-password', user })}
                                   />
                                 )}
@@ -261,11 +275,13 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                   danger={user.isActive && !isSelf}
                                   label={`${toggleLabel(user)} ${user.fullName}`}
                                   icon={user.isActive ? 'deactivate' : isPending(user) ? 'approve' : 'reactivate'}
-                                  disabled={isSelf || needsRoleToApprove(user) || (isPending(user) && hasSeveralRoles(user))}
+                                  disabled={isSelf || locked || needsRoleToApprove(user) || (isPending(user) && hasSeveralRoles(user))}
                                   hint={
                                     isSelf
                                       ? 'You cannot deactivate your own account.'
-                                      : needsRoleToApprove(user)
+                                      : locked
+                                        ? PRIVILEGED_ACCOUNT_ONLY
+                                        : needsRoleToApprove(user)
                                         ? ROLE_REQUIRED_TO_APPROVE
                                         : isPending(user) && hasSeveralRoles(user)
                                           ? ONE_ROLE_TO_APPROVE
@@ -274,7 +290,16 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                   onClick={() => setDialog({ kind: 'toggle', user })}
                                 />
                                 )}
-                                {isPending(user) && canApprove && <ActionButton danger label={`Reject ${user.fullName}`} icon="reject" onClick={() => setDialog({ kind: 'reject', user })} />}
+                                {isPending(user) && canApprove && (
+                                  <ActionButton
+                                    danger
+                                    label={`Reject ${user.fullName}`}
+                                    icon="reject"
+                                    disabled={locked}
+                                    hint={locked ? PRIVILEGED_ACCOUNT_ONLY : undefined}
+                                    onClick={() => setDialog({ kind: 'reject', user })}
+                                  />
+                                )}
                               </ActionGroup>
                               )}
                               {needsRoleToApprove(user) && canApprove && <p className="mt-1 text-xs text-amber-800">{ROLE_REQUIRED_TO_APPROVE}</p>}
@@ -295,10 +320,32 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
           <>
             {roles.isPending && <Spinner label="Loading roles" />}
             {roles.isError && <Alert>{errorMessage(roles.error)}</Alert>}
-            {roles.data && <RolesPanel catalogue={roles.data} canEdit={canEdit} />}
+            {roles.data && <RolesPanel catalogue={roles.data} canEdit={canEdit} onDirtyChange={setRolesDirty} />}
           </>
         )}
       </div>
+
+      {/* Any other way out (sidebar, search, Back/Forward, sign-out, reload) asks first too. */}
+      <UnsavedChangesGuard
+        when={tab === 'roles' && rolesDirty}
+        message="The role permissions have changes that are not saved. Discard them and leave Roles & Permissions?"
+      />
+
+      {pendingTab && (
+        <ConfirmDialog
+          title="Discard unsaved changes?"
+          message="The role permissions have changes that are not saved. Discard them and leave Roles & Permissions?"
+          confirmLabel="Discard changes"
+          danger
+          onConfirm={() => {
+            setRolesDirty(false)
+            setTab(pendingTab)
+            setPendingTab(null)
+            setNotice(null)
+          }}
+          onCancel={() => setPendingTab(null)}
+        />
+      )}
 
       {dialog.kind === 'create' && (
         <CreateUserModal

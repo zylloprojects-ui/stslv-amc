@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { cx } from '../lib/format'
+import { signOutSafely } from '../lib/leaveGuard'
 import type { Theme } from '../lib/preferences'
 import { isAdmin } from '../auth/roles'
 import { NAVIGATION, navItemVisible } from './navigation'
@@ -143,7 +144,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
   const settingsAllowed = auth.can('SETTINGS', 'VIEW')
   const sections = NAVIGATION.map((section) => ({
     ...section,
-    items: section.items.filter((item) => item.path !== '/settings' && navItemVisible(item, auth.can, isAdmin(auth.user))),
+    items: section.items.filter((item) => item.path !== '/settings' && navItemVisible(item, auth.can, isAdmin(auth.user), auth.canRead)),
   })).filter((section) => section.items.length > 0)
 
   const topLevel = (...extra: (string | false)[]) => cx(TOP_LEVEL, collapsed && 'justify-center px-0', ...extra)
@@ -296,7 +297,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
             {label('Settings')}
           </NavLink>
         )}
-        <button type="button" onClick={auth.logout} title={collapsed ? 'Sign Out' : undefined} className={topLevel(TOP_IDLE)}>
+        <button type="button" onClick={() => void signOutSafely(auth.logout)} title={collapsed ? 'Sign Out' : undefined} className={topLevel(TOP_IDLE)}>
           <NavIcon name="logout" />
           {label('Sign Out')}
         </button>

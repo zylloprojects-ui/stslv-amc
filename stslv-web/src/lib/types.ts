@@ -23,7 +23,8 @@ export const MODULES = [
   'DEPARTMENTS',
 ] as const
 
-export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE', 'EXPORT'] as const
+// READ: data-only read (API migration 0089): the module's data inside another section's page, without its pages.
+export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE', 'EXPORT', 'READ'] as const
 
 export type Module = (typeof MODULES)[number]
 export type Action = (typeof ACTIONS)[number]
@@ -59,6 +60,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   DELETE: 'Delete',
   APPROVE: 'Approve',
   EXPORT: 'Export',
+  READ: 'Data read',
 }
 
 export interface RoleSummary {
@@ -170,7 +172,18 @@ export interface Role {
   isActive: boolean
   userCount: number
   permissions: Permission[]
+  /** Whether the signed-in user may change this role's permissions (never Super Admin's; Admin's only by Super Admin). */
   permissionsEditable: boolean
+  /** Why the permissions cannot be changed, when that comes from the role itself. Absent from an older API. */
+  lockedReason?: string | null
+  /** The "MODULE:ACTION" permissions this role may hold, or null when it may hold any grantable one. Absent from an older API. */
+  scope?: string[] | null
+  /** Whether the signed-in user may give this role to someone. Absent from an older API. */
+  assignable?: boolean
+  /** Fingerprint of the saved permission set; a save sends it back and is refused (409) if the set changed meanwhile. */
+  permissionsVersion?: string
+  /** Defined by the migrations: never deleted. */
+  builtIn?: boolean
 }
 
 export interface RolesResponse {
@@ -179,7 +192,7 @@ export interface RolesResponse {
   actions: Action[]
   /** What each module governs and which of its actions are used (API: shared/permission-catalog.ts). Absent from an older API. */
   catalog?: PermissionSection[]
-  fixedAccess?: { adminOnly: CatalogPage[]; everyone: CatalogPage[] }
+  fixedAccess?: { superAdminOnly?: CatalogPage[]; adminOnly: CatalogPage[]; everyone: CatalogPage[] }
 }
 
 export interface CatalogPage {

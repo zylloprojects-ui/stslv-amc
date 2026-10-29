@@ -105,12 +105,12 @@ describe("who may export invoice reports", () => {
     }
   });
 
-  it("gives EXPORT on invoices to no role but Admin unless an Admin grants it", async () => {
-    const granted = await pool.query(
-      "SELECT 1 FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.module = 'INVOICES' AND rp.action = 'EXPORT' AND r.code NOT IN ('ADMIN', 'PROCUREMENT')"
+  it("gives EXPORT on invoices only to Super Admin, Admin and Finance Executive unless it is granted", async () => {
+    const granted = await pool.query<{ code: string }>(
+      "SELECT r.code FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.module = 'INVOICES' AND rp.action = 'EXPORT' AND r.code <> 'PROCUREMENT' ORDER BY r.id"
     );
 
-    expect(granted.rowCount).toBe(0);
+    expect(granted.rows.map((row) => row.code)).toEqual(["ADMIN", "ADMINISTRATOR", "FINANCE_EXECUTIVE"]);
   });
 
   it("rejects an unknown format or filter, and cannot be asked for work that is already invoiced", async () => {

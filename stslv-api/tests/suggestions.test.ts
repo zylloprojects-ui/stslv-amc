@@ -380,6 +380,22 @@ describe("review list filters, search and paging", () => {
     expect(options.body.data.submitters.map((user: { id: string }) => user.id).sort()).toEqual([alice.id, bob.id].sort());
     expect(options.body.data.reviewers.map((user: { id: string }) => user.id).sort()).toEqual([admin.id, secondAdmin.id].sort());
   });
+
+  it("gives each option its email and sorts by name regardless of letter case, so equal names can be told apart", async () => {
+    await pool.query("UPDATE users SET full_name = 'same name' WHERE id = $1", [alice.id]);
+    await pool.query("UPDATE users SET full_name = 'Same Name' WHERE id = $1", [bob.id]);
+
+    const { submitters } = (await api().get("/api/suggestions/review/options").set(admin.headers)).body.data as {
+      submitters: { id: string; fullName: string; email: string }[];
+    };
+    const emails = (await pool.query<{ id: string; email: string }>("SELECT id, email FROM users WHERE id = ANY($1)", [[alice.id, bob.id]])).rows;
+
+    expect(submitters).toEqual(
+      emails
+        .map((row) => ({ id: row.id, fullName: row.id === alice.id ? "same name" : "Same Name", email: row.email }))
+        .sort((left, right) => left.email.toLowerCase().localeCompare(right.email.toLowerCase()))
+    );
+  });
 });
 
 describe("existing submissions", () => {

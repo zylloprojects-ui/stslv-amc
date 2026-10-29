@@ -197,7 +197,8 @@ export function ContractDetailPage() {
   // Cancelling a contract needs its own permission.
   const canCancel = auth.can('AMC_CONTRACTS', 'DELETE')
   const canViewSchedule = auth.can('AMC_SCHEDULE', 'VIEW')
-  const canViewInvoices = auth.can('INVOICES', 'VIEW')
+  // The contract's invoices: data-only read is enough (it opens no Finance page).
+  const canViewInvoices = auth.canRead('INVOICES')
 
   // Always read the record again, so the details shown are the stored values.
   const query = useQuery({ queryKey: ['amc', 'contracts', 'detail', id], queryFn: () => api.get<Contract>(`/amc/contracts/${id}`) })

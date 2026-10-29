@@ -7,15 +7,27 @@ export interface NavItem {
   module: Module
   /** The module is in the navigation but its page is not built yet: it opens a placeholder. */
   pending?: true
-  /** Shown only to the built-in Admin role, whatever else the user is granted. */
+  /** Shown only to administrators (Super Admin and Admin), whatever else the user is granted. */
   adminOnly?: true
   /** Further modules the user must also hold VIEW on, for a page that shows data of several modules. */
   alsoRequires?: Module[]
+  /** Modules whose data the page shows: View or data-only Read is enough, and their own pages are not opened. */
+  alsoReads?: Module[]
 }
 
 /** Whether a navigation item is offered to the user. A convenience only: the API enforces every permission. */
-export function navItemVisible(item: NavItem, can: (module: Module, action: 'VIEW') => boolean, isAdmin: boolean): boolean {
-  return can(item.module, 'VIEW') && (item.alsoRequires ?? []).every((module) => can(module, 'VIEW')) && (!item.adminOnly || isAdmin)
+export function navItemVisible(
+  item: NavItem,
+  can: (module: Module, action: 'VIEW') => boolean,
+  isAdmin: boolean,
+  canRead: (module: Module) => boolean = (module) => can(module, 'VIEW'),
+): boolean {
+  return (
+    can(item.module, 'VIEW') &&
+    (item.alsoRequires ?? []).every((module) => can(module, 'VIEW')) &&
+    (item.alsoReads ?? []).every(canRead) &&
+    (!item.adminOnly || isAdmin)
+  )
 }
 
 export interface NavSection {
@@ -49,16 +61,16 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Monthly Calendar', path: '/amc/calendar', module: 'MONTHLY_CALENDAR' },
       { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },
       { label: 'Services Sales', path: '/amc/services-sales', module: 'SERVICES_SALES' },
-      // Shows invoice and quotation numbers, so it needs view on those modules too (the API checks the same three).
-      { label: 'Master AMC Status', path: '/amc/master-status', module: 'AMC_SCHEDULE', alsoRequires: ['INVOICES', 'SERVICES_SALES'] },
+      // Shows quotation numbers (View of Services Sales) and invoice numbers (data-only read of Invoices); the API checks the same.
+      { label: 'Master AMC Status', path: '/amc/master-status', module: 'AMC_SCHEDULE', alsoRequires: ['SERVICES_SALES'], alsoReads: ['INVOICES'] },
     ],
   },
   {
     title: 'Finance',
     items: [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
-      // Shows visit data next to invoice numbers, so it also needs view on the schedule (the API checks both).
-      { label: 'Accounts', path: '/finance/accounts', module: 'INVOICES', alsoRequires: ['AMC_SCHEDULE'] },
+      // Shows visit data next to invoice numbers: data-only read of the schedule, which opens no schedule page (the API checks both).
+      { label: 'Accounts', path: '/finance/accounts', module: 'INVOICES', alsoReads: ['AMC_SCHEDULE'] },
     ],
   },
   {
@@ -68,7 +80,7 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Login History', path: '/admin/login-history', module: 'USERS' },
       { label: 'Audit Log', path: '/admin/audit-log', module: 'USERS', adminOnly: true },
-      // Reviewers are the Admin role until a Suggestions permission is approved (the API checks the same).
+      // Reviewers are Super Admin and Admin until a Suggestions permission is approved (the API checks the same).
       { label: 'Suggestions Review', path: '/admin/suggestions', module: 'USERS', adminOnly: true },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
     ],

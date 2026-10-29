@@ -1,5 +1,7 @@
 # Roles & Permissions
 
+> **Update 2026-10-29 (local alpha, uncommitted): the six-role model replaces the role names below.** Read section 11 and its revision in section 12 first; sections 1–10 describe the earlier five-role state and stay as history. Where section 11 and section 12 differ, section 12 applies.
+
 Status: 2026-10-29, branch `feature/roles-permissions-catalog` (worktree `D:\Projects\STSLV-AMC-permissions`), based on alpha 83fa3b0. Committed on this branch; not merged into alpha, not pushed.
 
 Decisions (2026-10-29):
@@ -213,3 +215,93 @@ None of 0080–0082 is applied to `stslv_amc_dev` or Neon. Before applying to a 
 5. The API version that knows the new modules (this branch) is deployed together with the migrations: an older API does not know the new module codes, and the web app of this branch hides pages whose new codes the user does not hold.
 
 Local `stslv_amc_dev` audit 2026-10-29: 1 user with 1 role; 0 with several; 0 pending. Neon has not been audited.
+
+## 11. Six-role model (approved 2026-10-29)
+
+Implemented locally on alpha, **uncommitted**. Migrations 0087 and 0088 are applied only to the isolated review database `stslv_amc_review_2026_10_29` and its disposable copy `stslv_amc_rehearsal_0087_0088`, **not** to `stslv_amc_dev` or Neon.
+
+### Roles
+
+| Code (unchanged / new) | Shown as | Access |
+|---|---|---|
+| `ADMIN` | **Super Admin** | Fixed full access. Its permissions cannot be changed by anyone. Only Super Admin manages Super Admin and Admin accounts and roles. |
+| `ADMINISTRATOR` (new) | **Admin** | Starts with every grantable permission of the current modules. Only Super Admin changes its permissions. Manages the other roles and their users. Keeps Audit Log, Suggestions Review, system readiness and the historical import audit. |
+| `FINANCE_EXECUTIVE` (new) | **Finance Executive** | Scope: Finance (Invoice Tracking, Accounts), plus Dashboard View and AMC Schedule View (Accounts shows visits). |
+| `MASTER_DATA_EXECUTIVE` (new) | **Master Data Executive** | Scope: the five Master Data Center modules, plus Dashboard View. |
+| `AMC_OPERATIONS_EXECUTIVE` (new) | **AMC Operations Executive** | Scope: the seven AMC Operations modules, plus Dashboard View, Clients View and Invoices View (Master AMC Status shows invoice numbers). |
+| `VIEWER` (new) | **Viewer** | View and Export only, on every current module except Administration. Starts with View only; Export can be granted. |
+| `ACCOUNTANT`, `PROCUREMENT`, `EXECUTION`, `INVOICING` | unchanged | Kept with every grant, **inactive** (0088): they cannot be assigned and grant nothing. Listed under "Inactive roles" in Roles & Permissions. |
+
+The scopes are enforced by the API (`src/shared/role-model.ts`, `isInRoleScope`): a grant outside a role's scope answers 400. A role without a scope (Admin, a custom role) may hold any grantable permission. Starting grants = `defaultGrants()`; 0087 seeds exactly these (Admin 57, Finance 6, Master Data 23, AMC Operations 24, Viewer 14), and `tests/role-model.test.ts` checks that the SQL and the code agree.
+
+### Who manages whom (enforced in the API, mirrored in the UI)
+
+- Only Super Admin can assign or remove the Super Admin or Admin role, or edit, deactivate, approve, reject, change the role of, or issue a temporary password to a user holding either role (403 `Only Super Admin can manage Super Admin and Admin accounts.`).
+- Only Super Admin can change the Admin role's permissions, name or status (403). Nobody can change Super Admin's permissions. Neither role can be deleted.
+- Unchanged: nobody grants a permission they do not hold, assigns a role beyond their own permissions, or changes their own role; one role per user; the last active Super Admin cannot be removed.
+- `GET /api/roles` now tells each viewer, per role, `permissionsEditable`, `lockedReason`, `scope` and `assignable`. The role picker lists only assignable roles plus the user's current one.
+
+### Permission dependencies
+
+Every action needs View of the same module; AMC Contracts Delete (cancel) also needs Edit. The API refuses a set that breaks this (400 `X also needs Y. Grant both, or neither.`). In the matrix, ticking an action ticks what it needs, and clearing View (or Edit) clears what depends on it. Legacy-module grants are left as they were.
+
+### Roles & Permissions page
+
+- No "No effect", "Not applicable", "N/A" or dash anywhere. An action a module does not have, or a role may not hold, is an empty shaded cell (screen readers hear "not available for this role").
+- Scoped roles show only the modules they may hold, with a one-line note. Legacy modules are in a collapsed "Legacy modules · N grants held" section, remove-only. A legacy grant on an action nothing checks (Reports: View) is not shown and is sent back unchanged on save.
+- Role tabs are a keyboard tablist (arrow keys, Home and End). Each role shows a Full/Partial/None badge, its permission and user counts, and Select all, Clear all, Cancel and Save permissions.
+- Unsaved changes: an inline notice, a confirmation before another role or the Users tab replaces them, and the browser's leave-page prompt. Not covered: sidebar navigation (the app uses `BrowserRouter`, which has no navigation blocker).
+- Column widths are fixed, so the permission columns line up across sections; at 390px each table scrolls inside its own box.
+
+### Migrations
+
+- **0087_six_role_model**: renames ADMIN to "Super Admin" (code, id, grants and assignments unchanged), adds the five roles and their starting grants. Idempotent. Assigns nobody; removes nothing.
+- **0088_deactivate_legacy_roles**: makes the four legacy roles inactive. **Stops and changes nothing** if any user still holds one. Reverse statements are in each file's header.
+
+Verified 2026-10-29: backup `STSLV-AMC-backups/stslv_amc_review_2026_10_29_2026-10-29_1516_pre-0087-0088.dump` (+ .sha256), restored into the rehearsal copy with identical counts; there and then on the review DB: 0 grants removed, 124 added (only to the five new roles), the one user still Super Admin, audit log unchanged.
+
+Before applying to `stslv_amc_dev` or Neon (each separately approved): backup + restore check; run the 0088 read-only check in its header (any user on a legacy role must first be moved to one of the six roles); deploy the matching API and web together. The tests keep the legacy roles active (`tests/helpers.ts` reactivates all roles after each reset), because most permission tests sign in with their fixed grant sets.
+
+## 12. Review fixes (approved 2026-10-29)
+
+Local alpha only, **uncommitted**. Migrations 0089 and 0090 follow 0087/0088; like them they are not on `stslv_amc_dev` or Neon.
+
+### Decisions
+
+1. **Only Super Admin changes any role's permission matrix.** `PUT /api/roles/:id/permissions` is Super Admin only (403 `Only Super Admin can change roles and their permissions.`); Super Admin's own permissions stay fixed. For everyone else every role shows read-only with `Only Super Admin can change role permissions.`
+2. **Admin** manages the users of the non-admin roles (create, edit, activate/deactivate, approve/reject, assign an existing operational role, temporary passwords) as its USERS permissions allow. It cannot add, rename, deactivate, reactivate or delete roles, change permissions, or manage Super Admin/Admin accounts. USERS:DELETE (it only deleted roles) is no longer an action; 0090 removes it from Admin.
+3. **Built-in roles** (the six and the four legacy ones) are never deleted, by anyone (403). Renaming, deactivating and reactivating them is Super Admin only (`superAdminOnly` on `POST/PATCH/DELETE /api/roles`, checked again in the service). Custom roles: Super Admin only.
+4. **Executive roles open only their own section's pages.** Data another section owns, where their pages need it, is the new **data-only Read** (`READ`, migration 0089):
+
+| Role | Data-only Read | Where it is honoured (and nowhere else) | Still refused |
+|---|---|---|---|
+| Finance Executive | AMC_SCHEDULE:READ | Invoice Tracking billable visits and AMC summary; Accounts (list + export) | AMC Schedule, Monthly Calendar, Master AMC Status pages and `/api/amc/visits*` |
+| AMC Operations Executive | INVOICES:READ | Master AMC Status (list + export); AMC Management invoice figures; `GET /api/invoices` **only with** `amcContractId` or `amcVisitId` (contract and visit details) | Invoice Tracking, Accounts, `/api/invoices` unfiltered, `/summary`, `/billable` |
+| AMC Operations Executive | CLIENTS:READ | `GET /api/clients` (the client list used by the contract form and the schedule/calendar filters) | Clients pages, client details, Client 360, history, export |
+
+   `canRead()` / `authorizeRead()` (API) and `auth.canRead()` / `RequireDataRead` (web) accept View or Read. View still covers Read. Read needs nothing else and is not part of Viewer's scope. In Roles & Permissions it is a "Data read" checkbox under the module name, offered only for these three modules and only when the role cannot have View. The catalog test now also detects these checks.
+5. Accounts keeps working for Finance (route: INVOICES View + schedule data read) and Master AMC Status for AMC Operations (route: AMC_SCHEDULE + SERVICES_SALES View + invoice data read).
+6. Viewer is unchanged: View and Export only.
+7. **Unsaved permission changes are protected on every way out.**
+   - The app now runs on a data router (`createBrowserRouter`, the route tree unchanged in `src/appRoutes.tsx`), so `UnsavedChangesGuard` (`src/lib/unsavedChanges.tsx`) blocks every in-app navigation: sidebar, header search, links, Back/Forward.
+   - Signing out from the sidebar or the user menu asks first (`signOutSafely`, `src/lib/leaveGuard.ts`). Reloading or closing the tab shows the browser's prompt. Switching role or tab asks, as before.
+   - A session that expires is still signed out; nothing unsaved is sent.
+   - **Concurrent changes:** each role carries `permissionsVersion` (a fingerprint of its saved set). A save must send the version it started from (`expectedVersion`, required). A set changed meanwhile answers 409 and nothing is overwritten. The matrix keeps the user's unsaved edits when a newer version arrives in the background, warns that saving would be refused, and offers "Load the latest permissions".
+
+### Starting grants after 0090
+
+| Role | Grants |
+|---|---|
+| Finance Executive (6) | DASHBOARD V; INVOICES V, C, E, X; AMC_SCHEDULE Read |
+| Master Data Executive (23) | unchanged |
+| AMC Operations Executive (24) | DASHBOARD V; all used actions of the 7 AMC modules; CLIENTS Read; INVOICES Read |
+| Viewer (14) | unchanged (View only) |
+| Admin (56) | every grantable action of the current modules except data-only Read, which View covers |
+| Super Admin | every action of every module, now including READ |
+
+### Migrations
+
+- **0089_permission_read_action**: widens `role_permissions_action_ck` with READ. Grants nothing.
+- **0090_role_model_refinements**: Finance AMC_SCHEDULE View → Read; AMC Operations CLIENTS and INVOICES View → Read; removes Admin's USERS:DELETE; gives Super Admin READ on every module. Idempotent; removes only the grants named. Reverse steps are in the file header.
+
+Order everywhere: 0080 → 0081 → 0082 → 0085 → 0086 → 0087 → 0088 → 0089 → 0090.

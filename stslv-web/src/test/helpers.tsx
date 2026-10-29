@@ -1,8 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { vi } from 'vitest'
-import { AppProviders, AppRoutes } from '../App'
+import { appRouteObjects } from '../appRoutes'
 import { ACTIONS, MODULES, type Client, type SessionUser } from '../lib/types'
 
 export interface MockRequest {
@@ -95,7 +95,7 @@ export const ADMIN: SessionUser = {
   id: '1',
   email: 'admin@example.com',
   fullName: 'Asha Admin',
-  roles: [{ id: '1', code: 'ADMIN', name: 'Admin' }],
+  roles: [{ id: '1', code: 'ADMIN', name: 'Super Admin' }],
   permissions: MODULES.flatMap((module) => ACTIONS.map((action) => `${module}:${action}`)),
 }
 
@@ -135,11 +135,9 @@ export function signIn() {
 export function renderApp(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <AppProviders client={client}>
-        <AppRoutes />
-      </AppProviders>
-    </MemoryRouter>,
-  )
+  // The app's data router, in memory, so unsaved-change guards block navigation as in the browser.
+  const router = createMemoryRouter(appRouteObjects(client), { initialEntries: [path] })
+
+  // The router and the query client are returned too, so a test can go Back or refresh data.
+  return Object.assign(render(<RouterProvider router={router} />), { router, queryClient: client })
 }

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { expiryBand } from "../src/modules/amc/management.service";
-import { activeContract, contractBody, createClient, createContract, today } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, renewalEngineer, today } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { executeVisit, invoiceBody, postInvoice } from "./invoices-helpers";
 import { resetProjectData } from "./projects-helpers";
@@ -52,7 +52,7 @@ const renew = async (id: string) => {
   const response = await api()
     .post(`/api/amc/contracts/${id}/renewals`)
     .set(admin.headers)
-    .send(contractBody(clientId, { validFrom: addDays(now, 120), validTo: addDays(now, 480), status: "DRAFT", systemDescription: "RENEWAL" }));
+    .send(contractBody(clientId, { validFrom: addDays(now, 120), validTo: addDays(now, 480), status: "DRAFT", systemDescription: "RENEWAL", salesEngineerId: await renewalEngineer() }));
 
   expect(response.status).toBe(201);
   return response.body.data.id as string;

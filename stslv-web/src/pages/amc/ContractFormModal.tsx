@@ -4,7 +4,7 @@ import { useId, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../components/ui'
-import { api, ApiError, errorMessage } from '../../lib/api'
+import { api, ApiError, errorMessage, isForbidden } from '../../lib/api'
 import { fetchClients, queryString } from './amcApi'
 import { formatDate, MONEY_PATTERN } from './amcFormat'
 import { SelectField } from './components'
@@ -124,19 +124,31 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     queryFn: () => api.get<{ id: string; name: string; employeeNo: string | null }[]>('/masters/sales-engineers/options'),
     retry: false,
   })
+  // The link of the contract being edited, or of the contract being renewed.
   const currentLinks = useQuery({
-    queryKey: ['amc', 'contracts', 'masters', contract?.id],
-    queryFn: () => api.get<{ salesEngineer: { id: string; name: string; isActive: boolean } | null }>(`/amc/contracts/${contract?.id}/masters`),
-    enabled: Boolean(contract) && engineers.isSuccess,
+    queryKey: ['amc', 'contracts', 'masters', start?.id],
+    queryFn: () => api.get<{ salesEngineer: { id: string; name: string; isActive: boolean } | null }>(`/amc/contracts/${start?.id}/masters`),
+    enabled: Boolean(start) && engineers.isSuccess,
     retry: false,
   })
-  const currentEngineer = currentLinks.data?.salesEngineer ?? null
+  const currentEngineer = contract ? (currentLinks.data?.salesEngineer ?? null) : null
   const currentEngineerId = currentEngineer?.id ?? ''
+  // A renewal starts with the renewed contract's engineer, like the other copied details, while that engineer is active.
+  const renewedEngineer = renewalOf ? (currentLinks.data?.salesEngineer ?? null) : null
+  const initialEngineerId = renewedEngineer?.isActive ? renewedEngineer.id : currentEngineerId
   const [chosenEngineerId, setChosenEngineerId] = useState<string | null>(null)
-  const engineerId = chosenEngineerId ?? currentEngineerId
-  const engineerPicker = engineers.isSuccess && (!contract || currentLinks.isSuccess)
+  const engineerId = chosenEngineerId ?? initialEngineerId
+  const engineerPicker = engineers.isSuccess && (!start || currentLinks.isSuccess)
+  // Every renewal names an active sales engineer, chosen by the user ("Not linked" is not offered). When the renewed
+  // contract's engineer is no longer active, that earlier assignment is shown but cannot be chosen.
+  const engineerRequired = Boolean(renewalOf)
+  const previousInactive = renewedEngineer !== null && !renewedEngineer.isActive ? renewedEngineer : null
+  // A renewal cannot be saved without the engineer list: say so instead of failing on save.
+  const engineerListUnavailable = engineerRequired && (engineers.isError || currentLinks.isError)
+  const [engineerError, setEngineerError] = useState<string | null>(null)
   const chooseEngineer = (id: string) => {
     setChosenEngineerId(id)
+    setEngineerError(null)
     const engineer = engineers.data?.find((item) => item.id === id)
     // Fills the typed engineer only when it is empty; a typed name is never overwritten.
     if (engineer && !getValues('responsibleEngineer').trim()) {
@@ -184,7 +196,10 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
 
       if (error instanceof ApiError) {
         for (const detail of error.details) {
-          if ((FIELDS as readonly string[]).includes(detail.field)) {
+          if (detail.field === 'salesEngineerId' && engineerPicker) {
+            setEngineerError(detail.message)
+            shownOnField = true
+          } else if ((FIELDS as readonly string[]).includes(detail.field)) {
             setError(detail.field as (typeof FIELDS)[number], { message: detail.message })
             shownOnField = true
           }
@@ -221,6 +236,15 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const onSubmit = handleSubmit((values) => {
     setFailure(null)
 
+    if (engineerRequired && engineerPicker && !engineerId) {
+      setEngineerError(
+        previousInactive
+          ? `Select an active sales engineer. ${previousInactive.name}, the previous engineer, is no longer active.`
+          : 'Select an active sales engineer for the renewal.',
+      )
+      return
+    }
+
     if (isCustom(values.maintenanceFrequency) && (values.customMonths.length === 0 || values.customMonths.length > 11)) {
       setError('customMonths', {
         message: values.customMonths.length === 0 ? 'Select the months in which visits take place.' : 'Select at most 11 months. For a visit every month, choose the monthly frequency.',
@@ -246,8 +270,9 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const busy = save.isPending || preview.isPending
   const termsLocked = contract !== null && contract.status !== 'DRAFT' && contract.status !== 'ACTIVE'
   const options = clients.data ?? []
-  // The contract's own client stays selectable even if it has since been deactivated.
-  const currentMissing = contract !== null && !options.some((client) => client.id === contract.client.id)
+  // The contract's own client stays shown even if it has since been deactivated. Editing keeps it; a renewal cannot be
+  // saved for it (the API refuses an inactive client), so the field says why instead of showing an empty choice.
+  const currentMissing = start !== null && !options.some((client) => client.id === start.client.id)
   const newStatus = useWatch({ control, name: 'status' })
 
   const plan = review?.preview ?? null
@@ -272,7 +297,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             <Button variant="secondary" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" form="amc-contract-form" loading={busy} disabled={clients.isPending}>
+            <Button type="submit" form="amc-contract-form" loading={busy} disabled={clients.isPending || (engineerRequired && !engineerPicker)}>
               {contract ? 'Save changes' : renewalOf ? 'Create renewal' : 'Add contract'}
             </Button>
           </>
@@ -322,7 +347,9 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               error={errors.clientId?.message}
               hint={
                 renewalOf
-                  ? 'A renewal is for the same client as the contract it renews.'
+                  ? currentMissing
+                    ? 'This client is inactive. Reactivate it in Clients before renewing the contract.'
+                    : 'A renewal is for the same client as the contract it renews.'
                   : options.length === 0
                     ? 'No active clients. Add the client in Clients first.'
                     : undefined
@@ -330,7 +357,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               {...register('clientId')}
             >
               <option value="">Select a client…</option>
-              {currentMissing && contract && <option value={contract.client.id}>{contract.client.name} (inactive)</option>}
+              {currentMissing && start && <option value={start.client.id}>{start.client.name} (inactive)</option>}
               {options.map((client) => (
                 <option key={client.id} value={client.id}>
                   {client.name}
@@ -354,14 +381,37 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
 
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField label="Responsible engineer" error={errors.responsibleEngineer?.message} {...register('responsibleEngineer')} />
+            {engineerListUnavailable && (
+              <Alert>
+                {isForbidden(engineers.error) || isForbidden(currentLinks.error)
+                  ? 'A renewal needs a sales engineer, but your role cannot read the sales engineer list. Ask an administrator to renew this contract or to grant access.'
+                  : 'The sales engineer list could not be loaded, and a renewal needs one. Close this form and try again.'}
+              </Alert>
+            )}
             {engineerPicker && (
               <SelectField
                 label="Sales engineer (master list)"
-                hint="Links the contract to the engineer's master record. The typed name above stays as entered."
+                required={engineerRequired}
+                error={engineerError ?? undefined}
+                hint={
+                  previousInactive
+                    ? `Previously assigned: ${previousInactive.name} (inactive). Select an active sales engineer for the renewal.`
+                    : engineerRequired
+                      ? renewedEngineer
+                        ? 'Kept from the contract being renewed. A renewal needs an active sales engineer; you can choose another.'
+                        : 'A renewal needs an active sales engineer.'
+                      : "Links the contract to the engineer's master record. The typed name above stays as entered."
+                }
                 value={engineerId}
                 onChange={(event) => chooseEngineer(event.target.value)}
               >
-                <option value="">Not linked</option>
+                {engineerRequired ? (
+                  <option value="" disabled>
+                    Select a sales engineer…
+                  </option>
+                ) : (
+                  <option value="">Not linked</option>
+                )}
                 {currentEngineer && !currentEngineer.isActive && <option value={currentEngineer.id}>{currentEngineer.name} (inactive)</option>}
                 {(engineers.data ?? []).map((engineer) => (
                   <option key={engineer.id} value={engineer.id}>
@@ -376,7 +426,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               required
               disabled={termsLocked}
               error={errors.maintenanceFrequency?.message}
-              hint="Only active frequencies are offered."
+              hint={frequencies.failed ? 'The frequency list could not be loaded, so only the built-in frequencies are offered.' : 'Only active frequencies are offered.'}
               {...register('maintenanceFrequency')}
             >
               <option value="">Select a frequency…</option>

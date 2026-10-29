@@ -41,7 +41,7 @@ export interface ActivityList {
 export interface ActivityOptions {
   modules: string[]
   entityTypes: string[]
-  users: { id: string; fullName: string }[]
+  users: { id: string; fullName: string; email: string }[]
 }
 
 export const FAILURE_REASON_LABELS: Record<string, string> = {
@@ -65,6 +65,11 @@ const MODULE_LABELS: Record<string, string> = {
   REPORTS: 'Reports',
   USERS: 'Users and roles',
   SETTINGS: 'Settings',
+  // Master lists, each under its own module (before, their changes were filed under Settings).
+  SALES_ENGINEERS: 'Sales engineers',
+  SYSTEM_TYPES: 'System types',
+  DEPARTMENTS: 'Departments',
+  MAINTENANCE_FREQUENCIES: 'Maintenance frequencies',
   HISTORICAL_DATA: 'Historical data',
   SERVICES_SALES: 'Services sales',
 }

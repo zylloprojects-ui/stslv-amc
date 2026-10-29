@@ -1,4 +1,4 @@
-import { ADMIN_ROLE_CODE } from "../../shared/permissions";
+import { hasAdminAccess } from "../../shared/role-model";
 import type { AuthContext } from "../auth/access";
 
 // The status workflow of a suggestion, and who may move it. Checked by the
@@ -39,10 +39,10 @@ const SUBMITTER_TRANSITIONS: Record<SuggestionStatus, readonly SuggestionStatus[
 
 /**
  * Reviewers manage every suggestion. Until a SUGGESTIONS permission module is
- * approved (Roles & Permissions), that is the built-in Admin role only.
+ * approved (Roles & Permissions), that is the Super Admin and Admin roles.
  */
 export function isReviewer(auth: AuthContext): boolean {
-  return auth.roles.some((role) => role.code === ADMIN_ROLE_CODE);
+  return hasAdminAccess(auth.roles);
 }
 
 export type Actor = "REVIEWER" | "SUBMITTER";

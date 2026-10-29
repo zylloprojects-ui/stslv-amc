@@ -8,11 +8,14 @@ import { cx, formatDateTime } from '../../lib/format'
 import { SuggestionStatusBadge } from './SuggestionStatusBadge'
 import {
   CATEGORY_LABELS,
+  DONE_STATUSES,
   noteRequirement,
+  reviewListPath,
   STATUS_ACTIONS,
   STATUS_LABELS,
   SUGGESTIONS_QUERY_KEY,
   type ReviewOptions,
+  userOptionLabel,
   type SuggestionDetail,
   type SuggestionEvent,
   type SuggestionStatus,
@@ -27,6 +30,8 @@ export function SuggestionDetailPage() {
   const queryClient = useQueryClient()
   const key = [...SUGGESTIONS_QUERY_KEY, 'detail', id]
   const suggestion = useQuery({ queryKey: key, queryFn: () => api.get<SuggestionDetail>(`/suggestions/${id}`) })
+  // The last status change made here, confirmed in a banner; tied to the suggestion so it never shows on another one.
+  const [changed, setChanged] = useState<{ id: string; status: SuggestionStatus } | null>(null)
 
   /** Shows the updated suggestion at once and refreshes the lists and alerts behind it. */
   const saved = (next: SuggestionDetail) => {
@@ -34,6 +39,10 @@ export function SuggestionDetailPage() {
     void queryClient.invalidateQueries({ queryKey: [...SUGGESTIONS_QUERY_KEY, 'mine'] })
     void queryClient.invalidateQueries({ queryKey: [...SUGGESTIONS_QUERY_KEY, 'review'] })
     void queryClient.invalidateQueries({ queryKey: ['notifications'] })
+  }
+  const statusSaved = (next: SuggestionDetail) => {
+    saved(next)
+    setChanged({ id: next.id, status: next.status })
   }
   /** A 409 means someone else changed it meanwhile: reload so the page shows the current state. */
   const refreshOnConflict = (error: unknown) => {
@@ -67,6 +76,7 @@ export function SuggestionDetailPage() {
 
   const data = suggestion.data
   const reviewer = data.access.reviewer
+  const notice = changed?.id === data.id ? changed.status : null
 
   return (
     <>
@@ -81,13 +91,30 @@ export function SuggestionDetailPage() {
               </Link>
             )}
             {reviewer && (
-              <Link to="/admin/suggestions" className={BANNER_LINK}>
+              <Link to={reviewListPath(data.status)} className={BANNER_LINK}>
                 Suggestions Review
               </Link>
             )}
           </>
         }
       />
+
+      {notice && (
+        <div className="mb-5">
+          <Alert tone="success" onDismiss={() => setChanged(null)}>
+            {data.reference} is now <strong>{STATUS_LABELS[notice]}</strong>.
+            {reviewer && DONE_STATUSES.includes(notice) && (
+              <>
+                {' '}
+                It no longer shows under Open in Suggestions Review; it stays listed under All with its history.{' '}
+                <Link to={reviewListPath(notice)} className="font-medium underline">
+                  View in All suggestions
+                </Link>
+              </>
+            )}
+          </Alert>
+        </div>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="min-w-0 space-y-5 lg:col-span-2">
@@ -147,7 +174,7 @@ export function SuggestionDetailPage() {
         </div>
 
         <div className="min-w-0 space-y-5">
-          {data.access.transitions.length > 0 && <StatusPanel suggestion={data} onSaved={saved} onError={refreshOnConflict} />}
+          {data.access.transitions.length > 0 && <StatusPanel suggestion={data} onSaved={statusSaved} onError={refreshOnConflict} />}
           {data.access.canAssign && <AssignPanel suggestion={data} onSaved={saved} />}
         </div>
       </div>
@@ -356,9 +383,9 @@ function AssignPanel({ suggestion, onSaved }: PanelProps) {
           hint="Only active Admin users review suggestions."
         >
           <option value="">Not assigned</option>
-          {(options.data?.reviewers ?? []).map((user) => (
+          {(options.data?.reviewers ?? []).map((user, _, users) => (
             <option key={user.id} value={user.id}>
-              {user.fullName}
+              {userOptionLabel(user, users)}
             </option>
           ))}
           {/* A former reviewer stays shown until the assignment is changed. */}

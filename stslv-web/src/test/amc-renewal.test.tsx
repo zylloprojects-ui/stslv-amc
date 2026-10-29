@@ -87,7 +87,8 @@ function renewalApi(user: SessionUser = ADMIN, queue: () => ReturnType<typeof ok
       if (request.path === '/notifications') return ok({ items: [], unreadCount: 0 })
       if (request.path === '/amc/renewals/queue') return queue()
       if (request.path === '/amc/reports/renewals') return ok(HISTORY)
-      if (request.path === '/masters/sales-engineers/options' || request.path === '/masters/maintenance-frequencies/options') return ok([])
+      if (request.path === '/masters/sales-engineers/options') return ok([{ id: '7', name: 'Sara Sales', employeeNo: null }])
+      if (request.path === '/masters/maintenance-frequencies/options') return ok([])
       if (request.method === 'POST' && request.path === '/amc/contracts/41/renewals') return ok({ ...DRAFT_RENEWAL, id: '80', scheduleChange: null }, 201)
       return undefined
     },
@@ -173,10 +174,12 @@ describe('AMC Renewal page', () => {
 
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2026-11-06')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-11-05')
+    // Every renewal names an active sales engineer.
+    await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '7')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/41/renewals')).toHaveLength(1))
-    expect(api.find('POST', '/amc/contracts/41/renewals')[0]?.body).toMatchObject({ clientId: '10', validFrom: '2026-11-06', validTo: '2027-11-05', status: 'DRAFT' })
+    expect(api.find('POST', '/amc/contracts/41/renewals')[0]?.body).toMatchObject({ clientId: '10', validFrom: '2026-11-06', validTo: '2027-11-05', status: 'DRAFT', salesEngineerId: '7' })
     expect(await screen.findByText(/Renewal AMC-0080 created for AMC-0041/)).toBeInTheDocument()
   })
 

@@ -2,6 +2,7 @@ import { pool } from "../../config/database";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, isUniqueViolation, notFound, validationError, type ErrorDetail } from "../../shared/errors";
+import { canRead } from "../../shared/permissions";
 import { escapeLike } from "../../shared/validation";
 import type { InvoiceEligibility } from "../amc/amc.constants";
 import type { AuthContext } from "../auth/access";
@@ -569,7 +570,7 @@ export interface BillableProject {
 }
 
 export interface BillableWork {
-  /** Null without AMC_SCHEDULE:VIEW: visit amounts are not disclosed through Invoice Tracking. */
+  /** Null without AMC_SCHEDULE View or data-only Read: visit amounts are not disclosed through Invoice Tracking otherwise. */
   amcVisits: { items: BillableVisit[]; pendingCount: number; pendingAmount: string } | null;
   /** Null without PROJECTS:VIEW: job values are not disclosed through Invoice Tracking. */
   projects: { items: BillableProject[]; pendingCount: number; pendingValue: string } | null;
@@ -596,7 +597,7 @@ export async function listBillableWork(auth: AuthContext, query: ListBillableQue
 
   const work: BillableWork = { amcVisits: null, projects: null };
 
-  if (auth.permissions.has("AMC_SCHEDULE:VIEW")) {
+  if (canRead(auth.permissions, "AMC_SCHEDULE")) {
     const result = await pool.query<{
       id: string;
       amc_contract_id: string;
@@ -749,7 +750,7 @@ export async function getInvoiceSummary(auth: AuthContext): Promise<InvoiceSumma
     projects: null,
   };
 
-  if (auth.permissions.has("AMC_SCHEDULE:VIEW")) {
+  if (canRead(auth.permissions, "AMC_SCHEDULE")) {
     const result = await pool.query<{ pending_count: number; pending_amount: string; invoiced_count: number; invoiced_amount: string }>(
       `SELECT count(*) FILTER (WHERE ${PENDING_VISIT})::int AS pending_count,
               COALESCE(sum(v.visit_amount) FILTER (WHERE ${PENDING_VISIT}), 0)::numeric(18,3) AS pending_amount,

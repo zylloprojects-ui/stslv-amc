@@ -5,7 +5,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
@@ -343,6 +343,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={clientId} onChange={(event) => change(setClientId)(event.target.value)} className={className}>
                   <option value="">All clients</option>
+                  <OptionsNotice source={options} count={options.data?.clients.length ?? 0} empty="No clients with current AMC visits" />
                   {(options.data?.clients ?? []).map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -355,6 +356,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={(event) => change(setSalesEngineerId)(event.target.value)} className={className}>
                   <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -367,6 +369,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={systemTypeId} onChange={(event) => change(setSystemTypeId)(event.target.value)} className={className}>
                   <option value="">All systems</option>
+                  <OptionsNotice source={options} count={options.data?.systemTypes.length ?? 0} empty="No system types linked to current AMC visits" />
                   {(options.data?.systemTypes ?? []).map((type) => (
                     <option key={type.id} value={type.id}>
                       {type.name}
@@ -379,6 +382,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={frequency} onChange={(event) => change(setFrequency)(event.target.value)} className={className}>
                   <option value="">All frequencies</option>
+                  <OptionsNotice source={options} count={options.data?.frequencies.length ?? 0} empty="No frequencies on current AMC visits" />
                   {(options.data?.frequencies ?? []).map((item) => (
                     <option key={item.code} value={item.code}>
                       {item.label}
@@ -403,6 +407,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={year} onChange={(event) => change(setYear)(event.target.value)} className={className}>
                   <option value="">All years</option>
+                  <OptionsNotice source={options} count={options.data?.years.length ?? 0} empty="No years with current AMC visits" />
                   {(options.data?.years ?? []).map((value) => (
                     <option key={value} value={String(value)}>
                       {value}

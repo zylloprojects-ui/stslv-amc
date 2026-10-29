@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { forbidden } from "../shared/errors";
-import { permissionKey, type Action, type Module } from "../shared/permissions";
+import { canRead, permissionKey, type Action, type Module } from "../shared/permissions";
 import { requireAuth } from "./authenticate";
 
 /** Requires the signed-in user to hold the given permission. Use after authenticate. */
@@ -26,6 +26,20 @@ export function authorizeOnAny(modules: Module[], ...actions: Action[]): Request
     const held = requireAuth(req).permissions;
 
     if (!modules.some((module) => actions.every((action) => held.has(permissionKey(module, action))))) {
+      throw forbidden();
+    }
+
+    next();
+  };
+}
+
+/**
+ * Data-only read: View of the module, or its Read grant. For a route of another section's page
+ * that shows this module's data (Accounts shows visit details). Use after authenticate.
+ */
+export function authorizeRead(module: Module): RequestHandler {
+  return (req, _res, next) => {
+    if (!canRead(requireAuth(req).permissions, module)) {
       throw forbidden();
     }
 

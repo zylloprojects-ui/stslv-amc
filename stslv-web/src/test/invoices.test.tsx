@@ -295,9 +295,9 @@ describe('recording an invoice', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Record Invoice' }))
     const dialog = await screen.findByRole('dialog', { name: 'Record Invoice' })
 
-    // Only clients with completed work waiting are offered.
+    // Only clients with completed work waiting are offered, in alphabetical order.
     const client = await within(dialog).findByLabelText(/^Client/)
-    expect(within(client).getAllByRole('option').map((option) => option.textContent)).toEqual(['Select a client…', 'Test Hotel', 'Other Mall'])
+    expect(within(client).getAllByRole('option').map((option) => option.textContent)).toEqual(['Select a client…', 'Other Mall', 'Test Hotel'])
     await userEvent.selectOptions(client, '10')
 
     const project = await within(dialog).findByRole('checkbox', { name: /GPSA0001 — Fire alarm panel replacement/ })
@@ -582,5 +582,34 @@ describe('opening Invoice Tracking from another page for one visit', () => {
 
     expect(await screen.findByText('Recording an invoice needs the Invoices create permission.')).toBeInTheDocument()
     expect(screen.queryByRole('dialog', { name: 'Record Invoice' })).not.toBeInTheDocument()
+  })
+})
+
+describe('recording an invoice, for a role that cannot see all the work', () => {
+  const openRecord = async (user: SessionUser, seed: Seed = {}) => {
+    invoicesApi(user, seed)
+    renderApp('/invoices')
+    await userEvent.click(await screen.findByRole('button', { name: 'Record Invoice' }))
+
+    return within(await screen.findByRole('dialog', { name: 'Record Invoice' }))
+  }
+
+  it('says the work is out of the role’s reach instead of saying there is none', async () => {
+    const dialog = await openRecord({ ...INVOICING, permissions: ['DASHBOARD:VIEW', 'INVOICES:VIEW', 'INVOICES:CREATE'] })
+
+    expect(await dialog.findByText(/Your role cannot see AMC visits or projects/)).toBeInTheDocument()
+    expect(dialog.queryByText(/No completed work is waiting/)).not.toBeInTheDocument()
+  })
+
+  it('names the part that is hidden when only one kind of work is visible', async () => {
+    const dialog = await openRecord({ ...INVOICING, permissions: ['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW', 'INVOICES:VIEW', 'INVOICES:CREATE'] }, { visits: [] })
+
+    expect(await dialog.findByText('No completed AMC visit is waiting for an invoice. Projects are not listed: your role cannot view Projects.')).toBeInTheDocument()
+  })
+
+  it('still says plainly that nothing is waiting when the role sees everything', async () => {
+    const dialog = await openRecord(INVOICING, { visits: [], projects: [] })
+
+    expect(await dialog.findByText('No completed work is waiting for an invoice, so there is nothing to record an invoice against.')).toBeInTheDocument()
   })
 })

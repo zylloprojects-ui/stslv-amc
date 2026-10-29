@@ -192,14 +192,14 @@ export async function activityFilterOptions() {
   const [modules, entityTypes, users] = await Promise.all([
     pool.query<{ module: string }>("SELECT DISTINCT module FROM activity_logs ORDER BY module"),
     pool.query<{ entity_type: string }>("SELECT DISTINCT entity_type FROM activity_logs ORDER BY entity_type"),
-    pool.query<{ id: string; full_name: string }>(
-      "SELECT u.id, u.full_name FROM users u WHERE EXISTS (SELECT 1 FROM activity_logs l WHERE l.user_id = u.id) ORDER BY lower(u.full_name)"
+    pool.query<{ id: string; full_name: string; email: string }>(
+      "SELECT u.id, u.full_name, u.email FROM users u WHERE EXISTS (SELECT 1 FROM activity_logs l WHERE l.user_id = u.id) ORDER BY lower(u.full_name), lower(u.email)"
     ),
   ]);
 
   return {
     modules: modules.rows.map((row) => row.module),
     entityTypes: entityTypes.rows.map((row) => row.entity_type),
-    users: users.rows.map((row) => ({ id: row.id, fullName: row.full_name })),
+    users: users.rows.map((row) => ({ id: row.id, fullName: row.full_name, email: row.email })),
   };
 }

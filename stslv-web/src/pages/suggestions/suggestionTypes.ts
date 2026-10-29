@@ -39,6 +39,14 @@ export function noteRequirement(from: SuggestionStatus, to: SuggestionStatus): '
   return null
 }
 
+/** Statuses the review list's Open tab leaves out, as the API's view=OPEN filter does. */
+export const DONE_STATUSES: readonly SuggestionStatus[] = ['RESOLVED', 'CLOSED']
+
+/** Suggestions Review, on the tab that still lists a suggestion with this status. */
+export function reviewListPath(status: SuggestionStatus): string {
+  return DONE_STATUSES.includes(status) ? '/admin/suggestions?view=all' : '/admin/suggestions'
+}
+
 export interface UserRef {
   id: string
   fullName: string
@@ -101,9 +109,21 @@ export interface ReviewList extends SuggestionList {
   counts: Record<SuggestionStatus, number>
 }
 
+/** A person in the review lists. The email tells apart two accounts with the same name. */
+export interface UserOption extends UserRef {
+  email: string
+}
+
+/** The name, with the email added only when another entry in the same list has the same name. */
+export function userOptionLabel(user: UserOption, list: readonly UserOption[]): string {
+  const clash = list.some((other) => other.id !== user.id && other.fullName.trim().toLowerCase() === user.fullName.trim().toLowerCase())
+
+  return clash ? `${user.fullName} (${user.email})` : user.fullName
+}
+
 export interface ReviewOptions {
-  submitters: UserRef[]
-  reviewers: UserRef[]
+  submitters: UserOption[]
+  reviewers: UserOption[]
 }
 
 export const SUGGESTIONS_QUERY_KEY = ['suggestions'] as const

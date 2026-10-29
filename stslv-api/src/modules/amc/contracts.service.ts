@@ -673,6 +673,29 @@ async function assertRenewable(db: Queryable, sourceId: string, clientId: string
   return source;
 }
 
+/**
+ * Every renewal names an active sales engineer, chosen by the user: it is never saved "not linked", and a renewed
+ * contract's engineer who is no longer active is never replaced by someone the user did not choose. Whether the
+ * chosen engineer is active is checked when the link is written (applyContractMasters).
+ */
+async function assertRenewalEngineerChosen(db: Queryable, sourceId: string): Promise<void> {
+  if (!(await schemaHas(["amc_contracts.sales_engineer_id", "sales_engineers"]))) {
+    return;
+  }
+
+  const result = await db.query<{ name: string; is_active: boolean }>(
+    "SELECT e.name, e.is_active FROM amc_contracts c JOIN sales_engineers e ON e.id = c.sales_engineer_id WHERE c.id = $1",
+    [sourceId]
+  );
+  const previous = result.rows[0];
+  const message =
+    previous && !previous.is_active
+      ? `${previous.name}, the sales engineer of the contract being renewed, is no longer active. Select an active sales engineer.`
+      : "Select an active sales engineer for the renewal.";
+
+  throw validationError("Select an active sales engineer for the renewal.", [{ field: "salesEngineerId", message }]);
+}
+
 async function linkRenewal(db: Queryable, auth: AuthContext, source: Contract, renewal: Contract): Promise<void> {
   await db.query("UPDATE amc_contracts SET renewed_from_id = $1 WHERE id = $2", [source.id, renewal.id]);
   await logActivity(db, {
@@ -722,6 +745,9 @@ export function createContract(
 
     // A renewal (migration 0072): the source is locked and checked before the new contract is added.
     const source = options.renewedFromId ? await assertRenewable(client, options.renewedFromId, input.clientId) : null;
+    if (source && !input.salesEngineerId) {
+      await assertRenewalEngineerChosen(client, source.id);
+    }
     // A new contract or renewal may only choose an active frequency; custom months only for a custom one.
     const months = monthsOf(monthsKey(input.customMonths));
     await resolveTerms(client, input.maintenanceFrequency, months, true);

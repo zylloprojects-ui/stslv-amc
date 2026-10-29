@@ -2,7 +2,8 @@ import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, isUniqueViolation, notFound, validationError } from "../../shared/errors";
-import { ADMIN_ROLE_CODE, type PermissionKey } from "../../shared/permissions";
+import { ADMIN_ROLE_CODE, holdsPermission, type PermissionKey } from "../../shared/permissions";
+import { hasAdminAccess, isPrivilegedRole, isSuperAdmin } from "../../shared/role-model";
 import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth/access";
 import { hashPassword } from "../auth/password";
 import { revokeResetTokens } from "../auth/password-reset.service";
@@ -93,8 +94,8 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
     return;
   }
 
-  const roles = await db.query<{ id: string; name: string; is_active: boolean }>(
-    "SELECT id, name, is_active FROM roles WHERE id = ANY($1::bigint[])",
+  const roles = await db.query<{ id: string; code: string; name: string; is_active: boolean }>(
+    "SELECT id, code, name, is_active FROM roles WHERE id = ANY($1::bigint[])",
     [roleIds]
   );
 
@@ -102,6 +103,12 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
     throw validationError("One or more selected roles do not exist.", [
       { field: "roleIds", message: "One or more selected roles do not exist." },
     ]);
+  }
+
+  const privileged = roles.rows.find((role) => isPrivilegedRole(role.code));
+
+  if (privileged && !isSuperAdmin(auth.roles)) {
+    throw forbidden(`Only Super Admin can assign the ${privileged.name} role.`);
   }
 
   const inactive = roles.rows.find((role) => !role.is_active);
@@ -119,7 +126,7 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
      WHERE rp.role_id = ANY($1::bigint[])`,
     [roleIds]
   );
-  const beyond = permissions.rows.find((row) => !auth.permissions.has(row.key));
+  const beyond = permissions.rows.find((row) => !holdsPermission(auth.permissions, row.key));
 
   if (beyond) {
     throw forbidden(`You cannot assign the role "${beyond.name}" because it grants permissions you do not hold.`);
@@ -131,16 +138,28 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
  * roles of) someone whose permissions do not exceed their own.
  */
 async function assertCanManageUser(auth: AuthContext, db: Queryable, targetUserId: string): Promise<void> {
+  // Super Admin and Admin accounts are managed by Super Admin only, whatever permissions Admin is given.
+  if (!isSuperAdmin(auth.roles)) {
+    const held = await db.query<{ code: string }>(
+      "SELECT r.code FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = $1",
+      [targetUserId]
+    );
+
+    if (held.rows.some((row) => isPrivilegedRole(row.code))) {
+      throw forbidden(PRIVILEGED_ACCOUNT_ONLY);
+    }
+  }
+
   const targetPermissions = await loadUserPermissions(db, targetUserId);
 
   for (const key of targetPermissions) {
-    if (!auth.permissions.has(key)) {
+    if (!holdsPermission(auth.permissions, key)) {
       throw forbidden("You cannot manage a user who holds permissions you do not hold.");
     }
   }
 }
 
-/** Active users, other than the given one, who hold the active Admin role. */
+/** Active users, other than the given one, who hold the active Super Admin role (code ADMIN). */
 async function countOtherActiveAdmins(db: Queryable, excludingUserId: string): Promise<number> {
   const result = await db.query<{ count: number }>(
     `SELECT count(DISTINCT u.id)::int AS count
@@ -160,6 +179,8 @@ async function lockUser(db: Queryable, id: string): Promise<void> {
 }
 
 const isAdmin = (user: User) => user.roles.some((role) => role.code === ADMIN_ROLE_CODE);
+
+const PRIVILEGED_ACCOUNT_ONLY = "Only Super Admin can manage Super Admin and Admin accounts.";
 
 const ROLE_REQUIRED_TO_APPROVE = "Assign a role before approving this user.";
 const ONE_ROLE_TO_APPROVE = "This user has more than one role. Choose one role before approving.";
@@ -283,7 +304,7 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
     }
 
     if (!isActive && isAdmin(before) && (await countOtherActiveAdmins(client, id)) === 0) {
-      throw conflict("This is the only active Admin. Assign the Admin role to another active user first.");
+      throw conflict("This is the only active Super Admin. Assign the Super Admin role to another active user first.");
     }
 
     // Activating an account requested from the Sign up page is its approval.
@@ -399,7 +420,7 @@ export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): 
       removed.some((role) => role.code === ADMIN_ROLE_CODE) &&
       (await countOtherActiveAdmins(client, id)) === 0
     ) {
-      throw conflict("This is the only active Admin. Assign the Admin role to another active user first.");
+      throw conflict("This is the only active Super Admin. Assign the Super Admin role to another active user first.");
     }
 
     await client.query("DELETE FROM user_roles WHERE user_id = $1 AND role_id = ANY($2::bigint[])", [
@@ -435,13 +456,13 @@ export interface IssuedTemporaryPassword {
 
 /**
  * Replaces a user's password with a random temporary one that must be changed at
- * the next sign-in, within TEMPORARY_PASSWORD_MINUTES. Only an Admin may do this,
+ * the next sign-in, within TEMPORARY_PASSWORD_MINUTES. Only Super Admin or Admin may do this (Admin not for Super Admin or Admin accounts),
  * never for their own account, and only for an active account. The user is signed
  * out everywhere, and an earlier temporary password stops working.
  */
 export async function issueTemporaryPassword(auth: AuthContext, id: string): Promise<IssuedTemporaryPassword> {
   // On top of USERS:EDIT (checked by the route): a role granted user editing does not get this.
-  if (!auth.roles.some((role) => role.code === ADMIN_ROLE_CODE)) {
+  if (!hasAdminAccess(auth.roles)) {
     throw forbidden("Only an administrator can issue a temporary password.");
   }
   if (id === auth.user.id) {

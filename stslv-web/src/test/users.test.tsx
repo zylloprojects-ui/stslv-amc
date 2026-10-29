@@ -8,7 +8,7 @@ const ROLES: Role[] = [
   {
     id: '1',
     code: 'ADMIN',
-    name: 'Admin',
+    name: 'Super Admin',
     description: 'Full access.',
     isActive: true,
     userCount: 1,
@@ -31,7 +31,7 @@ const ROLES: Role[] = [
 ]
 
 const USERS: User[] = [
-  { id: '1', email: 'admin@example.com', fullName: 'Asha Admin', isActive: true, approvalStatus: 'APPROVED', lastLoginAt: '2026-10-01T08:00:00.000Z', createdAt: '2026-10-01T07:00:00.000Z', roles: [{ id: '1', code: 'ADMIN', name: 'Admin' }] },
+  { id: '1', email: 'admin@example.com', fullName: 'Asha Admin', isActive: true, approvalStatus: 'APPROVED', lastLoginAt: '2026-10-01T08:00:00.000Z', createdAt: '2026-10-01T07:00:00.000Z', roles: [{ id: '1', code: 'ADMIN', name: 'Super Admin' }] },
   { id: '2', email: 'accountant@example.com', fullName: 'Arun Accountant', isActive: true, approvalStatus: 'APPROVED', lastLoginAt: null, createdAt: '2026-10-01T07:00:00.000Z', roles: [{ id: '2', code: 'ACCOUNTANT', name: 'Accountant' }] },
 ]
 
@@ -508,7 +508,7 @@ describe('roles and permissions', () => {
     expect(adminBox).toBeDisabled()
     expect(screen.queryByRole('button', { name: 'Save permissions' })).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Accountant' }))
+    await userEvent.click(screen.getByRole('tab', { name: 'Accountant' }))
 
     expect(await screen.findByRole('checkbox', { name: 'Clients: View' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Clients: Edit' })).not.toBeChecked()
@@ -520,7 +520,7 @@ describe('roles and permissions', () => {
     renderApp('/admin/users')
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Roles & Permissions' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Accountant' }))
+    await userEvent.click(await screen.findByRole('tab', { name: 'Accountant' }))
 
     expect(screen.getByRole('button', { name: 'Save permissions' })).toBeDisabled()
     await userEvent.click(screen.getByRole('checkbox', { name: 'Clients: Edit' }))
@@ -542,7 +542,7 @@ describe('roles and permissions', () => {
     renderApp('/admin/users')
 
     await userEvent.click(await screen.findByRole('tab', { name: 'Roles & Permissions' }))
-    await userEvent.click(await screen.findByRole('button', { name: 'Accountant' }))
+    await userEvent.click(await screen.findByRole('tab', { name: 'Accountant' }))
 
     expect(await screen.findByRole('checkbox', { name: 'Clients: View' })).toBeEnabled()
     expect(screen.getByRole('checkbox', { name: 'Clients: Edit' })).toBeDisabled()
@@ -615,7 +615,7 @@ describe('roles and permissions drawn from the permission catalog', () => {
 
   async function openAccountant() {
     renderApp('/admin/roles')
-    await userEvent.click(await screen.findByRole('button', { name: 'Accountant' }))
+    await userEvent.click(await screen.findByRole('tab', { name: 'Accountant' }))
     await screen.findByRole('checkbox', { name: 'AMC Contracts: View' })
   }
 
@@ -625,11 +625,14 @@ describe('roles and permissions drawn from the permission catalog', () => {
 
     expect(screen.getByRole('checkbox', { name: 'Dashboard: View' })).toBeEnabled()
     expect(screen.queryByRole('checkbox', { name: 'Dashboard: Create' })).not.toBeInTheDocument()
-    expect(screen.getByText('Dashboard: Create is not used')).toBeInTheDocument()
+    // An action the module does not have is a plain empty cell: no dash, no label.
+    expect(screen.getByText('Dashboard: Create is not available for this role')).toHaveClass('sr-only')
+    expect(screen.queryByText('—')).not.toBeInTheDocument()
+    expect(screen.queryByText(/no effect|not applicable|N\/A/i)).not.toBeInTheDocument()
     expect(screen.queryByRole('checkbox', { name: 'AMC Contracts: Approve' })).not.toBeInTheDocument()
     expect(screen.getByText('AMC Renewal')).toBeInTheDocument()
     expect(screen.getByText('Cancel contracts (nothing is deleted; also needs Edit)')).toBeInTheDocument()
-    expect(screen.getByText(/Admin role only:/).parentElement).toHaveTextContent('Audit Log')
+    expect(screen.getByText(/Super Admin and Admin only:/).parentElement).toHaveTextContent('Audit Log')
   })
 
   it('confirms a save after the roles list reloads with the new permissions, and keeps them ticked', async () => {
@@ -648,26 +651,27 @@ describe('roles and permissions drawn from the permission catalog', () => {
     expect(screen.queryByText('Permissions saved. They apply immediately.')).not.toBeInTheDocument()
   })
 
-  it('keeps grants on retired modules, lets them be removed, and grants nothing new there', async () => {
+  it('keeps grants on legacy modules, lets them be removed, and grants nothing new there', async () => {
     const api = catalogApi()
     await openAccountant()
 
-    expect(screen.getByText(/this role holds 2 grants, kept unchanged/)).toBeInTheDocument()
+    expect(screen.getByText('Legacy modules', { selector: 'summary' })).toHaveTextContent('Legacy modules · 1 grant held')
     expect(screen.getByRole('checkbox', { name: 'Expenses: Create' })).toBeChecked()
     expect(screen.getByRole('checkbox', { name: 'Expenses: Create' })).toBeEnabled()
-    expect(screen.getByRole('checkbox', { name: 'Expenses: View' })).toBeDisabled()
-    // REPORTS uses no action: the grant is shown as having no effect, and can only be removed.
-    expect(screen.getByRole('checkbox', { name: 'Reports: View (not used)' })).toBeChecked()
+    // Not held, and nothing new is granted on a legacy module: an empty cell, no checkbox.
+    expect(screen.queryByRole('checkbox', { name: 'Expenses: View' })).not.toBeInTheDocument()
+    // REPORTS uses no action: no row; its old grant is kept as it is.
+    expect(screen.queryByRole('checkbox', { name: /^Reports:/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Grant all permissions for Expenses' })).not.toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Reports: View (not used)' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Expenses: Create' }))
     await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
 
     await waitFor(() => expect(api.find('PUT', '/roles/2/permissions')).toHaveLength(1))
     expect(api.find('PUT', '/roles/2/permissions')[0]?.body).toEqual({
       permissions: [
         { module: 'AMC_CONTRACTS', action: 'VIEW' },
-        { module: 'EXPENSES', action: 'CREATE' },
+        { module: 'REPORTS', action: 'VIEW' },
       ],
     })
   })

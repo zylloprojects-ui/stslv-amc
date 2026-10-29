@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { initialsOf } from '../lib/format'
+import { signOutSafely } from '../lib/leaveGuard'
 
 function MenuIcon({ children }: { children: React.ReactNode }) {
   return (
@@ -125,7 +126,7 @@ export function UserMenu() {
           </div>
 
           <div className="border-t border-slate-200 py-1">
-            <button type="button" onClick={auth.logout} className={`${ITEM} font-medium !text-red-600 hover:!bg-red-50`}>
+            <button type="button" onClick={() => void signOutSafely(auth.logout)} className={`${ITEM} font-medium !text-red-600 hover:!bg-red-50`}>
               <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
                 <path d="M9 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H9M15 8l4 4-4 4M19 12H9" strokeLinecap="round" strokeLinejoin="round" />
               </svg>

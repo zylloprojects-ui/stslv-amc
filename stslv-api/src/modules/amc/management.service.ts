@@ -1,4 +1,5 @@
 import { pool } from "../../config/database";
+import { canRead } from "../../shared/permissions";
 import { schemaHas } from "../../shared/schema-features";
 import type { AuthContext } from "../auth/access";
 import {
@@ -284,7 +285,7 @@ export interface AmcManagementSummary {
   contracts: NonNullable<OperationsKpis["contracts"]>;
   /** Group B. Requires AMC_SCHEDULE:VIEW or AMC_EXECUTION:VIEW; amounts need AMC_SCHEDULE:VIEW. */
   schedule: ScheduleFigures | null;
-  /** Group C. Requires INVOICES:VIEW. */
+  /** Group C. Requires INVOICES:VIEW or INVOICES:READ. */
   invoices: InvoiceFigures | null;
   expiry: ExpiryFigures & {
     /** Active contracts ending within 90 days or already past validity, soonest first (the dashboard's list), with their band. */
@@ -297,7 +298,8 @@ export interface AmcManagementSummary {
 export async function getAmcManagementSummary(auth: AuthContext): Promise<AmcManagementSummary> {
   const canVisits = canViewVisitCounts(auth);
   const canAmounts = auth.permissions.has("AMC_SCHEDULE:VIEW");
-  const canInvoices = auth.permissions.has("INVOICES:VIEW");
+  // Data only: View, or the data-only Read that opens no Finance page.
+  const canInvoices = canRead(auth.permissions, "INVOICES");
   const renewals = await schemaHas(["amc_contracts.renewed_from_id"]);
 
   const [clock, contracts, schedule, invoices, expiry, list, recent] = await Promise.all([

@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Route, RouterProvider, Routes } from 'react-router-dom'
+import { appRouteObjects } from './appRoutes'
 import { AuthProvider } from './auth/AuthProvider'
-import { ProtectedRoute, RequireAdmin, RequireAnyPermission, RequirePermission } from './auth/guards'
+import { ProtectedRoute, RequireAdmin, RequireAnyPermission, RequireDataRead, RequirePermission } from './auth/guards'
 import { AppLayout } from './layout/AppLayout'
 import { NAVIGATION } from './layout/navigation'
 import { ApiError } from './lib/api'
@@ -228,11 +229,11 @@ export function AppRoutes() {
             path="/amc/master-status"
             element={
               <RequirePermission module="AMC_SCHEDULE">
-                <RequirePermission module="INVOICES">
+                <RequireDataRead module="INVOICES">
                   <RequirePermission module="SERVICES_SALES">
                     <MasterStatusPage />
                   </RequirePermission>
-                </RequirePermission>
+                </RequireDataRead>
               </RequirePermission>
             }
           />
@@ -240,9 +241,9 @@ export function AppRoutes() {
             path="/finance/accounts"
             element={
               <RequirePermission module="INVOICES">
-                <RequirePermission module="AMC_SCHEDULE">
+                <RequireDataRead module="AMC_SCHEDULE">
                   <AccountsPage />
-                </RequirePermission>
+                </RequireDataRead>
               </RequirePermission>
             }
           />
@@ -328,11 +329,8 @@ export function AppRoutes() {
 }
 
 export default function App() {
-  return (
-    <BrowserRouter>
-      <AppProviders>
-        <AppRoutes />
-      </AppProviders>
-    </BrowserRouter>
-  )
+  // A data router, so pages with unsaved changes can block any navigation, including Back/Forward.
+  const [router] = useState(() => createBrowserRouter(appRouteObjects()))
+
+  return <RouterProvider router={router} />
 }

@@ -3,14 +3,14 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
-import { Alert, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { initialsOf } from '../../lib/format'
 import type { DashboardSummary } from '../dashboard/metrics'
 import { fetchClients, queryString } from './amcApi'
 import { currentMonth, formatDate, formatMoney, monthLabel, monthRange, shiftMonth } from './amcFormat'
-import { EligibilityPill, Filter, Pager, PlannedDate, VisitStatusPill } from './components'
+import { EligibilityPill, Filter, Pager, PlannedDate, RestrictedFilter, VisitStatusPill } from './components'
 import {
   INVOICE_ELIGIBILITIES,
   INVOICE_ELIGIBILITY_LABELS,
@@ -123,7 +123,8 @@ export function AmcSchedulePage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const canViewClients = auth.can('CLIENTS', 'VIEW')
+  // The client filter needs the client list only: data-only read is enough (it opens no Clients page).
+  const canViewClients = auth.canRead('CLIENTS')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const canEdit = auth.can('AMC_SCHEDULE', 'EDIT')
   // Start, complete, postpone or cancel: the execution permissions, checked again by the API.
@@ -267,11 +268,12 @@ export function AmcSchedulePage() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {canViewClients && (
+              {canViewClients ? (
                 <Filter label="Client">
                   {(id, className) => (
                     <select id={id} value={clientId} onChange={(event) => change(setClientId)(event.target.value)} className={className}>
                       <option value="">All clients</option>
+                      <OptionsNotice source={clients} count={clients.data?.length ?? 0} empty="No clients yet" />
                       {(clients.data ?? []).map((client) => (
                         <option key={client.id} value={client.id}>
                           {client.name}
@@ -280,6 +282,8 @@ export function AmcSchedulePage() {
                     </select>
                   )}
                 </Filter>
+              ) : (
+                <RestrictedFilter label="Client" reason="Not available for your role (needs the client list)" />
               )}
               <Filter label="Status">
                 {(id, className) => (
@@ -293,11 +297,12 @@ export function AmcSchedulePage() {
                   </select>
                 )}
               </Filter>
-              {canViewContracts && (
+              {canViewContracts ? (
                 <Filter label="System">
                   {(id, className) => (
                     <select id={id} value={system} onChange={(event) => change(setSystem)(event.target.value)} className={className}>
                       <option value="">All systems</option>
+                      <OptionsNotice source={systems} count={systems.data?.length ?? 0} empty="No systems on AMC contracts yet" />
                       {(systems.data ?? []).map((value) => (
                         <option key={value} value={value}>
                           {value}
@@ -306,6 +311,8 @@ export function AmcSchedulePage() {
                     </select>
                   )}
                 </Filter>
+              ) : (
+                <RestrictedFilter label="System" reason="Not available for your role (needs AMC Contracts)" />
               )}
               <Filter label="Invoicing">
                 {(id, className) => (

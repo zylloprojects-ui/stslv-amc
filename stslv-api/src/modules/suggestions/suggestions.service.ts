@@ -226,13 +226,16 @@ export async function listForReview(query: ListManageQuery) {
   return { ...list, counts: byStatus };
 }
 
-/** Filter choices for the review list: everyone who has submitted, and the reviewers who can be assigned. */
+/**
+ * Filter choices for the review list: everyone who has submitted, and the reviewers who can be assigned. Each carries
+ * the email, so two accounts with the same name can be told apart. Sorted by name regardless of letter case.
+ */
 export async function getReviewOptions() {
   const [submitters, reviewers] = await Promise.all([
-    pool.query<UserRef>(
-      `SELECT u.id, u.full_name AS "fullName" FROM users u
+    pool.query<UserRef & { email: string }>(
+      `SELECT u.id, u.full_name AS "fullName", u.email FROM users u
        WHERE EXISTS (SELECT 1 FROM suggestions s WHERE s.submitted_by = u.id)
-       ORDER BY u.full_name, u.id`
+       ORDER BY lower(u.full_name), lower(u.email), u.id`
     ),
     listReviewers(pool),
   ]);
@@ -240,18 +243,19 @@ export async function getReviewOptions() {
   return { submitters: submitters.rows, reviewers };
 }
 
-/** Active users holding the active Admin role: the people a suggestion can be assigned to. */
-async function listReviewers(db: Queryable): Promise<UserRef[]> {
-  const result = await db.query<UserRef>(
-    `SELECT DISTINCT u.id, u.full_name AS "fullName"
+/** Active users holding the active Super Admin or Admin role: the people a suggestion can be assigned to. */
+async function listReviewers(db: Queryable): Promise<(UserRef & { email: string })[]> {
+  const result = await db.query<UserRef & { email: string }>(
+    `SELECT DISTINCT u.id, u.full_name AS "fullName", u.email, lower(u.full_name) AS sort_name, lower(u.email) AS sort_email
      FROM users u
      JOIN user_roles ur ON ur.user_id = u.id
      JOIN roles r ON r.id = ur.role_id
-     WHERE u.is_active AND r.is_active AND r.code = 'ADMIN'
-     ORDER BY "fullName", u.id`
+     WHERE u.is_active AND r.is_active AND r.code IN ('ADMIN', 'ADMINISTRATOR')
+     ORDER BY sort_name, sort_email, u.id`
   );
 
-  return result.rows;
+  // The sort columns stay in the query.
+  return result.rows.map(({ id, fullName, email }) => ({ id, fullName, email }));
 }
 
 export async function createSuggestion(auth: AuthContext, input: CreateSuggestionInput): Promise<{ created: boolean; suggestion: SuggestionDetail }> {

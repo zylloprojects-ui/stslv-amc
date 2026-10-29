@@ -74,8 +74,8 @@ describe("who may export the schedule", () => {
 
     expect(response.status).toBe(403);
     expect(errorOf(response).code).toBe("FORBIDDEN");
-    // The seeded matrix gives EXPORT to no role but Admin.
-    const granted = await pool.query("SELECT 1 FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.action = 'EXPORT' AND r.code NOT IN ('ADMIN', 'PROCUREMENT')");
+    // The legacy roles hold no EXPORT (the six-role model of 0087 grants it to Admin and the Executives).
+    const granted = await pool.query("SELECT 1 FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.action = 'EXPORT' AND r.code IN ('ACCOUNTANT', 'EXECUTION', 'INVOICING')");
     expect(granted.rowCount).toBe(0);
   });
 

@@ -131,7 +131,7 @@ describe("GET /api/audit/activity", () => {
 
     expect(options.modules).toEqual(expect.arrayContaining(["AUTH", "CLIENTS"]));
     expect(options.entityTypes).toEqual(expect.arrayContaining(["clients", "users"]));
-    expect(options.users).toEqual(expect.arrayContaining([{ id: admin.id, fullName: "admin@example.com" }]));
+    expect(options.users).toEqual(expect.arrayContaining([{ id: admin.id, fullName: "admin@example.com", email: "admin@example.com" }]));
   });
 
   it("is reserved to the Admin role, even for a user manager", async () => {

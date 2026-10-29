@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { LoadError } from '../../components/records'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { api } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { fetchClients, queryString } from './amcApi'
@@ -11,7 +11,7 @@ import { currentMonth, formatDate, monthLabel, monthRange, shiftMonth, todayIso 
 import { BILLING_STATUSES, BILLING_STATUS_LABELS, type CalendarFilters, type CalendarOptions } from './calendar/calendarTypes'
 import { RenewalWarnings } from './calendar/RenewalWarnings'
 import { YearView } from './calendar/YearView'
-import { Filter, VisitStatusPill } from './components'
+import { Filter, RestrictedFilter, VisitStatusPill } from './components'
 import { VisitDetailsModal, VisitEditModal } from './VisitModals'
 import { OPERATIONAL_VISIT_STATUSES, VISIT_STATUS_LABELS, type ScheduleVisit, type VisitList, type VisitStatus } from './types'
 
@@ -130,13 +130,14 @@ export function AmcCalendarPage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const canViewClients = auth.can('CLIENTS', 'VIEW')
+  // The client filter needs the client list only: data-only read is enough (it opens no Clients page).
+  const canViewClients = auth.canRead('CLIENTS')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const canEdit = auth.can('AMC_SCHEDULE', 'EDIT')
   const canExport = auth.can('MONTHLY_CALENDAR', 'EXPORT')
   const clients = useQuery({ queryKey: ['clients', 'all'], queryFn: () => fetchClients('all'), enabled: canViewClients })
-  // Sales engineers, frequencies and years present on scheduled visits; open to every schedule viewer.
-  const options = useQuery({ queryKey: ['amc', 'service-status', 'options'], queryFn: () => api.get<CalendarOptions>('/amc/service-status/options') })
+  // Sales engineers, frequencies and years of the visits the calendar can show, cancelled ones included.
+  const options = useQuery({ queryKey: ['amc', 'calendar', 'options'], queryFn: () => api.get<CalendarOptions>('/amc/calendar/options') })
   const systems = useQuery({ queryKey: ['amc', 'systems'], queryFn: () => api.get<string[]>('/amc/contracts/systems'), enabled: canViewContracts })
 
   const filters: CalendarFilters = {
@@ -289,11 +290,12 @@ export function AmcCalendarPage() {
               <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Client, system or engineer" className={className} />
             )}
           </Filter>
-          {canViewClients && (
+          {canViewClients ? (
             <Filter label="Client">
               {(id, className) => (
                 <select id={id} value={clientId} onChange={(event) => setClientId(event.target.value)} className={className}>
                   <option value="">All clients</option>
+                  <OptionsNotice source={clients} count={clients.data?.length ?? 0} empty="No clients yet" />
                   {(clients.data ?? []).map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -302,13 +304,16 @@ export function AmcCalendarPage() {
                 </select>
               )}
             </Filter>
+          ) : (
+            <RestrictedFilter label="Client" reason="Not available for your role (needs the client list)" />
           )}
-          {options.data?.salesEngineers && (
+          {options.data?.salesEngineers !== null && (
             <Filter label="Sales engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={(event) => setSalesEngineerId(event.target.value)} className={className}>
                   <option value="">All sales engineers</option>
-                  {options.data.salesEngineers?.map((engineer) => (
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers linked to AMC visits" />
+                  {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
                     </option>
@@ -317,11 +322,12 @@ export function AmcCalendarPage() {
               )}
             </Filter>
           )}
-          {canViewContracts && (
+          {canViewContracts ? (
             <Filter label="System">
               {(id, className) => (
                 <select id={id} value={system} onChange={(event) => setSystem(event.target.value)} className={className}>
                   <option value="">All systems</option>
+                  <OptionsNotice source={systems} count={systems.data?.length ?? 0} empty="No systems on AMC contracts yet" />
                   {(systems.data ?? []).map((value) => (
                     <option key={value} value={value}>
                       {value}
@@ -330,21 +336,22 @@ export function AmcCalendarPage() {
                 </select>
               )}
             </Filter>
+          ) : (
+            <RestrictedFilter label="System" reason="Not available for your role (needs AMC Contracts)" />
           )}
-          {options.data && (
-            <Filter label="Frequency">
-              {(id, className) => (
-                <select id={id} value={frequency} onChange={(event) => setFrequency(event.target.value)} className={className}>
-                  <option value="">All frequencies</option>
-                  {options.data.frequencies.map((item) => (
-                    <option key={item.code} value={item.code}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Filter>
-          )}
+          <Filter label="Frequency">
+            {(id, className) => (
+              <select id={id} value={frequency} onChange={(event) => setFrequency(event.target.value)} className={className}>
+                <option value="">All frequencies</option>
+                <OptionsNotice source={options} count={options.data?.frequencies.length ?? 0} empty="No frequencies on AMC visits" />
+                {(options.data?.frequencies ?? []).map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
           <Filter label="Visit status">
             {(id, className) => (
               <select id={id} value={status} onChange={(event) => setStatus(event.target.value)} className={className}>

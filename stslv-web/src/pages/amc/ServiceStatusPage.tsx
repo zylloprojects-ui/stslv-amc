@@ -6,7 +6,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { queryString } from './amcApi'
@@ -488,6 +488,7 @@ export function ServiceStatusPage() {
               {(id, className) => (
                 <select id={id} value={filters.clientId} onChange={(event) => change('clientId')(event.target.value)} className={className}>
                   <option value="">All clients</option>
+                  <OptionsNotice source={options} count={opts?.clients.length ?? 0} empty="No clients with current AMC visits" />
                   {(opts?.clients ?? []).map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -496,12 +497,13 @@ export function ServiceStatusPage() {
                 </select>
               )}
             </Filter>
-            {opts?.salesEngineers && (
+            {opts?.salesEngineers !== null && (
               <Filter label="Sales Engineer">
                 {(id, className) => (
                   <select id={id} value={filters.salesEngineerId} onChange={(event) => change('salesEngineerId')(event.target.value)} className={className}>
                     <option value="">All engineers</option>
-                    {opts.salesEngineers?.map((engineer) => (
+                    <OptionsNotice source={options} count={opts?.salesEngineers?.length ?? 0} empty="No sales engineers linked to current AMC visits" />
+                    {(opts?.salesEngineers ?? []).map((engineer) => (
                       <option key={engineer.id} value={engineer.id}>
                         {engineer.name}
                       </option>
@@ -510,12 +512,13 @@ export function ServiceStatusPage() {
                 )}
               </Filter>
             )}
-            {opts?.systemTypes && (
+            {opts?.systemTypes !== null && (
               <Filter label="System">
                 {(id, className) => (
                   <select id={id} value={filters.systemTypeId} onChange={(event) => change('systemTypeId')(event.target.value)} className={className}>
                     <option value="">All systems</option>
-                    {opts.systemTypes?.map((type) => (
+                    <OptionsNotice source={options} count={opts?.systemTypes?.length ?? 0} empty="No system types linked to current AMC visits" />
+                    {(opts?.systemTypes ?? []).map((type) => (
                       <option key={type.id} value={type.id}>
                         {type.name}
                       </option>
@@ -528,6 +531,7 @@ export function ServiceStatusPage() {
               {(id, className) => (
                 <select id={id} value={filters.frequency} onChange={(event) => change('frequency')(event.target.value)} className={className}>
                   <option value="">All frequencies</option>
+                  <OptionsNotice source={options} count={opts?.frequencies.length ?? 0} empty="No frequencies on current AMC visits" />
                   {(opts?.frequencies ?? []).map((frequency) => (
                     <option key={frequency.code} value={frequency.code}>
                       {frequency.label}

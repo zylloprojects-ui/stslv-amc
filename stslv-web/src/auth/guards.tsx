@@ -60,6 +60,17 @@ export function RequirePermission({ module, action = 'VIEW', children }: { modul
   return <>{children}</>
 }
 
+/** For a page that shows another module's data: View or data-only Read of that module. The API checks the same. */
+export function RequireDataRead({ module, children }: { module: Module; children: ReactNode }) {
+  const auth = useAuth()
+
+  if (!auth.canRead(module)) {
+    return <AccessDenied />
+  }
+
+  return <>{children}</>
+}
+
 /** Shows its children to users who may view at least one of the modules (a hub of several modules). */
 export function RequireAnyPermission({ modules, children }: { modules: Module[]; children: ReactNode }) {
   const auth = useAuth()
@@ -71,7 +82,7 @@ export function RequireAnyPermission({ modules, children }: { modules: Module[];
   return <>{children}</>
 }
 
-/** For pages reserved to the built-in Admin role. The API enforces the same rule. */
+/** For pages reserved to administrators (Super Admin and Admin). The API enforces the same rule. */
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const auth = useAuth()
 

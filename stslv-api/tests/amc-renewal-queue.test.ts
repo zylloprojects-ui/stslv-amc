@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, createContract, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The AMC Renewal queue: renewal states derived from contracts and their
@@ -41,11 +41,14 @@ const queue = (query: Record<string, unknown> = {}, session: Session = admin) =>
 const stateOf = async (id: string): Promise<string | null> => ((await queue()).body.data.items as Item[]).find((item) => item.id === id)?.renewalState ?? null;
 const itemOf = async (id: string): Promise<Item | undefined> => ((await queue()).body.data.items as Item[]).find((item) => item.id === id);
 
+// Every renewal names an active sales engineer.
+let engineerId: string;
+
 const renew = (sourceId: string, overrides: Record<string, unknown> = {}, session: Session = admin) =>
   api()
     .post(`/api/amc/contracts/${sourceId}/renewals`)
     .set(session.headers)
-    .send(contractBody(fx.clientId, { validFrom: shift(400), validTo: shift(764), status: "DRAFT", ...overrides }));
+    .send(contractBody(fx.clientId, { validFrom: shift(400), validTo: shift(764), status: "DRAFT", salesEngineerId: engineerId, ...overrides }));
 const setStatus = (id: string, status: string, session: Session = admin) => api().post(`/api/amc/contracts/${id}/status`).set(session.headers).send({ status });
 
 async function contract(endsIn: number, overrides: Record<string, unknown> = {}): Promise<string> {
@@ -58,6 +61,7 @@ beforeAll(async () => {
   execution = await signedIn("execution@example.com", ["EXECUTION"]);
   procurement = await signedIn("procurement@example.com", ["PROCUREMENT"]);
   todayIso = await today();
+  engineerId = await renewalEngineer();
 
   const clientId = await createClient(admin, "Renewal Queue Client");
   fx = { clientId } as Fixture;

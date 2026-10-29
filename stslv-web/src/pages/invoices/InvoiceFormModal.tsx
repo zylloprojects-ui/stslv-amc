@@ -274,7 +274,16 @@ export function InvoiceFormModal({ invoice, preset, onClose, onSaved }: InvoiceF
         ) : !pending.data ? (
           <Spinner size="sm" label="Loading clients" />
         ) : clients.size === 0 ? (
-          <Alert tone="info">No completed work is waiting for an invoice, so there is nothing to record an invoice against.</Alert>
+          // Work the role may not see is not "no work": say which part is hidden instead.
+          <Alert tone="info">
+            {pending.data.amcVisits === null && pending.data.projects === null
+              ? 'Your role cannot see AMC visits or projects, so no completed work can be listed here. Ask an administrator if you need to record invoices.'
+              : pending.data.amcVisits === null
+                ? 'No completed project work is waiting for an invoice. AMC visits are not listed: your role cannot view the AMC Schedule.'
+                : pending.data.projects === null
+                  ? 'No completed AMC visit is waiting for an invoice. Projects are not listed: your role cannot view Projects.'
+                  : 'No completed work is waiting for an invoice, so there is nothing to record an invoice against.'}
+          </Alert>
         ) : (
           <SelectField
             label="Client"
@@ -284,7 +293,7 @@ export function InvoiceFormModal({ invoice, preset, onClose, onSaved }: InvoiceF
             {...clientField}
           >
             <option value="">Select a client…</option>
-            {[...clients].map(([id, name]) => (
+            {[...clients].sort(([, a], [, b]) => a.localeCompare(b, undefined, { sensitivity: 'base' })).map(([id, name]) => (
               <option key={id} value={id}>
                 {name}
               </option>

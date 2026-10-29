@@ -93,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       replaceToken,
       retry: () => void refetch(),
       can: (module: Module, action: Action) => permissions.has(`${module}:${action}`),
+      canRead: (module: Module) => permissions.has(`${module}:VIEW`) || permissions.has(`${module}:READ`),
     }
   }, [token, user, me.isError, login, logout, signOutNotice, clearSignOutNotice, replaceToken, refetch])
 

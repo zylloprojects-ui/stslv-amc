@@ -172,6 +172,11 @@ export function saveFile(file: DownloadedFile, fallbackName: string): void {
   URL.revokeObjectURL(url)
 }
 
+/** The server refused because the user's role lacks the permission (not because something failed). */
+export function isForbidden(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 403
+}
+
 /** A message suitable for showing to the user, whatever was thrown. */
 export function errorMessage(error: unknown): string {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'

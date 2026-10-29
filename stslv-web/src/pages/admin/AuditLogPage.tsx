@@ -1,7 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { LoadError, Pager } from '../../components/records'
-import { Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { api } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
@@ -99,6 +99,7 @@ export function AuditLogPage() {
             {(id, className) => (
               <select id={id} value={module} onChange={change(setModule)} className={className}>
                 <option value="">All modules</option>
+                <OptionsNotice source={options} count={options.data?.modules.length ?? 0} empty="No activity recorded yet" />
                 {(options.data?.modules ?? []).map((value) => (
                   <option key={value} value={value}>
                     {moduleLabel(value)}
@@ -111,6 +112,7 @@ export function AuditLogPage() {
             {(id, className) => (
               <select id={id} value={entityType} onChange={change(setEntityType)} className={className}>
                 <option value="">All record types</option>
+                <OptionsNotice source={options} count={options.data?.entityTypes.length ?? 0} empty="No activity recorded yet" />
                 {(options.data?.entityTypes ?? []).map((value) => (
                   <option key={value} value={value}>
                     {fieldLabel(value)}
@@ -123,9 +125,11 @@ export function AuditLogPage() {
             {(id, className) => (
               <select id={id} value={userId} onChange={change(setUserId)} className={className}>
                 <option value="">All users</option>
-                {(options.data?.users ?? []).map((user) => (
+                <OptionsNotice source={options} count={options.data?.users.length ?? 0} empty="No activity recorded yet" />
+                {(options.data?.users ?? []).map((user, _, users) => (
                   <option key={user.id} value={user.id}>
-                    {user.fullName}
+                    {/* Two accounts can share a name: the email tells them apart. */}
+                    {users.some((other) => other.id !== user.id && other.fullName === user.fullName) ? `${user.fullName} (${user.email})` : user.fullName}
                   </option>
                 ))}
               </select>

@@ -7,6 +7,7 @@ import { conflict, isUniqueViolation, notFound, validationError } from "../../sh
 import { escapeLike } from "../../shared/validation";
 import { FREQUENCY_MONTHS, type MaintenanceFrequency } from "../amc/amc.constants";
 import type { AuthContext } from "../auth/access";
+import type { Module } from "../../shared/permissions";
 import type { ListMastersQuery } from "./masters.schemas";
 
 // Master lists (departments, sales engineers, system types, maintenance
@@ -24,6 +25,8 @@ export interface MasterSpec {
   /** Activity log entity type and action prefix, for example "sales_engineers" and "sales_engineer". */
   entityType: string;
   actionPrefix: string;
+  /** Activity log module: the list's own permission module (migration 0080), so the Audit Log files its changes there. */
+  module: Module;
   /** "Sales engineer", for messages. */
   label: string;
   fields: Field[];
@@ -48,6 +51,7 @@ const iso = (value: unknown) => (value instanceof Date ? value.toISOString() : v
 const AUDIT_SELECT = "m.is_active, m.created_at, m.updated_at";
 
 export const DEPARTMENTS: MasterSpec = {
+  module: "DEPARTMENTS",
   table: "departments",
   entityType: "departments",
   actionPrefix: "department",
@@ -77,6 +81,7 @@ export const DEPARTMENTS: MasterSpec = {
 };
 
 export const SYSTEM_TYPES: MasterSpec = {
+  module: "SYSTEM_TYPES",
   table: "system_types",
   entityType: "system_types",
   actionPrefix: "system_type",
@@ -122,6 +127,7 @@ export function engineerCode(id: string): string {
 const ENGINEER_CODE_SQL = `('${ENGINEER_CODE_PREFIX}' || lpad(m.id::text, greatest(${ENGINEER_CODE_DIGITS}, length(m.id::text)), '0'))`;
 
 export const SALES_ENGINEERS: MasterSpec = {
+  module: "SALES_ENGINEERS",
   table: "sales_engineers",
   entityType: "sales_engineers",
   actionPrefix: "sales_engineer",
@@ -208,6 +214,7 @@ export const SALES_ENGINEERS: MasterSpec = {
 // active flag change. A contract keeps its own frequency code, so neither
 // change touches an existing contract or its visits.
 export const MAINTENANCE_FREQUENCIES: MasterSpec = {
+  module: "MAINTENANCE_FREQUENCIES",
   table: "maintenance_frequencies",
   entityType: "maintenance_frequencies",
   actionPrefix: "maintenance_frequency",
@@ -371,7 +378,7 @@ export async function createMaster(auth: AuthContext, spec: MasterSpec, input: R
       await logActivity(db, {
         userId: auth.user.id,
         action: `${spec.actionPrefix}.created`,
-        module: "SETTINGS",
+        module: spec.module,
         entityType: spec.entityType,
         entityId: id,
         description: `${spec.label} "${String(created.name)}" created${created.isActive === false ? " as inactive" : ""}.`,
@@ -410,7 +417,7 @@ export async function updateMaster(auth: AuthContext, spec: MasterSpec, id: stri
       await logActivity(db, {
         userId: auth.user.id,
         action: `${spec.actionPrefix}.updated`,
-        module: "SETTINGS",
+        module: spec.module,
         entityType: spec.entityType,
         entityId: id,
         description: `${spec.label} "${String(updated.name)}" updated.`,
@@ -439,7 +446,7 @@ export function setMasterStatus(auth: AuthContext, spec: MasterSpec, id: string,
     await logActivity(db, {
       userId: auth.user.id,
       action: `${spec.actionPrefix}.${isActive ? "reactivated" : "deactivated"}`,
-      module: "SETTINGS",
+      module: spec.module,
       entityType: spec.entityType,
       entityId: id,
       description: `${spec.label} "${String(updated.name)}" ${isActive ? "reactivated" : "deactivated"}.`,

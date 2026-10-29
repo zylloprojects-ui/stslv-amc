@@ -184,7 +184,7 @@ describe("renewal", () => {
     const renewal = await api()
       .post(`/api/amc/contracts/${ended}/renewals`)
       .set(admin.headers)
-      .send(contractBody(hotelOne, { systemDescription: "PUMPS", validFrom: `${year + 2}-01-01`, validTo: `${year + 2}-12-31`, status: "DRAFT" }));
+      .send(contractBody(hotelOne, { systemDescription: "PUMPS", validFrom: `${year + 2}-01-01`, validTo: `${year + 2}-12-31`, status: "DRAFT", salesEngineerId: engineerId }));
 
     expect(renewal.status).toBe(201);
     expect((await list()).body.data.kpis).toMatchObject({ notCompleted: 12, waitingForRenewal: 0 });

@@ -18,6 +18,11 @@ export interface AuthValue {
    * controls: the API checks every request again and is the real protection.
    */
   can: (module: Module, action: Action) => boolean
+  /**
+   * Data-only read: View of the module, or its Read grant. Only for another section's page that
+   * shows this module's data (a client picker, invoice numbers); the module's own pages need View.
+   */
+  canRead: (module: Module) => boolean
 }
 
 export const AuthContext = createContext<AuthValue | null>(null)
