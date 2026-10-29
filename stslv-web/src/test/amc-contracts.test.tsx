@@ -67,7 +67,7 @@ describe('contract list', () => {
     renderApp('/amc/contracts')
     await screen.findByRole('table', { name: 'AMC contracts' })
 
-    await userEvent.selectOptions(screen.getByLabelText('Status'), 'DRAFT')
+    await userEvent.selectOptions(screen.getByLabelText('Contract status'), 'DRAFT')
     await waitFor(() => expect(screen.queryByText('Test Hotel One', { selector: 'td' })).not.toBeInTheDocument())
     expect(api.find('GET', '/amc/contracts').at(-1)?.query.get('status')).toBe('DRAFT')
 
@@ -79,6 +79,86 @@ describe('contract list', () => {
     const last = api.find('GET', '/amc/contracts').at(-1)?.query
     expect(last?.get('clientId')).toBe('11')
     expect(last?.get('frequency')).toBe('QUARTERLY')
+  })
+
+  it('offers an "All" first option on every dropdown, filled from the filter options', async () => {
+    amcApi(ADMIN, { contracts: [FIRE, DRAFT] })
+    renderApp('/amc/contracts')
+    await screen.findByRole('table', { name: 'AMC contracts' })
+
+    const expected: [string, string, string[]][] = [
+      ['Client', 'All clients', ['Test Hotel One', 'Test Hotel Two']],
+      ['System', 'All systems', ['FIRE', 'CCTV']],
+      ['Year', 'All years', ['2027']],
+      ['Sales engineer', 'All sales engineers', ['Test Sales Engineer']],
+      ['Frequency', 'All frequencies', ['Quarterly']],
+      ['Contract status', 'All contract statuses', ['Draft', 'Active', 'Expired', 'Cancelled']],
+    ]
+
+    for (const [label, all, values] of expected) {
+      const select = (await screen.findByLabelText(label)) as HTMLSelectElement
+      await waitFor(() => expect(select.options.length).toBeGreaterThan(1))
+      const options = [...select.options].map((option) => option.text)
+
+      expect(options[0], label).toBe(all)
+      expect(select.value, label).toBe(label === 'Contract status' ? 'all' : '')
+      expect(options.slice(1).sort(), label).toEqual([...values].sort())
+    }
+  })
+
+  it('combines system, year and sales engineer filters, and "All" removes each one', async () => {
+    const api = amcApi(ADMIN, { contracts: [FIRE, DRAFT] })
+    renderApp('/amc/contracts')
+    await screen.findByRole('table', { name: 'AMC contracts' })
+    const lastQuery = () => api.find('GET', '/amc/contracts').at(-1)?.query
+
+    await userEvent.selectOptions(await screen.findByLabelText('Year'), '2027')
+    await waitFor(() => expect(lastQuery()?.get('year')).toBe('2027'))
+    expect(lastQuery()?.get('system')).toBeNull()
+
+    await userEvent.selectOptions(screen.getByLabelText('System'), 'CCTV')
+    await userEvent.selectOptions(screen.getByLabelText('Sales engineer'), '5')
+    await waitFor(() => expect(lastQuery()?.get('salesEngineerId')).toBe('5'))
+    expect(lastQuery()?.get('year')).toBe('2027')
+    expect(lastQuery()?.get('system')).toBe('CCTV')
+    expect(lastQuery()?.get('page')).toBe('1')
+
+    await userEvent.selectOptions(screen.getByLabelText('Year'), '')
+    await waitFor(() => expect(lastQuery()?.get('year')).toBeNull())
+    expect(lastQuery()?.get('system')).toBe('CCTV')
+    expect(lastQuery()?.get('salesEngineerId')).toBe('5')
+  })
+
+  it('resets every filter to "All" and clears the search', async () => {
+    const api = amcApi(ADMIN, { contracts: [FIRE, DRAFT] })
+    renderApp('/amc/contracts')
+    await screen.findByRole('table', { name: 'AMC contracts' })
+    const reset = screen.getByRole('button', { name: 'Reset filters' })
+    expect(reset).toBeDisabled()
+
+    await userEvent.selectOptions(await screen.findByLabelText('Client'), '11')
+    await userEvent.selectOptions(screen.getByLabelText('System'), 'CCTV')
+    await userEvent.selectOptions(screen.getByLabelText('Year'), '2027')
+    await userEvent.selectOptions(screen.getByLabelText('Sales engineer'), '5')
+    await userEvent.selectOptions(screen.getByLabelText('Frequency'), 'QUARTERLY')
+    await userEvent.selectOptions(screen.getByLabelText('Contract status'), 'ACTIVE')
+    await userEvent.type(screen.getByLabelText('Search'), 'nothing matches')
+    expect(await screen.findByText('No contracts match your filters')).toBeInTheDocument()
+
+    await userEvent.click(reset)
+
+    for (const label of ['Client', 'System', 'Year', 'Sales engineer', 'Frequency']) {
+      expect((screen.getByLabelText(label) as HTMLSelectElement).value, label).toBe('')
+    }
+    expect((screen.getByLabelText('Contract status') as HTMLSelectElement).value).toBe('all')
+    expect(screen.getByLabelText('Search')).toHaveValue('')
+    expect(await screen.findByRole('table', { name: 'AMC contracts' })).toBeInTheDocument()
+    const last = api.find('GET', '/amc/contracts').at(-1)?.query
+    for (const key of ['clientId', 'system', 'year', 'salesEngineerId', 'frequency', 'search']) {
+      expect(last?.get(key), key).toBeNull()
+    }
+    expect(last?.get('status')).toBe('all')
+    expect(reset).toBeDisabled()
   })
 
   it('shows an error with a retry when the list cannot be loaded', async () => {

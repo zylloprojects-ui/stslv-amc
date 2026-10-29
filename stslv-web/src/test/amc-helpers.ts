@@ -128,6 +128,21 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
     if (method === 'GET' && path === '/attachments') return ok([])
     if (method === 'GET' && path === '/clients') return ok({ items: CLIENTS, total: CLIENTS.length, page: 1, pageSize: 100 })
     if (method === 'GET' && path === '/amc/contracts/systems') return ok([...new Set(contracts.map((contract) => contract.systemDescription))])
+    if (method === 'GET' && path === '/amc/contracts/filter-options') {
+      const years = contracts.flatMap((contract) => {
+        const from = Number(contract.validFrom.slice(0, 4))
+
+        return Array.from({ length: Number(contract.validTo.slice(0, 4)) - from + 1 }, (_, index) => from + index)
+      })
+
+      return ok({
+        clients: [...new Map(contracts.map((contract) => [contract.client.id, { id: contract.client.id, name: contract.client.name }])).values()],
+        systems: [...new Set(contracts.map((contract) => contract.systemDescription))],
+        salesEngineers: [{ id: '5', name: 'Test Sales Engineer' }],
+        frequencies: [...new Set(contracts.map((contract) => contract.maintenanceFrequency))].map((code) => ({ code, label: code === 'QUARTERLY' ? 'Quarterly' : code })),
+        years: [...new Set(years)].sort((x, y) => x - y),
+      })
+    }
 
     // --- Contracts ---
     if (method === 'GET' && path === '/amc/contracts') {

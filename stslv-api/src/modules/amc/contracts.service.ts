@@ -311,6 +311,16 @@ export async function listContracts(query: ListContractsQuery) {
     params.push(query.salesEngineerId);
     conditions.push(`c.sales_engineer_id = $${params.length}`);
   }
+  if (query.system) {
+    params.push(query.system);
+    conditions.push(`lower(btrim(c.system_description)) = lower(btrim($${params.length}))`);
+  }
+  if (query.year) {
+    // The validity period overlaps the calendar year.
+    params.push(query.year);
+    const p = `$${params.length}::int`;
+    conditions.push(`c.valid_from <= make_date(${p}, 12, 31) AND c.valid_to >= make_date(${p}, 1, 1)`);
+  }
   if (query.search) {
     params.push(`%${escapeLike(query.search)}%`);
     const p = `$${params.length}`;
@@ -349,6 +359,55 @@ export async function listSystems(): Promise<string[]> {
   );
 
   return result.rows.map((row) => row.system_description);
+}
+
+/** Names of the four built-in frequencies, for a database without the frequency master. */
+const BUILT_IN_FREQUENCY_LABELS: Record<string, string> = {
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
+  HALF_YEARLY: "Half-yearly",
+  ANNUALLY: "Annually",
+};
+
+/** The lists for the contract register's filters: the values present on contracts. */
+export async function listContractFilterOptions() {
+  const [masters, frequencyMaster] = await Promise.all([
+    schemaHas(["amc_contracts.sales_engineer_id", "sales_engineers"]),
+    schemaHas(["maintenance_frequencies"]),
+  ]);
+  const frequencyColumns = frequencyMaster
+    ? "(SELECT mf.label FROM maintenance_frequencies mf WHERE mf.code = c.maintenance_frequency) AS label, (SELECT mf.sort_order FROM maintenance_frequencies mf WHERE mf.code = c.maintenance_frequency) AS sort_order"
+    : "NULL::text AS label, 0 AS sort_order";
+  const [clients, systems, frequencies, years, engineers] = await Promise.all([
+    pool.query<{ id: string; name: string }>(
+      "SELECT cl.id, cl.name FROM clients cl WHERE cl.id IN (SELECT c.client_id FROM amc_contracts c) ORDER BY lower(cl.name), cl.id"
+    ),
+    listSystems(),
+    pool.query<{ code: string; label: string | null }>(
+      `SELECT DISTINCT c.maintenance_frequency AS code, ${frequencyColumns} FROM amc_contracts c ORDER BY sort_order, code`
+    ),
+    // Every calendar year a validity period covers, as the year filter matches them.
+    pool.query<{ year: number }>(
+      `SELECT DISTINCT y.year
+       FROM amc_contracts c
+       CROSS JOIN LATERAL generate_series(extract(year FROM c.valid_from)::int, extract(year FROM c.valid_to)::int) AS y(year)
+       ORDER BY y.year`
+    ),
+    masters
+      ? pool.query<{ id: string; name: string }>(
+          "SELECT e.id, e.name FROM sales_engineers e WHERE e.id IN (SELECT c.sales_engineer_id FROM amc_contracts c) ORDER BY lower(e.name), e.id"
+        )
+      : null,
+  ]);
+
+  return {
+    clients: clients.rows,
+    systems,
+    // Null when this database has no Sales Engineer link (migration 0070): the filter is then not offered.
+    salesEngineers: engineers ? engineers.rows : null,
+    frequencies: frequencies.rows.map((row) => ({ code: row.code, label: row.label ?? BUILT_IN_FREQUENCY_LABELS[row.code] ?? row.code })),
+    years: years.rows.map((row) => row.year),
+  };
 }
 
 // ---------------------------------------------------------------------------

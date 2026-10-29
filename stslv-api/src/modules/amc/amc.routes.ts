@@ -32,6 +32,7 @@ import {
   createContract,
   generateSchedule,
   getContract,
+  listContractFilterOptions,
   listContractHistory,
   listContracts,
   listSystems,
@@ -139,6 +140,11 @@ amcRouter.get("/contracts", authorize("AMC_CONTRACTS", "VIEW"), async (req, res)
 
 amcRouter.get("/contracts/systems", authorize("AMC_CONTRACTS", "VIEW"), async (_req, res) => {
   res.json({ success: true, data: await listSystems() });
+});
+
+// The values present on contracts, for the register's filters. Declared before "/contracts/:id".
+amcRouter.get("/contracts/filter-options", authorize("AMC_CONTRACTS", "VIEW"), async (_req, res) => {
+  res.json({ success: true, data: await listContractFilterOptions() });
 });
 
 amcRouter.get("/contracts/:id", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {

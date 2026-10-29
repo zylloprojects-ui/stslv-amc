@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
@@ -9,7 +9,7 @@ import { initialsOf } from '../../lib/format'
 import type { Paged } from '../../lib/types'
 import { ClientAvatar } from '../clients/clientAvatar'
 import type { DashboardSummary } from '../dashboard/metrics'
-import { fetchClients, queryString } from './amcApi'
+import { queryString } from './amcApi'
 import { formatDate, formatMoney } from './amcFormat'
 import { ContractStatusPill, Filter, Pager, Pill } from './components'
 import { ContractFormModal } from './ContractFormModal'
@@ -17,7 +17,6 @@ import { StatTile } from '../../components/StatTile'
 import {
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
-  FREQUENCY_LABELS,
   frequencyLabel,
   type Contract,
   type ContractStatus,
@@ -25,6 +24,17 @@ import {
 } from './types'
 
 const PAGE_SIZE = 25
+
+/** GET /amc/contracts/filter-options: the values present on contracts. */
+interface ContractFilterOptions {
+  clients: { id: string; name: string }[]
+  systems: string[]
+  /** Null on a database without the Sales Engineer link: the filter is then not offered. */
+  salesEngineers: { id: string; name: string }[] | null
+  frequencies: { code: string; label: string }[]
+  /** Every calendar year a contract's validity period covers. */
+  years: number[]
+}
 
 interface TileSpec {
   key: ContractStatus | 'all'
@@ -156,6 +166,9 @@ export function AmcContractsPage() {
   const [status, setStatus] = useState<ContractStatus | 'all'>('all')
   const [clientId, setClientId] = useState('')
   const [frequency, setFrequency] = useState('')
+  const [system, setSystem] = useState('')
+  const [year, setYear] = useState('')
+  const [salesEngineerId, setSalesEngineerId] = useState('')
   const [page, setPage] = useState(1)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
@@ -170,13 +183,15 @@ export function AmcContractsPage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const canViewClients = auth.can('CLIENTS', 'VIEW')
-  const clients = useQuery({ queryKey: ['clients', 'all'], queryFn: () => fetchClients('all'), enabled: canViewClients })
+  // Clients, systems, sales engineers, frequencies and years present on contracts.
+  const options = useQuery({ queryKey: ['amc', 'contracts', 'filter-options'], queryFn: () => api.get<ContractFilterOptions>('/amc/contracts/filter-options') })
 
   const contracts = useQuery({
-    queryKey: ['amc', 'contracts', 'list', { search, status, clientId, frequency, page }],
+    queryKey: ['amc', 'contracts', 'list', { search, status, clientId, system, year, salesEngineerId, frequency, page }],
     queryFn: () =>
-      api.get<Paged<Contract>>(`/amc/contracts${queryString({ search, status, clientId, frequency, page, pageSize: PAGE_SIZE })}`),
+      api.get<Paged<Contract>>(
+        `/amc/contracts${queryString({ search, status, clientId, system, year, salesEngineerId, frequency, page, pageSize: PAGE_SIZE })}`,
+      ),
     placeholderData: keepPreviousData,
   })
 
@@ -184,7 +199,23 @@ export function AmcContractsPage() {
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
 
   const data = contracts.data
-  const filtered = search !== '' || status !== 'all' || clientId !== '' || frequency !== ''
+  const filtered = search !== '' || status !== 'all' || clientId !== '' || system !== '' || year !== '' || salesEngineerId !== '' || frequency !== ''
+  // A changed filter starts again from the first page.
+  const choose = (set: (value: string) => void) => (event: ChangeEvent<HTMLSelectElement>) => {
+    set(event.target.value)
+    setPage(1)
+  }
+  const resetFilters = () => {
+    setSearchInput('')
+    setSearch('')
+    setStatus('all')
+    setClientId('')
+    setSystem('')
+    setYear('')
+    setSalesEngineerId('')
+    setFrequency('')
+    setPage(1)
+  }
   const closeDialog = () => setDialog({ kind: 'none' })
   const label = (contract: Contract) => `${contract.client.name} ${contract.systemDescription}`
 
@@ -244,29 +275,69 @@ export function AmcContractsPage() {
               />
             )}
           </Filter>
-          {canViewClients && (
-            <Filter label="Client">
+          <Filter label="Client">
+            {(id, className) => (
+              <select id={id} value={clientId} onChange={choose(setClientId)} className={className}>
+                <option value="">All clients</option>
+                {(options.data?.clients ?? []).map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          <Filter label="System">
+            {(id, className) => (
+              <select id={id} value={system} onChange={choose(setSystem)} className={className}>
+                <option value="">All systems</option>
+                {(options.data?.systems ?? []).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          <Filter label="Year">
+            {(id, className) => (
+              <select id={id} value={year} onChange={choose(setYear)} title="Contracts whose validity period covers any day of the year" className={className}>
+                <option value="">All years</option>
+                {(options.data?.years ?? []).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          {options.data?.salesEngineers && (
+            <Filter label="Sales engineer">
               {(id, className) => (
-                <select
-                  id={id}
-                  value={clientId}
-                  onChange={(event) => {
-                    setClientId(event.target.value)
-                    setPage(1)
-                  }}
-                  className={className}
-                >
-                  <option value="">All clients</option>
-                  {(clients.data ?? []).map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
+                <select id={id} value={salesEngineerId} onChange={choose(setSalesEngineerId)} className={className}>
+                  <option value="">All sales engineers</option>
+                  {options.data.salesEngineers?.map((engineer) => (
+                    <option key={engineer.id} value={engineer.id}>
+                      {engineer.name}
                     </option>
                   ))}
                 </select>
               )}
             </Filter>
           )}
-          <Filter label="Status">
+          <Filter label="Frequency">
+            {(id, className) => (
+              <select id={id} value={frequency} onChange={choose(setFrequency)} className={className}>
+                <option value="">All frequencies</option>
+                {(options.data?.frequencies ?? []).map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          <Filter label="Contract status">
             {(id, className) => (
               <select
                 id={id}
@@ -277,7 +348,7 @@ export function AmcContractsPage() {
                 }}
                 className={className}
               >
-                <option value="all">All statuses</option>
+                <option value="all">All contract statuses</option>
                 {CONTRACT_STATUSES.map((value) => (
                   <option key={value} value={value}>
                     {CONTRACT_STATUS_LABELS[value]}
@@ -286,26 +357,11 @@ export function AmcContractsPage() {
               </select>
             )}
           </Filter>
-          <Filter label="Frequency">
-            {(id, className) => (
-              <select
-                id={id}
-                value={frequency}
-                onChange={(event) => {
-                  setFrequency(event.target.value)
-                  setPage(1)
-                }}
-                className={className}
-              >
-                <option value="">All frequencies</option>
-                {Object.keys(FREQUENCY_LABELS).map((value) => (
-                  <option key={value} value={value}>
-                    {frequencyLabel(value)}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Filter>
+          <div className="flex">
+            <Button variant="secondary" onClick={resetFilters} disabled={!filtered} className="w-full rounded-xl">
+              Reset filters
+            </Button>
+          </div>
           </div>
         </div>
 

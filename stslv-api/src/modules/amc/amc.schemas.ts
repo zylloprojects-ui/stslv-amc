@@ -152,6 +152,8 @@ export const changeContractStatusSchema = z.strictObject({
   reason: optionalText("Reason", 500).optional(),
 });
 
+const CONTRACT_YEAR_MESSAGE = "Year must be between 2000 and 2100.";
+
 export const listContractsSchema = z.object({
   search: z.string().trim().max(200).optional(),
   status: z.enum([...CONTRACT_STATUSES, "all"]).default("all"),
@@ -159,6 +161,10 @@ export const listContractsSchema = z.object({
   frequency: frequency.optional(),
   // Contracts linked to this Sales Engineer master record (migration 0070).
   salesEngineerId: idSchema.optional(),
+  // A system description, matched without regard to case or surrounding spaces (as GET /contracts/systems groups them).
+  system: z.string().trim().max(200).optional(),
+  // Contracts whose validity period covers any day of this calendar year (approved 2026-10-28).
+  year: z.coerce.number({ error: CONTRACT_YEAR_MESSAGE }).int(CONTRACT_YEAR_MESSAGE).min(2000, CONTRACT_YEAR_MESSAGE).max(2100, CONTRACT_YEAR_MESSAGE).optional(),
   page,
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
