@@ -69,10 +69,10 @@ export type MailTransport = (typeof MAIL_TRANSPORTS)[number];
 /**
  * How outgoing email is handled.
  *   none    nothing is sent and nothing about the message is printed (the default).
- *   log     the whole message, including any reset link, is printed to the API
+ *   log     the whole message is printed to the API
  *           console. For local development only: refused when NODE_ENV=production.
  *   memory  messages are kept in memory for the automated tests: refused outside them.
- * A real provider (SMTP or an email API) is not configured yet; see docs/AUTH_SIGNUP_AND_RECOVERY.md.
+ * No provider is configured. Password recovery does not use email; see docs/AUTH_SIGNUP_AND_RECOVERY.md.
  */
 export function resolveMailTransport(raw: string | undefined, nodeEnv: string | undefined): MailTransport {
   const value = raw?.trim().toLowerCase() || (nodeEnv === "test" ? "memory" : "none");
@@ -81,7 +81,7 @@ export function resolveMailTransport(raw: string | undefined, nodeEnv: string | 
     throw new Error(`Invalid MAIL_TRANSPORT. Use one of: ${MAIL_TRANSPORTS.join(", ")}.`);
   }
   if (value === "log" && nodeEnv === "production") {
-    throw new Error("MAIL_TRANSPORT=log prints password reset links to the console and is not allowed in production.");
+    throw new Error("MAIL_TRANSPORT=log prints whole emails to the console and is not allowed in production.");
   }
   if (value === "memory" && nodeEnv !== "test") {
     throw new Error("MAIL_TRANSPORT=memory is only for the automated tests.");
@@ -143,10 +143,10 @@ export const env = {
   corsOrigins,
   appUrl: readAppUrl(corsOrigins),
   mailTransport: resolveMailTransport(process.env.MAIL_TRANSPORT, process.env.NODE_ENV),
-  // How long a password reset link stays usable.
-  passwordResetMinutes: readWholeNumber("PASSWORD_RESET_EXPIRES_MINUTES", 30, 5, 1440),
-  // Requests one address may make to the public sign-up and password-recovery routes per 15 minutes.
+  // Requests one address may make to the public sign-up route per 15 minutes.
   publicAuthRateLimit: readWholeNumber("PUBLIC_AUTH_RATE_LIMIT", 10, 1, 100_000),
+  // Temporary passwords one administrator may issue per 15 minutes.
+  temporaryPasswordRateLimit: readWholeNumber("TEMPORARY_PASSWORD_RATE_LIMIT", 10, 1, 100_000),
   // Sign-in requests one address may make per 15 minutes, successful or not. Generous,
   // because an office's staff may all reach the API from one shared address.
   loginRateLimit: readWholeNumber("LOGIN_RATE_LIMIT", 50, 1, 100_000),

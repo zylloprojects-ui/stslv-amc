@@ -96,7 +96,7 @@ describe("user administration is restricted", () => {
       await api().patch(`/api/users/${admin.id}`).set(accountant.headers).send({ fullName: "Hacked" }),
       await api().post(`/api/users/${admin.id}/deactivate`).set(accountant.headers),
       await api().put(`/api/users/${accountant.id}/roles`).set(accountant.headers).send({ roleIds: [await roleId("ADMIN")] }),
-      await api().post(`/api/users/${admin.id}/reset-password`).set(accountant.headers).send({ password: PASSWORD }),
+      await api().post(`/api/users/${admin.id}/temporary-password`).set(accountant.headers).send({ identityVerified: true }),
       await api().get("/api/roles").set(accountant.headers),
       await api().put(`/api/roles/${await roleId("ACCOUNTANT")}/permissions`).set(accountant.headers).send({ permissions: [] }),
     ];
@@ -273,7 +273,7 @@ describe("privilege escalation is blocked", () => {
 
   it("cannot manage a user who holds more permissions than they do", async () => {
     const attempts = [
-      await api().post(`/api/users/${admin.id}/reset-password`).set(accountant.headers).send({ password: "Taken-Over-Password-1" }),
+      await api().post(`/api/users/${admin.id}/temporary-password`).set(accountant.headers).send({ identityVerified: true }),
       await api().post(`/api/users/${admin.id}/deactivate`).set(accountant.headers),
       await api().patch(`/api/users/${admin.id}`).set(accountant.headers).send({ fullName: "Renamed" }),
       await api().put(`/api/users/${admin.id}/roles`).set(accountant.headers).send({ roleIds: [await roleId("ACCOUNTANT")] }),

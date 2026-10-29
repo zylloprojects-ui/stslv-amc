@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { z } from 'zod'
 import { useAuth } from '../auth/context'
+import { CHANGE_PASSWORD_PATH } from '../auth/guards'
 import { usePageTitle } from '../components/hooks'
 import { Alert, Spinner } from '../components/ui'
 import { errorMessage } from '../lib/api'
@@ -37,10 +38,10 @@ const HEADINGS = {
     title: 'Forgot your password?',
     text: 'No problem. Here is how to get back in.',
   },
-  reset: {
+  change: {
     eyebrow: 'Account recovery',
     title: 'Choose a new password',
-    text: 'Set a new password for your STSLEV AMC account.',
+    text: 'Your temporary password must be replaced before you continue.',
   },
 } as const
 
@@ -51,7 +52,7 @@ const MODE_PATHS: Record<AuthMode, string> = {
   signin: '/login',
   signup: '/signup',
   forgot: '/forgot-password',
-  reset: '/reset-password',
+  change: CHANGE_PASSWORD_PATH,
 }
 
 function modeOf(pathname: string): AuthMode {
@@ -129,11 +130,16 @@ export function AuthLayout() {
   const navigate = useNavigate()
   const mode = modeOf(location.pathname)
 
-  // A reset link must still work for someone who is signed in on this browser.
-  if (auth.status === 'authenticated' && mode !== 'reset') {
+  const mustChange = auth.status === 'authenticated' && auth.user?.credentialChangeRequired === true
+
+  // Signed in with a temporary password: the change-password screen and nothing else.
+  if (mustChange && mode !== 'change') {
+    return <Navigate to={CHANGE_PASSWORD_PATH} replace />
+  }
+  if (auth.status === 'authenticated' && !mustChange) {
     const from = (location.state as { from?: string } | null)?.from
 
-    return <Navigate to={from && from !== '/login' ? from : '/dashboard'} replace />
+    return <Navigate to={from && from !== '/login' && from !== CHANGE_PASSWORD_PATH ? from : '/dashboard'} replace />
   }
 
   return (
@@ -226,7 +232,7 @@ export function AuthLayout() {
             <span className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-sky-200/50 blur-2xl" aria-hidden="true" />
             <span className="pointer-events-none absolute -bottom-12 -left-10 h-32 w-32 rounded-full bg-emerald-200/40 blur-2xl" aria-hidden="true" />
 
-            <div role="tablist" aria-label="Account" className={`relative mb-4 grid grid-cols-2 rounded-xl bg-slate-100/90 p-1 ring-1 ring-slate-200 ${mode === 'forgot' || mode === 'reset' ? 'hidden' : ''}`}>
+            <div role="tablist" aria-label="Account" className={`relative mb-4 grid grid-cols-2 rounded-xl bg-slate-100/90 p-1 ring-1 ring-slate-200 ${mode === 'forgot' || mode === 'change' ? 'hidden' : ''}`}>
               <span
                 className={`absolute inset-y-1 left-1 w-[calc(50%-0.25rem)] rounded-lg bg-gradient-to-r from-[#0f5f98] to-[#0b7a96] shadow-md shadow-sky-700/30 transition-transform duration-300 ease-out ${
                   mode === 'signup' ? 'translate-x-full' : ''
@@ -268,9 +274,9 @@ export function LoginPage() {
   const auth = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
-  // Set by the reset password page once the new password is saved.
+  // Set by the change-password screen once the temporary password has been replaced.
   const [resetDismissed, setResetDismissed] = useState(false)
-  const passwordReset = (location.state as { passwordReset?: boolean } | null)?.passwordReset === true && !resetDismissed
+  const passwordReset = (location.state as { passwordChanged?: boolean } | null)?.passwordChanged === true && !resetDismissed
   const [failure, setFailure] = useState<string | null>(null)
   const [attempts, setAttempts] = useState(0)
   const {
@@ -311,7 +317,7 @@ export function LoginPage() {
     <form onSubmit={onSubmit} noValidate className="relative space-y-3.5">
       {passwordReset && (
         <Alert tone="success" onDismiss={clearPasswordReset}>
-          Your password has been reset successfully. Please sign in again using your new password.
+          Your password has been changed. Please sign in again using your new password.
         </Alert>
       )}
       {failure && (

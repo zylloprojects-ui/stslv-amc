@@ -6,6 +6,7 @@ import { ADMIN_ROLE_CODE, type PermissionKey } from "../../shared/permissions";
 import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth/access";
 import { hashPassword } from "../auth/password";
 import { revokeResetTokens } from "../auth/password-reset.service";
+import { generateTemporaryPassword, TEMPORARY_PASSWORD_MINUTES } from "../auth/temporary-password";
 import { ONE_ROLE_MESSAGE, type CreateUserInput } from "./users.schemas";
 
 /**
@@ -22,6 +23,7 @@ interface UserRow {
   approval_status: ApprovalStatus;
   last_login_at: Date | null;
   created_at: Date;
+  temporary_password_expires_at: Date | null;
   roles: RoleSummary[];
 }
 
@@ -33,12 +35,15 @@ export interface User {
   approvalStatus: ApprovalStatus;
   lastLoginAt: string | null;
   createdAt: string;
+  /** Set while a temporary password is outstanding: when it stops working. */
+  temporaryCredentialExpiresAt: string | null;
   roles: RoleSummary[];
 }
 
 // password_hash is deliberately never selected here.
 const USER_SELECT = `
   SELECT u.id, u.email, u.full_name, u.is_active, u.approval_status, u.last_login_at, u.created_at,
+         u.temporary_password_expires_at,
          COALESCE(
            json_agg(json_build_object('id', r.id::text, 'code', r.code, 'name', r.name) ORDER BY r.name)
              FILTER (WHERE r.id IS NOT NULL),
@@ -57,6 +62,7 @@ function toUser(row: UserRow): User {
     approvalStatus: row.approval_status,
     lastLoginAt: row.last_login_at ? row.last_login_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
+    temporaryCredentialExpiresAt: row.temporary_password_expires_at ? row.temporary_password_expires_at.toISOString() : null,
     roles: row.roles,
   };
 }
@@ -421,26 +427,67 @@ export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): 
   });
 }
 
-export async function resetUserPassword(auth: AuthContext, id: string, password: string): Promise<void> {
-  const passwordHash = await hashPassword(password);
+export interface IssuedTemporaryPassword {
+  /** Shown to the administrator once. Never stored, logged or returned again. */
+  temporaryPassword: string;
+  expiresAt: string;
+}
 
-  await withTransaction(async (client) => {
+/**
+ * Replaces a user's password with a random temporary one that must be changed at
+ * the next sign-in, within TEMPORARY_PASSWORD_MINUTES. Only an Admin may do this,
+ * never for their own account, and only for an active account. The user is signed
+ * out everywhere, and an earlier temporary password stops working.
+ */
+export async function issueTemporaryPassword(auth: AuthContext, id: string): Promise<IssuedTemporaryPassword> {
+  // On top of USERS:EDIT (checked by the route): a role granted user editing does not get this.
+  if (!auth.roles.some((role) => role.code === ADMIN_ROLE_CODE)) {
+    throw forbidden("Only an administrator can issue a temporary password.");
+  }
+  if (id === auth.user.id) {
+    throw conflict("You cannot issue a temporary password for your own account. Change your password under My account.");
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+
+  return withTransaction(async (client) => {
+    await lockUser(client, id);
     const target = await findUser(client, id);
     await assertCanManageUser(auth, client, id);
 
-    // Moving password_changed_at signs the user out of every existing session.
-    await client.query("UPDATE users SET password_hash = $1, password_changed_at = now() WHERE id = $2", [
-      passwordHash,
-      id,
-    ]);
+    if (!target.isActive) {
+      throw conflict(
+        target.approvalStatus === "APPROVED"
+          ? "This account is deactivated. Activate it before issuing a temporary password."
+          : "This account has not been approved. Approve it before issuing a temporary password."
+      );
+    }
+
+    // Moving password_changed_at signs the user out of every existing session; the
+    // new hash replaces the old password and any earlier temporary password.
+    const updated = await client.query<{ expires_at: Date }>(
+      `UPDATE users
+       SET password_hash = $1, must_change_password = true,
+           temporary_password_expires_at = now() + make_interval(mins => $2), password_changed_at = now()
+       WHERE id = $3
+       RETURNING temporary_password_expires_at AS expires_at`,
+      [passwordHash, TEMPORARY_PASSWORD_MINUTES, id]
+    );
+    const expiresAt = (updated.rows[0] as { expires_at: Date }).expires_at.toISOString();
+
     await revokeResetTokens(client, id);
     await logActivity(client, {
       userId: auth.user.id,
-      action: "user.password_reset",
+      action: "user.temporary_password_issued",
       module: "USERS",
       entityType: "users",
       entityId: id,
-      description: `Password reset for user "${target.fullName}".`,
+      description: `Temporary password issued for user "${target.fullName}" (${target.email}).`,
+      // Who, for whom and when are the entry itself; the password is never recorded.
+      metadata: { identityVerified: true, expiresAt },
     });
+
+    return { temporaryPassword, expiresAt };
   });
 }

@@ -74,6 +74,8 @@ export interface SessionUser {
   roles: RoleSummary[]
   /** "MODULE:ACTION" strings, for example "CLIENTS:EDIT". */
   permissions: string[]
+  /** Signed in with a temporary password: must choose a new password before anything else. */
+  credentialChangeRequired?: boolean
 }
 
 export interface Client {
@@ -150,6 +152,8 @@ export interface User {
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
   lastLoginAt: string | null
   createdAt: string
+  /** Set while a temporary password is outstanding: when it stops working. */
+  temporaryCredentialExpiresAt?: string | null
   roles: RoleSummary[]
 }
 

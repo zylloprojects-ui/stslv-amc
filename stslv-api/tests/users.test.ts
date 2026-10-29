@@ -151,22 +151,25 @@ describe("manage user", () => {
     expect(log.rows[0]?.metadata).toEqual({ added: ["INVOICING"], removed: ["EXECUTION"] });
   });
 
-  it("resets a password: the new one works and the old one stops working", async () => {
+  it("issues a temporary password: the old one stops working and the temporary one must be changed", async () => {
     const created = await api()
       .post("/api/users")
       .set(admin.headers)
       .send({ email: "reset@example.com", fullName: "Reset Me", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
-    const newPassword = "Freshly-Reset-Password-9";
 
     const response = await api()
-      .post(`/api/users/${created.body.data.id}/reset-password`)
+      .post(`/api/users/${created.body.data.id}/temporary-password`)
       .set(admin.headers)
-      .send({ password: newPassword });
+      .send({ identityVerified: true });
+    const temporary = response.body.data.temporaryPassword as string;
 
     expect(response.status).toBe(200);
-    expect(JSON.stringify(response.body)).not.toContain(newPassword);
     expect((await api().post("/api/auth/login").send({ email: "reset@example.com", password: PASSWORD })).status).toBe(401);
-    expect((await api().post("/api/auth/login").send({ email: "reset@example.com", password: newPassword })).status).toBe(200);
+
+    const session = await api().post("/api/auth/login").send({ email: "reset@example.com", password: temporary });
+
+    expect(session.status).toBe(200);
+    expect(session.body.data.user.credentialChangeRequired).toBe(true);
   });
 
   it("renames a user and returns 404 for an unknown user", async () => {

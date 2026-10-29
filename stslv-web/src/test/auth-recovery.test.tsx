@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply } from './helpers'
+import type { SessionUser } from '../lib/types'
+import { ACCOUNTANT, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply } from './helpers'
 
 const GOOD_PASSWORD = 'a-good-long-password'
 
@@ -12,8 +13,8 @@ const GOOD_PASSWORD = 'a-good-long-password'
 const styles: string = readFileSync('src/index.css', 'utf8')
 
 const SIGNUP_MESSAGE = 'Your registration has been submitted. An administrator will review it before you can sign in.'
-const RESET_MESSAGE = 'If an active account exists for that email, a password reset link has been sent to it.'
-const RESET_DONE_MESSAGE = 'Your password has been reset successfully. Please sign in again using your new password.'
+const FORGOT_MESSAGE = 'Forgot your password? Please contact your system administrator to receive a temporary password.'
+const CHANGED_MESSAGE = 'Your password has been changed. Please sign in again using your new password.'
 
 /** Holds back the reply to one request until the test releases it. */
 function deferred() {
@@ -112,7 +113,7 @@ describe('navigation between the auth pages', () => {
     expect(document.title).toBe('Forgot password · STSLEV AMC')
     // The tabs make no sense while recovering an account, so the frame hides them.
     expect(screen.getByRole('tablist', { hidden: true })).toHaveClass('hidden')
-    expect(screen.getByRole('button', { name: 'Send reset link' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(FORGOT_MESSAGE)
 
     await userEvent.click(screen.getByRole('link', { name: /Back to sign in/ }))
 
@@ -286,200 +287,176 @@ describe('sign up', () => {
 })
 
 describe('forgot password', () => {
-  it('validates the email before calling the API', async () => {
+  it('tells the person to ask their administrator, and sends nothing', async () => {
     const api = mockApi(() => undefined)
     renderApp('/forgot-password')
 
-    expect(await screen.findByLabelText(/Email/)).toHaveFocus()
-    await userEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
-    expect(await screen.findByText('Email is required.')).toBeInTheDocument()
-
-    await userEvent.type(screen.getByLabelText(/Email/), 'not-an-email')
-    await userEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
-
-    expect(await screen.findByText('Enter a valid email address.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: 'Forgot your password?' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(FORGOT_MESSAGE)
+    // No email is asked for: recovery does not go through email.
+    expect(screen.queryByLabelText(/Email/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /reset link/i })).not.toBeInTheDocument()
+    expect(document.body).not.toHaveTextContent(/check your email/i)
+    expect(screen.getByRole('link', { name: /Back to sign in/ })).toHaveAttribute('href', '/login')
     expect(api.requests).toHaveLength(0)
   })
 
-  it('sends the request, shows a loading state, then the same confirmation for any email', async () => {
-    const pending = deferred()
-    const api = mockApi((request) => (request.method === 'POST' && request.path === '/auth/forgot-password' ? pending.reply : undefined))
-    renderApp('/forgot-password')
+  it('no longer has a reset-link page', async () => {
+    mockApi(() => undefined)
+    renderApp('/reset-password#token=old-emailed-token')
 
-    await userEvent.type(await screen.findByLabelText(/Email/), ' someone@example.com ')
-    await userEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
-
-    expect(await screen.findByRole('button', { name: 'Sending' })).toBeDisabled()
-
-    pending.release(ok({ message: RESET_MESSAGE }))
-
-    expect(await screen.findByRole('heading', { name: 'Check your email' })).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(RESET_MESSAGE)
-    // The page never says whether the account exists.
-    expect(screen.getByRole('status')).not.toHaveTextContent('someone@example.com')
-    expect(api.find('POST', '/auth/forgot-password')[0]?.body).toEqual({ email: 'someone@example.com' })
-    expect(screen.queryByLabelText(/Email/)).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Back to sign in/ })).toHaveAttribute('href', '/login')
-  })
-
-  it('reports a failed request and lets the person try again', async () => {
-    mockApi((request) =>
-      request.path === '/auth/forgot-password'
-        ? fail(429, 'TOO_MANY_REQUESTS', 'Too many attempts. Please wait a few minutes and try again.')
-        : undefined,
-    )
-    renderApp('/forgot-password')
-
-    await userEvent.type(await screen.findByLabelText(/Email/), 'someone@example.com')
-    await userEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Too many attempts.')
-    expect(screen.queryByText('Check your email')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Send reset link' })).toBeEnabled()
+    // Not an auth page any more: an anonymous visitor is sent to sign in.
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
   })
 })
 
-describe('reset password', () => {
-  function resetApi(status: string, onReset: () => MockReply = () => ok(null)) {
+describe('required password change after a temporary password', () => {
+  const TEMPORARY = 'Kp7r-Xw2m-Tq9a-Hd4e'
+  const MUST_CHANGE: SessionUser = { ...ACCOUNTANT, credentialChangeRequired: true }
+
+  /** The API as seen by a session that signed in with a temporary password. */
+  function forcedApi(onComplete: () => MockReply | Promise<MockReply> = () => ok(null)) {
     return mockApi((request) => {
-      if (request.method === 'POST' && request.path === '/auth/reset-password/check') return ok({ status })
-      if (request.method === 'POST' && request.path === '/auth/reset-password') return onReset()
-      return undefined
+      if (request.path === '/auth/login') return ok({ token: 'temporary-session', expiresAt: '2026-10-29T12:00:00.000Z', user: MUST_CHANGE })
+      if (request.path === '/auth/me') return ok({ user: MUST_CHANGE })
+      if (request.method === 'POST' && request.path === '/auth/complete-password-change') return onComplete()
+      // Anything else is refused, as the API does.
+      return fail(403, 'PASSWORD_CHANGE_REQUIRED', 'Choose a new password before continuing.')
     })
   }
 
-  it('treats a link without a token as invalid, without calling the API', async () => {
-    const api = mockApi(() => undefined)
-    renderApp('/reset-password')
+  async function signInWithTemporaryPassword() {
+    renderApp('/login')
+    await userEvent.type(await screen.findByLabelText(/Email/), 'accountant@example.com')
+    await userEvent.type(screen.getByLabelText(/Password/), TEMPORARY)
+    await userEvent.click(screen.getByRole('button', { name: 'Login' }))
 
-    expect(await screen.findByRole('heading', { name: 'This link is not valid' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Request a new link' })).toHaveAttribute('href', '/forgot-password')
-    expect(screen.getByRole('link', { name: /Back to sign in/ })).toHaveAttribute('href', '/login')
-    expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
-    expect(document.title).toBe('Reset password · STSLEV AMC')
-    expect(api.requests).toHaveLength(0)
-  })
+    return screen.findByLabelText(/^New password/)
+  }
 
-  it('checks the link first, sending the token in the request body', async () => {
-    const pending = deferred()
-    const api = mockApi((request) => (request.path === '/auth/reset-password/check' ? pending.reply : undefined))
-    renderApp('/reset-password#token=emailed-token')
+  async function fill(newPassword: string, confirmation = newPassword) {
+    await userEvent.type(screen.getByLabelText(/^New password/), newPassword)
+    await userEvent.type(screen.getByLabelText(/^Confirm new password/), confirmation)
+    await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
+  }
 
-    expect(await screen.findByRole('status')).toHaveTextContent('Checking your reset link')
-    expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
+  const appRequests = (requests: { path: string }[]) => requests.map((request) => request.path).filter((path) => !path.startsWith('/auth/'))
 
-    pending.release(ok({ status: 'valid' }))
+  it('goes straight from sign in to the change-password screen', async () => {
+    const api = forcedApi()
 
-    expect(await screen.findByLabelText(/^New password/)).toHaveFocus()
+    expect(await signInWithTemporaryPassword()).toHaveFocus()
     expect(screen.getByRole('heading', { level: 1, name: 'Choose a new password' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('You signed in with a temporary password for accountant@example.com.')
     expect(screen.getByRole('tablist', { hidden: true })).toHaveClass('hidden')
-    expect(api.find('POST', '/auth/reset-password/check')[0]?.body).toEqual({ token: 'emailed-token' })
-    expect(api.requests.every((request) => !request.query.has('token') && !request.path.includes('emailed-token'))).toBe(true)
+    expect(document.title).toBe('Change your password · STSLEV AMC')
+    // Nothing of the application was loaded.
+    expect(appRequests(api.requests)).toEqual([])
   })
 
-  it.each([
-    ['invalid', 'This link is not valid'],
-    ['expired', 'This link has expired'],
-    ['used', 'This link has already been used'],
-  ])('explains a link that is %s and offers a new one', async (status, title) => {
-    resetApi(status)
-    renderApp('/reset-password#token=emailed-token')
+  it.each(['/dashboard', '/clients', '/admin/users', '/account', '/login', '/forgot-password'])(
+    'keeps a forced session on the change-password screen when it opens %s directly',
+    async (path) => {
+      signIn()
+      const api = forcedApi()
+      renderApp(path)
 
-    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument()
-    expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Request a new link' })).toHaveAttribute('href', '/forgot-password')
-  })
+      expect(await screen.findByLabelText(/^New password/)).toBeInTheDocument()
+      expect(screen.queryByRole('navigation')).not.toBeInTheDocument()
+      expect(appRequests(api.requests)).toEqual([])
+    },
+  )
 
   it('validates the new password before calling the API', async () => {
-    const api = resetApi('valid')
-    renderApp('/reset-password#token=emailed-token')
+    const api = forcedApi()
+    await signInWithTemporaryPassword()
 
-    await screen.findByLabelText(/^New password/)
     await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
-
     expect(await screen.findByText('Password must be at least 10 characters.')).toBeInTheDocument()
     expect(screen.getByText('Confirm your new password.')).toBeInTheDocument()
 
-    await userEvent.type(screen.getByLabelText(/^New password/), GOOD_PASSWORD)
-    await userEvent.type(screen.getByLabelText(/^Confirm new password/), 'something-else-entirely')
-    await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
-
+    await fill(GOOD_PASSWORD, 'something-else-entirely')
     expect(await screen.findByText('The two passwords do not match.')).toBeInTheDocument()
-    expect(api.find('POST', '/auth/reset-password')).toHaveLength(0)
+    expect(api.find('POST', '/auth/complete-password-change')).toHaveLength(0)
   })
 
-  it('sets the new password, shows a loading state, then returns to sign in with a confirmation', async () => {
+  it('saves the new password, signs out and returns to sign in with a confirmation', async () => {
     const pending = deferred()
-    const api = mockApi((request) => {
-      if (request.path === '/auth/reset-password/check') return ok({ status: 'valid' })
-      if (request.path === '/auth/reset-password') return pending.reply
-      return undefined
-    })
-    renderApp('/reset-password#token=emailed-token')
+    const api = forcedApi(() => pending.reply)
+    await signInWithTemporaryPassword()
 
-    await userEvent.type(await screen.findByLabelText(/^New password/), GOOD_PASSWORD)
-    await userEvent.type(screen.getByLabelText(/^Confirm new password/), GOOD_PASSWORD)
-    await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
-
+    await fill(GOOD_PASSWORD)
     expect(await screen.findByRole('button', { name: 'Saving' })).toBeDisabled()
-    // Nothing is claimed before the API answers.
-    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
+    expect(screen.queryByText(CHANGED_MESSAGE)).not.toBeInTheDocument()
 
     pending.release(ok(null))
 
     expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1, name: 'Welcome back' })).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent(RESET_DONE_MESSAGE)
-    expect(api.find('POST', '/auth/reset-password')).toHaveLength(1)
-    expect(api.find('POST', '/auth/reset-password')[0]?.body).toEqual({ token: 'emailed-token', password: GOOD_PASSWORD })
-    // Resetting does not sign the person in.
+    expect(screen.getByRole('status')).toHaveTextContent(CHANGED_MESSAGE)
+    expect(api.find('POST', '/auth/complete-password-change')[0]?.body).toEqual({ newPassword: GOOD_PASSWORD })
+    // Every session ended, this one too.
     expect(localStorage.getItem('stslv-amc.token')).toBeNull()
   })
 
-  async function completeReset() {
-    renderApp('/reset-password#token=emailed-token')
+  it('shows a password the API refuses on the field, and keeps the form', async () => {
+    forcedApi(() =>
+      fail(400, 'VALIDATION_ERROR', 'Choose a password different from the temporary one.', [
+        { field: 'newPassword', message: 'Choose a password different from the temporary one.' },
+      ]),
+    )
+    await signInWithTemporaryPassword()
 
-    await userEvent.type(await screen.findByLabelText(/^New password/), GOOD_PASSWORD)
-    await userEvent.type(screen.getByLabelText(/^Confirm new password/), GOOD_PASSWORD)
-    await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
+    await fill(GOOD_PASSWORD)
 
-    expect(await screen.findByText(RESET_DONE_MESSAGE)).toBeInTheDocument()
-  }
-
-  it('keeps the confirmation while the person types, and removes it when they dismiss it', async () => {
-    resetApi('valid')
-    await completeReset()
-
-    await userEvent.type(screen.getByLabelText(/Email/), 'someone@example.com')
-    expect(screen.getByText(RESET_DONE_MESSAGE)).toBeInTheDocument()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Dismiss message' }))
-    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
-
-    // It does not come back when moving between the tabs.
-    await userEvent.click(screen.getByRole('tab', { name: 'Sign up' }))
-    await userEvent.click(screen.getByRole('tab', { name: 'Sign in' }))
-
-    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
-    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
+    expect(await screen.findByText('Choose a password different from the temporary one.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Set new password' })).toBeEnabled()
+    expect(localStorage.getItem('stslv-amc.token')).not.toBeNull()
   })
 
-  it('removes the confirmation once the person signs in', async () => {
-    const api = mockApi((request) => {
-      if (request.path === '/auth/reset-password/check') return ok({ status: 'valid' })
-      if (request.path === '/auth/reset-password') return ok(null)
-      if (request.path === '/auth/login') return fail(401, 'INVALID_CREDENTIALS', 'Incorrect email or password.')
-      return undefined
-    })
-    await completeReset()
+  it('lets the person sign out instead', async () => {
+    forcedApi()
+    await signInWithTemporaryPassword()
 
-    await userEvent.type(screen.getByLabelText(/Email/), 'someone@example.com')
-    await userEvent.type(screen.getByLabelText(/Password/), 'not-the-new-password')
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(localStorage.getItem('stslv-amc.token')).toBeNull()
+  })
+
+  it('explains an expired temporary password at sign in', async () => {
+    mockApi((request) =>
+      request.path === '/auth/login'
+        ? fail(401, 'TEMPORARY_PASSWORD_EXPIRED', 'Your temporary password has expired. Ask your administrator for a new one.')
+        : undefined,
+    )
+    renderApp('/login')
+
+    await userEvent.type(await screen.findByLabelText(/Email/), 'accountant@example.com')
+    await userEvent.type(screen.getByLabelText(/Password/), TEMPORARY)
     await userEvent.click(screen.getByRole('button', { name: 'Login' }))
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Incorrect email or password.')
-    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
-    expect(api.find('POST', '/auth/login')).toHaveLength(1)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Your temporary password has expired. Ask your administrator for a new one.')
+    expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
+  })
+
+  it('sends a visitor who is not signed in from the change-password screen to sign in', async () => {
+    const api = mockApi(() => undefined)
+    renderApp('/change-password')
+
+    expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
+    expect(api.requests).toHaveLength(0)
+  })
+
+  it('sends a normal session away from the change-password screen', async () => {
+    signIn()
+    mockApi((request) => {
+      if (request.path === '/auth/me') return ok({ user: ADMIN })
+      if (request.path === '/dashboard/summary') return ok({ clients: { active: 1, inactive: 0 } })
+      return undefined
+    })
+    renderApp('/change-password')
+
+    expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
   })
 
   it('does not show the confirmation on an ordinary visit to sign in', async () => {
@@ -487,75 +464,6 @@ describe('reset password', () => {
     renderApp('/login')
 
     expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
-    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
-  })
-
-  it.each([
-    ['RESET_TOKEN_USED', 'This link has already been used'],
-    ['RESET_TOKEN_EXPIRED', 'This link has expired'],
-    ['RESET_TOKEN_INVALID', 'This link is not valid'],
-  ])('shows the dead-link state when the API answers %s at the last moment', async (code, title) => {
-    resetApi('valid', () => fail(400, code, 'This password reset link cannot be used.'))
-    renderApp('/reset-password#token=emailed-token')
-
-    await userEvent.type(await screen.findByLabelText(/^New password/), GOOD_PASSWORD)
-    await userEvent.type(screen.getByLabelText(/^Confirm new password/), GOOD_PASSWORD)
-    await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
-
-    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument()
-    expect(screen.queryByText(RESET_DONE_MESSAGE)).not.toBeInTheDocument()
-    expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
-  })
-
-  it('shows a password the API refuses on the field, and keeps the form', async () => {
-    resetApi('valid', () =>
-      fail(400, 'VALIDATION_ERROR', 'Some fields are invalid.', [{ field: 'password', message: 'Password must be at most 72 bytes.' }]),
-    )
-    renderApp('/reset-password#token=emailed-token')
-
-    await userEvent.type(await screen.findByLabelText(/^New password/), GOOD_PASSWORD)
-    await userEvent.type(screen.getByLabelText(/^Confirm new password/), GOOD_PASSWORD)
-    await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
-
-    expect(await screen.findByText('Password must be at most 72 bytes.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Set new password' })).toBeEnabled()
-  })
-
-  it('lets the person retry when the link could not be checked', async () => {
-    let online = false
-    mockApi((request) => {
-      if (request.path !== '/auth/reset-password/check') return undefined
-      if (!online) throw new TypeError('Failed to fetch')
-      return ok({ status: 'valid' })
-    })
-    renderApp('/reset-password#token=emailed-token')
-
-    expect(await screen.findByRole('alert')).toHaveTextContent('Cannot reach the server')
-    expect(screen.queryByLabelText(/^New password/)).not.toBeInTheDocument()
-
-    online = true
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
-
-    expect(await screen.findByLabelText(/^New password/)).toBeInTheDocument()
-  })
-
-  it('works for someone already signed in on this browser, and ends that session', async () => {
-    signIn()
-    mockApi((request) => {
-      if (request.path === '/auth/me') return ok({ user: ADMIN })
-      if (request.path === '/auth/reset-password/check') return ok({ status: 'valid' })
-      if (request.path === '/auth/reset-password') return ok(null)
-      return undefined
-    })
-    renderApp('/reset-password#token=emailed-token')
-
-    await userEvent.type(await screen.findByLabelText(/^New password/), GOOD_PASSWORD)
-    await userEvent.type(screen.getByLabelText(/^Confirm new password/), GOOD_PASSWORD)
-    await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
-
-    // Sent to sign in, not on to the dashboard of the session that just ended.
-    expect(await screen.findByText(RESET_DONE_MESSAGE)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Login' })).toBeInTheDocument()
-    expect(localStorage.getItem('stslv-amc.token')).toBeNull()
+    expect(screen.queryByText(CHANGED_MESSAGE)).not.toBeInTheDocument()
   })
 })

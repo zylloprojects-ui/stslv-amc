@@ -29,7 +29,7 @@ import { SystemTypesPage } from './pages/masters/SystemTypesPage'
 import { ClientDetailPage } from './pages/clients/ClientDetailPage'
 import { NotificationsPage } from './pages/notifications/NotificationsPage'
 import { ForgotPasswordPage } from './pages/auth/ForgotPasswordPage'
-import { ResetPasswordPage } from './pages/auth/ResetPasswordPage'
+import { RequiredPasswordChangePage } from './pages/auth/RequiredPasswordChangePage'
 import { SignUpPage } from './pages/auth/SignUpPage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -79,7 +79,8 @@ export function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignUpPage />} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        {/* Signed in with a temporary password: the only page open to them (see AuthLayout and ProtectedRoute). */}
+        <Route path="/change-password" element={<RequiredPasswordChangePage />} />
       </Route>
 
       <Route element={<ProtectedRoute />}>

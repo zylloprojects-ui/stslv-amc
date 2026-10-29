@@ -36,7 +36,7 @@ export interface LoginRecord {
   user: { id: string; fullName: string; email: string } | null;
   /** The network address the request came from, when it was recorded. */
   ip: string | null;
-  /** Why a sign-in failed: unknown_account, wrong_password or inactive_account. */
+  /** Why a sign-in failed: unknown_account, wrong_password, inactive_account or temporary_password_expired. */
   reason: string | null;
   createdAt: string;
 }

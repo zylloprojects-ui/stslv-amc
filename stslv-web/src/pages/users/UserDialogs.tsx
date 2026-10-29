@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Alert, Button, Modal, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
-import { cx } from '../../lib/format'
+import { cx, formatDateTime } from '../../lib/format'
 import { passwordRule } from '../../lib/password'
 import type { Role, User } from '../../lib/types'
 
@@ -212,60 +212,112 @@ export function EditRolesModal({ user, roles, onClose, onSaved }: { user: User; 
   )
 }
 
-const resetSchema = z
-  .object({ password: passwordRule, confirmation: z.string() })
-  .refine((value) => value.password === value.confirmation, { path: ['confirmation'], message: 'The two passwords do not match.' })
+interface IssuedTemporaryPassword {
+  temporaryPassword: string
+  expiresAt: string
+}
 
-type ResetForm = z.infer<typeof resetSchema>
+/**
+ * Issues a temporary password in two steps: the administrator confirms they have
+ * verified who is asking, then the password is shown once to be passed on privately.
+ * It lives only in this dialog: closing it discards the password for good.
+ */
+export function TemporaryPasswordModal({ user, onClose, onIssued }: { user: User; onClose: () => void; onIssued: () => void }) {
+  const queryClient = useQueryClient()
+  const [verified, setVerified] = useState(false)
+  const [copied, setCopied] = useState<'yes' | 'failed' | null>(null)
 
-export function ResetPasswordModal({ user, onClose, onSaved }: { user: User; onClose: () => void; onSaved: () => void }) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<ResetForm>({ resolver: zodResolver(resetSchema), defaultValues: { password: '', confirmation: '' } })
-
-  const save = useMutation({
-    mutationFn: (values: ResetForm) => api.post<null>(`/users/${user.id}/reset-password`, { password: values.password }),
-    onSuccess: onSaved,
+  const issue = useMutation({
+    mutationFn: () => api.post<IssuedTemporaryPassword>(`/users/${user.id}/temporary-password`, { identityVerified: true }),
+    // Not kept in the mutation cache after the dialog closes.
+    gcTime: 0,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['users'] })
+      onIssued()
+    },
   })
+
+  const issued = issue.data
+
+  const copy = async () => {
+    if (!issued) return
+    try {
+      await navigator.clipboard.writeText(issued.temporaryPassword)
+      setCopied('yes')
+    } catch {
+      setCopied('failed')
+    }
+  }
+
+  if (issued) {
+    return (
+      <Modal
+        title="Temporary password issued"
+        onClose={onClose}
+        footer={<Button onClick={onClose}>Done</Button>}
+      >
+        <div className="space-y-4 text-sm text-slate-700">
+          <p>
+            Give this password privately to <strong>{user.fullName}</strong> ({user.email}). It is shown only now: once this window is
+            closed it cannot be displayed again.
+          </p>
+          <div className="flex items-center gap-2">
+            <output
+              aria-label="Temporary password"
+              className="flex-1 select-all rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-center font-mono text-lg tracking-wider text-slate-900"
+            >
+              {issued.temporaryPassword}
+            </output>
+            <Button variant="secondary" onClick={() => void copy()}>
+              {copied === 'yes' ? 'Copied' : 'Copy'}
+            </Button>
+          </div>
+          {copied === 'failed' && <Alert>The password could not be copied. Select it and copy it by hand.</Alert>}
+          <ul className="list-disc space-y-1 pl-5">
+            <li>It expires at {formatDateTime(issued.expiresAt)} (15 minutes) and works for one sign-in.</li>
+            <li>At sign-in, {user.fullName} must choose a new password before using the system.</li>
+            <li>Their previous password and every open session have stopped working.</li>
+          </ul>
+        </div>
+      </Modal>
+    )
+  }
 
   return (
     <Modal
-      title={`Reset password for ${user.fullName}`}
+      title="Generate temporary password"
       onClose={onClose}
       footer={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
+          <Button variant="secondary" onClick={onClose} disabled={issue.isPending}>
             Cancel
           </Button>
-          <Button type="submit" form="reset-password-form" loading={save.isPending}>
-            Reset password
+          <Button onClick={() => issue.mutate()} loading={issue.isPending} disabled={!verified}>
+            Generate temporary password
           </Button>
         </>
       }
     >
-      <form id="reset-password-form" noValidate className="space-y-4" onSubmit={handleSubmit((values) => save.mutate(values))}>
-        {save.isError && <Alert>{errorMessage(save.error)}</Alert>}
-        <p className="text-sm text-slate-600">The user is signed out of every device and must use the new password.</p>
-        <TextField
-          label="New password"
-          type="password"
-          required
-          autoComplete="new-password"
-          hint={PASSWORD_HINT}
-          error={errors.password?.message}
-          {...register('password')}
-        />
-        <TextField
-          label="Repeat new password"
-          type="password"
-          required
-          autoComplete="new-password"
-          error={errors.confirmation?.message}
-          {...register('confirmation')}
-        />
-      </form>
+      <div className="space-y-4 text-sm text-slate-700">
+        {issue.isError && <Alert>{errorMessage(issue.error)}</Alert>}
+        <p>
+          <strong>{user.fullName}</strong>
+          <span className="block break-all">{user.email}</span>
+        </p>
+        <p>
+          A random temporary password replaces their current password at once and signs them out everywhere. It works for 15 minutes,
+          and they must choose a new password when they sign in with it.
+        </p>
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-[18px] w-[18px] shrink-0 cursor-pointer rounded border-slate-300 accent-[#1479BD]"
+            checked={verified}
+            onChange={(event) => setVerified(event.target.checked)}
+          />
+          <span>I have verified that the person asking is {user.fullName}, the owner of this account.</span>
+        </label>
+      </div>
     </Modal>
   )
 }

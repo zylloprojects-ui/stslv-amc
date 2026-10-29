@@ -23,6 +23,9 @@ export const updateUserSchema = z.strictObject({
 
 export const setUserRolesSchema = z.strictObject({ roleIds });
 
-export const resetPasswordSchema = z.strictObject({ password: newPasswordSchema });
+// The administrator confirms they have verified who is asking before a temporary password is issued.
+export const issueTemporaryPasswordSchema = z.strictObject({
+  identityVerified: z.literal(true, { error: "Confirm that you have verified the person's identity." }),
+});
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;

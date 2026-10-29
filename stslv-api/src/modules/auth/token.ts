@@ -7,6 +7,8 @@ export interface TokenClaims {
   userId: string;
   /** Issued-at, in seconds since the epoch. */
   issuedAt: number;
+  /** Issued by signing in with a temporary password: only good for choosing a new one. */
+  passwordChange: boolean;
 }
 
 export interface IssuedToken {
@@ -14,10 +16,11 @@ export interface IssuedToken {
   expiresAt: string;
 }
 
-// The token carries only the user id. Roles and permissions are read from the
-// database on every request, so changes take effect immediately.
-export function issueToken(userId: string): IssuedToken {
-  const token = jwt.sign({}, env.jwtSecret, {
+// The token carries only the user id, plus "pc" when it was issued for a
+// temporary password. Roles and permissions are read from the database on
+// every request, so changes take effect immediately.
+export function issueToken(userId: string, options: { passwordChange?: boolean } = {}): IssuedToken {
+  const token = jwt.sign(options.passwordChange ? { pc: true } : {}, env.jwtSecret, {
     algorithm: ALGORITHM,
     subject: userId,
     expiresIn: env.jwtExpirySeconds,
@@ -38,7 +41,7 @@ export function verifyToken(token: string): TokenClaims | null {
       return null;
     }
 
-    return { userId: payload.sub, issuedAt: payload.iat };
+    return { userId: payload.sub, issuedAt: payload.iat, passwordChange: payload.pc === true };
   } catch {
     return null;
   }

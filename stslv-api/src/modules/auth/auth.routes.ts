@@ -1,12 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import { env } from "../../config/env";
-import { authenticate, requireAuth } from "../../middleware/authenticate";
+import { authenticate, authenticateAllowingPasswordChange, requireAuth } from "../../middleware/authenticate";
 import { rateLimit } from "../../middleware/rate-limit";
 import { emailSchema, newPasswordSchema, requiredText } from "../../shared/validation";
 import { toSessionUser } from "./access";
-import { changeOwnPassword, login } from "./auth.service";
-import { checkResetToken, requestPasswordReset, resetPasswordWithToken } from "./password-reset.service";
+import { changeOwnPassword, completeRequiredPasswordChange, login } from "./auth.service";
 import { registerAccount } from "./registration.service";
 
 const loginSchema = z.object({
@@ -26,19 +25,12 @@ const signupSchema = z.strictObject({
   password: newPasswordSchema,
 });
 
-const forgotPasswordSchema = z.strictObject({ email: emailSchema });
+const requiredPasswordChangeSchema = z.strictObject({ newPassword: newPasswordSchema });
 
-const resetTokenSchema = z.string({ error: "The reset link is incomplete." }).min(1, "The reset link is incomplete.").max(200);
-
-const checkResetTokenSchema = z.strictObject({ token: resetTokenSchema });
-
-const resetPasswordSchema = z.strictObject({ token: resetTokenSchema, password: newPasswordSchema });
-
-// The same wording whatever happened, so these routes do not reveal which emails have accounts.
+// The same wording whatever happened, so this route does not reveal which emails have accounts.
 const SIGNUP_RECEIVED = "Your registration has been submitted. An administrator will review it before you can sign in.";
-const RESET_REQUESTED = "If an active account exists for that email, a password reset link has been sent to it.";
 
-// The routes below are open to anyone, so each address is limited.
+// The sign-up route is open to anyone, so each address is limited.
 const publicLimit = () => rateLimit({ windowMs: 15 * 60 * 1000, max: env.publicAuthRateLimit });
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
@@ -75,28 +67,17 @@ authRouter.post("/signup", publicLimit(), async (req, res) => {
   res.status(202).json({ success: true, data: { message: SIGNUP_RECEIVED } });
 });
 
-authRouter.post("/forgot-password", publicLimit(), async (req, res) => {
-  await requestPasswordReset(forgotPasswordSchema.parse(req.body).email);
-
-  res.json({ success: true, data: { message: RESET_REQUESTED } });
-});
-
-// The token is sent in the body, not the address, so it is not written to access logs.
-authRouter.post("/reset-password/check", publicLimit(), async (req, res) => {
-  const { token } = checkResetTokenSchema.parse(req.body);
-
-  res.json({ success: true, data: { status: await checkResetToken(token) } });
-});
-
-authRouter.post("/reset-password", publicLimit(), async (req, res) => {
-  const { token, password } = resetPasswordSchema.parse(req.body);
-
-  await resetPasswordWithToken(token, password);
-  res.json({ success: true, data: null });
-});
-
-authRouter.get("/me", authenticate, (req, res) => {
+// Answers a user who must change their password too, so the web application can send them to that screen.
+authRouter.get("/me", authenticateAllowingPasswordChange, (req, res) => {
   res.json({ success: true, data: { user: toSessionUser(requireAuth(req)) } });
+});
+
+// The only other route open to a user signed in with a temporary password. Every session ends afterwards.
+authRouter.post("/complete-password-change", authenticateAllowingPasswordChange, async (req, res) => {
+  const { newPassword } = requiredPasswordChangeSchema.parse(req.body);
+
+  await completeRequiredPasswordChange(requireAuth(req), newPassword);
+  res.json({ success: true, data: null });
 });
 
 authRouter.post("/change-password", authenticate, async (req, res) => {
