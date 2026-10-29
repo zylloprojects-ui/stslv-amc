@@ -259,7 +259,7 @@ describe("privilege escalation is blocked", () => {
     const promotePeer = await api()
       .put(`/api/users/${peer}/roles`)
       .set(accountant.headers)
-      .send({ roleIds: [await roleId("ACCOUNTANT"), await roleId("ADMIN")] });
+      .send({ roleIds: [await roleId("ADMIN")] });
     const promoteSelf = await api()
       .put(`/api/users/${accountant.id}/roles`)
       .set(accountant.headers)
@@ -274,7 +274,7 @@ describe("privilege escalation is blocked", () => {
       await api().post(`/api/users/${admin.id}/reset-password`).set(accountant.headers).send({ password: "Taken-Over-Password-1" }),
       await api().post(`/api/users/${admin.id}/deactivate`).set(accountant.headers),
       await api().patch(`/api/users/${admin.id}`).set(accountant.headers).send({ fullName: "Renamed" }),
-      await api().put(`/api/users/${admin.id}/roles`).set(accountant.headers).send({ roleIds: [] }),
+      await api().put(`/api/users/${admin.id}/roles`).set(accountant.headers).send({ roleIds: [await roleId("ACCOUNTANT")] }),
     ];
 
     for (const response of attempts) {
@@ -309,7 +309,7 @@ describe("privilege escalation is blocked", () => {
 describe("the system always keeps an active Admin", () => {
   it("does not let an Admin deactivate themselves or change their own roles", async () => {
     const deactivate = await api().post(`/api/users/${admin.id}/deactivate`).set(admin.headers);
-    const roles = await api().put(`/api/users/${admin.id}/roles`).set(admin.headers).send({ roleIds: [] });
+    const roles = await api().put(`/api/users/${admin.id}/roles`).set(admin.headers).send({ roleIds: [await roleId("ACCOUNTANT")] });
 
     expect(deactivate.status).toBe(409);
     expect(roles.status).toBe(409);
@@ -326,7 +326,8 @@ describe("the system always keeps an active Admin", () => {
     const supervisor = await signedIn("supervisor@example.com", ["SUPERVISOR"]);
 
     const deactivate = await api().post(`/api/users/${admin.id}/deactivate`).set(supervisor.headers);
-    const removeRole = await api().put(`/api/users/${admin.id}/roles`).set(supervisor.headers).send({ roleIds: [] });
+    // Replacing the only active Admin's role with another one would leave no Admin.
+    const removeRole = await api().put(`/api/users/${admin.id}/roles`).set(supervisor.headers).send({ roleIds: [await roleId("SUPERVISOR")] });
 
     expect(deactivate.status).toBe(409);
     expect(removeRole.status).toBe(409);

@@ -46,7 +46,7 @@ describe("create user", () => {
     const response = await api()
       .post("/api/users")
       .set(admin.headers)
-      .send({ email: "hash-check@example.com", fullName: "Hash Check", password: PASSWORD });
+      .send({ email: "hash-check@example.com", fullName: "Hash Check", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
     const stored = await pool.query<{ password_hash: string }>("SELECT password_hash FROM users WHERE id = $1", [
       response.body.data.id,
     ]);
@@ -68,7 +68,7 @@ describe("create user", () => {
   });
 
   it("rejects a duplicate email, a weak password, invalid fields and unknown roles", async () => {
-    const base = { email: "valid@example.com", fullName: "Valid", password: PASSWORD };
+    const base = { email: "valid@example.com", fullName: "Valid", password: PASSWORD, roleIds: [await roleId("EXECUTION")] };
 
     const duplicate = await api().post("/api/users").set(admin.headers).send({ ...base, email: "ADMIN@example.com" });
     const weak = await api().post("/api/users").set(admin.headers).send({ ...base, password: "short" });
@@ -120,7 +120,7 @@ describe("manage user", () => {
     expect(logs.rows.map((row) => row.action)).toEqual(["user.created", "user.deactivated", "user.activated"]);
   });
 
-  it("assigns and removes roles, changing what the user may do", async () => {
+  it("replaces the user's one role with another, changing what the user may do at once", async () => {
     const created = await api()
       .post("/api/users")
       .set(admin.headers)
@@ -133,10 +133,12 @@ describe("manage user", () => {
     const response = await api()
       .put(`/api/users/${id}/roles`)
       .set(admin.headers)
-      .send({ roleIds: [await roleId("INVOICING"), await roleId("ACCOUNTANT")] });
+      .send({ roleIds: [await roleId("INVOICING")] });
 
     expect(response.status).toBe(200);
-    expect(response.body.data.roles.map((role: { code: string }) => role.code)).toEqual(["ACCOUNTANT", "INVOICING"]);
+    // The old role is replaced, not kept beside the new one.
+    expect(response.body.data.roles.map((role: { code: string }) => role.code)).toEqual(["INVOICING"]);
+    expect((await pool.query("SELECT 1 FROM user_roles WHERE user_id = $1", [id])).rowCount).toBe(1);
 
     const permissions = (await api().get("/api/auth/me").set(headers)).body.data.user.permissions;
     expect(permissions).toContain("INVOICES:CREATE");
@@ -146,18 +148,14 @@ describe("manage user", () => {
       "SELECT metadata FROM activity_logs WHERE action = 'user.roles_changed' AND entity_id = $1",
       [id]
     );
-    expect(log.rows[0]?.metadata).toEqual({ added: ["ACCOUNTANT", "INVOICING"], removed: ["EXECUTION"] });
-
-    const cleared = await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [] });
-    expect(cleared.body.data.roles).toEqual([]);
-    expect((await api().get("/api/clients").set(headers)).status).toBe(403);
+    expect(log.rows[0]?.metadata).toEqual({ added: ["INVOICING"], removed: ["EXECUTION"] });
   });
 
   it("resets a password: the new one works and the old one stops working", async () => {
     const created = await api()
       .post("/api/users")
       .set(admin.headers)
-      .send({ email: "reset@example.com", fullName: "Reset Me", password: PASSWORD });
+      .send({ email: "reset@example.com", fullName: "Reset Me", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
     const newPassword = "Freshly-Reset-Password-9";
 
     const response = await api()
@@ -175,12 +173,82 @@ describe("manage user", () => {
     const created = await api()
       .post("/api/users")
       .set(admin.headers)
-      .send({ email: "rename@example.com", fullName: "Old Name", password: PASSWORD });
+      .send({ email: "rename@example.com", fullName: "Old Name", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
 
     const renamed = await api().patch(`/api/users/${created.body.data.id}`).set(admin.headers).send({ fullName: "New Name" });
     const missing = await api().patch("/api/users/999999").set(admin.headers).send({ fullName: "Nobody" });
 
     expect(renamed.body.data.fullName).toBe("New Name");
     expect(missing.status).toBe(404);
+  });
+});
+
+describe("one role per user", () => {
+  const ONE_ROLE = "Select exactly one role.";
+
+  it("creates a user only with exactly one role", async () => {
+    const base = { fullName: "One Role", password: PASSWORD };
+    const none = await api().post("/api/users").set(admin.headers).send({ ...base, email: "none@example.com" });
+    const empty = await api().post("/api/users").set(admin.headers).send({ ...base, email: "empty@example.com", roleIds: [] });
+    const two = await api()
+      .post("/api/users")
+      .set(admin.headers)
+      .send({ ...base, email: "two@example.com", roleIds: [await roleId("ACCOUNTANT"), await roleId("INVOICING")] });
+
+    for (const response of [none, empty, two]) {
+      expect(response.status).toBe(400);
+      expect(response.body.error.details).toContainEqual({ field: "roleIds", message: ONE_ROLE });
+    }
+    expect((await pool.query("SELECT 1 FROM users WHERE email IN ('none@example.com', 'empty@example.com', 'two@example.com')")).rowCount).toBe(0);
+
+    // The same id twice is one role.
+    const same = await api()
+      .post("/api/users")
+      .set(admin.headers)
+      .send({ ...base, email: "same@example.com", roleIds: [await roleId("ACCOUNTANT"), await roleId("ACCOUNTANT")] });
+    expect(same.status).toBe(201);
+    expect(same.body.data.roles).toEqual([expect.objectContaining({ code: "ACCOUNTANT" })]);
+  });
+
+  it("refuses to give an existing user no role or several roles, and changes nothing", async () => {
+    const created = await api()
+      .post("/api/users")
+      .set(admin.headers)
+      .send({ email: "keep@example.com", fullName: "Keep Role", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
+    const id = created.body.data.id;
+
+    const empty = await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [] });
+    const two = await api()
+      .put(`/api/users/${id}/roles`)
+      .set(admin.headers)
+      .send({ roleIds: [await roleId("ACCOUNTANT"), await roleId("INVOICING")] });
+
+    for (const response of [empty, two]) {
+      expect(response.status).toBe(400);
+      expect(response.body.error.details).toContainEqual({ field: "roleIds", message: ONE_ROLE });
+    }
+    const roles = await pool.query<{ code: string }>("SELECT r.code FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = $1", [id]);
+    expect(roles.rows).toEqual([{ code: "EXECUTION" }]);
+  });
+
+  it("replaces several roles held from before the rule with the one chosen", async () => {
+    const created = await api()
+      .post("/api/users")
+      .set(admin.headers)
+      .send({ email: "legacy@example.com", fullName: "Legacy Roles", password: PASSWORD, roleIds: [await roleId("EXECUTION")] });
+    const id = created.body.data.id;
+    // Assigned directly, as data from before the rule may be.
+    await pool.query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)", [id, await roleId("INVOICING")]);
+
+    const response = await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("ACCOUNTANT")] });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.roles.map((role: { code: string }) => role.code)).toEqual(["ACCOUNTANT"]);
+    const log = await pool.query<{ metadata: { added: string[]; removed: string[] } }>(
+      "SELECT metadata FROM activity_logs WHERE action = 'user.roles_changed' AND entity_id = $1",
+      [id]
+    );
+    expect(log.rows[0]?.metadata.added).toEqual(["ACCOUNTANT"]);
+    expect([...(log.rows[0]?.metadata.removed ?? [])].sort()).toEqual(["EXECUTION", "INVOICING"]);
   });
 });

@@ -151,3 +151,34 @@ When merging, in the same change:
 | `stslv-web/src/App.tsx` | route guards of 8 routes, Master Data Center hub | Suggestions adds 3 routes |
 | `stslv-api/src/modules/amc/amc.routes.ts` | renewal, visit and Service Status guards | `4a180d6` adds filter-options (applies cleanly) |
 | `stslv-web/src/test/amc-helpers.ts` | fixture permissions via `afterPageSplit` | `4a180d6` adds a mock route (applies cleanly) |
+
+## 9. One role per user (approved 2026-10-29)
+
+Every user holds exactly one role. Enforced in the API and the UI; the database is unchanged (see the proposal below).
+
+- `POST /api/users` and `PUT /api/users/:id/roles` take `roleIds` as a list of **exactly one** role id (the shape the API already used). No role, or several, answers 400 `Select exactly one role.` on the field `roleIds`; the same id twice counts as one. The services check the rule again.
+- Changing a role replaces whatever the user held, in one transaction under the user's row lock, and is recorded as `user.roles_changed` with `added` / `removed`.
+- Approving a sign-up (`POST /api/users/:id/activate` on a pending account, USERS:APPROVE) needs exactly one active role: none answers 409 `Assign a role before approving this user.`; several answer 409 `This user has more than one role. Choose one role before approving.` Nothing is removed by a refusal.
+- Unchanged: nobody changes their own role; a role can be given only by someone holding all of its permissions; the last active Admin cannot lose the Admin role; a rejected request cannot be given a role; rejecting removes the role given while pending.
+- A user can no longer be left with no role through the API. Taking someone's access away is done by deactivating the account.
+- UI: Create User and Change role use one radio group of the roles (inactive roles shown, not selectable), with the current role shown; Save is enabled only for a change. The Users table shows the role in a **Role** column; an account holding several roles from before the rule is marked "Several roles: choose one", and its approval is disabled until one is chosen, which replaces them all.
+
+Existing data: read-only audit of local `stslv_amc_dev` (2026-10-29): 1 user, 1 role, 0 users with several roles, 0 pending. No cleanup needed there. Neon was not queried.
+
+### Proposal (not implemented): a database constraint
+
+The API is the only writer of `user_roles` besides `npm run admin:create` (one role) and the rejection (removes all), so the rule holds. A constraint would also stop a direct database write from adding a second role:
+
+```sql
+-- 0082_one_role_per_user (proposal)
+-- Stops if any user holds several roles, so nothing is removed silently.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM user_roles GROUP BY user_id HAVING count(*) > 1) THEN
+    RAISE EXCEPTION 'Some users hold several roles. Choose one for each before applying 0082.';
+  END IF;
+END $$;
+CREATE UNIQUE INDEX user_roles_one_per_user_uq ON user_roles (user_id);
+```
+
+Needs approval, and on each database first a read-only count of users with several roles (Neon included). It would be numbered before Suggestions' 0085. Nothing in the application depends on it.

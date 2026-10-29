@@ -22,6 +22,9 @@ const toggleLabel = (user: User) => (user.isActive ? 'Deactivate' : isPending(us
 
 /** An approval must give access, so a pending request needs a role first. The API enforces the same rule. */
 const needsRoleToApprove = (user: User) => isPending(user) && user.roles.length === 0
+/** Several roles, assigned before the one-role rule: an administrator chooses one before approving. */
+const hasSeveralRoles = (user: User) => user.roles.length > 1
+const ONE_ROLE_TO_APPROVE = 'This user has more than one role. Choose one role before approving.'
 
 const ROLE_REQUIRED_TO_APPROVE = 'Assign a role before approving this user.'
 
@@ -162,7 +165,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                         Email
                       </th>
                       <th scope="col" className={TABLE.th}>
-                        Roles
+                        Role
                       </th>
                       <th scope="col" className={TABLE.th}>
                         Status
@@ -192,6 +195,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                           <td className={TABLE.td}>
                             <div className="flex flex-wrap gap-1">
                               {user.roles.length === 0 && <span className="text-slate-500">No role</span>}
+                              {hasSeveralRoles(user) && <Badge tone="amber">Several roles: choose one</Badge>}
                               {user.roles.map((role) => (
                                 <Badge key={role.id} tone="blue">
                                   {role.name}
@@ -217,10 +221,10 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                               <ActionGroup>
                                 {canEdit && (
                                   <ActionButton
-                                    label={`Change roles of ${user.fullName}`}
+                                    label={`Change role of ${user.fullName}`}
                                     icon="roles"
                                     disabled={isSelf || !roles.data}
-                                    hint={isSelf ? 'You cannot change your own roles.' : undefined}
+                                    hint={isSelf ? 'You cannot change your own role.' : undefined}
                                     onClick={() => setDialog({ kind: 'roles', user })}
                                   />
                                 )}
@@ -230,8 +234,16 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                   danger={user.isActive && !isSelf}
                                   label={`${toggleLabel(user)} ${user.fullName}`}
                                   icon={user.isActive ? 'deactivate' : isPending(user) ? 'approve' : 'reactivate'}
-                                  disabled={isSelf || needsRoleToApprove(user)}
-                                  hint={isSelf ? 'You cannot deactivate your own account.' : needsRoleToApprove(user) ? ROLE_REQUIRED_TO_APPROVE : undefined}
+                                  disabled={isSelf || needsRoleToApprove(user) || (isPending(user) && hasSeveralRoles(user))}
+                                  hint={
+                                    isSelf
+                                      ? 'You cannot deactivate your own account.'
+                                      : needsRoleToApprove(user)
+                                        ? ROLE_REQUIRED_TO_APPROVE
+                                        : isPending(user) && hasSeveralRoles(user)
+                                          ? ONE_ROLE_TO_APPROVE
+                                          : undefined
+                                  }
                                   onClick={() => setDialog({ kind: 'toggle', user })}
                                 />
                                 )}
@@ -239,6 +251,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                               </ActionGroup>
                               )}
                               {needsRoleToApprove(user) && canApprove && <p className="mt-1 text-xs text-amber-800">{ROLE_REQUIRED_TO_APPROVE}</p>}
+                              {isPending(user) && hasSeveralRoles(user) && canApprove && <p className="mt-1 text-xs text-amber-800">{ONE_ROLE_TO_APPROVE}</p>}
                             </td>
                           )}
                         </tr>

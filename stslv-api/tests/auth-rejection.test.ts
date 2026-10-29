@@ -106,8 +106,8 @@ describe("POST /api/users/:id/reject", () => {
     await api()
       .put(`/api/users/${id}/roles`)
       .set(admin.headers)
-      .send({ roleIds: [await roleId("ACCOUNTANT"), await roleId("PROCUREMENT")] });
-    expect((await userRow("rob@example.com"))?.roles).toEqual(["ACCOUNTANT", "PROCUREMENT"]);
+      .send({ roleIds: [await roleId("ACCOUNTANT")] });
+    expect((await userRow("rob@example.com"))?.roles).toEqual(["ACCOUNTANT"]);
 
     const response = await reject(id);
 
@@ -156,7 +156,7 @@ describe("POST /api/users/:id/reject", () => {
         user_id: admin.id,
         module: "USERS",
         description: 'Sign-up request of "Rob Roled" (rob@example.com) rejected.',
-        metadata: { removedRoles: ["ACCOUNTANT", "PROCUREMENT"] },
+        metadata: { removedRoles: ["ACCOUNTANT"] },
       },
     ]);
 
@@ -445,5 +445,47 @@ describe("approving and rejecting need USERS:APPROVE; other user changes need US
     expect((await api().post(`/api/users/${id}/deactivate`).set(editor.headers)).status).toBe(200);
     expect((await api().post(`/api/users/${id}/activate`).set(approver.headers)).status).toBe(403);
     expect((await api().post(`/api/users/${id}/activate`).set(editor.headers)).status).toBe(200);
+  });
+});
+
+describe("an approval gives exactly one role", () => {
+  beforeAll(async () => {
+    await resetData();
+    admin = await signedIn("admin@example.com", ["ADMIN"]);
+  });
+
+  it("approves a request with one role, which then gives that role's permissions", async () => {
+    const id = await pendingUser("Olive One", "olive@example.com");
+
+    expect((await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("INVOICING")] })).status).toBe(200);
+    expect((await api().post(`/api/users/${id}/activate`).set(admin.headers)).status).toBe(200);
+
+    const signedInAsOlive = await login("olive@example.com");
+    expect(signedInAsOlive.status).toBe(200);
+    expect(signedInAsOlive.body.data.user.permissions).toContain("INVOICES:CREATE");
+  });
+
+  it("refuses approval without a role", async () => {
+    const id = await pendingUser("Nell Norole", "nell@example.com");
+    const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toBe("Assign a role before approving this user.");
+  });
+
+  it("refuses to approve a request that holds several roles from before the rule, without removing any", async () => {
+    const id = await pendingUser("Max Many", "max@example.com");
+    await pool.query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2), ($1, $3)", [id, await roleId("ACCOUNTANT"), await roleId("INVOICING")]);
+
+    const response = await api().post(`/api/users/${id}/activate`).set(admin.headers);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toBe("This user has more than one role. Choose one role before approving.");
+    expect(await userRow("max@example.com")).toMatchObject({ approval_status: "PENDING", is_active: false, roles: ["ACCOUNTANT", "INVOICING"] });
+
+    // Choosing one role replaces both; then the approval goes through.
+    expect((await api().put(`/api/users/${id}/roles`).set(admin.headers).send({ roleIds: [await roleId("INVOICING")] })).status).toBe(200);
+    expect((await api().post(`/api/users/${id}/activate`).set(admin.headers)).status).toBe(200);
+    expect(await userRow("max@example.com")).toMatchObject({ approval_status: "APPROVED", roles: ["INVOICING"] });
   });
 });
