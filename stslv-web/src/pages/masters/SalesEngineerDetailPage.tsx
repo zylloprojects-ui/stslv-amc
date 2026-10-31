@@ -1,3 +1,4 @@
+import { ContractLink } from '../../components/ContractLink'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -69,9 +70,9 @@ function UpcomingSchedule({ upcoming }: { upcoming: NonNullable<EngineerSummary[
                 <td className={`${TABLE.td} whitespace-nowrap font-semibold text-[#0b3b66]`}>{formatDate(visit.scheduledDate)}</td>
                 <td className={TABLE.td}>{visit.contract.clientName}</td>
                 <td className={TABLE.td}>
-                  <Link to={`/amc/contracts/${visit.contract.id}`} className="font-semibold text-[#0b3b66] hover:text-[#1479BD] hover:underline">
+                  <ContractLink id={visit.contract.id} className="font-semibold text-[#0b3b66] hover:text-[#1479BD] hover:underline">
                     {visit.contract.systemDescription}
-                  </Link>
+                  </ContractLink>
                 </td>
                 <td className={`${TABLE.td} whitespace-nowrap tabular-nums`}>
                   <span className="inline-flex rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-700">No. {visit.sequenceNo}</span>

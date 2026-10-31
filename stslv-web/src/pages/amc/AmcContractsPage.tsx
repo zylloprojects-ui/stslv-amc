@@ -49,8 +49,11 @@ interface TileSpec {
 
 /** The contract figures from the dashboard summary, as clickable tiles that filter the register. Hidden when the figures are not available. */
 function StatusTiles({ selected, onSelect }: { selected: ContractStatus | 'all'; onSelect: (value: ContractStatus | 'all') => void }) {
-  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
-  const figures = summary.data?.amc?.contracts
+  const summary = useQuery({
+    queryKey: ['amc', 'contracts', 'status-summary'],
+    queryFn: () => api.get<{ contracts: NonNullable<DashboardSummary['amc']>['contracts'] }>('/amc/contracts/status-summary'),
+  })
+  const figures = summary.data?.contracts
 
   if (!figures) {
     return null

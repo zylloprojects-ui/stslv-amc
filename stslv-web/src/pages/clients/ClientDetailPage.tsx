@@ -1,3 +1,4 @@
+import { ContractLink } from '../../components/ContractLink'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
@@ -58,9 +59,9 @@ function Renewals({ renewals }: { renewals: NonNullable<ClientSummary['renewals'
         {renewals.items.map((contract) => (
           <li key={contract.id} className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
             <div className="min-w-0">
-              <Link to={`/amc/contracts/${contract.id}`} className="font-medium text-blue-700 hover:underline">
+              <ContractLink id={contract.id} className="font-medium text-blue-700 hover:underline">
                 {contract.systemDescription}
-              </Link>
+              </ContractLink>
               <span className="block text-xs text-slate-500">
                 Valid {formatDate(contract.validFrom)} – {formatDate(contract.validTo)} · <Money value={contract.contractValue} />
               </span>
@@ -117,9 +118,9 @@ function UpcomingVisits({ clientId, from }: { clientId: string; from: string }) 
               <tr key={visit.id}>
                 <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(visit.scheduledDate)}</td>
                 <td className={TABLE.td}>
-                  <Link to={`/amc/contracts/${visit.contract.id}`} className="font-medium text-blue-700 hover:underline">
+                  <ContractLink id={visit.contract.id} className="font-medium text-blue-700 hover:underline">
                     {visit.contract.systemDescription}
-                  </Link>
+                  </ContractLink>
                 </td>
                 <td className={`${TABLE.td} whitespace-nowrap tabular-nums`}>No. {visit.sequenceNo}</td>
                 <td className={TABLE.td}>

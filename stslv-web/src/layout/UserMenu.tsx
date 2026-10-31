@@ -97,14 +97,16 @@ export function UserMenu() {
               </MenuIcon>
               My Profile
             </Link>
+            {auth.can('SUGGESTIONS', 'VIEW') && (
             <Link to="/suggestions" onClick={() => setOpen(false)} className={ITEM}>
               <MenuIcon>
                 <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3Z" strokeLinecap="round" strokeLinejoin="round" />
               </MenuIcon>
               My Suggestions
             </Link>
+            )}
             {auth.can('DASHBOARD', 'VIEW') && (
-              <Link to="/dashboard" onClick={() => setOpen(false)} className={ITEM}>
+              <Link to="/" onClick={() => setOpen(false)} className={ITEM}>
                 <MenuIcon>
                   <rect x="3.5" y="3.5" width="7" height="7" rx="1.8" />
                   <rect x="13.5" y="3.5" width="7" height="7" rx="1.8" />

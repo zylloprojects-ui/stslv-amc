@@ -65,6 +65,13 @@ interface RawBody {
   headers: Record<string, string>
 }
 
+// Called when the API refuses a request for lack of permission: the session's permissions may have changed.
+let forbiddenHandler: (() => void) | null = null
+
+export function setForbiddenHandler(handler: (() => void) | null): void {
+  forbiddenHandler = handler
+}
+
 async function request<T>(method: string, path: string, body?: unknown, raw?: RawBody): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const token = getToken()
@@ -104,6 +111,9 @@ async function request<T>(method: string, path: string, body?: unknown, raw?: Ra
 
     if (response.status === 401 && error.code !== 'INVALID_CREDENTIALS') {
       unauthorizedHandler?.(error)
+    }
+    if (response.status === 403) {
+      forbiddenHandler?.()
     }
 
     throw error
@@ -149,6 +159,9 @@ export async function download(path: string): Promise<DownloadedFile> {
 
     if (response.status === 401) {
       unauthorizedHandler?.(error)
+    }
+    if (response.status === 403) {
+      forbiddenHandler?.()
     }
 
     throw error

@@ -68,7 +68,7 @@ describe("migration 0087: the six roles", () => {
   });
 
   it("replaces the Executive roles' cross-section View with data-only Read (0090)", async () => {
-    expect(await grantsOf("FINANCE_EXECUTIVE")).toEqual(["AMC_SCHEDULE:READ", "DASHBOARD:VIEW", "INVOICES:CREATE", "INVOICES:EDIT", "INVOICES:EXPORT", "INVOICES:VIEW"]);
+    expect(await grantsOf("FINANCE_EXECUTIVE")).toEqual(["ACCOUNTS:EXPORT", "ACCOUNTS:VIEW", "AMC_SCHEDULE:READ", "DASHBOARD:VIEW", "INVOICES:CREATE", "INVOICES:EDIT", "INVOICES:EXPORT", "INVOICES:VIEW", "SUGGESTIONS:CREATE", "SUGGESTIONS:VIEW"]);
     const operations = await grantsOf("AMC_OPERATIONS_EXECUTIVE");
     expect(operations).toEqual(expect.arrayContaining(["CLIENTS:READ", "INVOICES:READ"]));
     expect(operations).not.toContain("CLIENTS:VIEW");
@@ -124,37 +124,37 @@ describe("migration 0088: legacy roles made inactive", () => {
 });
 
 describe("role scopes", () => {
-  it("limits each Executive role to its section's pages, plus Dashboard and data-only reads", () => {
-    expect(isInRoleScope("FINANCE_EXECUTIVE", "INVOICES", "CREATE")).toBe(true);
+  it("lets the operational roles hold any supported permission except Users & Access", () => {
     expect(isInRoleScope("FINANCE_EXECUTIVE", "AMC_SCHEDULE", "READ")).toBe(true);
-    expect(isInRoleScope("FINANCE_EXECUTIVE", "AMC_SCHEDULE", "VIEW")).toBe(false);
-    expect(isInRoleScope("FINANCE_EXECUTIVE", "AMC_SCHEDULE", "EDIT")).toBe(false);
-    expect(isInRoleScope("FINANCE_EXECUTIVE", "CLIENTS", "EDIT")).toBe(false);
-    expect(isInRoleScope("MASTER_DATA_EXECUTIVE", "SYSTEM_TYPES", "DELETE")).toBe(true);
-    expect(isInRoleScope("MASTER_DATA_EXECUTIVE", "AMC_CONTRACTS", "VIEW")).toBe(false);
-    expect(isInRoleScope("AMC_OPERATIONS_EXECUTIVE", "AMC_EXECUTION", "APPROVE")).toBe(true);
-    expect(isInRoleScope("AMC_OPERATIONS_EXECUTIVE", "INVOICES", "READ")).toBe(true);
-    expect(isInRoleScope("AMC_OPERATIONS_EXECUTIVE", "CLIENTS", "READ")).toBe(true);
-    expect(isInRoleScope("AMC_OPERATIONS_EXECUTIVE", "INVOICES", "VIEW")).toBe(false);
-    expect(isInRoleScope("AMC_OPERATIONS_EXECUTIVE", "CLIENTS", "VIEW")).toBe(false);
-    expect(isInRoleScope("AMC_OPERATIONS_EXECUTIVE", "USERS", "VIEW")).toBe(false);
+    expect(isInRoleScope("FINANCE_EXECUTIVE", "AMC_SCHEDULE", "VIEW")).toBe(true);
+    expect(isInRoleScope("FINANCE_EXECUTIVE", "CLIENTS", "EDIT")).toBe(true);
+    expect(isInRoleScope("MASTER_DATA_EXECUTIVE", "AMC_CONTRACTS", "VIEW")).toBe(true);
+    expect(isInRoleScope("AMC_OPERATIONS_EXECUTIVE", "INVOICES", "VIEW")).toBe(true);
+    expect(isInRoleScope("VIEWER", "CLIENTS", "CREATE")).toBe(true);
+    expect(isInRoleScope("VIEWER", "SETTINGS", "VIEW")).toBe(true);
+    for (const code of ["FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER"]) {
+      expect(isInRoleScope(code, "USERS", "VIEW"), code).toBe(false);
+      expect((roleScope(code) ?? []).some((key) => key.startsWith("USERS:")), code).toBe(false);
+    }
+    // Admin and custom roles keep no limit.
+    expect(roleScope("ADMINISTRATOR")).toBeNull();
+    expect(roleScope("CUSTOM_ROLE")).toBeNull();
   });
 
-  it("gives each Executive role View only on the pages of its own section (and the Dashboard)", () => {
+  it("starts each Executive role with View only on the pages of its own section (and the Dashboard)", () => {
     const sectionOf = new Map(PERMISSION_CATALOG.flatMap((section) => section.modules.map((entry) => [entry.module, section.title] as const)));
     const own: Record<string, string> = { FINANCE_EXECUTIVE: "Finance", MASTER_DATA_EXECUTIVE: "Master Data Center", AMC_OPERATIONS_EXECUTIVE: "AMC Operations" };
 
     for (const [code, section] of Object.entries(own)) {
-      const views = (roleScope(code) ?? []).filter((key) => key.endsWith(":VIEW")).map((key) => key.split(":")[0]);
-      expect(views.filter((module) => module !== "DASHBOARD" && sectionOf.get(module as never) !== section), code).toEqual([]);
+      const views = defaultGrants(code).filter((key) => key.endsWith(":VIEW")).map((key) => key.split(":")[0]);
+      expect(views.filter((module) => module !== "DASHBOARD" && module !== "SUGGESTIONS" && sectionOf.get(module as never) !== section), code).toEqual([]);
     }
   });
 
-  it("gives Viewer only View and Export, never Administration or data-only Read", () => {
-    const scope = roleScope("VIEWER") ?? [];
-    expect(scope.every((key) => key.endsWith(":VIEW") || key.endsWith(":EXPORT"))).toBe(true);
-    expect(scope.some((key) => key.startsWith("USERS:") || key.startsWith("SETTINGS:"))).toBe(false);
-    expect(scope).toContain("CLIENTS:EXPORT");
+  it("starts Viewer with View and submitting suggestions, never Administration or data-only Read", () => {
+    const grants = defaultGrants("VIEWER");
+    expect(grants.filter((key) => !key.endsWith(":VIEW"))).toEqual(["SUGGESTIONS:CREATE"]);
+    expect(grants.some((key) => key.startsWith("USERS:") || key.startsWith("SETTINGS:") || key.startsWith("SUGGESTIONS_REVIEW:"))).toBe(false);
   });
 
   it("never puts an unused or retired permission in scope", () => {
@@ -169,26 +169,6 @@ describe("role scopes", () => {
         }
       }
     }
-  });
-
-  it("refuses a grant outside the role's scope, through the API", async () => {
-    const id = await roleId("FINANCE_EXECUTIVE");
-    const current = await grantsOf("FINANCE_EXECUTIVE");
-
-    for (const key of ["CLIENTS:VIEW", "AMC_SCHEDULE:VIEW"]) {
-      const outside = await setPermissions(superAdmin, id, [...current, key]);
-      expect(outside.status, key).toBe(400);
-      expect(outside.body.error.message).toContain("outside the access this role is limited to");
-    }
-
-    const viewerCreate = await setPermissions(superAdmin, await roleId("VIEWER"), [...(await grantsOf("VIEWER")), "CLIENTS:CREATE"]);
-    expect(viewerCreate.status).toBe(400);
-    const viewerRead = await setPermissions(superAdmin, await roleId("VIEWER"), [...(await grantsOf("VIEWER")), "AMC_SCHEDULE:READ"]);
-    expect(viewerRead.status).toBe(400);
-
-    const viewerExport = await setPermissions(superAdmin, await roleId("VIEWER"), [...(await grantsOf("VIEWER")), "CLIENTS:EXPORT"]);
-    expect(viewerExport.status).toBe(200);
-    expect(await grantsOf("FINANCE_EXECUTIVE")).toEqual(current);
   });
 
   it("offers data-only Read only where another section's page shows the module's data", () => {

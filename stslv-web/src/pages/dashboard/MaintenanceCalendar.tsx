@@ -1,3 +1,4 @@
+import { ContractLink } from '../../components/ContractLink'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
@@ -335,9 +336,9 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <VisitStatusPill status={data.status} overdue={data.isOverdue} />
                 {/* STSLV AMC has no contract number yet; the record number identifies the contract. */}
-                <Link to={`/amc/contracts/${data.contract.id}`} className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#1479BD] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
+                <ContractLink id={data.contract.id} className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#1479BD] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
                   Contract record {data.contract.id}
-                </Link>
+                </ContractLink>
               </div>
             </div>
           </div>

@@ -66,8 +66,10 @@ function asViewer(record: SuggestionDetail, user: SessionUser): SuggestionDetail
 }
 
 /** A small stateful stand-in for /api/suggestions. */
-function suggestionsApi(user: SessionUser, initial: SuggestionDetail[] = [], override?: (request: MockRequest) => MockReply | undefined) {
+function suggestionsApi(account: SessionUser, initial: SuggestionDetail[] = [], override?: (request: MockRequest) => MockReply | undefined) {
   signIn()
+  // Every seeded role may submit and follow its own suggestions (migration 0092).
+  const user: SessionUser = { ...account, permissions: [...account.permissions, 'SUGGESTIONS:VIEW', 'SUGGESTIONS:CREATE'] }
   const records = new Map(initial.map((record) => [record.id, record]))
   let nextEvent = 100
 

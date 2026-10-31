@@ -18,6 +18,8 @@ import {
   allowedTransitions,
   canTransition,
   idFromReference,
+  canSeeAllSuggestions,
+  canSubmitSuggestions,
   isReviewer,
   noteRequirement,
   OPEN_STATUSES,
@@ -243,14 +245,15 @@ export async function getReviewOptions() {
   return { submitters: submitters.rows, reviewers };
 }
 
-/** Active users holding the active Super Admin or Admin role: the people a suggestion can be assigned to. */
+/** Active users whose active role may manage suggestions (Suggestions Review: Edit): the people a suggestion can be assigned to. */
 async function listReviewers(db: Queryable): Promise<(UserRef & { email: string })[]> {
   const result = await db.query<UserRef & { email: string }>(
     `SELECT DISTINCT u.id, u.full_name AS "fullName", u.email, lower(u.full_name) AS sort_name, lower(u.email) AS sort_email
      FROM users u
      JOIN user_roles ur ON ur.user_id = u.id
      JOIN roles r ON r.id = ur.role_id
-     WHERE u.is_active AND r.is_active AND r.code IN ('ADMIN', 'ADMINISTRATOR')
+     JOIN role_permissions rp ON rp.role_id = r.id AND rp.module = 'SUGGESTIONS_REVIEW' AND rp.action = 'EDIT'
+     WHERE u.is_active AND r.is_active
      ORDER BY sort_name, sort_email, u.id`
   );
 
@@ -338,7 +341,7 @@ async function loadRow(db: Queryable, auth: AuthContext, id: string, lock = fals
   );
   const row = result.rows[0];
 
-  if (!row || (row.submitted_by !== auth.user.id && !isReviewer(auth))) {
+  if (!row || (row.submitted_by !== auth.user.id && !canSeeAllSuggestions(auth))) {
     throw notFound("Suggestion not found.");
   }
 
@@ -367,11 +370,11 @@ async function loadDetail(db: Queryable, auth: AuthContext, id: string): Promise
      FROM suggestion_events e
      JOIN users a ON a.id = e.actor_id
      LEFT JOIN users asg ON asg.id = e.assigned_to
-     WHERE e.suggestion_id = $1 ${reviewer ? "" : "AND NOT e.is_internal"}
+     WHERE e.suggestion_id = $1 ${canSeeAllSuggestions(auth) ? "" : "AND NOT e.is_internal"}
      ORDER BY e.created_at, e.id`,
     [id]
   );
-  const actor: Actor | null = reviewer ? "REVIEWER" : isSubmitter ? "SUBMITTER" : null;
+  const actor: Actor | null = reviewer ? "REVIEWER" : isSubmitter && canSubmitSuggestions(auth) ? "SUBMITTER" : null;
 
   return {
     ...toSummary(row),
@@ -400,7 +403,7 @@ async function loadDetail(db: Queryable, auth: AuthContext, id: string): Promise
       isSubmitter,
       // A reviewer who submitted the suggestion acts as a reviewer.
       transitions: actor ? [...allowedTransitions(row.status, actor)] : [],
-      canComment: reviewer || (isSubmitter && row.status !== "CLOSED"),
+      canComment: reviewer || (isSubmitter && canSubmitSuggestions(auth) && row.status !== "CLOSED"),
       canAssign: reviewer,
     },
   };
@@ -513,6 +516,9 @@ export async function addComment(auth: AuthContext, id: string, input: CommentIn
     if (input.internal && !reviewer) {
       throw forbidden("Only reviewers can add internal notes.");
     }
+    if (!reviewer && (row.submitted_by !== auth.user.id || !canSubmitSuggestions(auth))) {
+      throw forbidden();
+    }
     if (!reviewer && row.status === "CLOSED") {
       throw conflict("This suggestion is closed. Submit a new suggestion if the matter needs more attention.");
     }
@@ -542,7 +548,7 @@ export async function assignSuggestion(auth: AuthContext, id: string, input: Ass
     const row = await loadRow(client, auth, id, true);
 
     if (input.assignedTo !== null && !(await listReviewers(client)).some((reviewer) => reviewer.id === input.assignedTo)) {
-      throw validationError("Choose an active reviewer.", [{ field: "assignedTo", message: "Only an active Admin user can be assigned." }]);
+      throw validationError("Choose an active reviewer.", [{ field: "assignedTo", message: "Only an active reviewer can be assigned." }]);
     }
     if (row.assigned_to === input.assignedTo) {
       return loadDetail(client, auth, id);

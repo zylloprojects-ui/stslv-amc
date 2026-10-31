@@ -16,9 +16,9 @@ const VIEWER: SessionUser = {
   email: 'invoicing@example.com',
   fullName: 'Ines Invoicing',
   roles: [{ id: '5', code: 'INVOICING', name: 'Invoicing' }],
-  permissions: afterPageSplit(['AMC_SCHEDULE:VIEW', 'INVOICES:VIEW', 'SERVICES_SALES:VIEW', 'AMC_CONTRACTS:VIEW']),
+  permissions: afterPageSplit(['MASTER_AMC_STATUS:VIEW', 'AMC_CONTRACTS:VIEW']),
 }
-const EXPORTER: SessionUser = { ...VIEWER, id: '8', permissions: [...VIEWER.permissions, 'AMC_SCHEDULE:EXPORT'] }
+const EXPORTER: SessionUser = { ...VIEWER, id: '8', permissions: [...VIEWER.permissions, 'MASTER_AMC_STATUS:EXPORT'] }
 
 function makeItem(overrides: Partial<MasterStatusItem> = {}): MasterStatusItem {
   return {
@@ -318,9 +318,8 @@ describe('Master AMC Status routing and permissions', () => {
     expect(menu.getByRole('link', { name: 'Master AMC Status' })).toHaveAttribute('href', '/amc/master-status')
   })
 
-  it('stays hidden and closed for a user who may not view invoices, who still has Service Status', async () => {
-    // Execution holds AMC_SCHEDULE and SERVICES_SALES view but not INVOICES.
-    const user: SessionUser = { ...VIEWER, id: '9', roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }], permissions: afterPageSplit(['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW']) }
+  it('stays hidden and closed without its own permission, whatever else the user holds, who still has Service Status', async () => {
+    const user: SessionUser = { ...VIEWER, id: '9', roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }], permissions: afterPageSplit(['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'INVOICES:VIEW']) }
     const api = statusApi(user, [RED])
     renderApp('/amc/master-status')
 
@@ -332,7 +331,7 @@ describe('Master AMC Status routing and permissions', () => {
   })
 
   it('shows no View link to a user who may not open contracts', async () => {
-    statusApi({ ...VIEWER, permissions: ['AMC_SCHEDULE:VIEW', 'INVOICES:VIEW', 'SERVICES_SALES:VIEW'] }, [RED])
+    statusApi({ ...VIEWER, permissions: ['MASTER_AMC_STATUS:VIEW'] }, [RED])
     renderPage()
     await screen.findByText('AMC-0007')
     expect(within(rowOf('AMC-0007')).queryByRole('link')).not.toBeInTheDocument()

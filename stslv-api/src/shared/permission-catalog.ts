@@ -133,7 +133,7 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         ],
         actions: {
           VIEW: "See contracts and AMC Management",
-          CREATE: "Add contracts",
+          CREATE: "Add contracts; the form lists active client names, without the Clients pages",
           EDIT: "Edit contracts, change their status, generate schedules, link master records",
           DELETE: "Cancel contracts, also from AMC Renewal (nothing is deleted; also needs Edit)",
           EXPORT: "Export a client's contracts",
@@ -156,13 +156,12 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         description: "Scheduled maintenance visits.",
         pages: [
           { label: "AMC Schedule", path: "/amc/schedule" },
-          { label: "Master AMC Status", path: "/amc/master-status", alsoRequires: ["SERVICES_SALES"] },
         ],
         actions: {
           VIEW: "See the visit schedule",
           EDIT: "Edit scheduled visits, also from the Monthly Calendar",
-          EXPORT: "Export the schedule and Master AMC Status",
-          READ: "Data only: visit details inside Invoice Tracking and Accounts, without the schedule pages",
+          EXPORT: "Export the schedule",
+          READ: "Data only: visits waiting for an invoice inside Invoice Tracking, without the schedule pages",
         },
       },
       {
@@ -198,16 +197,25 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
       },
       {
         module: "SERVICES_SALES",
-        label: "Services Sales",
+        label: "Services Sales (Quotations)",
         description: "Quotation numbers of completed visits.",
         pages: [
           { label: "Services Sales", path: "/amc/services-sales" },
-          { label: "Master AMC Status", path: "/amc/master-status", alsoRequires: ["AMC_SCHEDULE"] },
         ],
         actions: {
           VIEW: "See quotation numbers",
           EDIT: "Record quotation numbers",
           EXPORT: "Export Services Sales",
+        },
+      },
+      {
+        module: "MASTER_AMC_STATUS",
+        label: "Master AMC Status",
+        description: "One read-only row per scheduled visit, with its invoice and quotation numbers. Needs no other module's permission.",
+        pages: [{ label: "Master AMC Status", path: "/amc/master-status" }],
+        actions: {
+          VIEW: "See Master AMC Status, including the invoice and quotation numbers it shows",
+          EXPORT: "Export Master AMC Status",
         },
       },
     ],
@@ -218,17 +226,42 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
       {
         module: "INVOICES",
         label: "Invoice Tracking",
-        description: "Zoho invoice details recorded against completed work, and the Accounts reconciliation.",
-        pages: [
-          { label: "Invoice Tracking", path: "/invoices" },
-          { label: "Accounts", path: "/finance/accounts" },
-        ],
+        description: "Zoho invoice details recorded against completed work.",
+        pages: [{ label: "Invoice Tracking", path: "/invoices" }],
         actions: {
           VIEW: "See invoice records",
           CREATE: "Record Zoho invoices",
           EDIT: "Edit and cancel invoice records",
-          EXPORT: "Export invoices and Accounts",
-          READ: "Data only: invoice numbers inside AMC pages (Master AMC Status, AMC Management, contract and visit details), without Invoice Tracking",
+          EXPORT: "Export invoices",
+          READ: "Data only: invoice numbers inside AMC pages (AMC Management, contract and visit details), without Invoice Tracking",
+        },
+      },
+      {
+        module: "ACCOUNTS",
+        label: "Accounts",
+        description: "One read-only row per scheduled visit, with its service report number and invoices. Needs no other module's permission. Recording an invoice from it needs Invoice Tracking: Create.",
+        pages: [{ label: "Accounts", path: "/finance/accounts" }],
+        actions: {
+          VIEW: "See Accounts, including the visits and invoices it shows",
+          EXPORT: "Export Accounts",
+        },
+      },
+    ],
+  },
+  {
+    title: "Suggestions",
+    modules: [
+      {
+        module: "SUGGESTIONS",
+        label: "My Suggestions",
+        description: "A user's own suggestions. Reviewing everyone's is the separate Suggestions Review module.",
+        pages: [
+          { label: "My Suggestions", path: "/suggestions" },
+          { label: "Suggestion details", path: "/suggestions/:id" },
+        ],
+        actions: {
+          VIEW: "See one's own suggestions and the responses to them",
+          CREATE: "Submit suggestions, comment on one's own, reopen a resolved one",
         },
       },
     ],
@@ -250,6 +283,16 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
           CREATE: "Add users",
           EDIT: "Edit users, activate and deactivate accounts, assign existing roles, issue temporary passwords",
           APPROVE: "Approve or reject sign-up requests",
+        },
+      },
+      {
+        module: "SUGGESTIONS_REVIEW",
+        label: "Suggestions Review",
+        description: "Every user's suggestions, including internal notes.",
+        pages: [{ label: "Suggestions Review", path: "/admin/suggestions" }],
+        actions: {
+          VIEW: "See all suggestions and internal notes",
+          EDIT: "Respond, add internal notes, change status and assign",
         },
       },
       {
@@ -318,13 +361,11 @@ export const FIXED_ACCESS = {
   ],
   adminOnly: [
     { label: "Audit Log", path: "/admin/audit-log" },
-    { label: "Suggestions Review", path: "/admin/suggestions" },
     { label: "System readiness (Dashboard)", path: "/dashboard" },
     { label: "Historical import audit", path: "/api/historical-data/audit" },
   ],
   everyone: [
     { label: "Notifications (only for the modules the user may view)", path: "/notifications" },
-    { label: "My Suggestions and the suggestion popup", path: "/suggestions" },
     { label: "My account", path: "/account" },
   ],
 };

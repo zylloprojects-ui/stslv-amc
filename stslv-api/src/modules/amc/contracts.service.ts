@@ -1011,3 +1011,10 @@ export function changeContractStatus(
     return { ...(await findContract(client, id)), scheduleChange, cancelledVisits };
   });
 }
+
+/** Active clients, id and name only, for the contract form. */
+export async function listContractClientOptions(): Promise<{ id: string; name: string }[]> {
+  const result = await pool.query<{ id: string; name: string }>("SELECT id, name FROM clients WHERE is_active ORDER BY lower(name), id");
+
+  return result.rows;
+}

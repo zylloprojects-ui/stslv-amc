@@ -16,10 +16,10 @@ export function NotFoundPage() {
         <h1 className="text-lg font-semibold text-slate-900">Page not found</h1>
         <p className="mt-2 text-sm text-slate-600">The page you asked for does not exist.</p>
         <Link
-          to="/dashboard"
+          to="/"
           className="mt-5 inline-flex items-center justify-center rounded-lg bg-gradient-to-b from-[#1a7fc4] to-[#0f62a3] px-4 py-2 text-sm font-medium text-white shadow-sm shadow-blue-900/25 transition-all hover:from-[#1673b3] hover:to-[#0c5590] active:translate-y-px"
         >
-          Go to the dashboard
+          Go to the start page
         </Link>
       </div>
     </Card>

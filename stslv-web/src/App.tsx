@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { createBrowserRouter, Navigate, Route, RouterProvider, Routes } from 'react-router-dom'
 import { appRouteObjects } from './appRoutes'
 import { AuthProvider } from './auth/AuthProvider'
-import { ProtectedRoute, RequireAdmin, RequireAnyPermission, RequireDataRead, RequirePermission } from './auth/guards'
+import { LandingRedirect, ProtectedRoute, RequireAdmin, RequireAnyPermission, RequirePermission } from './auth/guards'
 import { AppLayout } from './layout/AppLayout'
 import { NAVIGATION } from './layout/navigation'
 import { ApiError } from './lib/api'
@@ -86,7 +86,7 @@ export function AppRoutes() {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<LandingRedirect />} />
           {/* A developer's page: it exists on a development server only, never in a production build. */}
           {import.meta.env.DEV && <Route path="/loader-preview" element={<LoaderPreviewPage />} />}
           <Route
@@ -228,22 +228,16 @@ export function AppRoutes() {
           <Route
             path="/amc/master-status"
             element={
-              <RequirePermission module="AMC_SCHEDULE">
-                <RequireDataRead module="INVOICES">
-                  <RequirePermission module="SERVICES_SALES">
-                    <MasterStatusPage />
-                  </RequirePermission>
-                </RequireDataRead>
+              <RequirePermission module="MASTER_AMC_STATUS">
+                <MasterStatusPage />
               </RequirePermission>
             }
           />
           <Route
             path="/finance/accounts"
             element={
-              <RequirePermission module="INVOICES">
-                <RequireDataRead module="AMC_SCHEDULE">
-                  <AccountsPage />
-                </RequireDataRead>
+              <RequirePermission module="ACCOUNTS">
+                <AccountsPage />
               </RequirePermission>
             }
           />
@@ -301,15 +295,29 @@ export function AppRoutes() {
           <Route
             path="/admin/suggestions"
             element={
-              <RequireAdmin>
+              <RequirePermission module="SUGGESTIONS_REVIEW">
                 <SuggestionReviewPage />
-              </RequireAdmin>
+              </RequirePermission>
             }
           />
           <Route path="/notifications" element={<NotificationsPage />} />
-          {/* Every signed-in user's own suggestions. The API shows another user's suggestion to reviewers only. */}
-          <Route path="/suggestions" element={<MySuggestionsPage />} />
-          <Route path="/suggestions/:id" element={<SuggestionDetailPage />} />
+          {/* One's own suggestions. The API shows another user's suggestion to reviewers only. */}
+          <Route
+            path="/suggestions"
+            element={
+              <RequirePermission module="SUGGESTIONS">
+                <MySuggestionsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/suggestions/:id"
+            element={
+              <RequireAnyPermission modules={['SUGGESTIONS', 'SUGGESTIONS_REVIEW']}>
+                <SuggestionDetailPage />
+              </RequireAnyPermission>
+            }
+          />
           {/* The former combined System Types & Departments page. */}
           <Route path="/admin/master-data" element={<Navigate to="/master-data" replace />} />
           <Route

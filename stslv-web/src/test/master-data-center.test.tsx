@@ -40,6 +40,7 @@ function masterApi(user: SessionUser = ADMIN, options: Options = {}) {
     const { method, path, query, body } = request
     if (path === '/auth/me') return ok({ user })
     if (path === '/clients/features') return ok({ clientDetails: options.details ?? true })
+    if (method === 'GET' && path === '/amc/contracts/client-options') return ok(clients.map(({ id, name }) => ({ id, name })))
     if (method === 'GET' && path === '/clients') {
       const type = query.get('clientType')
       const items = clients.filter((client) => !type || client.clientType === type)

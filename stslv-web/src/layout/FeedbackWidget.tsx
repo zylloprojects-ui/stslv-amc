@@ -1,3 +1,4 @@
+import { useAuth } from '../auth/context'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
@@ -247,7 +248,10 @@ export function SuggestionFormModal({ onClose }: { onClose: () => void }) {
 
 /** Header button that opens the suggestions popup. */
 export function FeedbackButton() {
+  const auth = useAuth()
   const [open, setOpen] = useState(false)
+
+  if (!auth.can('SUGGESTIONS', 'CREATE')) return null
 
   return (
     <>

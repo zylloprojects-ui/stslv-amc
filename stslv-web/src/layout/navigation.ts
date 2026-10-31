@@ -61,16 +61,14 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Monthly Calendar', path: '/amc/calendar', module: 'MONTHLY_CALENDAR' },
       { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },
       { label: 'Services Sales', path: '/amc/services-sales', module: 'SERVICES_SALES' },
-      // Shows quotation numbers (View of Services Sales) and invoice numbers (data-only read of Invoices); the API checks the same.
-      { label: 'Master AMC Status', path: '/amc/master-status', module: 'AMC_SCHEDULE', alsoRequires: ['SERVICES_SALES'], alsoReads: ['INVOICES'] },
+      { label: 'Master AMC Status', path: '/amc/master-status', module: 'MASTER_AMC_STATUS' },
     ],
   },
   {
     title: 'Finance',
     items: [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
-      // Shows visit data next to invoice numbers: data-only read of the schedule, which opens no schedule page (the API checks both).
-      { label: 'Accounts', path: '/finance/accounts', module: 'INVOICES', alsoReads: ['AMC_SCHEDULE'] },
+      { label: 'Accounts', path: '/finance/accounts', module: 'ACCOUNTS' },
     ],
   },
   {
@@ -80,8 +78,7 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Login History', path: '/admin/login-history', module: 'USERS' },
       { label: 'Audit Log', path: '/admin/audit-log', module: 'USERS', adminOnly: true },
-      // Reviewers are Super Admin and Admin until a Suggestions permission is approved (the API checks the same).
-      { label: 'Suggestions Review', path: '/admin/suggestions', module: 'USERS', adminOnly: true },
+      { label: 'Suggestions Review', path: '/admin/suggestions', module: 'SUGGESTIONS_REVIEW' },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
     ],
   },

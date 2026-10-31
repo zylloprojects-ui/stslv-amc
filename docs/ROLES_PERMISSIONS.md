@@ -1,5 +1,7 @@
 # Roles & Permissions
 
+> **Update 2026-10-31: section 13 removes the section limits on Executive roles and Viewer. Where it differs from sections 11 and 12, section 13 applies.**
+>
 > **Update 2026-10-29 (local alpha, uncommitted): the six-role model replaces the role names below.** Read section 11 and its revision in section 12 first; sections 1–10 describe the earlier five-role state and stay as history. Where section 11 and section 12 differ, section 12 applies.
 
 Status: 2026-10-29, branch `feature/roles-permissions-catalog` (worktree `D:\Projects\STSLV-AMC-permissions`), based on alpha 83fa3b0. Committed on this branch; not merged into alpha, not pushed.
@@ -305,3 +307,68 @@ Local alpha only, **uncommitted**. Migrations 0089 and 0090 follow 0087/0088; li
 - **0090_role_model_refinements**: Finance AMC_SCHEDULE View → Read; AMC Operations CLIENTS and INVOICES View → Read; removes Admin's USERS:DELETE; gives Super Admin READ on every module. Idempotent; removes only the grants named. Reverse steps are in the file header.
 
 Order everywhere: 0080 → 0081 → 0082 → 0085 → 0086 → 0087 → 0088 → 0089 → 0090.
+
+## 13. Cross-module permissions (2026-10-31)
+
+Branch `feature/cross-module-permissions`, based on alpha 465f0c0. Migrations 0091 and 0092, applied only to the isolated database `stslv_amc_test_cross_permissions`.
+
+### Rule
+
+Super Admin may give Admin, Finance Executive, Master Data Executive, AMC Operations Executive and Viewer any supported permission of any current module. The saved `role_permissions` alone decide access; a role's name decides nothing about its pages. Viewer may hold any action, only when explicitly granted.
+
+The section limits (`ROLE_SCOPES`, `src/shared/role-model.ts`) are gone. Starting grants are listed in `defaultGrants()`.
+
+### New modules (0091)
+
+| Module | Page | Actions |
+|---|---|---|
+| MASTER_AMC_STATUS | Master AMC Status | View, Export |
+| ACCOUNTS | Accounts | View, Export |
+| SUGGESTIONS ("My Suggestions") | My Suggestions, suggestion details | View (own suggestions), Create (submit, comment on own, reopen) |
+| SUGGESTIONS_REVIEW | Suggestions Review | View (all suggestions and internal notes), Edit (respond, internal notes, status, assign) |
+
+View of Master AMC Status or Accounts shows everything on that page, including invoice and quotation numbers, without any other module's permission. People who can be assigned a suggestion are active users whose active role holds SUGGESTIONS_REVIEW:EDIT.
+
+### Migration 0092: nobody's access changes
+
+Additive and idempotent. Each role receives what it could already do, worked out from its saved grants:
+
+- MASTER_AMC_STATUS:VIEW if it held AMC_SCHEDULE:VIEW, SERVICES_SALES:VIEW and INVOICES View or Read; EXPORT if it also held AMC_SCHEDULE:EXPORT.
+- ACCOUNTS:VIEW if it held INVOICES:VIEW and AMC_SCHEDULE View or Read; EXPORT if it also held INVOICES:EXPORT.
+- SUGGESTIONS View and Create for every existing role. SUGGESTIONS_REVIEW View and Edit for ADMIN and ADMINISTRATOR. ADMIN holds every action of the four modules.
+- Built-in role descriptions change only while they are still the text 0087 wrote.
+
+Removes no grant, changes no assignment. A role created afterwards starts with none of these.
+
+Verified on the isolated database: 318 grants before, 380 after, 0 removed, 0 added outside the four modules, assignments unchanged.
+
+Before any shared database (each step separately approved): backup and restore check, compare grants before and after, deploy the matching API and web together.
+
+### Still fixed
+
+- Only Super Admin changes the matrix (403 for everyone else). Super Admin's own role cannot change, so nobody can change their own permissions, and nobody changes their own role.
+- **USERS (Users & Access, Roles & Permissions, Login History) cannot be given to the Executive roles or Viewer** (403, `SECURITY_MODULES`). Admin and custom roles keep it as before.
+- Audit Log, system readiness and the historical import audit stay Super Admin and Admin only.
+- Admin may assign a role only if Admin holds all of that role's permissions.
+- Only actions in the catalog can be granted. Every action needs View of its module; cancelling a contract also needs Edit. Retired modules accept no new grant.
+
+### Data read
+
+Separate from View. Granting or revoking View leaves it as it was. It now covers: AMC_SCHEDULE Read, the visits waiting for an invoice in Invoice Tracking; INVOICES Read, invoice numbers in AMC Management and in contract and visit details (not the invoice itself); CLIENTS Read, client filters on AMC pages. Select all does not tick it (View covers it); Clear all and a row's Clear remove it.
+
+### Narrow lookups
+
+- `GET /api/amc/contracts/client-options`: id and name of active clients, for holders of AMC_CONTRACTS Create or Edit, or AMC_RENEWAL Create. Opens none of the Clients pages or the client list.
+- `GET /api/amc/contracts/status-summary`: contract status counts, for AMC_CONTRACTS View, without Dashboard.
+
+### Notifications
+
+An alert stays for those who may see its figures. Its link is null, and no Open button shows, when the user cannot open the page.
+
+### Sessions
+
+The API reads permissions from the database on every request, so a revocation is enforced on the next request. An open web session re-reads them every 60 seconds, on window focus, and after any 403; until then a stale sidebar item can show, but the API refuses.
+
+### Start page
+
+`/` and sign-in go to the first page the role may open. With none, `/dashboard` shows Access denied.

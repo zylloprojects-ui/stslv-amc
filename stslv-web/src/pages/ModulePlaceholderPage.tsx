@@ -17,7 +17,7 @@ export function ModulePlaceholderPage({ title }: { title: string }) {
             {title} is part of Phase 1 and has not been built yet. Nothing can be viewed or recorded here for now.
           </p>
           {auth.can('DASHBOARD', 'VIEW') && (
-            <Link to="/dashboard" className="mt-5 inline-block text-sm font-medium text-blue-700 hover:underline">
+            <Link to="/" className="mt-5 inline-block text-sm font-medium text-blue-700 hover:underline">
               Back to the dashboard
             </Link>
           )}

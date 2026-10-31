@@ -1,10 +1,15 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { api, getToken, setToken, setUnauthorizedHandler } from '../lib/api'
+import { api, getToken, setForbiddenHandler, setToken, setUnauthorizedHandler } from '../lib/api'
 import type { Action, Module, SessionUser } from '../lib/types'
 import { AuthContext, type AuthValue } from './context'
 
 const ME_KEY = ['auth', 'me'] as const
+
+// How often an open session picks up changed permissions, and how soon after one refusal
+// another refusal may ask again (a page can be refused several calls at once).
+const PERMISSIONS_REFRESH_MS = 60_000
+const REFUSAL_REFRESH_GAP_MS = 5_000
 
 interface LoginResponse {
   token: string
@@ -37,6 +42,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null)
   }, [logout])
 
+  // A refused request may mean the role has just lost a permission: refresh the sidebar and the
+  // route guards now, not at the next periodic check. The API has already enforced the refusal.
+  useEffect(() => {
+    let last = 0
+    setForbiddenHandler(() => {
+      const now = Date.now()
+      if (getToken() === null || now - last < REFUSAL_REFRESH_GAP_MS) return
+      last = now
+      void queryClient.invalidateQueries({ queryKey: ME_KEY })
+    })
+    return () => setForbiddenHandler(null)
+  }, [queryClient])
+
   const clearSignOutNotice = useCallback(() => setSignOutNotice(null), [])
 
   // The user and permissions always come from the API, and are refreshed
@@ -45,7 +63,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryKey: ME_KEY,
     queryFn: () => api.get<{ user: SessionUser }>('/auth/me'),
     enabled: token !== null,
-    staleTime: 60_000,
+    staleTime: PERMISSIONS_REFRESH_MS,
+    refetchInterval: PERMISSIONS_REFRESH_MS,
     retry: false,
   })
 

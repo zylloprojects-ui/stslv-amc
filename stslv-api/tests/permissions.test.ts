@@ -378,7 +378,10 @@ describe("migration 0081 keeps every role's access", () => {
 
   it("gives the seeded roles exactly the approved matrix, and Admin everything", async () => {
     for (const [code, expected] of Object.entries(EXPECTED)) {
-      expect(await grantsOf(code), code).toEqual([...expected].sort());
+      // Migration 0092 adds the modules split off later; cross-module-permissions.test.ts covers those.
+      const later = ["MASTER_AMC_STATUS:", "ACCOUNTS:", "SUGGESTIONS:", "SUGGESTIONS_REVIEW:"];
+      const grants = (await grantsOf(code)).filter((key) => !later.some((prefix) => key.startsWith(prefix)));
+      expect(grants, code).toEqual([...expected].sort());
     }
     expect(await grantsOf("ADMIN")).toHaveLength(MODULES.length * ACTIONS.length);
   });

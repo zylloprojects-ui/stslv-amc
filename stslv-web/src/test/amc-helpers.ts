@@ -127,6 +127,7 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
     // Documents attached to a record: none unless a test says otherwise.
     if (method === 'GET' && path === '/attachments') return ok([])
     if (method === 'GET' && path === '/clients') return ok({ items: CLIENTS, total: CLIENTS.length, page: 1, pageSize: 100 })
+    if (method === 'GET' && path === '/amc/contracts/client-options') return ok(CLIENTS.filter((client) => client.isActive).map(({ id, name }) => ({ id, name })))
     if (method === 'GET' && path === '/amc/contracts/systems') return ok([...new Set(contracts.map((contract) => contract.systemDescription))])
     if (method === 'GET' && path === '/amc/contracts/filter-options') {
       const years = contracts.flatMap((contract) => {

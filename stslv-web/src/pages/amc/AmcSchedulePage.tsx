@@ -35,7 +35,8 @@ const statIcon = (path: ReactNode) => (
 
 /** The visit figures from the dashboard summary, as a strip above the schedule. Hidden when the figures are not available to this user. */
 function ScheduleStats({ month }: { month: string }) {
-  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
+  const auth = useAuth()
+  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary'), enabled: auth.can('DASHBOARD', 'VIEW') })
   const visits = summary.data?.amc?.visits
   const invoicing = summary.data?.amc?.invoicing
 

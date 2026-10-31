@@ -33,7 +33,7 @@ function role(id: string, code: string, name: string, extra: Partial<Role> = {})
 const SUPER = role('1', 'ADMIN', 'Super Admin', { permissions: everything, permissionsEditable: false, lockedReason: 'Super Admin always has full access. Its permissions cannot be changed.', assignable: false, userCount: 1 })
 const ADMIN_ROLE = role('6', 'ADMINISTRATOR', 'Admin', { permissions: everything.filter((p) => p.module !== 'REPORTS') })
 const FINANCE = role('7', 'FINANCE_EXECUTIVE', 'Finance Executive', {
-  scope: ['DASHBOARD:VIEW', 'INVOICES:VIEW', 'INVOICES:CREATE', 'INVOICES:EDIT', 'INVOICES:EXPORT', 'AMC_SCHEDULE:READ'],
+  scope: CATALOG.flatMap((section) => section.modules.filter((entry) => entry.module !== 'USERS').flatMap((entry) => Object.keys(entry.actions).map((action) => `${entry.module}:${action}`))),
   permissionsVersion: 'f1f1f1f1f1f1f1f1',
   permissions: [
     { module: 'DASHBOARD', action: 'VIEW' },
@@ -135,18 +135,33 @@ describe('role tabs', () => {
   })
 })
 
-describe('a role limited to its section', () => {
-  it('shows only the permissions the role may hold', async () => {
+describe('a role with cross-module permissions', () => {
+  it('offers the modules of other sections as well, and never Users & Access', async () => {
     rolesApi()
     await open('Finance Executive')
 
-    expect(screen.getByText('Finance Executive is limited to its part of the application. Only the permissions it may hold are shown.')).toBeInTheDocument()
+    expect(screen.getByText(/Finance Executive can be given any of them/)).toBeInTheDocument()
     expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: Create' })).toBeEnabled()
-    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Data read' })).toBeEnabled()
-    expect(screen.queryByRole('checkbox', { name: 'AMC Schedule: View' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: 'AMC Schedule: Edit' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: /^Clients:/ })).not.toBeInTheDocument()
-    expect(screen.queryByRole('table', { name: /Master Data Center/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Data read' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: View' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Edit' })).toBeEnabled()
+    expect(screen.getByRole('checkbox', { name: 'Clients: Create' })).toBeEnabled()
+    expect(screen.queryByRole('checkbox', { name: /^Users & Access:/ })).not.toBeInTheDocument()
+    // An action the module does not have is not a checkbox.
+    expect(screen.queryByRole('checkbox', { name: 'AMC Schedule: Delete' })).not.toBeInTheDocument()
+  })
+
+  it('keeps Data read when View is granted and revoked', async () => {
+    rolesApi()
+    await open('Finance Executive')
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'AMC Schedule: Edit' }))
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: View' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Data read' })).toBeChecked()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'AMC Schedule: View' }))
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Edit' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Data read' })).toBeChecked()
   })
 })
 
@@ -190,10 +205,13 @@ describe('select all, clear all, cancel and save', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Select all' }))
     expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: Export' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Edit' })).toBeChecked()
     expect(screen.getByRole('heading', { level: 3, name: /Finance Executive/ })).toHaveTextContent('Full')
 
     await userEvent.click(screen.getByRole('button', { name: 'Clear all' }))
     expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: View' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Data read' })).not.toBeChecked()
+    expect(screen.getByRole('heading', { level: 3, name: /Finance Executive/ })).toHaveTextContent('None')
 
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: View' })).toBeChecked()
@@ -297,7 +315,6 @@ describe('data-only read in the matrix', () => {
     await open('Finance Executive')
 
     expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Data read' })).toBeChecked()
-    expect(screen.queryByRole('checkbox', { name: 'AMC Schedule: View' })).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Data read' })).not.toBeInTheDocument()
     // Invoices has View, so its Read is not offered (View covers it).
     expect(screen.queryByRole('checkbox', { name: 'Invoice Tracking: Data read' })).not.toBeInTheDocument()
@@ -458,8 +475,8 @@ describe('pages and data-only read', () => {
     return mockApi((request) => (request.path === '/auth/me' ? ok({ user }) : undefined))
   }
 
-  it('Finance Executive opens Accounts with schedule data-only read', async () => {
-    pageApi(session(['DASHBOARD:VIEW', 'INVOICES:VIEW', 'AMC_SCHEDULE:READ']))
+  it('Finance Executive opens Accounts on its own permission', async () => {
+    pageApi(session(['DASHBOARD:VIEW', 'ACCOUNTS:VIEW', 'AMC_SCHEDULE:READ']))
     renderApp('/finance/accounts')
     await screen.findByRole('banner')
     expect(screen.queryByRole('heading', { name: 'Access denied' })).not.toBeInTheDocument()
@@ -471,8 +488,8 @@ describe('pages and data-only read', () => {
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
   })
 
-  it('AMC Operations Executive opens Master AMC Status with invoice data-only read', async () => {
-    pageApi(session(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'INVOICES:READ', 'CLIENTS:READ']))
+  it('AMC Operations Executive opens Master AMC Status on its own permission', async () => {
+    pageApi(session(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'MASTER_AMC_STATUS:VIEW']))
     renderApp('/amc/master-status')
     await screen.findByRole('banner')
     expect(screen.queryByRole('heading', { name: 'Access denied' })).not.toBeInTheDocument()

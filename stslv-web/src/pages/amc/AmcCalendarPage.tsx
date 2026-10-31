@@ -1,6 +1,7 @@
+import { ContractLink } from '../../components/ContractLink'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { LoadError } from '../../components/records'
 import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
@@ -544,9 +545,9 @@ function DayList({ visits, onOpen }: { visits: ScheduleVisit[]; onOpen: (id: str
             </button>
             <p className="text-xs text-slate-500">
               Engineer: {visit.assignedTo ?? '—'} ·{' '}
-              <Link to={`/amc/contracts/${visit.contract.id}`} className="text-blue-700 hover:underline">
+              <ContractLink id={visit.contract.id} className="text-blue-700 hover:underline" hideWithoutAccess>
                 Open contract
-              </Link>
+              </ContractLink>
             </p>
           </div>
           <VisitStatusPill status={visit.status} overdue={visit.isOverdue} />

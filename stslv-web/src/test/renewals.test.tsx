@@ -266,7 +266,7 @@ describe('renewal form lists', () => {
     amcApi(ADMIN, {
       contracts: [SOURCE, RENEWAL],
       override: (request) => {
-        if (request.method === 'GET' && request.path === '/clients') return ok({ items: [], total: 0, page: 1, pageSize: 100 })
+        if (request.method === 'GET' && request.path === '/amc/contracts/client-options') return ok([])
         if (request.path === '/amc/contracts/100/renewals' && request.method === 'GET') return ok({ renewedFrom: null, renewals: [] })
         return undefined
       },

@@ -26,6 +26,10 @@ export const MODULES = [
   "SYSTEM_TYPES",
   "MAINTENANCE_FREQUENCIES",
   "DEPARTMENTS",
+  "MASTER_AMC_STATUS",
+  "ACCOUNTS",
+  "SUGGESTIONS",
+  "SUGGESTIONS_REVIEW",
 ] as const;
 
 // READ (migration 0089): data-only read. The module's data may be shown inside another

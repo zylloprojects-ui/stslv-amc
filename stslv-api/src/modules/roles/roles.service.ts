@@ -42,7 +42,7 @@ export interface Role {
   permissionsVersion: string;
   /** Defined by the migrations: never deleted; renamed, deactivated or reactivated only by Super Admin. */
   builtIn: boolean;
-  /** The permissions this role may hold ("MODULE:ACTION"), or null when it may hold any grantable permission. */
+  /** The permissions this role may be given ("MODULE:ACTION"), or null when it may be given any grantable permission. */
   scope: PermissionKey[] | null;
   /** Whether the signed-in user may give this role to someone: active, and within their own authority. */
   assignable: boolean;
@@ -167,11 +167,11 @@ export function setRolePermissions(auth: AuthContext, roleId: string, permission
       throw forbidden(`You cannot change the permission ${keyOf(beyond)} because you do not hold it yourself.`);
     }
 
-    // A role limited to one section (Finance Executive, say) cannot be given access outside it.
+    // Security administration (Users & Access) stays out of the operational roles' reach.
     const outside = added.find((permission) => !isInRoleScope(role.code, permission.module, permission.action));
 
     if (outside) {
-      throw validationError(`The role "${role.name}" cannot be given ${keyOf(outside)}: it is outside the access this role is limited to.`);
+      throw forbidden(`The role "${role.name}" cannot be given ${keyOf(outside)}: account and access administration is reserved to Super Admin and Admin.`);
     }
 
     // Every action needs View of its module (and cancelling a contract needs Edit), so no role is left half-able.

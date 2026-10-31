@@ -67,9 +67,11 @@ export function NotificationsPage() {
                   {item.readAt && <p className="mt-1 text-xs text-slate-500">Read {formatDateTime(item.readAt)}</p>}
                 </div>
                 <div className="flex shrink-0 gap-2">
-                  <Link to={item.link} className="rounded-md px-3 py-1.5 text-sm font-medium text-blue-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">
-                    Open
-                  </Link>
+                  {item.link && (
+                    <Link to={item.link} className="rounded-md px-3 py-1.5 text-sm font-medium text-blue-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50">
+                      Open
+                    </Link>
+                  )}
                   {!item.isRead && (
                     <Button size="sm" variant="secondary" onClick={() => markOne.mutate(item.key)} aria-label={`Mark "${item.title}" as read`}>
                       Mark as read

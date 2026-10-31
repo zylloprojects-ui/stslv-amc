@@ -8,10 +8,14 @@ import { ACTIONS, ADMIN_ROLE_CODE, permissionKey, type Action, type Module, type
 // - ADMINISTRATOR ("Admin"): operational and administrative access as configured by
 //   Super Admin. Only Super Admin changes its permissions, assigns or removes it, or
 //   manages the accounts that hold it.
-// - FINANCE_EXECUTIVE, MASTER_DATA_EXECUTIVE, AMC_OPERATIONS_EXECUTIVE: each limited to the
-//   pages of its section, plus Dashboard view. Where a page shows another module's data, the
-//   role holds that module's data-only READ, which opens none of that module's pages (0090).
-// - VIEWER: View and Export only, never Administration.
+// - FINANCE_EXECUTIVE, MASTER_DATA_EXECUTIVE, AMC_OPERATIONS_EXECUTIVE: start with the pages of
+//   their section, plus Dashboard view. Where a page shows another module's data, the role holds
+//   that module's data-only READ, which opens none of that module's pages (0090).
+// - VIEWER: starts with View only, and submitting suggestions.
+//
+// Starting grants only: Super Admin may give these roles any supported permission of any module
+// (approved 2026-10-31). The saved role_permissions decide access. Security administration
+// (SECURITY_MODULES) stays out of their reach.
 //
 // The legacy roles (ACCOUNTANT, PROCUREMENT, EXECUTION, INVOICING) are kept with their
 // grants and made inactive by migration 0088.
@@ -29,51 +33,11 @@ export const isSuperAdmin = (roles: readonly { code: string }[]) => roles.some((
 /** Holds Super Admin or Admin: the pages reserved to administrators (Audit Log, Suggestions Review). */
 export const hasAdminAccess = (roles: readonly { code: string }[]) => roles.some((role) => isPrivilegedRole(role.code));
 
-/** "*" allows every action the module uses except data-only Read, which View already covers; otherwise the listed actions. */
-type ScopeRule = Partial<Record<Module, "*" | readonly Action[]>>;
+/** Modules that administer accounts and access: never held by the roles below. */
+export const SECURITY_MODULES: readonly Module[] = ["USERS"];
 
-const modulesOf = (title: string): Module[] =>
-  PERMISSION_CATALOG.find((section) => section.title === title)?.modules.map((entry) => entry.module) ?? [];
-
-const every = (modules: Module[]): ScopeRule => Object.fromEntries(modules.map((module) => [module, "*"]));
-
-const FINANCE_SCOPE: ScopeRule = {
-  ...every(modulesOf("Finance")),
-  DASHBOARD: ["VIEW"],
-  // Data only: Invoice Tracking and Accounts show the visits they invoice and reconcile.
-  AMC_SCHEDULE: ["READ"],
-};
-
-const MASTER_DATA_SCOPE: ScopeRule = {
-  ...every(modulesOf("Master Data Center")),
-  DASHBOARD: ["VIEW"],
-};
-
-const AMC_OPERATIONS_SCOPE: ScopeRule = {
-  ...every(modulesOf("AMC Operations")),
-  DASHBOARD: ["VIEW"],
-  // Data only: the contract form and filters list clients; Master AMC Status, AMC Management
-  // and the contract and visit details show invoice numbers.
-  CLIENTS: ["READ"],
-  INVOICES: ["READ"],
-};
-
-const ADMINISTRATION = new Set(modulesOf("Administration"));
-
-const VIEWER_SCOPE: ScopeRule = Object.fromEntries(
-  PERMISSION_CATALOG.filter((section) => !section.retired)
-    .flatMap((section) => section.modules.map((entry) => entry.module))
-    .filter((module) => !ADMINISTRATION.has(module))
-    .map((module) => [module, ["VIEW", "EXPORT"] as const])
-);
-
-/** Roles limited to part of the application. A role not listed here (Admin, a custom role) may hold any grantable permission. */
-const ROLE_SCOPES: Record<string, ScopeRule> = {
-  FINANCE_EXECUTIVE: FINANCE_SCOPE,
-  MASTER_DATA_EXECUTIVE: MASTER_DATA_SCOPE,
-  AMC_OPERATIONS_EXECUTIVE: AMC_OPERATIONS_SCOPE,
-  VIEWER: VIEWER_SCOPE,
-};
+/** Built-in operational roles: any supported permission, except security administration. */
+const OPERATIONAL_ROLE_CODES: readonly string[] = ["FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER"];
 
 /** Whether a role of this code may hold the permission. Only grantable permissions are ever in scope. */
 export function isInRoleScope(roleCode: string, module: Module, action: Action): boolean {
@@ -81,20 +45,12 @@ export function isInRoleScope(roleCode: string, module: Module, action: Action):
     return false;
   }
 
-  const scope = ROLE_SCOPES[roleCode];
-
-  if (!scope) {
-    return true;
-  }
-
-  const rule = scope[module];
-
-  return rule === "*" ? action !== "READ" : (rule?.includes(action) ?? false);
+  return !(OPERATIONAL_ROLE_CODES.includes(roleCode) && SECURITY_MODULES.includes(module));
 }
 
-/** Every grantable permission a role may hold, or null for a role with no scope limit. Sent to Roles & Permissions. */
+/** Every grantable permission a role may hold, or null for a role with no limit. Sent to Roles & Permissions. */
 export function roleScope(roleCode: string): PermissionKey[] | null {
-  if (!ROLE_SCOPES[roleCode]) {
+  if (!OPERATIONAL_ROLE_CODES.includes(roleCode)) {
     return null;
   }
 
@@ -161,21 +117,43 @@ function allGrantable(): PermissionKey[] {
   );
 }
 
+const modulesOf = (title: string): Module[] =>
+  PERMISSION_CATALOG.find((section) => section.title === title)?.modules.map((entry) => entry.module) ?? [];
+
+/** Every used action of the modules, except data-only Read, which View covers. */
+const wholeModules = (modules: Module[]): PermissionKey[] =>
+  modules.flatMap((module) => ACTIONS.filter((action) => action !== "READ" && isGrantable(module, action)).map((action) => permissionKey(module, action)));
+
+/** Every role could already submit and follow its own suggestions when the module was added (0092). */
+const SUGGESTIONS: PermissionKey[] = ["SUGGESTIONS:VIEW", "SUGGESTIONS:CREATE"];
+
 /**
- * The grants each new role starts with (0087, revised by 0090). Super Admin can change them later
- * within the role's scope. Admin starts with everything grantable; the Executives with their whole scope;
- * Viewer with View only (Export can be added).
+ * The grants each role starts with (0087, revised by 0090 and 0092). They are what the migrations seeded, and
+ * limit nothing: Super Admin changes them in Roles & Permissions. Changing this list changes no database.
  */
 export function defaultGrants(roleCode: string): PermissionKey[] {
-  if (roleCode === ADMINISTRATOR_ROLE_CODE) {
-    // Data-only Read is redundant next to View of the same module.
-    const all = allGrantable();
-    return all.filter((key) => !(key.endsWith(":READ") && all.includes(key.replace(/:READ$/, ":VIEW") as PermissionKey)));
+  const all = allGrantable();
+
+  switch (roleCode) {
+    case ADMINISTRATOR_ROLE_CODE:
+      // Data-only Read is redundant next to View of the same module.
+      return all.filter((key) => !(key.endsWith(":READ") && all.includes(key.replace(/:READ$/, ":VIEW") as PermissionKey)));
+    case "FINANCE_EXECUTIVE":
+      // Data only: Invoice Tracking and Accounts show the visits they invoice and reconcile.
+      return ["DASHBOARD:VIEW", "AMC_SCHEDULE:READ", ...SUGGESTIONS, ...wholeModules(modulesOf("Finance"))];
+    case "MASTER_DATA_EXECUTIVE":
+      return ["DASHBOARD:VIEW", ...SUGGESTIONS, ...wholeModules(modulesOf("Master Data Center"))];
+    case "AMC_OPERATIONS_EXECUTIVE":
+      // Data only: the contract form and filters list clients; Master AMC Status, AMC Management
+      // and the contract and visit details show invoice numbers.
+      return ["DASHBOARD:VIEW", "CLIENTS:READ", "INVOICES:READ", ...SUGGESTIONS, ...wholeModules(modulesOf("AMC Operations"))];
+    case "VIEWER": {
+      const administration = new Set<Module>(modulesOf("Administration"));
+      return ["SUGGESTIONS:CREATE", ...all.filter((key) => key.endsWith(":VIEW") && !administration.has(key.split(":")[0] as Module))];
+    }
+    default:
+      return [];
   }
-
-  const scope = roleScope(roleCode) ?? [];
-
-  return roleCode === "VIEWER" ? scope.filter((key) => key.endsWith(":VIEW")) : scope;
 }
 
 export const SIX_ROLE_CODES = [ADMIN_ROLE_CODE, ADMINISTRATOR_ROLE_CODE, "FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER"] as const;

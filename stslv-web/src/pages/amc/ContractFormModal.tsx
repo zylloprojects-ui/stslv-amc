@@ -5,7 +5,7 @@ import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage, isForbidden } from '../../lib/api'
-import { fetchClients, queryString } from './amcApi'
+import { queryString } from './amcApi'
 import { formatDate, MONEY_PATTERN } from './amcFormat'
 import { SelectField } from './components'
 import { MONTH_NAMES, useFrequencyOptions } from './frequencyOptions'
@@ -87,7 +87,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   // Set when an active contract's terms change: the user confirms the effect on its schedule first.
   const [review, setReview] = useState<{ values: ContractForm; preview: SchedulePreview } | null>(null)
 
-  const clients = useQuery({ queryKey: ['clients', 'selectable'], queryFn: () => fetchClients('active') })
+  // Names only, on the permission to save this form; opens none of the Clients pages (the API checks the same).
+  const clients = useQuery({ queryKey: ['amc', 'contracts', 'client-options'], queryFn: () => api.get<{ id: string; name: string }[]>('/amc/contracts/client-options') })
   const systems = useQuery({ queryKey: ['amc', 'systems'], queryFn: () => api.get<string[]>('/amc/contracts/systems') })
 
   const {

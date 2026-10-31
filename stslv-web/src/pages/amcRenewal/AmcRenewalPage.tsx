@@ -1,6 +1,7 @@
+import { ContractLink } from '../../components/ContractLink'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
 import { PageTabs, TabPanel } from '../../components/PageTabs'
@@ -297,9 +298,9 @@ function QueueRow({ item, number, shown, onAction }: { item: RenewalQueueItem; n
     <tr className={TABLE.row} data-state={item.renewalState}>
       <td className={TABLE.sn}>{number}</td>
       <td className={`${TABLE.td} whitespace-nowrap`}>
-        <Link to={`/amc/contracts/${item.id}`} className="font-mono text-sm font-semibold text-[#0b3b66] hover:underline" aria-label={`Open contract ${item.reference}`}>
+        <ContractLink id={item.id} className="font-mono text-sm font-semibold text-[#0b3b66] hover:underline" aria-label={`Open contract ${item.reference}`}>
           {item.reference}
-        </Link>
+        </ContractLink>
       </td>
       {shown('client') && <td className={`${TABLE.td} ${TABLE.text} font-semibold text-slate-900`}>{item.client.name}</td>}
       {shown('system') && (
@@ -330,9 +331,9 @@ function QueueRow({ item, number, shown, onAction }: { item: RenewalQueueItem; n
         <StatePill state={item.renewalState} />
         {renewal && (
           <div className="mt-1 text-xs text-slate-500">
-            <Link to={`/amc/contracts/${renewal.id}`} className="font-mono font-semibold text-[#1479BD] hover:underline">
+            <ContractLink id={renewal.id} className="font-mono font-semibold text-[#1479BD] hover:underline">
               {renewal.reference}
-            </Link>{' '}
+            </ContractLink>{' '}
             {formatDate(renewal.validFrom)} – {formatDate(renewal.validTo)}
           </div>
         )}
@@ -362,9 +363,9 @@ function QueueRow({ item, number, shown, onAction }: { item: RenewalQueueItem; n
               Cancel
             </button>
           )}
-          <Link to={`/amc/contracts/${renewal && item.renewalState !== 'CANCELLED' ? renewal.id : item.id}`} className={`${actionClass} border-slate-300 bg-white text-[#0b3b66] hover:border-[#1479BD]`}>
+          <ContractLink id={renewal && item.renewalState !== 'CANCELLED' ? renewal.id : item.id} className={`${actionClass} border-slate-300 bg-white text-[#0b3b66] hover:border-[#1479BD]`} hideWithoutAccess>
             {renewal && item.renewalState !== 'CANCELLED' ? 'View Renewal' : 'View'}
-          </Link>
+          </ContractLink>
         </div>
       </td>
     </tr>
@@ -517,9 +518,9 @@ function HistoryTab() {
                 {data.items.map(({ renewal, source, createdOn }) => (
                   <tr key={renewal.id} className={TABLE.row}>
                     <td className={`${TABLE.td} whitespace-nowrap`}>
-                      <Link to={`/amc/contracts/${source.id}`} className="font-mono text-sm font-semibold text-[#0b3b66] hover:underline">
+                      <ContractLink id={source.id} className="font-mono text-sm font-semibold text-[#0b3b66] hover:underline">
                         {amcReference(source.id)}
-                      </Link>
+                      </ContractLink>
                     </td>
                     <td className={`${TABLE.td} ${TABLE.text}`}>
                       <div className="font-semibold text-slate-900">{renewal.client.name}</div>
@@ -527,9 +528,9 @@ function HistoryTab() {
                     </td>
                     <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(source.validTo)}</td>
                     <td className={`${TABLE.td} whitespace-nowrap`}>
-                      <Link to={`/amc/contracts/${renewal.id}`} className="font-mono text-sm font-semibold text-[#1479BD] hover:underline">
+                      <ContractLink id={renewal.id} className="font-mono text-sm font-semibold text-[#1479BD] hover:underline">
                         {amcReference(renewal.id)}
-                      </Link>
+                      </ContractLink>
                     </td>
                     <td className={`${TABLE.td} whitespace-nowrap`}>
                       {formatDate(renewal.validFrom)} – {formatDate(renewal.validTo)}

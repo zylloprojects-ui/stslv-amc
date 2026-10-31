@@ -16,10 +16,10 @@ const VIEWER: SessionUser = {
   email: 'accountant@example.com',
   fullName: 'Asha Accountant',
   roles: [{ id: '2', code: 'ACCOUNTANT', name: 'Accountant' }],
-  permissions: ['AMC_SCHEDULE:VIEW', 'INVOICES:VIEW', 'AMC_CONTRACTS:VIEW'],
+  permissions: ['ACCOUNTS:VIEW', 'AMC_CONTRACTS:VIEW'],
 }
 const INVOICER: SessionUser = { ...VIEWER, id: '8', permissions: [...VIEWER.permissions, 'INVOICES:CREATE'] }
-const EXPORTER: SessionUser = { ...VIEWER, id: '9', permissions: [...VIEWER.permissions, 'INVOICES:EXPORT'] }
+const EXPORTER: SessionUser = { ...VIEWER, id: '9', permissions: [...VIEWER.permissions, 'ACCOUNTS:EXPORT'] }
 
 function makeItem(overrides: Partial<AccountsItem> = {}): AccountsItem {
   return {
@@ -404,8 +404,8 @@ describe('Accounts routing and permissions', () => {
     expect(menu.getByRole('link', { name: 'Accounts' })).toHaveAttribute('href', '/finance/accounts')
   })
 
-  it('stays hidden and closed for a user who may not view invoices', async () => {
-    const user: SessionUser = { ...VIEWER, id: '10', roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }], permissions: ['AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW'] }
+  it('stays hidden and closed without its own permission', async () => {
+    const user: SessionUser = { ...VIEWER, id: '10', roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }], permissions: ['AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW', 'INVOICES:VIEW'] }
     const api = accountsApi(user, [RED])
     renderApp('/finance/accounts')
 
@@ -414,7 +414,7 @@ describe('Accounts routing and permissions', () => {
     expect(api.find('GET', '/accounts')).toHaveLength(0)
   })
 
-  it('stays hidden for a user with invoices but no schedule access', async () => {
+  it('stays hidden for a user with Invoice Tracking only', async () => {
     const user: SessionUser = { ...VIEWER, id: '11', permissions: ['INVOICES:VIEW'] }
     accountsApi(user, [RED])
     renderApp('/finance/accounts')
@@ -424,7 +424,7 @@ describe('Accounts routing and permissions', () => {
   })
 
   it('shows the contract reference as plain text and no View link to a user who may not open contracts', async () => {
-    accountsApi({ ...VIEWER, permissions: ['AMC_SCHEDULE:VIEW', 'INVOICES:VIEW'] }, [RED])
+    accountsApi({ ...VIEWER, permissions: ['ACCOUNTS:VIEW'] }, [RED])
     renderPage()
     await screen.findByText('AMC-0007')
     expect(within(rowOf('AMC-0007')).queryByRole('link')).not.toBeInTheDocument()

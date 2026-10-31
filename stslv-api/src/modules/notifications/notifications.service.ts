@@ -1,13 +1,14 @@
 import { pool } from "../../config/database";
 import { notFound } from "../../shared/errors";
 import { displayMoney } from "../../shared/export/report";
+import type { PermissionKey } from "../../shared/permissions";
 import { getExpiryFigures, type ExpiryBand } from "../amc/management.service";
 import { getAmcSummary } from "../amc/summary.service";
 import type { AuthContext } from "../auth/access";
 import { getInvoiceSummary } from "../invoices/invoices.service";
 import { schemaHas } from "../../shared/schema-features";
 import { awaitingReview, responsesFor } from "../suggestions/suggestions.service";
-import { isReviewer } from "../suggestions/suggestions.workflow";
+import { canSeeAllSuggestions } from "../suggestions/suggestions.workflow";
 
 // In-app alerts. Every alert is a figure the application already defines and
 // shows elsewhere (the AMC, AMC Management and Invoice Tracking summaries),
@@ -22,8 +23,8 @@ export interface Alert {
   severity: "warning" | "info";
   title: string;
   message: string;
-  /** Where the related records are listed. */
-  link: string;
+  /** Where the related records are listed, or null when this user cannot open that page. */
+  link: string | null;
   count: number;
   isRead: boolean;
   readAt: string | null;
@@ -47,6 +48,21 @@ interface Candidate {
 const BAND_KEYS: Record<ExpiryBand, string> = { 90: "ninety", 60: "sixty", 45: "forty_five", 30: "thirty", 15: "fifteen" };
 
 const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+// The permission that opens each page an alert links to (the web app's route guards check the same).
+const LINK_PERMISSIONS: Record<string, PermissionKey> = {
+  "/amc/schedule": "AMC_SCHEDULE:VIEW",
+  "/amc/management": "AMC_CONTRACTS:VIEW",
+  "/invoices": "INVOICES:VIEW",
+  "/admin/suggestions": "SUGGESTIONS_REVIEW:VIEW",
+  "/suggestions": "SUGGESTIONS:VIEW",
+};
+
+const openableLink = (auth: AuthContext, link: string): string | null => {
+  const needed = LINK_PERMISSIONS[link];
+
+  return needed && auth.permissions.has(needed) ? link : null;
+};
 
 async function candidates(auth: AuthContext): Promise<Candidate[]> {
   const list: Candidate[] = [];
@@ -140,7 +156,7 @@ async function candidates(auth: AuthContext): Promise<Candidate[]> {
 
   // Suggestions (migration 0085): new or reopened ones for reviewers, responses for the submitter.
   if (await schemaHas(["suggestions", "suggestion_events"])) {
-    if (isReviewer(auth)) {
+    if (canSeeAllSuggestions(auth)) {
       const waiting = await awaitingReview();
 
       if (waiting.count > 0) {
@@ -156,7 +172,7 @@ async function candidates(auth: AuthContext): Promise<Candidate[]> {
       }
     }
 
-    const responses = await responsesFor(auth.user.id);
+    const responses = auth.permissions.has("SUGGESTIONS:VIEW") ? await responsesFor(auth.user.id) : { count: 0, fingerprint: "" };
 
     if (responses.count > 0) {
       list.push({
@@ -194,7 +210,7 @@ export async function listAlerts(auth: AuthContext) {
       severity: candidate.severity,
       title: candidate.title,
       message: candidate.message,
-      link: candidate.link,
+      link: openableLink(auth, candidate.link),
       count: candidate.count,
       isRead,
       readAt: isRead && mark ? mark.readAt.toISOString() : null,

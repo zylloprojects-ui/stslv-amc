@@ -169,7 +169,7 @@ export function MasterStatusPage() {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [page, setPage] = useState(1)
 
-  const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
+  const canExport = auth.can('MASTER_AMC_STATUS', 'EXPORT')
   const canViewContract = auth.can('AMC_CONTRACTS', 'VIEW')
 
   const options = useQuery({ queryKey: ['amc', 'master-status', 'options'], queryFn: () => api.get<MasterStatusOptions>('/amc/master-status/options') })

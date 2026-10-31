@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { NAVIGATION, navItemVisible } from '../layout/navigation'
 import { usePageTitle } from '../components/hooks'
 import { BrandLoader, Button, FullPageMessage } from '../components/ui'
 import type { Action, Module } from '../lib/types'
@@ -48,6 +49,14 @@ export function ProtectedRoute() {
 }
 
 export const CHANGE_PASSWORD_PATH = '/change-password'
+
+/** The start page: the first page in the navigation this user may open. With none, /dashboard explains Access denied. */
+export function LandingRedirect() {
+  const auth = useAuth()
+  const first = NAVIGATION.flatMap((section) => section.items).find((item) => navItemVisible(item, auth.can, isAdmin(auth.user), auth.canRead))
+
+  return <Navigate to={first?.path ?? '/dashboard'} replace />
+}
 
 /** Shows its children only to users holding the permission; otherwise an access-denied message. */
 export function RequirePermission({ module, action = 'VIEW', children }: { module: Module; action?: Action; children: ReactNode }) {

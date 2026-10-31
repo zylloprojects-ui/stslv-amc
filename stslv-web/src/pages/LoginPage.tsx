@@ -139,7 +139,7 @@ export function AuthLayout() {
   if (auth.status === 'authenticated' && !mustChange) {
     const from = (location.state as { from?: string } | null)?.from
 
-    return <Navigate to={from && from !== '/login' && from !== CHANGE_PASSWORD_PATH ? from : '/dashboard'} replace />
+    return <Navigate to={from && from !== '/login' && from !== CHANGE_PASSWORD_PATH ? from : '/'} replace />
   }
 
   return (

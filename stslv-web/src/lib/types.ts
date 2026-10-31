@@ -21,6 +21,10 @@ export const MODULES = [
   'SYSTEM_TYPES',
   'MAINTENANCE_FREQUENCIES',
   'DEPARTMENTS',
+  'MASTER_AMC_STATUS',
+  'ACCOUNTS',
+  'SUGGESTIONS',
+  'SUGGESTIONS_REVIEW',
 ] as const
 
 // READ: data-only read (API migration 0089): the module's data inside another section's page, without its pages.
@@ -51,6 +55,10 @@ export const MODULE_LABELS: Record<Module, string> = {
   SYSTEM_TYPES: 'System Types',
   MAINTENANCE_FREQUENCIES: 'Maintenance Frequencies',
   DEPARTMENTS: 'Departments',
+  MASTER_AMC_STATUS: 'Master AMC Status',
+  ACCOUNTS: 'Accounts',
+  SUGGESTIONS: 'My Suggestions',
+  SUGGESTIONS_REVIEW: 'Suggestions Review',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -176,7 +184,7 @@ export interface Role {
   permissionsEditable: boolean
   /** Why the permissions cannot be changed, when that comes from the role itself. Absent from an older API. */
   lockedReason?: string | null
-  /** The "MODULE:ACTION" permissions this role may hold, or null when it may hold any grantable one. Absent from an older API. */
+  /** The "MODULE:ACTION" permissions this role may be given, or null when it may be given any grantable one. Absent from an older API. */
   scope?: string[] | null
   /** Whether the signed-in user may give this role to someone. Absent from an older API. */
   assignable?: boolean

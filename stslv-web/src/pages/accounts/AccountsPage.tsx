@@ -295,7 +295,7 @@ export function AccountsPage() {
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [page, setPage] = useState(1)
 
-  const canExport = auth.can('INVOICES', 'EXPORT')
+  const canExport = auth.can('ACCOUNTS', 'EXPORT')
   const canViewContract = auth.can('AMC_CONTRACTS', 'VIEW')
   const canRecordInvoice = auth.can('INVOICES', 'CREATE')
 

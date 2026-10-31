@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
-import { authorize, authorizeOnAny, authorizeRead } from "../../middleware/authorize";
+import { authorize, authorizeOnAny } from "../../middleware/authorize";
 import { requireSchema } from "../../middleware/require-schema";
 import { forbidden } from "../../shared/errors";
 import { sendExport } from "../../shared/export/send";
@@ -32,6 +32,7 @@ import {
   createContract,
   generateSchedule,
   getContract,
+  listContractClientOptions,
   listContractFilterOptions,
   listContractHistory,
   listContracts,
@@ -141,6 +142,27 @@ amcRouter.get("/contracts", authorize("AMC_CONTRACTS", "VIEW"), async (req, res)
 
 amcRouter.get("/contracts/systems", authorize("AMC_CONTRACTS", "VIEW"), async (_req, res) => {
   res.json({ success: true, data: await listSystems() });
+});
+
+// Contract figures only, for the register's status filters; no Dashboard permission needed.
+amcRouter.get("/contracts/status-summary", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
+  const { contracts } = await getAmcSummary(requireAuth(req), 30);
+
+  res.json({ success: true, data: { contracts } });
+});
+
+// Names of active clients, for the contract form: only id and name, for those who may save the form.
+// The Clients pages, client details and client list stay on their own permissions.
+amcRouter.get("/contracts/client-options", (req, _res, next) => {
+  const held = requireAuth(req).permissions;
+
+  if (!held.has("AMC_CONTRACTS:CREATE") && !held.has("AMC_CONTRACTS:EDIT") && !held.has("AMC_RENEWAL:CREATE")) {
+    throw forbidden();
+  }
+
+  next();
+}, async (_req, res) => {
+  res.json({ success: true, data: await listContractClientOptions() });
 });
 
 // The values present on contracts, for the register's filters. Declared before "/contracts/:id".
@@ -306,12 +328,10 @@ amcRouter.patch("/service-status/:id", authorize("AMC_EXECUTION", "EDIT"), async
 
 // --- Master AMC Status ---------------------------------------------------------
 // Read only: one row per scheduled visit with its invoice and quotation numbers.
-// It shows invoice numbers (Invoice Tracking) and quotation numbers (Services
-// Sales), so viewing needs VIEW on AMC_SCHEDULE and SERVICES_SALES, and invoice
-// data-only read (INVOICES View or Read, which opens no Finance page): no role
-// sees through this page what its own grants hide. Needs migration 0078.
+// Its own module (0091): MASTER_AMC_STATUS:VIEW opens it, with everything it shows,
+// so granting it also grants sight of those numbers. Needs migration 0078.
 const masterStatusReady = requireSchema(["amc_visits.quotation_no"]);
-const masterStatusView = [authorize("AMC_SCHEDULE", "VIEW"), authorizeRead("INVOICES"), authorize("SERVICES_SALES", "VIEW"), masterStatusReady];
+const masterStatusView = [authorize("MASTER_AMC_STATUS", "VIEW"), masterStatusReady];
 
 amcRouter.get("/master-status", ...masterStatusView, async (req, res) => {
   res.json({ success: true, data: await listMasterStatus(listMasterStatusSchema.parse(req.query)) });
@@ -322,7 +342,7 @@ amcRouter.get("/master-status/options", ...masterStatusView, async (_req, res) =
 });
 
 // Every row that matches the page's filters, across all pages, with the page's visible columns.
-amcRouter.get("/master-status/export", ...masterStatusView, authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+amcRouter.get("/master-status/export", ...masterStatusView, authorize("MASTER_AMC_STATUS", "EXPORT"), async (req, res) => {
   const query = exportMasterStatusSchema.parse(req.query);
   const { report, recordExport } = await buildMasterStatusExport(requireAuth(req), query);
 

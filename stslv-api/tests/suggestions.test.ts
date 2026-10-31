@@ -399,12 +399,16 @@ describe("review list filters, search and paging", () => {
 });
 
 describe("existing submissions", () => {
-  it("stays readable to its submitter after their role changes", async () => {
+  it("stays readable to its submitter after their role changes, while the new role holds My Suggestions", async () => {
     const id = await newSuggestion(alice, "Kept after role change");
-    await pool.query("DELETE FROM user_roles WHERE user_id = $1", [alice.id]);
+    await pool.query("UPDATE user_roles SET role_id = (SELECT id FROM roles WHERE code = 'VIEWER') WHERE user_id = $1", [alice.id]);
 
     const response = await detail(alice, id);
     expect(response.status).toBe(200);
     expect(response.body.data.subject).toBe("Kept after role change");
+
+    // No role, no permissions: the suggestion is kept, and refused until a role is given.
+    await pool.query("DELETE FROM user_roles WHERE user_id = $1", [alice.id]);
+    expect((await detail(alice, id)).status).toBe(403);
   });
 });

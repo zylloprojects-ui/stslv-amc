@@ -350,6 +350,7 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
   }
 
   // What Select all / All may tick: data-only Read only where the role cannot have View (View covers it).
+  // Clearing removes it too.
   const changeable = (entry: PermissionCatalogEntry, retired: boolean) =>
     actions.filter(
       (action) =>
@@ -368,10 +369,14 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
     })
   }
 
-  const bulk = (entry: PermissionCatalogEntry, retired: boolean, on: boolean) => setKeys(changeable(entry, retired).map((action) => keyOf(entry.module, action)), on)
+  const clearable = (entry: PermissionCatalogEntry, retired: boolean) => actions.filter((action) => rules.mayChange(entry, retired, action))
+
+  const bulk = (entry: PermissionCatalogEntry, retired: boolean, on: boolean) =>
+    setKeys((on ? changeable(entry, retired) : clearable(entry, retired)).map((action) => keyOf(entry.module, action)), on)
 
   const current = sections.filter((section) => !section.retired)
   const everyChangeable = current.flatMap((section) => section.modules.flatMap((entry) => changeable(entry, false).map((action) => keyOf(entry.module, action))))
+  const everyClearable = current.flatMap((section) => section.modules.flatMap((entry) => clearable(entry, false).map((action) => keyOf(entry.module, action))))
   const visibleModules = (section: PermissionSection) =>
     section.modules.filter((entry) => actions.some((action) => rules.shown(entry, section.retired === true, action)))
 
@@ -423,7 +428,7 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
             <Button variant="secondary" size="sm" disabled={save.isPending || everyChangeable.every((key) => selected.has(key))} onClick={() => setKeys(everyChangeable, true)}>
               Select all
             </Button>
-            <Button variant="secondary" size="sm" disabled={save.isPending || everyChangeable.every((key) => !selected.has(key))} onClick={() => setKeys(everyChangeable, false)}>
+            <Button variant="secondary" size="sm" disabled={save.isPending || everyClearable.every((key) => !selected.has(key))} onClick={() => setKeys(everyClearable, false)}>
               Clear all
             </Button>
             <Button variant="secondary" size="sm" disabled={!dirty || save.isPending} onClick={() => setSelected(new Set(keysOf(base)))}>
@@ -439,7 +444,7 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
       <div className="space-y-3 p-4 pb-0" aria-live="polite">
         {!role.permissionsEditable && <Alert tone="info">{role.lockedReason ?? 'This role always has full access. Its permissions cannot be changed.'}</Alert>}
         {!role.isActive && <Alert tone="info">This role is inactive: it cannot be assigned and grants nothing. Its permissions are kept for its history.</Alert>}
-        {role.scope && role.isActive && <Alert tone="info">{role.name} is limited to its part of the application. Only the permissions it may hold are shown.</Alert>}
+        {role.scope && role.isActive && <Alert tone="info">What a role can open follows the boxes below, whatever its name. {role.name} can be given any of them; Users & Access stays with Super Admin and Admin.</Alert>}
         {editable && dirty && <Alert tone="info">You have unsaved changes. Save them, or Cancel to go back to the saved permissions.</Alert>}
         {(stale || (dirty && changedElsewhere)) && (
           <Alert>
