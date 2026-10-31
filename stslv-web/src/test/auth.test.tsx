@@ -408,18 +408,15 @@ describe('page search', () => {
 })
 
 describe('loader style', () => {
-  it('lets the user pick a loader design and remembers it', async () => {
+  it('offers colour themes only, with the Logo ring as the loader', async () => {
     session(ADMIN)
     renderApp('/dashboard')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Colour theme' }))
-    await userEvent.click(screen.getByRole('button', { name: /Skeleton/ }))
 
-    expect(localStorage.getItem('stslev.loader')).toBe('skeleton')
-    expect(screen.getByRole('button', { name: /Skeleton/ })).toHaveAttribute('aria-pressed', 'true')
-
-    // The choice lives in a store shared by every loader; put it back for the tests that follow.
-    await userEvent.click(screen.getByRole('button', { name: /Logo ring/ }))
+    expect(screen.getByRole('button', { name: /Ocean Navy/ })).toBeInTheDocument()
+    expect(screen.queryByText('Loader style')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Skeleton/ })).not.toBeInTheDocument()
   })
 })
 

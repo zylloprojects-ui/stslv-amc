@@ -1031,3 +1031,214 @@ input[type="time"],
 input[type="datetime-local"] {
   cursor: pointer;
 }
+
+/* ---- Dark theme: the remaining light tints, status text and hairlines. ---- */
+.dark .bg-amber-50,
+.dark .bg-amber-50\/60,
+.dark .bg-amber-100 {
+  background-color: #3a2e12;
+}
+.dark .from-amber-50,
+.dark .from-amber-100,
+.dark .via-amber-50,
+.dark .to-amber-50 {
+  --tw-gradient-from: #3a2e12;
+  --tw-gradient-via: #33290f;
+  --tw-gradient-to: #112238;
+}
+.dark .bg-emerald-50,
+.dark .bg-emerald-100 {
+  background-color: #12332b;
+}
+.dark .via-emerald-50 {
+  --tw-gradient-via: #12332b;
+}
+.dark .bg-red-100,
+.dark .bg-rose-100,
+.dark .via-red-50 {
+  background-color: #3a1a22;
+  --tw-gradient-via: #3a1a22;
+}
+.dark .bg-slate-50\/60,
+.dark .bg-sky-50\/60,
+.dark .bg-sky-50\/50 {
+  background-color: #14304f;
+}
+.dark .bg-slate-300 {
+  background-color: #3a5a7e;
+}
+.dark .text-amber-600,
+.dark .text-amber-700,
+.dark .text-amber-900,
+.dark .text-amber-950,
+.dark .text-yellow-900 {
+  color: #f6cf76;
+}
+.dark .text-emerald-800,
+.dark .text-emerald-900,
+.dark .text-green-700 {
+  color: #8fdc9a;
+}
+.dark .text-red-500,
+.dark .text-red-600,
+.dark .text-rose-700 {
+  color: #ff9a9a;
+}
+.dark .text-sky-800,
+.dark .text-sky-900,
+.dark .text-violet-900 {
+  color: #9bd4f8;
+}
+.dark .border-slate-100,
+.dark .border-slate-200\/70,
+.dark .border-sky-100,
+.dark .border-sky-300,
+.dark .hover\:border-sky-300:hover,
+.dark .hover\:border-slate-400:hover,
+.dark .ring-slate-100,
+.dark .ring-slate-300,
+.dark .ring-sky-200,
+.dark .ring-sky-300 {
+  border-color: #2b4a6b;
+  --tw-ring-color: #2b4a6b;
+}
+.dark .border-amber-200,
+.dark .border-amber-300,
+.dark .ring-amber-200 {
+  border-color: #6b5320;
+  --tw-ring-color: #6b5320;
+}
+.dark .ring-emerald-200 {
+  --tw-ring-color: #245a38;
+}
+.dark .ring-red-200,
+.dark .ring-rose-200 {
+  --tw-ring-color: #6b2a35;
+}
+.dark .frame-hover {
+  border-color: #2b4a6b;
+}
+.dark .frame-hover:hover {
+  border-color: #1479BD;
+}
+/* The filter cards on the AMC lists. */
+.dark .focus-within\:ring-sky-100:focus-within {
+  --tw-ring-color: rgba(20, 121, 189, 0.3);
+}
+.dark .text-sky-50,
+.dark .text-sky-200,
+.dark .text-sky-200\/80 {
+  color: #bfe3fb;
+}
+
+/* Dark theme: hover states must not fall back to their light-theme colours. */
+.dark .hover\:bg-white\/70:hover,
+.dark .hover\:bg-sky-50\/60:hover {
+  background-color: #1b3354;
+}
+.dark .hover\:bg-amber-50:hover {
+  background-color: #3a2e12;
+}
+.dark .hover\:bg-rose-100:hover {
+  background-color: #4a2029;
+}
+.dark .hover\:text-\[\#0b3b66\]:hover {
+  color: #ffffff;
+}
+.dark .hover\:text-\[\#1479BD\]:hover {
+  color: #8fd0fa;
+}
+.dark .hover\:border-slate-300:hover {
+  border-color: #3a5a7e;
+}
+
+/* Dark theme: status colours must keep a light text on a dark tint, and tinted rows and panels stay dark. */
+.dark .text-rose-800,
+.dark .text-red-900 {
+  color: #ff9a9a;
+}
+.dark .bg-rose-50 {
+  background-color: #3a1a22;
+}
+.dark .border-rose-200,
+.dark .border-red-300 {
+  border-color: #6b2a35;
+}
+.dark .ring-red-300 {
+  --tw-ring-color: #6b2a35;
+}
+.dark .bg-yellow-100 {
+  background-color: #3a2e12;
+}
+.dark .ring-yellow-300 {
+  --tw-ring-color: #6b5320;
+}
+.dark .bg-violet-50 {
+  background-color: #2a2148;
+}
+.dark .text-violet-900 {
+  color: #cfc0fa;
+}
+.dark .ring-violet-200 {
+  --tw-ring-color: #4b3d7a;
+}
+/* Tinted table rows (Services Sales, AMC Schedule): a faint wash over the dark table. */
+.dark .bg-rose-50\/50,
+.dark .bg-rose-50\/60 {
+  background-color: rgba(225, 29, 72, 0.12);
+}
+.dark .bg-emerald-50\/50 {
+  background-color: rgba(16, 185, 129, 0.12);
+}
+/* Monthly Calendar filter panel and the empty calendar cells. */
+.dark .bg-slate-50\/50 {
+  background-color: #14304f;
+}
+.dark .bg-slate-100\/50 {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+/* Opaque: the Month view grid colours its gaps through this cell, so a see-through tint would show that colour. */
+.dark .bg-slate-100\/70 {
+  background-color: #0e1c30;
+}
+/* AMC Management expiry cards. */
+.dark .from-red-100 {
+  --tw-gradient-from: #3a1a22;
+  --tw-gradient-to: #112238;
+}
+.dark .from-emerald-100 {
+  --tw-gradient-from: #12332b;
+  --tw-gradient-to: #112238;
+}
+.dark .from-emerald-50 {
+  --tw-gradient-from: #12332b;
+}
+.dark .text-emerald-700\/80 {
+  color: #8fdc9a;
+}
+/* AMC Management panel headers and the Monthly Calendar month cards. */
+.dark .from-sky-50\/80 {
+  --tw-gradient-from: #14304f;
+}
+.dark .from-slate-200 {
+  --tw-gradient-from: #2b4a6b;
+}
+.dark .to-slate-100 {
+  --tw-gradient-to: #1f3a58;
+}
+/* The rules above recolour every side, so the coloured top edge of the expiry bands is set again here. */
+.dark .border-t-sky-400 {
+  border-top-color: #38bdf8;
+}
+.dark .border-t-sky-500 {
+  border-top-color: #0ea5e9;
+}
+.dark .border-t-amber-400 {
+  border-top-color: #fbbf24;
+}
+.dark .border-t-amber-500 {
+  border-top-color: #f59e0b;
+}
+.dark .border-t-red-500 {
+  border-top-color: #ef4444;
+}
