@@ -1060,6 +1060,7 @@ input[type="datetime-local"] {
   --tw-gradient-via: #3a1a22;
 }
 .dark .bg-slate-50\/60,
+.dark .bg-sky-50\/70,
 .dark .bg-sky-50\/60,
 .dark .bg-sky-50\/50 {
   background-color: #14304f;
