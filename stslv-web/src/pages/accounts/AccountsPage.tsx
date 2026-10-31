@@ -156,13 +156,19 @@ function KpiCards({ userId, kpis }: { userId: string; kpis: AccountsKpis | undef
       {customizing && (
         <p className="mb-2 text-xs text-slate-600">Rename a card or move it with the arrow buttons. A renamed card still shows the same figure. Names and order are remembered in this browser for your account.</p>
       )}
-      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+      {/* Every row is as tall as the tallest card, each card fills its cell, and contents start at the top, so icons, names and figures line up. */}
+      <ul className="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         {cards.map((card, index) => {
           const name = displayName(prefs.names, card.id, card.label)
           const count = kpis ? card.count(kpis) : 0
 
           return (
-            <li key={card.id} data-kpi={card.id} title={name !== card.label ? `Standard name: ${card.label}` : undefined}>
+            <li
+              key={card.id}
+              data-kpi={card.id}
+              title={name !== card.label ? `Standard name: ${card.label}` : undefined}
+              className="flex flex-col [&>.contract-tile]:flex-1 [&>.contract-tile]:items-start"
+            >
               {card.id === 'totalValue' ? (
                 <ValueTile name={name} kpis={kpis} card={card} position={index} />
               ) : (
