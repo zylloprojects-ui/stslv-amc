@@ -91,7 +91,13 @@ export interface Contract {
   notes: string | null
   createdAt: string
   updatedAt: string
+  createdBy?: { id: string; fullName: string } | null
+  updatedBy?: { id: string; fullName: string } | null
   schedule: {
+    /** The earliest planned date of a visit that is neither cancelled nor historical. */
+    firstServiceDate?: string | null
+    /** Months between services; null for a custom frequency. */
+    intervalMonths?: number | null
     visitCount: number
     completedCount: number
     openCount: number
@@ -99,7 +105,13 @@ export interface Contract {
     cancelledCount: number
     amountMissingCount: number
     scheduledTotal: string
-    valueDifference: string
+    annualAmount: string | null
+    servicesPerCycle: number | null
+    perServiceAmount: string | null
+    expectedTermTotal: string | null
+    generatedTotal: string
+    /** Expected less generated total. Null without a Billing Basis: a legacy value is never compared. */
+    valueDifference: string | null
   }
 }
 
@@ -176,12 +188,15 @@ export interface ScheduleVisit extends ExecutionVisit {
   amountIsCustom: boolean
   invoiceEligibility: InvoiceEligibility
   colorOverride?: string | null
+  manualInvoiceNo: string | null
+  paymentStatus: 'PAID' | 'UNPAID'
+  paidAt: string | null
   colorState?: 'MANUAL' | 'CANCELLED' | 'INVOICE_PENDING' | 'FIRST_SERVICE' | 'NORMAL'
 }
 
 export const COLOR_PRIORITY_RULE = 'Manual → Cancelled → Invoice Pending → First Service → Normal'
 
-export const BILLING_BASIS_LABELS = { CONTRACT_VALUE: 'Contract value', FINAL_CREDIT: 'Final credit', CUSTOM: 'Custom value' } as const
+export const BILLING_BASIS_LABELS = { CONTRACT_VALUE: 'AMC Value / Year', FINAL_CREDIT: 'Final Credit Value', CUSTOM: 'Custom Billing Value' } as const
 
 export interface VisitList {
   items: ScheduleVisit[]

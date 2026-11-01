@@ -3,12 +3,14 @@ import { useState } from 'react'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
 import { TABLE } from '../../components/table'
-import { Alert, Card, EmptyState, Spinner } from '../../components/ui'
+import { Alert, Card, EmptyState, OptionsNotice, Spinner } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { queryString } from './amcApi'
 import { currentMonth, formatDate, formatMoney, monthLabel } from './amcFormat'
-import { Filter, Pager } from './components'
+import type { CalendarOptions } from './calendar/calendarTypes'
+import { Filter, Pager, RestrictedFilter } from './components'
+import { PAID_STATUS_NOTE } from './ManualInvoiceField'
 import { VISIT_STATUS_LABELS, type VisitStatus } from './types'
 
 interface MonthlyService {
@@ -18,6 +20,7 @@ interface MonthlyService {
   scheduledDate: string
   status: VisitStatus
   visitValue: string | null
+  manualInvoiceNo: string | null
   invoiceNumbers: string[]
 }
 
@@ -53,12 +56,25 @@ export function ConsolidatedSchedule() {
   const [month, setMonth] = useState(currentMonth)
   const [search, setSearch] = useState('')
   const [applied, setApplied] = useState('')
+  const [clientId, setClientId] = useState('')
+  const [salesEngineerId, setSalesEngineerId] = useState('')
+  const [system, setSystem] = useState('')
   const [page, setPage] = useState(1)
   const [exportError, setExportError] = useState<string | null>(null)
 
+  // The lists come from the schedule's own permission; the system names need AMC Contracts.
+  const options = useQuery({ queryKey: ['amc', 'calendar', 'options'], queryFn: () => api.get<CalendarOptions>('/amc/calendar/options') })
+  const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
+  const systems = useQuery({ queryKey: ['amc', 'systems'], queryFn: () => api.get<string[]>('/amc/contracts/systems'), enabled: canViewContracts })
+  const filters = { month, search: applied, clientId, salesEngineerId, system }
+  const choose = (set: (value: string) => void) => (event: { target: { value: string } }) => {
+    set(event.target.value)
+    setPage(1)
+  }
+
   const list = useQuery({
-    queryKey: ['amc', 'visits', 'monthly', { month, applied, page }],
-    queryFn: () => api.get<MonthlyList>(`/amc/visits/monthly-consolidated${queryString({ month, search: applied, page, pageSize: PAGE_SIZE })}`),
+    queryKey: ['amc', 'visits', 'monthly', { ...filters, page }],
+    queryFn: () => api.get<MonthlyList>(`/amc/visits/monthly-consolidated${queryString({ ...filters, page, pageSize: PAGE_SIZE })}`),
     placeholderData: keepPreviousData,
     enabled: month !== '',
   })
@@ -91,9 +107,54 @@ export function ConsolidatedSchedule() {
             )}
           </Filter>
           <Filter label="Search">{(id, className) => <input id={id} type="search" value={search} onChange={(event) => setSearch(event.target.value)} onBlur={() => setApplied(search.trim())} placeholder="AMC reference, client or system" className={className} />}</Filter>
+          <Filter label="Client">
+            {(id, className) => (
+              <select id={id} value={clientId} onChange={choose(setClientId)} className={className}>
+                <option value="">All clients</option>
+                <OptionsNotice source={options} count={options.data?.clients.length ?? 0} empty="No clients on the schedule yet" />
+                {(options.data?.clients ?? []).map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          {options.data?.salesEngineers !== null && (
+            <Filter label="Sales Engineer">
+              {(id, className) => (
+                <select id={id} value={salesEngineerId} onChange={choose(setSalesEngineerId)} className={className}>
+                  <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers on the schedule yet" />
+                  {(options.data?.salesEngineers ?? []).map((engineer) => (
+                    <option key={engineer.id} value={engineer.id}>
+                      {engineer.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
+          )}
+          {canViewContracts ? (
+            <Filter label="System">
+              {(id, className) => (
+                <select id={id} value={system} onChange={choose(setSystem)} className={className}>
+                  <option value="">All systems</option>
+                  <OptionsNotice source={systems} count={systems.data?.length ?? 0} empty="No systems on AMC contracts yet" />
+                  {(systems.data ?? []).map((value) => (
+                    <option key={value} value={value}>
+                      {value}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
+          ) : (
+            <RestrictedFilter label="System" reason="Not available for your role (needs AMC Contracts)" />
+          )}
           {auth.can('AMC_SCHEDULE', 'EXPORT') && month !== '' && (
-            <div className="lg:col-span-2 lg:justify-self-end">
-              <ExportButtons what="consolidated schedule" fileStem={`amc-monthly-schedule-${month}`} path={(format) => `/amc/visits/monthly-consolidated/export${queryString({ month, search: applied, format })}`} onError={setExportError} />
+            <div className="lg:col-span-4 lg:justify-self-end">
+              <ExportButtons what="consolidated schedule" fileStem={`amc-monthly-schedule-${month}`} path={(format) => `/amc/visits/monthly-consolidated/export${queryString({ ...filters, format })}`} onError={setExportError} />
             </div>
           )}
         </form>
@@ -124,8 +185,8 @@ export function ConsolidatedSchedule() {
               <caption className="sr-only">Consolidated monthly schedule</caption>
               <thead>
                 <tr>
-                  {['AMC Reference', 'Client', 'System', 'Frequency', 'Sales Engineer', 'Services', 'Visit Value'].map((heading) => (
-                    <th key={heading} scope="col" className={cx(TABLE.th, heading === 'Visit Value' && 'text-right')}>
+                  {['AMC Reference', 'Client', 'System', 'Frequency', 'Sales Engineer', 'Services', 'Value (Ex VAT)'].map((heading) => (
+                    <th key={heading} scope="col" className={cx(TABLE.th, heading === 'Value (Ex VAT)' && 'text-right')}>
                       {heading}
                     </th>
                   ))}
@@ -144,10 +205,11 @@ export function ConsolidatedSchedule() {
                         {row.services.map((service) => (
                           <li
                             key={service.id}
-                            title={`${formatDate(service.scheduledDate)} · ${VISIT_STATUS_LABELS[service.status]}${service.invoiceNumbers.length ? ` · Invoice ${service.invoiceNumbers.join(', ')}` : ' · No invoice recorded'}`}
+                            title={`${formatDate(service.scheduledDate)} · ${VISIT_STATUS_LABELS[service.status]}${service.manualInvoiceNo ? ` · Paid, Invoice No. ${service.manualInvoiceNo}` : ' · Unpaid'}${service.invoiceNumbers.length ? ` · Zoho ${service.invoiceNumbers.join(', ')}` : ' · No invoice recorded'}`}
                             className={cx('rounded-md px-2 py-0.5 font-mono text-xs font-semibold ring-1 ring-inset', TONE[service.status] ?? 'bg-sky-100 text-[#0b3b66] ring-sky-200')}
                           >
                             {service.serviceCode ?? `No. ${service.sequenceNo}`}
+                            <span className="ml-1 font-sans font-bold">· {service.manualInvoiceNo ? 'Paid' : 'Unpaid'}</span>
                             <span className="sr-only">, {VISIT_STATUS_LABELS[service.status]}</span>
                           </li>
                         ))}
@@ -159,6 +221,7 @@ export function ConsolidatedSchedule() {
               </tbody>
             </table>
           </div>
+          <p className="border-t border-slate-200 px-5 py-2 text-xs text-slate-600">{PAID_STATUS_NOTE}</p>
           <Pager page={data.page} pageSize={data.pageSize} total={data.total} shown={data.items.length} onPage={setPage} />
         </>
       )}

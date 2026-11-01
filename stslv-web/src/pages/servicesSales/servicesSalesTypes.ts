@@ -12,6 +12,12 @@ export const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
 /** Derived by the API: completed with a quotation number is Quoted; completed without one is Quote Pending. */
 export type SalesStatus = 'NOT_COMPLETED' | 'QUOTE_PENDING' | 'QUOTED'
 
+/** Submitted: a quotation number is recorded, whatever the visit's status. See docs/SERVICES_SALES.md. */
+export const QUOTE_SUBMISSION_FILTERS = [
+  { value: 'SUBMITTED', label: 'Quote Submitted' },
+  { value: 'NOT_SUBMITTED', label: 'Not Submitted' },
+] as const
+
 export const SALES_STATUS_LABELS: Record<SalesStatus, string> = {
   NOT_COMPLETED: 'Not Completed',
   QUOTE_PENDING: 'Completed / Quote Pending',
@@ -33,6 +39,8 @@ export interface ServicesSalesItem {
   serviceStatus: ServiceStatus
   salesStatus: SalesStatus
   completedDate: string | null
+  /** Entered on Service Status; read only here. */
+  serviceReportNo: string | null
   salesEngineer: { id: string; name: string } | null
   quotationNo: string | null
   quotationUpdatedAt: string | null

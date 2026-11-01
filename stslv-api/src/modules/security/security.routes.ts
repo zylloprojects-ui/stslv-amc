@@ -6,6 +6,7 @@ import { forbidden } from "../../shared/errors";
 import { isSuperAdmin } from "../../shared/role-model";
 import { listBackups, startBackup, verifiedBackupFile } from "./backups.service";
 import { sendExport } from "../../shared/export/send";
+import { transportOf } from "../dashboard/readiness.service";
 import { buildDeletionsExport, exportDeletionsSchema, getSecurityOverview, listDeletions, listDeletionsSchema, listSecurityEvents, listSecurityEventsSchema } from "./security.service";
 
 // Mounted at /api/security. Administrators read; only Super Admin can run or download a
@@ -20,8 +21,8 @@ const superAdmin: RequestHandler = (req, _res, next) => {
   next();
 };
 
-securityRouter.get("/overview", async (_req, res) => {
-  res.json({ success: true, data: await getSecurityOverview() });
+securityRouter.get("/overview", async (req, res) => {
+  res.json({ success: true, data: await getSecurityOverview(transportOf(req)) });
 });
 
 securityRouter.get("/events", async (req, res) => {

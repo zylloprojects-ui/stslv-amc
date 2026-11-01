@@ -74,6 +74,13 @@ async function insertEngineer(name: string): Promise<string> {
   return result.rows[0]?.id as string;
 }
 
+/** Enters the manual Invoice No. of a visit: the source of Paid / Unpaid. */
+async function setManualNo(visitId: string, invoiceNo: string | null) {
+  const updatedAt = (await api().get(`/api/amc/visits/${visitId}`).set(admin.headers)).body.data.updatedAt;
+  const saved = await api().patch(`/api/amc/visits/${visitId}/manual-invoice`).set(admin.headers).send({ invoiceNo, expectedUpdatedAt: updatedAt });
+  expect(saved.status).toBe(200);
+}
+
 const byId = (items: Item[]) => new Map(items.map((item) => [item.id, item]));
 
 describe("Accounts", () => {
@@ -122,7 +129,8 @@ describe("Accounts", () => {
         serviceStatus: "NOT_COMPLETED",
         serviceReportNo: null,
         invoiceNumbers: [],
-        paymentStatus: "NOT_AVAILABLE",
+        manualInvoiceNo: null,
+        paymentStatus: "UNPAID",
         salesEngineer: { id: fx.esha, name: "Esha Engineer" },
         colour: "RED",
       });
@@ -150,13 +158,13 @@ describe("Accounts", () => {
     it("classifies Red, Blue and Green, and the cards add up to the rows", async () => {
       const [red, blue, green, other] = await visitsOf(fx.alphaContract);
       for (const visit of [blue, green, other]) await complete(visit!.id);
-      const greenInvoice = await invoice(fx.alphaId, [[green!.id, "405.000"]]);
+      await setManualNo(green!.id, "M-GREEN");
 
       const response = await list({ clientId: fx.alphaId });
       const rows = byId(response.body.data.items);
-      expect(rows.get(red!.id)).toMatchObject({ colour: "RED", invoiceNumbers: [] });
-      expect(rows.get(blue!.id)).toMatchObject({ colour: "BLUE", serviceStatus: "COMPLETED", invoiceNumbers: [] });
-      expect(rows.get(green!.id)).toMatchObject({ colour: "GREEN", invoiceNumbers: [greenInvoice.invoiceNumber] });
+      expect(rows.get(red!.id)).toMatchObject({ colour: "RED", paymentStatus: "UNPAID" });
+      expect(rows.get(blue!.id)).toMatchObject({ colour: "BLUE", serviceStatus: "COMPLETED", paymentStatus: "UNPAID" });
+      expect(rows.get(green!.id)).toMatchObject({ colour: "GREEN", manualInvoiceNo: "M-GREEN", paymentStatus: "PAID" });
       expect(response.body.data.kpis).toMatchObject({ rows: 4, completed: 3, notCompleted: 1, invoiceFilled: 1, red: 1, blue: 2, green: 1 });
     });
 
@@ -176,7 +184,7 @@ describe("Accounts", () => {
       expect(response.body.data.kpis).toMatchObject({ rows: 4, completed: 0, notCompleted: 4, red: 4 });
     });
 
-    it("ignores a cancelled invoice, and lists every active invoice of a visit", async () => {
+    it("lists only active Zoho invoices of a visit, and they do not decide the colour", async () => {
       const [first, second] = await visitsOf(fx.alphaContract);
       await complete(first!.id);
       await complete(second!.id);
@@ -189,20 +197,24 @@ describe("Accounts", () => {
       const rows = byId(response.body.data.items);
       expect(rows.get(first!.id)).toMatchObject({ colour: "BLUE", invoiceNumbers: [] });
       expect(rows.get(second!.id)?.invoiceNumbers.sort()).toEqual([partOne.invoiceNumber, partTwo.invoiceNumber].sort());
-      expect(rows.get(second!.id)?.colour).toBe("GREEN");
-      // Two invoices on one visit still make one row with an invoice number.
-      expect(response.body.data.kpis).toMatchObject({ rows: 4, invoiceFilled: 1 });
+      expect(rows.get(second!.id)?.colour).toBe("BLUE");
+      // Zoho records alone do not fill the Invoice No.
+      expect(response.body.data.kpis).toMatchObject({ rows: 4, invoiceFilled: 0 });
     });
   });
 
   describe("payment status", () => {
-    it("never reports a visit as paid, even with an invoice recorded", async () => {
-      const [first] = await visitsOf(fx.alphaContract);
+    it("reports Paid only for a manual Invoice No., never for a Zoho record alone", async () => {
+      const [first, second] = await visitsOf(fx.alphaContract);
       await complete(first!.id);
       await invoice(fx.alphaId, [[first!.id, "405.000"]]);
+      await setManualNo(second!.id, "M-1");
 
-      const items = (await list()).body.data.items as Item[];
-      expect(new Set(items.map((item) => item.paymentStatus))).toEqual(new Set(["NOT_AVAILABLE"]));
+      const rows = byId((await list()).body.data.items);
+      expect(rows.get(first!.id)?.paymentStatus).toBe("UNPAID");
+      expect(rows.get(second!.id)?.paymentStatus).toBe("PAID");
+      await setManualNo(second!.id, null);
+      expect(byId((await list()).body.data.items).get(second!.id)?.paymentStatus).toBe("UNPAID");
     });
 
     it("refuses a paid / unpaid filter: payment is not recorded", async () => {
@@ -247,6 +259,7 @@ describe("Accounts", () => {
       await complete(alpha[0]!.id);
       await complete(alpha[1]!.id);
       const recorded = await invoice(fx.alphaId, [[alpha[0]!.id, "405.000"]], "INV-ALPHA-1");
+      await setManualNo(alpha[0]!.id, "MAN-ALPHA");
 
       expect(((await list({ salesEngineerId: fx.omar })).body.data.items as Item[]).every((item) => item.contract.id !== fx.alphaContract)).toBe(true);
       expect((await list({ serviceStatus: "COMPLETED" })).body.data.kpis).toMatchObject({ rows: 2, completed: 2, notCompleted: 0 });
@@ -254,6 +267,7 @@ describe("Accounts", () => {
       expect(((await list({ invoiceStatus: "RECORDED" })).body.data.items as Item[]).map((item) => item.id)).toEqual([alpha[0]!.id]);
       expect((await list({ invoiceStatus: "NOT_RECORDED" })).body.data.kpis.rows).toBe(9);
       expect(((await list({ search: "inv-alpha" })).body.data.items as Item[]).map((item) => item.invoiceNumbers)).toEqual([[recorded.invoiceNumber]]);
+      expect(((await list({ search: "man-alpha" })).body.data.items as Item[]).map((item) => item.id)).toEqual([alpha[0]!.id]);
       expect((await list({ search: `AMC-${fx.alphaContract.padStart(4, "0")}` })).body.data.kpis.rows).toBe(4);
       expect((await list({ search: "beta mall" })).body.data.kpis.rows).toBe(6);
 
@@ -316,6 +330,7 @@ describe("Accounts", () => {
       await complete(alpha[0]!.id);
       await report(alpha[0]!.id, "=SR-1");
       await invoice(fx.alphaId, [[alpha[0]!.id, "405.000"]], "INV-9");
+      await setManualNo(alpha[0]!.id, "MAN-9");
 
       const response = await exportFile({ format: "xlsx", clientId: fx.alphaId, hidden: "system,salesEngineer" });
       expect(response.status).toBe(200);
@@ -333,8 +348,10 @@ describe("Accounts", () => {
         "Scheduled Month",
         "Service Status",
         "Service Report No.",
-        "Visit Value",
+        "Value (Ex VAT, OMR)",
         "Invoice No.",
+        "Paid / Unpaid",
+        "Zoho Invoices (Tracking)",
         "Row Colour",
       ]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
@@ -343,9 +360,12 @@ describe("Accounts", () => {
       // A formula-like number is written as text, never run.
       expect(rows[0]?.[7]).not.toBe("=SR-1");
       expect(String(rows[0]?.[7])).toContain("SR-1");
-      expect(String(rows[0]?.[9])).toBe("INV-9");
-      expect(rows[0]?.[10]).toBe("Green · Completed, invoice number recorded");
-      expect(rows[1]?.[10]).toBe("Red · Service not completed");
+      expect(String(rows[0]?.[9])).toBe("MAN-9");
+      expect(rows[0]?.[10]).toBe("Paid");
+      expect(String(rows[0]?.[11])).toBe("INV-9");
+      expect(rows[0]?.[12]).toBe("Green · Completed, Paid");
+      expect(rows[1]?.[10]).toBe("Unpaid");
+      expect(rows[1]?.[12]).toBe("Red · Service not completed");
 
       const audit = await pool.query<{ metadata: { rowCount: number; hidden: string[] } }>("SELECT metadata FROM activity_logs WHERE action = 'accounts.exported' ORDER BY id DESC LIMIT 1");
       expect(audit.rows[0]?.metadata).toMatchObject({ rowCount: 4, hidden: ["system", "salesEngineer"] });

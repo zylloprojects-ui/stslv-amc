@@ -1,5 +1,5 @@
 import type { ContractStatus } from '../amc/types'
-import type { ExpiringRow, Unavailable } from '../dashboard/operationsTypes'
+import type { ExpiringRow } from '../dashboard/operationsTypes'
 
 // What GET /api/amc/management/summary returns. A section the user may not see
 // is null. Amounts are decimal strings with three decimals; dates are YYYY-MM-DD.
@@ -45,10 +45,10 @@ export interface AmcManagementSummary {
     engine: { activeContracts: number; withoutSchedule: number }
   } | null
   invoices: {
-    paid: Unavailable
-    unpaid: Unavailable
-    paidTotal: Unavailable
-    module: { issued: number; cancelled: number; paymentTracked: false }
+    paid: { count: number }
+    unpaid: { count: number; amount: string }
+    paidTotal: { amount: string }
+    module: { issued: number; cancelled: number }
   } | null
   expiry: {
     renewalsInstalled: boolean

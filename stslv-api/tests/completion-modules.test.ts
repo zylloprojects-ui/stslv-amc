@@ -8,7 +8,7 @@ import { env } from "../src/config/env";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { REPORTS } from "../src/modules/reports/reports.service";
 import { waitForBackups } from "../src/modules/security/backups.service";
-import { activeContract, createClient, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -46,10 +46,13 @@ describe("Billing Basis", () => {
     expect((await visitsOf(contractId)).map((visit) => visit.visit_amount)).toEqual(before.map((visit) => visit.visit_amount));
   });
 
-  it("generates visits from Cost per Visit whichever basis is chosen", async () => {
+  it("generates new visits from the chosen basis, and from Cost per Visit when none is chosen", async () => {
     const created = await post("/amc/contracts", contract({ billingBasis: "FINAL_CREDIT", finalCredit: "999.000", systemDescription: "BASIS" }));
     expect(created.status).toBe(201);
-    expect((await visitsOf(created.body.data.id)).map((visit) => visit.visit_amount)).toEqual(["300.000", "300.000", "300.000", "300.000"]);
+    expect((await visitsOf(created.body.data.id)).map((visit) => visit.visit_amount)).toEqual(["249.750", "249.750", "249.750", "249.750"]);
+
+    const manual = await post("/amc/contracts", contract({ systemDescription: "NO-BASIS" }));
+    expect((await visitsOf(manual.body.data.id)).map((visit) => visit.visit_amount)).toEqual(["300.000", "300.000", "300.000", "300.000"]);
   });
 
   it("refuses an unknown basis, and Final Credit without an amount", async () => {
@@ -104,16 +107,20 @@ describe("Reports", () => {
     await api().patch(`/api/amc/execution/visits/${second!.id}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() });
     await newInvoice(admin, invoiceBody(clientId, [{ amcVisitId: first!.id, amount: "300.000" }], { amountExclVat: "300.000", vatAmount: "0.000", invoiceDate: await today() }));
     // One contract within the renewal window.
-    await activeContract(admin, clientId, contract({ systemDescription: "DUE", validFrom: addDays(await today(), -300), validTo: addDays(await today(), 20) }));
+    const due = await activeContract(admin, clientId, contract({ systemDescription: "DUE", validFrom: addDays(await today(), -300), validTo: addDays(await today(), 20) }));
+    // One renewal made, for the Renewal History report.
+    const renewal = await api().post(`/api/amc/contracts/${due}/renewals`).set(admin.headers).send(contractBody(clientId, { validFrom: addDays(await today(), 21), validTo: addDays(await today(), 380), status: "DRAFT", salesEngineerId: await renewalEngineer() }));
+    expect(renewal.status).toBe(201);
   });
 
-  it("offers the nine reports", async () => {
+  it("offers the twelve reports", async () => {
     const list = await get("/reports");
     expect(list.status).toBe(200);
-    expect(list.body.data).toHaveLength(9);
+    expect(list.body.data).toHaveLength(12);
   });
 
-  it.each(Object.keys(REPORTS))("%s reads, exports to Excel and PDF, and filters by client", async (type) => {
+  // The review lists only multi-year contracts, so it is tested with its own data in finance-workflow.test.ts.
+  it.each(Object.keys(REPORTS).filter((type) => type !== "contract-value-review"))("%s reads, exports to Excel and PDF, and filters by client", async (type) => {
     const report = await get(`/reports/${type}`, { clientId });
     expect(report.status).toBe(200);
     expect(report.body.data.rows.length).toBeGreaterThan(0);
@@ -155,9 +162,8 @@ describe("Reports", () => {
     expect((await get("/reports/contract-summary")).body.data.total).toBe(direct.rows[0]?.n);
   });
 
-  it("needs its own permissions, and never says paid", async () => {
-    const report = JSON.stringify((await get("/reports/accounts")).body.data.rows);
-    expect(report).not.toMatch(/"Paid"|"Unpaid"/);
+  it("needs its own permissions, and says what Paid means", async () => {
+    expect((await get("/reports/accounts")).body.data.notes.join(" ")).toMatch(/does not verify that money was received/);
     expect((await get("/reports/unknown")).status).toBe(400);
     expect((await api().get("/api/reports")).status).toBe(401);
 

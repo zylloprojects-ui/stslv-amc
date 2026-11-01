@@ -302,13 +302,13 @@ describe("schedule generation", () => {
     expect(contract.schedule).toMatchObject({ visitCount: 4, amountMissingCount: 4, scheduledTotal: "0.000" });
   });
 
-  it("does not force contract value to equal the visit total", async () => {
-    // 1000 is not 4 x 405: the contract is accepted and the difference is reported, not corrected.
+  it("does not force contract value to equal the visit total, and never compares one with no billing basis", async () => {
+    // 1000 is not 4 x 405: the contract is accepted. Without a basis, an annual or whole-term value is unknown.
     const id = await activeContract(admin, hotelOne, { contractValue: "1000.000", systemDescription: "UNEVEN" });
     const contract = (await get(id)).body.data;
 
     expect(contract.contractValue).toBe("1000.000");
-    expect(contract.schedule).toMatchObject({ scheduledTotal: "1620.000", valueDifference: "-620.000" });
+    expect(contract.schedule).toMatchObject({ scheduledTotal: "1620.000", generatedTotal: "1620.000", expectedTermTotal: null, valueDifference: null });
   });
 
   it("generates the schedule when a draft is activated, and logs it", async () => {
@@ -626,6 +626,8 @@ describe("read contracts", () => {
     const response = await api().get("/api/amc/contracts").query({ search: "FIVE YEAR" }).set(admin.headers);
 
     expect(response.body.data.items[0].schedule).toEqual({
+      firstServiceDate: expect.any(String),
+      intervalMonths: 3,
       visitCount: 20,
       completedCount: 0,
       openCount: 20,
@@ -633,7 +635,12 @@ describe("read contracts", () => {
       cancelledCount: 0,
       amountMissingCount: 0,
       scheduledTotal: "8100.000",
-      valueDifference: "-6480.000",
+      generatedTotal: "8100.000",
+      annualAmount: null,
+      servicesPerCycle: 4,
+      perServiceAmount: null,
+      expectedTermTotal: null,
+      valueDifference: null,
     });
   });
 

@@ -238,7 +238,7 @@ describe("execution status", () => {
     const other = await contractAroundToday("TO CANCEL");
     expect((await list({ scope: "open", search: "TO CANCEL" })).body.data.total).toBe(5);
 
-    await api().post(`/api/amc/contracts/${other}/status`).set(admin.headers).send({ status: "CANCELLED" });
+    await api().post(`/api/amc/contracts/${other}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" });
 
     expect((await list({ scope: "open", search: "TO CANCEL" })).body.data.total).toBe(0);
     expect((await list({ scope: "due", search: "TO CANCEL" })).body.data.total).toBe(0);

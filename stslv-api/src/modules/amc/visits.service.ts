@@ -9,6 +9,7 @@ import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { assertVisitNotInvoiced } from "../invoices/invoice-locks";
+import { assertVisitNotPaid, PAYMENT_STATUS_SQL, type PaymentStatus } from "./manual-invoice.service";
 import type { ContractStatus, InvoiceEligibility, VisitStatus } from "./amc.constants";
 import type {
   ListExecutionQuery,
@@ -20,6 +21,8 @@ import type {
 
 interface VisitRow {
   color_override: string | null;
+  manual_invoice_no: string | null;
+  manual_invoice_at: Date | null;
   invoice_recorded: boolean;
   first_service: boolean;
   id: string;
@@ -92,6 +95,11 @@ export interface ScheduleVisit extends ExecutionVisit {
   amountIsCustom: boolean;
   /** Derived by v_amc_visit_billing. */
   invoiceEligibility: InvoiceEligibility;
+  /** The manual Invoice No.: entered = Paid, cleared = Unpaid. A reference status, not verified payment. */
+  manualInvoiceNo: string | null;
+  paymentStatus: PaymentStatus;
+  /** When the manual Invoice No. was entered; null while Unpaid. */
+  paidAt: string | null;
   /** The manual colour of the service (Color Priority level 1); null when none is set. */
   colorOverride: string | null;
   /** The Color Priority state that wins for this service. Derived, never stored. */
@@ -126,8 +134,7 @@ const VISIT_SELECT = `
          v.completed_date::text AS completed_date, v.completed_by, u.full_name AS completed_by_name,
          v.work_performed, v.execution_notes, v.status_reason, v.notes,
          b.invoice_eligibility, v.created_at, v.updated_at, v.color_override,
-         EXISTS (SELECT 1 FROM invoice_allocations al JOIN invoices i ON i.id = al.invoice_id
-                 WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED') AS invoice_recorded,
+         v.manual_invoice_no, v.manual_invoice_at,
          NOT EXISTS (SELECT 1 FROM amc_visits e WHERE e.amc_contract_id = v.amc_contract_id AND e.sequence_no < v.sequence_no AND e.status <> 'HISTORICAL') AS first_service`;
 
 const VISIT_FROM = `
@@ -176,11 +183,14 @@ function toScheduleVisit(row: VisitRow): ScheduleVisit {
     visitAmount: row.visit_amount,
     amountIsCustom: row.amount_is_custom,
     invoiceEligibility: row.invoice_eligibility,
+    manualInvoiceNo: row.manual_invoice_no,
+    paymentStatus: row.manual_invoice_no ? "PAID" : "UNPAID",
+    paidAt: row.manual_invoice_at?.toISOString() ?? null,
     colorOverride: row.color_override,
     colorState: colorState({
       override: row.color_override,
       cancelled: row.status === "CANCELLED" || row.contract_status === "CANCELLED",
-      invoiceRecorded: row.invoice_recorded,
+      invoiceRecorded: row.manual_invoice_no !== null,
       firstService: row.first_service,
     }),
   };
@@ -277,6 +287,10 @@ function visitFilter(query: VisitFilters): { where: string; params: unknown[] } 
   if (query.billingStatus) {
     params.push(query.billingStatus);
     conditions.push(`(${BILLING_STATUS_SQL}) = $${params.length}`);
+  }
+  if (query.paymentStatus) {
+    params.push(query.paymentStatus);
+    conditions.push(`${PAYMENT_STATUS_SQL} = $${params.length}`);
   }
   if (query.overdue) {
     conditions.push(query.overdue === "true" ? OVERDUE_SQL : `NOT ${OVERDUE_SQL}`);
@@ -381,6 +395,11 @@ export interface VisitYearFigures {
   notYetInvoicedValue: string;
   noInvoiceRequired: number;
   notCompleted: number;
+  /** Services with a manual Invoice No. (reference status), whatever their service status. paid + unpaid = services. */
+  paid: number;
+  paidValue: string;
+  unpaid: number;
+  unpaidValue: string;
 }
 
 export interface VisitYearSummary {
@@ -406,9 +425,17 @@ interface YearFigureRow {
   not_yet_invoiced: number;
   not_yet_invoiced_value: string;
   no_invoice_required: number;
+  paid: number;
+  paid_value: string;
+  unpaid: number;
+  unpaid_value: string;
 }
 
 const EMPTY_FIGURES: VisitYearFigures = {
+  paid: 0,
+  paidValue: "0.000",
+  unpaid: 0,
+  unpaidValue: "0.000",
   services: 0,
   scheduledValue: "0.000",
   amountMissing: 0,
@@ -443,6 +470,10 @@ function toFigures(row: YearFigureRow): VisitYearFigures {
     notYetInvoicedValue: row.not_yet_invoiced_value,
     noInvoiceRequired: row.no_invoice_required,
     notCompleted: row.scheduled + row.in_progress + row.postponed,
+    paid: row.paid,
+    paidValue: row.paid_value,
+    unpaid: row.unpaid,
+    unpaidValue: row.unpaid_value,
   };
 }
 
@@ -477,7 +508,11 @@ export async function getVisitYearSummary(query: VisitYearSummaryQuery): Promise
             COALESCE(sum(v.visit_amount) FILTER (WHERE ${billing} = 'INVOICED'), 0)::numeric(16,3)::text AS invoiced_value,
             count(*) FILTER (WHERE ${billing} = 'NOT_YET_INVOICED')::int AS not_yet_invoiced,
             COALESCE(sum(v.visit_amount) FILTER (WHERE ${billing} = 'NOT_YET_INVOICED'), 0)::numeric(16,3)::text AS not_yet_invoiced_value,
-            count(*) FILTER (WHERE ${billing} = 'NO_INVOICE_REQUIRED')::int AS no_invoice_required
+            count(*) FILTER (WHERE ${billing} = 'NO_INVOICE_REQUIRED')::int AS no_invoice_required,
+            count(*) FILTER (WHERE ${active} AND v.manual_invoice_no IS NOT NULL)::int AS paid,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${active} AND v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS paid_value,
+            count(*) FILTER (WHERE ${active} AND v.manual_invoice_no IS NULL)::int AS unpaid,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${active} AND v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS unpaid_value
      ${VISIT_FROM}
      ${where ? `${where} AND` : "WHERE"} v.status <> 'HISTORICAL'
      GROUP BY ROLLUP (extract(month FROM v.scheduled_date))`,
@@ -553,6 +588,7 @@ export function updateVisit(auth: AuthContext, id: string, input: UpdateVisitInp
     // The amount an invoice was recorded against must not change underneath it.
     if ("visitAmount" in changes) {
       await assertVisitNotInvoiced(client, id, "given another amount");
+      await assertVisitNotPaid(client, id, "given another amount");
     }
     if ("scheduledDate" in changes && (row.status === "COMPLETED" || row.status === "CANCELLED")) {
       throw validationError(`A ${row.status.toLowerCase()} visit cannot be rescheduled.`, [

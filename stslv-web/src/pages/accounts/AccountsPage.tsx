@@ -13,6 +13,7 @@ import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
+import { ManualInvoiceField, PAID_STATUS_NOTE } from '../amc/ManualInvoiceField'
 import { Filter, Pager } from '../amc/components'
 import { SERVICE_STATUS_LABELS } from '../amc/serviceStatusTypes'
 import { displayName, KPI_NAME_MAX, useKpiCustomization } from '../amcManagement/managementPreferences'
@@ -33,7 +34,6 @@ import {
 
 const PAGE_SIZE = 50
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const PAYMENT_NOTE = 'Payment is not recorded in STSLV AMC. An invoice number is not a payment.'
 
 const icon = (path: ReactNode) => (
   <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -92,16 +92,16 @@ const KPI_CARDS: KpiCard[] = [
     id: 'invoiceFilled',
     label: 'Invoice No. Filled',
     count: (k) => k.invoiceFilled,
-    hint: () => 'Invoice recorded, not proof of payment',
+    hint: () => 'Paid: reference status, not verified payment',
     icon: icon(<><path d="M7 3.5h7.5L18 7v13.5H7z" strokeLinejoin="round" /><path d="M10 11h5M10 14.5h5" strokeLinecap="round" /></>),
     tone: 'from-[#1479BD] to-sky-400',
     edge: '#1479BD',
   },
   {
     id: 'totalValue',
-    label: 'Total Visit Value',
+    label: 'Total Value (Ex VAT)',
     count: () => null,
-    hint: (k) => (k.valueMissing > 0 ? `${k.valueMissing} ${k.valueMissing === 1 ? 'service has' : 'services have'} no value set` : 'Scheduled visit values; VAT basis not confirmed'),
+    hint: (k) => (k.valueMissing > 0 ? `${k.valueMissing} ${k.valueMissing === 1 ? 'service has' : 'services have'} no value set` : 'Scheduled service values, OMR excluding VAT'),
     icon: icon(<><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6.5 9.5v5M17.5 9.5v5" strokeLinecap="round" /></>),
     tone: 'from-[#0b3b66] to-[#1479BD]',
     edge: '#0b3b66',
@@ -279,8 +279,8 @@ function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<Co
 }
 
 /**
- * Records an invoice for one service through Invoice Tracking's own API, so every rule and check
- * still applies. The user types the invoice's figures; the amount only starts from the visit value.
+ * Records the Zoho invoice details of one service through Invoice Tracking's own API, so every rule and
+ * check still applies. Optional and separate from the manual Invoice No., which alone decides Paid / Unpaid.
  */
 function RecordInvoiceDialog({ item, onClose }: { item: AccountsItem; onClose: () => void }) {
   const queryClient = useQueryClient()
@@ -310,7 +310,7 @@ function RecordInvoiceDialog({ item, onClose }: { item: AccountsItem; onClose: (
 
   return (
     <Modal
-      title={`Record invoice · ${item.reference}`}
+      title={`Record Zoho invoice · ${item.reference}`}
       onClose={onClose}
       footer={
         <>
@@ -335,7 +335,7 @@ function RecordInvoiceDialog({ item, onClose }: { item: AccountsItem; onClose: (
       >
         {failure && <Alert>{failure}</Alert>}
         <p className="text-sm text-slate-600">
-          {item.client.name} · {serviceCodeLabel(item.service)}. Enter the details from the Zoho invoice. An invoice number is not a payment.
+          {item.client.name} · {serviceCodeLabel(item.service)}. Enter the details from the Zoho invoice for Invoice Tracking. This does not change Paid / Unpaid: that follows the manual Invoice No. on the row.
         </p>
         <TextField label="Invoice No." required maxLength={50} value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
         <TextField label="Invoice date" type="date" required value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
@@ -359,13 +359,14 @@ interface Filters {
   search: string
   clientId: string
   salesEngineerId: string
+  contractId: string
   month: string
   year: string
   invoiceStatus: string
   serviceStatus: string
 }
 
-const NO_FILTERS: Filters = { search: '', clientId: '', salesEngineerId: '', month: '', year: '', invoiceStatus: '', serviceStatus: '' }
+const NO_FILTERS: Filters = { search: '', clientId: '', salesEngineerId: '', contractId: '', month: '', year: '', invoiceStatus: '', serviceStatus: '' }
 
 export function AccountsPage() {
   const auth = useAuth()
@@ -382,6 +383,7 @@ export function AccountsPage() {
   const canExport = auth.can('ACCOUNTS', 'EXPORT')
   const canViewContract = auth.can('AMC_CONTRACTS', 'VIEW')
   const canRecordInvoice = auth.can('INVOICES', 'CREATE')
+  const canEditInvoiceNo = auth.can('INVOICES', 'EDIT')
 
   const options = useQuery({ queryKey: ['accounts', 'options'], queryFn: () => api.get<AccountsOptions>('/accounts/options') })
   const accounts = useQuery({
@@ -412,7 +414,7 @@ export function AccountsPage() {
     <>
       <PageHeader
         title="Accounts"
-        description="Billing reconciliation of every scheduled AMC service: completion, service report and invoice number. Invoice numbers are entered here or in Invoice Tracking; an invoice number is not a payment."
+        description="Billing reconciliation of every scheduled AMC service: completion, service report and Invoice No. Enter the Invoice No. to mark a service Paid; clear it to return it to Unpaid. Amounts are OMR excluding VAT."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
@@ -496,6 +498,19 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
+            <Filter label="AMC Contract">
+              {(id, className) => (
+                <select id={id} value={draft.contractId} onChange={(event) => set('contractId')(event.target.value)} className={className}>
+                  <option value="">All contracts</option>
+                  <OptionsNotice source={options} count={options.data?.contracts.length ?? 0} empty="No contracts with current AMC visits" />
+                  {(options.data?.contracts ?? []).map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.reference} · {contract.client} · {contract.system}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
             <Filter label="Scheduled month">
               {(id, className) => (
                 <select id={id} value={draft.month} onChange={(event) => set('month')(event.target.value)} className={className}>
@@ -521,7 +536,7 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Invoice Status">
+            <Filter label="Paid / Unpaid">
               {(id, className) => (
                 <select id={id} value={draft.invoiceStatus} onChange={(event) => set('invoiceStatus')(event.target.value)} className={className} aria-describedby="accounts-payment-note">
                   <option value="">All</option>
@@ -554,7 +569,7 @@ export function AccountsPage() {
               </Button>
               {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
               <span id="accounts-payment-note" className="basis-full text-xs text-slate-500">
-                {PAYMENT_NOTE}
+                {PAID_STATUS_NOTE}
               </span>
             </div>
           </form>
@@ -613,6 +628,7 @@ export function AccountsPage() {
                       shown={shown}
                       canViewContract={canViewContract}
                       canRecordInvoice={canRecordInvoice}
+                      canEditInvoiceNo={canEditInvoiceNo}
                     />
                   ))}
                 </tbody>
@@ -645,9 +661,10 @@ interface RowProps {
   shown: (id: ColumnId) => boolean
   canViewContract: boolean
   canRecordInvoice: boolean
+  canEditInvoiceNo: boolean
 }
 
-function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProps) {
+function Row({ item, number, shown, canViewContract, canRecordInvoice, canEditInvoiceNo }: RowProps) {
   const tone = COLOUR_TONE[item.colour]
   const [recording, setRecording] = useState(false)
 
@@ -707,25 +724,16 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
       )}
       {shown('invoiceNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
-          {item.invoiceNumbers.length === 0 ? (
-            <span className="text-xs font-medium text-slate-600">Not recorded</span>
-          ) : (
-            <ul>
-              {item.invoiceNumbers.map((invoiceNumber) => (
-                <li key={invoiceNumber} className="font-mono text-sm font-semibold text-slate-900">
-                  {invoiceNumber}
-                </li>
-              ))}
-            </ul>
-          )}
+          <ManualInvoiceField visitId={item.id} invoiceNo={item.manualInvoiceNo} updatedAt={item.updatedAt} canEdit={canEditInvoiceNo} label={`${item.reference} ${serviceCodeLabel(item.service)}`} />
+          {item.invoiceNumbers.length > 0 && <div className="mt-1 text-xs text-slate-500">Zoho: {item.invoiceNumbers.join(', ')}</div>}
         </td>
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
         <span className="inline-flex gap-2">
-          {item.colour === 'BLUE' && canRecordInvoice && (
-            <button type="button" onClick={() => setRecording(true)} aria-label={`Record an invoice for ${item.reference} ${serviceCodeLabel(item.service)}`} className={ACTION_LINK}>
-              Record invoice
+          {item.visitStatus === 'COMPLETED' && item.invoiceNumbers.length === 0 && canRecordInvoice && (
+            <button type="button" onClick={() => setRecording(true)} aria-label={`Record a Zoho invoice for ${item.reference} ${serviceCodeLabel(item.service)}`} className={ACTION_LINK}>
+              Record Zoho invoice
             </button>
           )}
           {canViewContract ? (

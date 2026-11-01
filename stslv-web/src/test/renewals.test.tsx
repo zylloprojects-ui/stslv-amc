@@ -58,7 +58,7 @@ describe('contract renewals', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Renew AMC Contract' })
 
     expect(within(dialog).getByLabelText(/System/)).toHaveValue('FIRE')
-    expect(within(dialog).getByLabelText(/Contract value/)).toHaveValue('1620.000')
+    expect(within(dialog).getByLabelText(/AMC Value \/ Year/)).toHaveValue('1620.000')
     expect(within(dialog).getByLabelText(/Valid from/)).toHaveValue('')
     expect(within(dialog).getByLabelText(/^Status/)).toHaveValue('DRAFT')
     expect(await within(dialog).findByText('A renewal is for the same client as the contract it renews.')).toBeInTheDocument()

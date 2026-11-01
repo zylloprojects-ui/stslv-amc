@@ -1,15 +1,22 @@
 import { pool } from "../../config/database";
 import { escapeLike } from "../../shared/validation";
-import type { ListActivityQuery, ListLoginsQuery } from "./audit.schemas";
+import type { ActivityFilters, ListActivityQuery, ListLoginsQuery, LoginFilters } from "./audit.schemas";
 
 // Read-only views over activity_logs. Only the parts of an entry's details that
 // are meant to be read are returned (field changes, a reason, a sign-in's
-// network address and failure reason); other stored details stay internal.
+// network address, browser and failure reason); other stored details stay internal.
 
 type Changes = Record<string, { from: unknown; to: unknown }>;
 
+// A field that should never have been logged is still not shown or exported.
+const SENSITIVE_FIELD = /password|token|secret|hash|credential/i;
+
 function asChanges(value: unknown): Changes | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Changes) : null;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  return Object.fromEntries(Object.entries(value as Changes).filter(([field]) => !SENSITIVE_FIELD.test(field)));
 }
 
 function dateConditions(query: { from?: string | undefined; to?: string | undefined }, params: unknown[], conditions: string[]) {
@@ -36,6 +43,8 @@ export interface LoginRecord {
   user: { id: string; fullName: string; email: string } | null;
   /** The network address the request came from, when it was recorded. */
   ip: string | null;
+  /** The browser's description of itself, as sent: untrusted text. Blank on entries from before it was recorded. */
+  userAgent: string | null;
   /** Why a sign-in failed: unknown_account, wrong_password, inactive_account or temporary_password_expired. */
   reason: string | null;
   createdAt: string;
@@ -44,7 +53,9 @@ export interface LoginRecord {
 // A successful sign-in is recorded by the user who signed in; a failed one points to the account it was for.
 const LOGIN_USER = "COALESCE(l.user_id, CASE WHEN l.entity_type = 'users' THEN l.entity_id END)";
 
-export async function listLogins(query: ListLoginsQuery) {
+const LOGIN_FROM = `FROM activity_logs l LEFT JOIN users u ON u.id = ${LOGIN_USER}`;
+
+function loginFilter(query: LoginFilters) {
   const params: unknown[] = [];
   const conditions = ["l.action IN ('auth.login', 'auth.login_failed')"];
 
@@ -62,45 +73,68 @@ export async function listLogins(query: ListLoginsQuery) {
   }
   dateConditions(query, params, conditions);
 
-  const from = `FROM activity_logs l LEFT JOIN users u ON u.id = ${LOGIN_USER}`;
+  return { params, conditions };
+}
+
+type LoginRow = {
+  id: string;
+  action: string;
+  user_id: string | null;
+  full_name: string | null;
+  email: string | null;
+  ip: string | null;
+  user_agent: string | null;
+  reason: string | null;
+  created_at: Date;
+};
+
+const LOGIN_COLUMNS = `l.id, l.action, u.id AS user_id, u.full_name, u.email,
+            l.metadata ->> 'ip' AS ip, l.metadata ->> 'userAgent' AS user_agent, l.metadata ->> 'reason' AS reason, l.created_at`;
+
+const toLoginRecord = (row: LoginRow): LoginRecord => ({
+  id: row.id,
+  outcome: row.action === "auth.login" ? "SUCCESS" : "FAILED",
+  user: row.user_id ? { id: row.user_id, fullName: row.full_name ?? "", email: row.email ?? "" } : null,
+  ip: row.ip,
+  userAgent: row.user_agent,
+  reason: row.action === "auth.login" ? null : row.reason,
+  createdAt: row.created_at.toISOString(),
+});
+
+export async function listLogins(query: ListLoginsQuery) {
+  const { params, conditions } = loginFilter(query);
+  const from = LOGIN_FROM;
   const total = await pool.query<{ count: number; failed: number }>(
     `SELECT count(*)::int AS count, count(*) FILTER (WHERE l.action = 'auth.login_failed')::int AS failed ${from} ${where(conditions)}`,
     params
   );
-  const rows = await pool.query<{
-    id: string;
-    action: string;
-    user_id: string | null;
-    full_name: string | null;
-    email: string | null;
-    ip: string | null;
-    reason: string | null;
-    created_at: Date;
-  }>(
-    `SELECT l.id, l.action, u.id AS user_id, u.full_name, u.email,
-            l.metadata ->> 'ip' AS ip, l.metadata ->> 'reason' AS reason, l.created_at
+  const rows = await pool.query<LoginRow>(
+    `SELECT ${LOGIN_COLUMNS}
      ${from} ${where(conditions)}
      ORDER BY l.created_at DESC, l.id DESC
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
 
-  const items: LoginRecord[] = rows.rows.map((row) => ({
-    id: row.id,
-    outcome: row.action === "auth.login" ? "SUCCESS" : "FAILED",
-    user: row.user_id ? { id: row.user_id, fullName: row.full_name ?? "", email: row.email ?? "" } : null,
-    ip: row.ip,
-    reason: row.action === "auth.login" ? null : row.reason,
-    createdAt: row.created_at.toISOString(),
-  }));
-
   return {
-    items,
+    items: rows.rows.map(toLoginRecord),
     total: total.rows[0]?.count ?? 0,
     failedTotal: total.rows[0]?.failed ?? 0,
     page: query.page,
     pageSize: query.pageSize,
   };
+}
+
+/** Every sign-in matching the filters, for the export. The count comes first, so an oversized export is refused before it is read. */
+export async function loginsForExport(filters: LoginFilters, assertSize: (count: number) => void): Promise<LoginRecord[]> {
+  const { params, conditions } = loginFilter(filters);
+  const total = await pool.query<{ count: number }>(`SELECT count(*)::int AS count ${LOGIN_FROM} ${where(conditions)}`, params);
+
+  assertSize(total.rows[0]?.count ?? 0);
+
+  const rows = await pool.query<LoginRow>(`SELECT ${LOGIN_COLUMNS} ${LOGIN_FROM} ${where(conditions)} ORDER BY l.created_at DESC, l.id DESC`, params);
+
+  return rows.rows.map(toLoginRecord);
 }
 
 // ---------------------------------------------------------------------------
@@ -118,10 +152,12 @@ export interface ActivityRecord {
   user: { id: string; fullName: string } | null;
   changes: Changes | null;
   reason: string | null;
+  /** The network address, on the entries that recorded one. */
+  ip: string | null;
   createdAt: string;
 }
 
-export async function listActivity(query: ListActivityQuery) {
+function activityFilter(query: ActivityFilters) {
   const params: unknown[] = [];
   const conditions: string[] = [];
 
@@ -148,43 +184,66 @@ export async function listActivity(query: ListActivityQuery) {
   }
   dateConditions(query, params, conditions);
 
+  return { params, conditions };
+}
+
+type ActivityRow = {
+  id: string;
+  action: string;
+  module: string;
+  entity_type: string;
+  entity_id: string | null;
+  description: string | null;
+  user_id: string | null;
+  full_name: string | null;
+  changes: unknown;
+  reason: string | null;
+  ip: string | null;
+  created_at: Date;
+};
+
+const ACTIVITY_SELECT = `SELECT l.id, l.action, l.module, l.entity_type, l.entity_id, l.description, l.user_id, u.full_name,
+            l.metadata -> 'changes' AS changes, l.metadata ->> 'reason' AS reason, l.metadata ->> 'ip' AS ip, l.created_at
+     FROM activity_logs l LEFT JOIN users u ON u.id = l.user_id`;
+
+const toActivityRecord = (row: ActivityRow): ActivityRecord => ({
+  id: row.id,
+  action: row.action,
+  module: row.module,
+  entityType: row.entity_type,
+  entityId: row.entity_id,
+  description: row.description,
+  user: row.user_id ? { id: row.user_id, fullName: row.full_name ?? "" } : null,
+  changes: asChanges(row.changes),
+  reason: row.reason,
+  ip: row.ip,
+  createdAt: row.created_at.toISOString(),
+});
+
+export async function listActivity(query: ListActivityQuery) {
+  const { params, conditions } = activityFilter(query);
   const total = await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM activity_logs l ${where(conditions)}`, params);
-  const rows = await pool.query<{
-    id: string;
-    action: string;
-    module: string;
-    entity_type: string;
-    entity_id: string | null;
-    description: string | null;
-    user_id: string | null;
-    full_name: string | null;
-    changes: unknown;
-    reason: string | null;
-    created_at: Date;
-  }>(
-    `SELECT l.id, l.action, l.module, l.entity_type, l.entity_id, l.description, l.user_id, u.full_name,
-            l.metadata -> 'changes' AS changes, l.metadata ->> 'reason' AS reason, l.created_at
-     FROM activity_logs l LEFT JOIN users u ON u.id = l.user_id
+  const rows = await pool.query<ActivityRow>(
+    `${ACTIVITY_SELECT}
      ${where(conditions)}
      ORDER BY l.created_at DESC, l.id DESC
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
 
-  const items: ActivityRecord[] = rows.rows.map((row) => ({
-    id: row.id,
-    action: row.action,
-    module: row.module,
-    entityType: row.entity_type,
-    entityId: row.entity_id,
-    description: row.description,
-    user: row.user_id ? { id: row.user_id, fullName: row.full_name ?? "" } : null,
-    changes: asChanges(row.changes),
-    reason: row.reason,
-    createdAt: row.created_at.toISOString(),
-  }));
+  return { items: rows.rows.map(toActivityRecord), total: total.rows[0]?.count ?? 0, page: query.page, pageSize: query.pageSize };
+}
 
-  return { items, total: total.rows[0]?.count ?? 0, page: query.page, pageSize: query.pageSize };
+/** Every entry matching the filters, for the export. The count comes first, so an oversized export is refused before it is read. */
+export async function activityForExport(filters: ActivityFilters, assertSize: (count: number) => void): Promise<ActivityRecord[]> {
+  const { params, conditions } = activityFilter(filters);
+  const total = await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM activity_logs l ${where(conditions)}`, params);
+
+  assertSize(total.rows[0]?.count ?? 0);
+
+  const rows = await pool.query<ActivityRow>(`${ACTIVITY_SELECT} ${where(conditions)} ORDER BY l.created_at DESC, l.id DESC`, params);
+
+  return rows.rows.map(toActivityRecord);
 }
 
 /** The modules, record types and acting users that occur in the log, for the filters. */

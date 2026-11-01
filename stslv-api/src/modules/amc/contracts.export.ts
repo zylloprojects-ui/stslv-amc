@@ -3,7 +3,7 @@ import { logActivity } from "../../shared/activity-log";
 import { assertExportSize, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
 import type { ContractStatus } from "./amc.constants";
-import type { ExportContractsQuery } from "./amc.schemas";
+import type { ContractColumn, ExportContractsQuery } from "./amc.schemas";
 import { listContracts, type Contract } from "./contracts.service";
 import { amcReference } from "./service-status.service";
 
@@ -22,7 +22,7 @@ const COLUMNS: ReportColumn[] = [
   { key: "validFrom", header: "Valid From", kind: "date", width: 12 },
   { key: "validTo", header: "Valid To", kind: "date", width: 12 },
   { key: "status", header: "Status", kind: "text", width: 13 },
-  { key: "contractValue", header: "Contract Value", kind: "money", width: 14 },
+  { key: "contractValue", header: "AMC Value / Year", kind: "money", width: 14 },
   { key: "finalCredit", header: "Final Credit", kind: "money", width: 14 },
   { key: "billingBasis", header: "Billing Basis", kind: "text", width: 14 },
   { key: "billingAmount", header: "Billing Amount", kind: "money", width: 14, excelOnly: true },
@@ -37,6 +37,19 @@ async function frequencyLabels(): Promise<Map<string, string>> {
   return new Map(rows.rows.map((row) => [row.code, row.label]));
 }
 
+/** The report columns behind each column a user can hide on the page. */
+const HIDDEN_KEYS: Record<ContractColumn, string[]> = {
+  reference: ["reference"],
+  system: ["system"],
+  engineer: ["engineer"],
+  validity: ["validFrom", "validTo"],
+  frequency: ["frequency"],
+  contractValue: ["contractValue"],
+  finalCredit: ["finalCredit"],
+  visits: ["visits", "completed"],
+  status: ["status"],
+};
+
 function toRow(contract: Contract, index: number, labels: Map<string, string>): ReportRow {
   return {
     number: index + 1,
@@ -50,7 +63,7 @@ function toRow(contract: Contract, index: number, labels: Map<string, string>): 
     status: STATUS_LABELS[contract.status],
     contractValue: contract.contractValue,
     finalCredit: contract.finalCredit,
-    billingBasis: contract.billingBasis === "FINAL_CREDIT" ? "Final Credit" : contract.billingBasis === "CONTRACT_VALUE" ? "Contract Value" : contract.billingBasis === "CUSTOM" ? "Custom" : null,
+    billingBasis: contract.billingBasis === "FINAL_CREDIT" ? "Final Credit" : contract.billingBasis === "CONTRACT_VALUE" ? "AMC Value / Year" : contract.billingBasis === "CUSTOM" ? "Custom" : null,
     billingAmount: contract.selectedBillingAmount,
     visitValue: contract.defaultVisitAmount,
     visits: contract.schedule.visitCount,
@@ -77,12 +90,19 @@ async function describeFilters(query: ExportContractsQuery): Promise<ReportDefin
 
 /** The report, and the audit entry to write once the file has been produced. */
 export async function buildContractsExport(auth: AuthContext, query: ExportContractsQuery): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
-  const { format, ...filters } = query;
+  const { format, hidden, ...filters } = query;
   const { total } = await listContracts({ ...filters, page: 1, pageSize: 1 });
 
   assertExportSize(format, total);
 
-  const [{ items }, labels] = await Promise.all([listContracts({ ...filters, page: 1, pageSize: Math.max(total, 1) }), frequencyLabels()]);
+  const [{ items, totals }, labels] = await Promise.all([listContracts({ ...filters, page: 1, pageSize: Math.max(total, 1) }), frequencyLabels()]);
+  const dropped = new Set(hidden.flatMap((column) => HIDDEN_KEYS[column]));
+  const columns = COLUMNS.filter((column) => !dropped.has(column.key));
+  // The figures are PostgreSQL's numeric(16,3) sums over every contract the filters select.
+  const totalValues: Record<string, string> = {
+    ...(dropped.has("contractValue") ? {} : { contractValue: totals.contractValue }),
+    ...(dropped.has("finalCredit") ? {} : { finalCredit: totals.finalCredit }),
+  };
   const report: ReportDefinition = {
     title: "AMC Contracts",
     period: null,
@@ -94,8 +114,17 @@ export async function buildContractsExport(auth: AuthContext, query: ExportContr
     tables: [
       {
         name: "AMC Contracts",
-        columns: COLUMNS,
+        columns,
         rows: items.map((contract, index) => toRow(contract, index, labels)),
+        ...(Object.keys(totalValues).length > 0
+          ? {
+              totals: {
+                label: `Filtered Total (${total} ${total === 1 ? "contract" : "contracts"})`,
+                values: totalValues,
+                excelFormulas: Object.fromEntries(Object.keys(totalValues).map((key) => [key, (range: (name: string) => string) => `SUM(${range(key)})`])),
+              },
+            }
+          : {}),
         notes: ["Amounts are as entered on each contract. Cost per Visit is the amount given to each new visit; whether it includes VAT is not confirmed."],
       },
     ],
@@ -109,7 +138,7 @@ export async function buildContractsExport(auth: AuthContext, query: ExportContr
       entityType: "amc_contracts",
       entityId: null,
       description: `Exported AMC Contracts as ${format === "xlsx" ? "Excel" : "PDF"} (${total} ${total === 1 ? "contract" : "contracts"}).`,
-      metadata: { format, filters, rowCount: total },
+      metadata: { format, filters, hidden, rowCount: total },
     });
 
   return { report, recordExport };

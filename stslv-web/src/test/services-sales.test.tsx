@@ -36,6 +36,7 @@ function makeItem(overrides: Partial<ServicesSalesItem> = {}): ServicesSalesItem
     serviceStatus: 'COMPLETED',
     salesStatus: 'QUOTE_PENDING',
     completedDate: '2026-10-05',
+    serviceReportNo: null,
     salesEngineer: { id: '4', name: 'Esha Engineer' },
     quotationNo: null,
     quotationUpdatedAt: null,
@@ -335,5 +336,41 @@ describe('Services Sales page', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: 'Alpha Towers' })).toBeInTheDocument())
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
     expect(await screen.findByText('No services found')).toBeInTheDocument()
+  })
+})
+
+describe('Service Report No. and the Quote filter', () => {
+  it('shows the read-only column between Service Status and Quote No.', async () => {
+    salesApi(EDITOR, [makeItem({ serviceReportNo: 'SR-77' })])
+    renderPage()
+
+    expect(await screen.findByText('SR-77')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Service Report/ })).not.toBeInTheDocument()
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent)
+    expect(headers.indexOf('Service Report No.')).toBe(headers.indexOf('Service Status') + 1)
+    expect(headers.indexOf('Quote No.')).toBe(headers.indexOf('Service Report No.') + 1)
+  })
+
+  it('sends the Quote filter and the hidden columns to the list and the download', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const api = salesApi(EDITOR, [PENDING], (request) => (request.path === '/services-sales/export' ? ok(null) : undefined))
+    renderPage()
+
+    await screen.findByText('AMC-0007')
+    expect(within(screen.getByLabelText('Quote')).getAllByRole('option').map((option) => option.textContent)).toEqual(['All', 'Quote Submitted', 'Not Submitted'])
+    await userEvent.selectOptions(screen.getByLabelText('Quote'), 'NOT_SUBMITTED')
+    await waitFor(() => expect(api.find('GET', '/services-sales').at(-1)?.query.get('quoteSubmission')).toBe('NOT_SUBMITTED'))
+
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Service Report No.' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Apply|Save/ }))
+    expect(screen.queryByRole('columnheader', { name: 'Service Report No.' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export Quotations to Excel' }))
+    await waitFor(() => expect(api.find('GET', '/services-sales/export').length).toBe(1))
+    const query = api.find('GET', '/services-sales/export')[0]?.query
+    expect(query?.get('hidden')).toBe('serviceReportNo')
+    expect(query?.get('quoteSubmission')).toBe('NOT_SUBMITTED')
   })
 })

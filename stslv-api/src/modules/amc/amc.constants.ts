@@ -61,7 +61,8 @@ export type InvoiceEligibility = (typeof INVOICE_ELIGIBILITIES)[number];
  *   NO_INVOICE_REQUIRED  completed with an amount of zero.
  *   NOT_COMPLETED        scheduled, in progress or postponed: not billable yet.
  *   CANCELLED            the visit was cancelled.
- * An invoice is not a payment: INVOICED says nothing about money received.
+ * This is the Invoice Tracking workflow (Zoho). Reference Paid / Unpaid is separate:
+ * it follows the manual Invoice No. on the visit (paymentStatus).
  * Historical visits have no billing status.
  */
 export const BILLING_STATUSES = ["INVOICED", "NOT_YET_INVOICED", "NO_INVOICE_REQUIRED", "NOT_COMPLETED", "CANCELLED"] as const;

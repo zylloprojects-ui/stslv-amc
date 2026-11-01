@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate, Route, RouterProvider, Routes } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Route, RouterProvider, Routes, useLocation } from 'react-router-dom'
 import { appRouteObjects } from './appRoutes'
 import { AuthProvider } from './auth/AuthProvider'
 import { LandingRedirect, ProtectedRoute, RequireAdmin, RequireAnyPermission, RequirePermission } from './auth/guards'
@@ -48,6 +48,13 @@ import { MySuggestionsPage } from './pages/suggestions/MySuggestionsPage'
 import { SuggestionDetailPage } from './pages/suggestions/SuggestionDetailPage'
 import { SuggestionReviewPage } from './pages/suggestions/SuggestionReviewPage'
 import { UsersPage } from './pages/users/UsersPage'
+
+/** A former address: goes to the new one, keeping any query string and fragment of a saved link. */
+function RedirectKeepingQuery({ to }: { to: string }) {
+  const { search, hash } = useLocation()
+
+  return <Navigate to={{ pathname: to, search, hash }} replace />
+}
 
 function createQueryClient() {
   return new QueryClient({
@@ -298,11 +305,26 @@ export function AppRoutes() {
               </RequirePermission>
             }
           />
+          {/* The pages' former addresses, so saved links keep working. The guard is on the new address. */}
+          <Route path="/admin/security" element={<RedirectKeepingQuery to="/settings/security" />} />
+          <Route path="/admin/backups" element={<RedirectKeepingQuery to="/settings/backups" />} />
           <Route
-            path="/admin/security"
+            path="/settings/security"
             element={
               <RequireAdmin>
-                <SecurityCenterPage />
+                <SettingsPage area="security">
+                  <SecurityCenterPage />
+                </SettingsPage>
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/settings/backups"
+            element={
+              <RequireAdmin>
+                <SettingsPage area="backups">
+                  <BackupRestorePage />
+                </SettingsPage>
               </RequireAdmin>
             }
           />
@@ -311,14 +333,6 @@ export function AppRoutes() {
             element={
               <RequireAdmin>
                 <DeletionLogPage />
-              </RequireAdmin>
-            }
-          />
-          <Route
-            path="/admin/backups"
-            element={
-              <RequireAdmin>
-                <BackupRestorePage />
               </RequireAdmin>
             }
           />

@@ -33,7 +33,7 @@ beforeAll(async () => {
     maintenanceFrequency: "MONTHLY",
     salesEngineerId: cancelled,
   });
-  const cancel = await api().post(`/api/amc/contracts/${gone}/status`).set(admin.headers).send({ status: "CANCELLED", cancelOpenVisits: true });
+  const cancel = await api().post(`/api/amc/contracts/${gone}/status`).set(admin.headers).send({ status: "CANCELLED", cancelOpenVisits: true, reason: "Test" });
   expect(cancel.status).toBe(200);
 });
 afterAll(closePool);

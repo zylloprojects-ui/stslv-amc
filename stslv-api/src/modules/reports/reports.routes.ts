@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
 import { sendExport } from "../../shared/export/send";
-import { buildReportExport, getReport, reportCatalogue, reportExportSchema, reportQuerySchema, reportTypeSchema } from "./reports.service";
+import { buildReportExport, getReport, getReportOptions, reportCatalogue, reportExportSchema, reportQuerySchema, reportTypeSchema } from "./reports.service";
 
 // Mounted at /api/reports. Read-only. REPORTS:VIEW opens the page and everything it shows.
 export const reportsRouter = Router();
@@ -11,6 +11,10 @@ reportsRouter.use(authenticate);
 
 reportsRouter.get("/", authorize("REPORTS", "VIEW"), (_req, res) => {
   res.json({ success: true, data: reportCatalogue() });
+});
+
+reportsRouter.get("/options", authorize("REPORTS", "VIEW"), async (_req, res) => {
+  res.json({ success: true, data: await getReportOptions() });
 });
 
 reportsRouter.get("/:type/export", authorize("REPORTS", "VIEW"), authorize("REPORTS", "EXPORT"), async (req, res) => {

@@ -18,7 +18,6 @@ const COLUMNS = [
   { id: 'number', label: 'Invoice no.' },
   { id: 'client', label: 'Client' },
   { id: 'date', label: 'Invoice date' },
-  { id: 'paid', label: 'Paid on' },
   { id: 'total', label: 'Total' },
   { id: 'status', label: 'Status' },
 ] as const
@@ -28,8 +27,8 @@ const COLUMN_IDS = COLUMNS.map((column) => column.id)
 
 /**
  * The latest invoices recorded in Invoice Tracking, newest invoice date first.
- * Read from the existing invoice list; nothing is generated here. Payment is
- * not recorded, so "Paid on" says so rather than showing a date.
+ * Read from the existing invoice list; nothing is generated here. These are Zoho
+ * records: Paid / Unpaid follows the manual Invoice No. on the service, not this list.
  */
 export function RecentInvoices({ userId, canExport }: { userId: string; canExport: boolean }) {
   const [searchInput, setSearchInput] = useState('')
@@ -141,7 +140,7 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
         <>
           <div className={TABLE.wrapper}>
             <table className={TABLE.table}>
-              <caption className="sr-only">Recent invoices</caption>
+              <caption className="sr-only">Recent Zoho invoices from Invoice Tracking</caption>
               <thead>
                 <tr>
                   {COLUMNS.filter((column) => shown(column.id)).map((column) => (
@@ -157,7 +156,6 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
                     {shown('number') && <td className={cx(TABLE.td, TABLE.unbroken, 'font-medium text-slate-900')}>{invoice.invoiceNumber}</td>}
                     {shown('client') && <td className={cx(TABLE.td, TABLE.text)}>{invoice.client.name}</td>}
                     {shown('date') && <td className={cx(TABLE.td, 'whitespace-nowrap')}>{formatDate(invoice.invoiceDate)}</td>}
-                    {shown('paid') && <td className={cx(TABLE.td, 'whitespace-nowrap text-slate-500')}>Not tracked</td>}
                     {shown('total') && (
                       <td className={cx(TABLE.td, 'text-right')}>
                         <Money value={invoice.totalAmount} />
@@ -180,7 +178,7 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
           </Pager>
         </>
       )}
-      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-inset ring-slate-200">Totals include VAT as entered from the Zoho invoice. Payment is not recorded in STSLV AMC.</p>
+      <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 ring-1 ring-inset ring-slate-200">Zoho invoice records. Totals include VAT as entered from the invoice. Paid and Unpaid follow the manual Invoice No. on each service, not this list.</p>
     </div>
   )
 }

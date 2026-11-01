@@ -19,6 +19,11 @@ const body = (overrides: Record<string, unknown>) => ({ clientId, systemDescript
 const complete = async (id: string) => expect((await patch(`/amc/execution/visits/${id}`, { status: "COMPLETED", completedDate: await today() })).status).toBe(200);
 const visitRow = async (id: string) => (await get(`/amc/visits/${id}`)).body.data;
 
+const setManualNo = async (visitId: string, invoiceNo: string | null) => {
+  const updatedAt = (await visitRow(visitId)).updatedAt;
+  expect((await patch(`/amc/visits/${visitId}/manual-invoice`, { invoiceNo, expectedUpdatedAt: updatedAt })).status).toBe(200);
+};
+
 beforeAll(async () => {
   await resetData();
   admin = await signedIn("admin@example.com", ["ADMIN"]);
@@ -129,6 +134,10 @@ describe("Color Priority", () => {
       await complete(visit.id);
       await newInvoice(admin, invoiceBody(clientId, [{ amcVisitId: visit.id, amount: "300.000" }], { amountExclVat: "300.000", vatAmount: "0.000", invoiceDate: await today() }));
     }
+    // A Zoho record does not lift Invoice Pending: the reference says the manual Invoice No. does.
+    expect((await visitRow(first!.id)).colorState).toBe("INVOICE_PENDING");
+    await setManualNo(first!.id, "CP-1");
+    await setManualNo(second!.id, "CP-2");
     expect((await visitRow(first!.id)).colorState).toBe("FIRST_SERVICE");
     expect((await visitRow(second!.id)).colorState).toBe("NORMAL");
 
@@ -151,7 +160,7 @@ describe("Color Priority", () => {
 });
 
 describe("Cross-module synchronisation", () => {
-  it("cancelling an invoice and reopening a service reach Accounts, Master AMC Status, Dashboard and Reports", async () => {
+  it("clearing the Invoice No., cancelling a Zoho invoice and reopening a service reach Accounts, Master AMC Status, Dashboard and Reports", async () => {
     const other = await createClient(admin, "Sync Target");
     const id = await activeContract(admin, other, body({ clientId: other, systemDescription: "SYNC" }));
     const [first] = await visitsOf(id);
@@ -166,16 +175,20 @@ describe("Cross-module synchronisation", () => {
         accountsColour: accounts.items.find((row: { id: string }) => row.id === first!.id).colour,
         masterColour: master.items.find((row: { id: string }) => row.id === first!.id).colour,
         filled: accounts.kpis.invoiceFilled,
-        reported: report.invoice_recorded,
+        reported: report.paid,
         completed: report.completed,
-        invoiced: (await get("/dashboard/operations")).body.data.kpis.invoicing.invoiced,
+        invoiced: (await get("/dashboard/operations")).body.data.kpis.payments.paid,
       };
     };
 
+    await setManualNo(first!.id, "SYNC-1");
     const invoiced = await read();
     expect(invoiced).toMatchObject({ accountsColour: "GREEN", masterColour: "BLUE", filled: 1, reported: 1, completed: 1 });
 
+    // A Zoho record's status does not change Paid; clearing the number does.
     await cancelInvoice(admin, invoice.id);
+    expect(await read()).toMatchObject({ accountsColour: "GREEN", filled: 1 });
+    await setManualNo(first!.id, null);
     const cancelled = await read();
     expect(cancelled).toMatchObject({ accountsColour: "BLUE", masterColour: "YELLOW", filled: 0, reported: 0, completed: 1 });
     expect(cancelled.invoiced).toBe(invoiced.invoiced - 1);

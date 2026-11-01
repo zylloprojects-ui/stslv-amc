@@ -170,13 +170,16 @@ describe("meeting workflow", () => {
     expect(master.find((item) => item.id === first!.id)).toMatchObject({ colour: "YELLOW", serviceStatus: "COMPLETED" });
   });
 
-  it("11-13. an invoice number reaches Accounts and Master AMC Status, without claiming payment", async () => {
+  it("11-13. the manual Invoice No. reaches Accounts and Master AMC Status as Paid, and the Zoho record stays listed", async () => {
     const [first] = await visitsOf(contractId);
     await newInvoice(admin, invoiceBody(clientId, [{ amcVisitId: first!.id, amount: "405.000" }], { amountExclVat: "405.000", vatAmount: "20.250", invoiceDate: await today(), invoiceNumber: "ZOHO-5001" }));
 
+    const updatedAt = (await get(`/amc/visits/${first!.id}`)).body.data.updatedAt;
+    expect((await patch(`/amc/visits/${first!.id}/manual-invoice`, { invoiceNo: "MAN-5001", expectedUpdatedAt: updatedAt })).status).toBe(200);
+
     const accounts = (await get("/accounts", { clientId, invoiceStatus: "RECORDED", pageSize: 200 })).body.data;
     expect(accounts.items).toHaveLength(1);
-    expect(accounts.items[0]).toMatchObject({ id: first!.id, colour: "GREEN", invoiceNumbers: ["ZOHO-5001"], paymentStatus: "NOT_AVAILABLE", visitValue: "405.000" });
+    expect(accounts.items[0]).toMatchObject({ id: first!.id, colour: "GREEN", manualInvoiceNo: "MAN-5001", invoiceNumbers: ["ZOHO-5001"], paymentStatus: "PAID", visitValue: "405.000" });
 
     const master = (await get("/amc/master-status", { clientId, invoiceStatus: "RECORDED", quotationStatus: "NOT_RECORDED", pageSize: 200 })).body.data;
     expect(master.items).toHaveLength(1);
@@ -202,8 +205,8 @@ describe("meeting workflow", () => {
     const accounts = (await get("/accounts", { pageSize: 1 })).body.data.kpis;
 
     expect(kpis.contracts).toMatchObject({ active: direct?.active, activeValue: direct?.value, finalCreditTotal: direct?.credit });
-    expect(kpis.invoicing).toEqual({ invoiced: accounts.invoiceFilled, notInvoiced: accounts.rows - accounts.invoiceFilled });
-    expect(kpis.invoicing.invoiced).toBe(1);
+    expect(kpis.payments).toMatchObject({ paid: accounts.invoiceFilled, unpaid: accounts.rows - accounts.invoiceFilled });
+    expect(kpis.payments.paid).toBe(1);
   });
 
   it("15. renewal: the 45-day boundary, expiry today, expired, renewed and cancelled", async () => {

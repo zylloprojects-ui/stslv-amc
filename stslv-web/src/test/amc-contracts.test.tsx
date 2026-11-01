@@ -12,7 +12,7 @@ const DRAFT = makeContract({
   status: 'DRAFT',
   contractValue: '9000.000',
   finalCredit: '8000.000',
-  schedule: { visitCount: 0, completedCount: 0, openCount: 0, historicalCount: 0, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '0.000', valueDifference: '9000.000' },
+  schedule: { visitCount: 0, completedCount: 0, openCount: 0, historicalCount: 0, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '0.000', annualAmount: null, servicesPerCycle: null, perServiceAmount: null, expectedTermTotal: null, generatedTotal: '0.000', valueDifference: null },
 })
 
 /** Waits for a contract's own page and returns queries scoped to its main content. */
@@ -184,7 +184,7 @@ describe('add contract', () => {
     renderApp('/amc/contracts')
     const dialog = await openAddForm()
 
-    await userEvent.type(within(dialog).getByLabelText(/Contract value/), '1620.1234')
+    await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '1620.1234')
     await userEvent.type(within(dialog).getByLabelText('Final credit'), '-5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
@@ -220,7 +220,7 @@ describe('add contract', () => {
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'HALF_YEARLY')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-03-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-02-29')
-    await userEvent.type(within(dialog).getByLabelText(/Contract value/), '9000')
+    await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '9000')
     await userEvent.type(within(dialog).getByLabelText('Default visit amount'), '4500.000')
     await userEvent.type(within(dialog).getByLabelText('Final credit'), '8000.5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
@@ -275,7 +275,7 @@ describe('add contract', () => {
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'MONTHLY')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
-    await userEvent.type(within(dialog).getByLabelText(/Contract value/), '100')
+    await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '100')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     expect(await within(dialog).findByText('An inactive client cannot be selected. Reactivate the client first.')).toBeInTheDocument()
@@ -302,7 +302,7 @@ describe('contract details', () => {
     expect(commercial.getByText('1,620.000')).toBeInTheDocument()
     expect(commercial.getByText('1,500.000')).toBeInTheDocument()
     expect(commercial.getByText('1,215.000')).toBeInTheDocument()
-    expect(page.getByText(/do not add up to the contract value/)).toBeInTheDocument()
+    expect(page.getByText(/differ from the/)).toBeInTheDocument()
 
     const table = await page.findByRole('table', { name: 'Visits of this contract' })
     const rows = within(table).getAllByRole('row').slice(1)
@@ -322,7 +322,7 @@ describe('edit contract', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Edit Test Hotel One FIRE' }))
     const dialog = await screen.findByRole('dialog', { name: 'Edit AMC Contract' })
-    const value = await within(dialog).findByLabelText(/Contract value/)
+    const value = await within(dialog).findByLabelText(/AMC Value \/ Year/)
 
     expect(value).toHaveValue('1620.000')
     expect(within(dialog).getByLabelText(/Client/)).toHaveValue('10')
@@ -476,10 +476,16 @@ describe('contract status', () => {
     expect(checkbox).not.toBeChecked()
 
     await userEvent.click(checkbox)
+    // The reason is required: nothing is sent until it is entered.
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel contract' }))
+    expect(await within(confirm).findByText('Enter the reason for cancelling this contract.')).toBeInTheDocument()
+    expect(api.find('POST', '/amc/contracts/100/status')).toHaveLength(0)
+
+    await userEvent.type(within(confirm).getByLabelText(/Reason for cancelling/), '  Client closed the site ')
     await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel contract' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/status')).toHaveLength(1))
-    expect(api.find('POST', '/amc/contracts/100/status')[0]?.body).toEqual({ status: 'CANCELLED', cancelOpenVisits: true })
+    expect(api.find('POST', '/amc/contracts/100/status')[0]?.body).toEqual({ status: 'CANCELLED', cancelOpenVisits: true, reason: 'Client closed the site' })
     expect(await screen.findByRole('status')).toHaveTextContent('is now Cancelled. 3 visit(s) cancelled.')
   })
 

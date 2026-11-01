@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { exportFormatSchema } from "../../shared/export/report";
 import { dateSchema, pagingSchema } from "../../shared/money";
 import { idSchema } from "../../shared/validation";
 
@@ -36,5 +37,10 @@ export const listActivitySchema = z.object({
   ...pagingSchema,
 });
 
+export const exportLoginsSchema = listLoginsSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+export const exportActivitySchema = listActivitySchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+
+export type LoginFilters = Omit<z.infer<typeof listLoginsSchema>, "page" | "pageSize">;
+export type ActivityFilters = Omit<z.infer<typeof listActivitySchema>, "page" | "pageSize">;
 export type ListLoginsQuery = z.infer<typeof listLoginsSchema>;
 export type ListActivityQuery = z.infer<typeof listActivitySchema>;

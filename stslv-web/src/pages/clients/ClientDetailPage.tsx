@@ -228,7 +228,7 @@ function clientStats(summary: ClientSummary): Stat[] {
       value: invoices ? formatCount(invoices.issued) : null,
       hint: invoices ? `${formatMoney(invoices.issuedTotal)} incl. VAT${invoices.lastInvoiceDate ? ` · last ${formatDate(invoices.lastInvoiceDate)}` : ''}${invoices.cancelled > 0 ? ` · ${invoices.cancelled} cancelled` : ''}` : NO_ACCESS('invoices'),
     },
-    { label: 'Paid / unpaid invoices', value: null, hint: 'Payments are not recorded in STSLV AMC.' },
+    { label: 'Paid / unpaid invoices', value: null, hint: 'Paid and Unpaid are shown per service on Accounts.' },
   ]
 }
 

@@ -65,11 +65,14 @@ export async function getContractRenewals(contractId: string) {
 
 type HistoryRow = SummaryRow & { source_valid_from: string; source_valid_to: string; source_status: string; source_id: string; created_on: string };
 
+/** A renewal (c), its client (cl) and the contract it renews (s). Also the source of the Renewal History report. */
+export const RENEWAL_HISTORY_FROM = `FROM amc_contracts c
+     JOIN clients cl ON cl.id = c.client_id
+     JOIN amc_contracts s ON s.id = c.renewed_from_id`;
+
 const HISTORY = `SELECT ${SUMMARY}, s.id AS source_id, s.valid_from::text AS source_valid_from, s.valid_to::text AS source_valid_to, s.status AS source_status,
             c.created_at::date::text AS created_on
-     FROM amc_contracts c
-     JOIN clients cl ON cl.id = c.client_id
-     JOIN amc_contracts s ON s.id = c.renewed_from_id
+     ${RENEWAL_HISTORY_FROM}
      ORDER BY c.created_at DESC, c.id DESC`;
 
 function toHistoryItem(row: HistoryRow) {

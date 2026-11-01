@@ -13,6 +13,8 @@ export interface NavItem {
   alsoRequires?: Module[]
   /** Modules whose data the page shows: View or data-only Read is enough, and their own pages are not opened. */
   alsoReads?: Module[]
+  /** Opened from Settings, not the sidebar. Still offered by the page search and checked like any other item. */
+  settingsArea?: true
 }
 
 /** Whether a navigation item is offered to the user. A convenience only: the API enforces every permission. */
@@ -78,12 +80,12 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Users & Access', path: '/admin/users', module: 'USERS' },
       { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Login History', path: '/admin/login-history', module: 'USERS' },
-      { label: 'Security Center', path: '/admin/security', module: 'USERS', adminOnly: true },
       { label: 'Audit Log', path: '/admin/audit-log', module: 'USERS', adminOnly: true },
-      { label: 'Deletion Log', path: '/admin/deletion-log', module: 'USERS', adminOnly: true },
-      { label: 'Backup & Restore', path: '/admin/backups', module: 'USERS', adminOnly: true },
+      { label: 'Recycle Bin', path: '/admin/deletion-log', module: 'USERS', adminOnly: true },
       { label: 'Suggestions Review', path: '/admin/suggestions', module: 'SUGGESTIONS_REVIEW' },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
+      { label: 'Security Center', path: '/settings/security', module: 'USERS', adminOnly: true, settingsArea: true },
+      { label: 'Backup & Restore', path: '/settings/backups', module: 'USERS', adminOnly: true, settingsArea: true },
     ],
   },
 ]

@@ -32,8 +32,8 @@ function SectionHeading({ id, children }: { id: string; children: string }) {
 /** A dashboard widget: a heading in the same style as every section heading, what it measures, and an optional link, above a plain card. */
 function Panel({ id, icon, eyebrow, title, description, link, className, children }: { id: string; icon: IconName; eyebrow: string; title: string; description: string; link?: { to: string; label: string } | null; className?: string; children: ReactNode }) {
   return (
-    <section aria-labelledby={id} className={cx('flex min-w-0 flex-col', className)}>
-      <div className="mb-3 flex items-start justify-between gap-3">
+    <section aria-labelledby={id} className={cx('flex min-w-0 flex-col lg:grid-cols-[minmax(0,1fr)]', className)}>
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <span
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0e5a96] to-[#2f9bd8] text-white shadow-sm"
@@ -102,7 +102,7 @@ export function DashboardPage() {
               {(data ? new Date(data.asOf) : new Date()).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
             </p>
             <h1 className="bn-strong mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">AMC Operations Dashboard</h1>
-            <p className="bn-sub mt-1 break-words text-sm">{`${greeting()}, ${auth.user?.fullName ?? ''}.`}</p>
+            <p className="bn-sub mt-1 break-words text-sm">{`${greeting()}, ${auth.user?.fullName ?? ''}. Contracts, scheduled maintenance, invoicing and renewals at a glance.`}</p>
 
             <div className="mt-5 flex flex-wrap gap-2">
               {auth.can('AMC_CONTRACTS', 'CREATE') && (
@@ -197,7 +197,7 @@ export function DashboardPage() {
         </Panel>
       )}
 
-      {data && (data.workload || data.payments) && (
+      {data && (data.workload || data.paymentTrend) && (
         <div className="mb-6 grid gap-x-6 lg:grid-cols-2 lg:grid-rows-[auto_1fr]">
           {data.workload && (
             <Panel
@@ -212,17 +212,17 @@ export function DashboardPage() {
               <WorkloadChart months={data.workload.months} />
             </Panel>
           )}
-          {data.payments && (
+          {data.paymentTrend && (
             <Panel
               id="dashboard-payments"
               className="max-lg:mb-6 lg:row-span-2 lg:grid lg:grid-rows-subgrid"
               icon="wallet"
               eyebrow="Billing"
               title="Payment Trend"
-              description="Paid invoice value · last six months"
-              link={{ to: '/invoices', label: 'Invoice Tracking' }}
+              description="Value of services marked Paid · last six months"
+              link={{ to: '/finance/accounts', label: 'Accounts' }}
             >
-              <PaymentTrend payments={data.payments} />
+              <PaymentTrend months={data.paymentTrend.months} />
             </Panel>
           )}
         </div>
@@ -244,7 +244,7 @@ export function DashboardPage() {
               eyebrow="Renewals"
               title="Expiring Contracts"
               description={`Active contracts ending in the next ${data.expiring.days} days. Nothing is renewed or expired automatically.`}
-              link={{ to: '/amc/contracts', label: 'AMC Contracts' }}
+              link={canView('REPORTS') ? { to: '/reports?report=expiry-renewal', label: 'Expiry report' } : { to: '/amc/contracts', label: 'AMC Contracts' }}
             >
               <ExpiringContracts expiring={data.expiring} />
             </Panel>
@@ -254,7 +254,7 @@ export function DashboardPage() {
 
       {canView('INVOICES') && (
         <Panel id="dashboard-invoices" icon="invoice"
-          eyebrow="Finance" title="Recent Invoices" description="Latest invoices recorded from Zoho, newest invoice date first." link={{ to: '/invoices', label: 'Invoice Tracking' }} className="mb-6">
+          eyebrow="Finance" title="Recent Invoices (Zoho)" description="Latest invoices recorded from Zoho, newest invoice date first." link={{ to: '/invoices', label: 'Invoice Tracking' }} className="mb-6">
           <RecentInvoices userId={userId} canExport={auth.can('INVOICES', 'EXPORT')} />
         </Panel>
       )}

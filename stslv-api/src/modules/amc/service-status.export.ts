@@ -4,11 +4,12 @@ import { assertExportSize, displayMonth, type ReportColumn, type ReportDefinitio
 import type { AuthContext } from "../auth/access";
 import type { ServiceStatus } from "./amc.constants";
 import type { ExportServiceStatusQuery } from "./amc.schemas";
+import type { ServiceStatusColumn } from "./service-status.schemas";
 import { listAllServiceStatus, type ServiceStatusItem } from "./service-status.service";
 
 // The Service Status page as a report: every visit that matches the page's
-// filters (all pages, not only the one shown), with the same values. Nothing
-// here is calculated; the counts are the page's own card figures.
+// filters (all pages, not only the one shown), with the same values and only
+// the columns the page shows. Nothing here is calculated; the counts are the page's own card figures.
 
 export const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
   NOT_COMPLETED: "Not Completed",
@@ -23,21 +24,25 @@ export function serviceLabel(service: ServiceStatusItem["service"]): string {
   return service.serviceCode && service.cycleNo ? `Year ${service.cycleNo} · ${service.serviceCode}` : `Visit ${service.sequenceNo}`;
 }
 
-function columns(reportNumber: boolean): ReportColumn[] {
-  return [
-    { key: "number", header: "#", kind: "count", width: 6 },
-    { key: "reference", header: "AMC Reference", kind: "identifier", width: 13 },
-    { key: "client", header: "Client", kind: "text", width: 28, wrap: true },
-    { key: "system", header: "System", kind: "text", width: 20, wrap: true },
-    { key: "frequency", header: "Frequency", kind: "text", width: 14, wrap: true },
-    { key: "service", header: "Service", kind: "text", width: 14 },
-    { key: "scheduledMonth", header: "Scheduled month", kind: "text", width: 15, excelOnly: true },
-    { key: "dueDate", header: "Due date", kind: "date", width: 13 },
-    { key: "serviceStatus", header: "Service status", kind: "text", width: 18 },
-    { key: "completedDate", header: "Completed date", kind: "date", width: 14 },
-    { key: "salesEngineer", header: "Sales engineer", kind: "text", width: 20, wrap: true },
-    ...(reportNumber ? [{ key: "reportNumber", header: "Service report no.", kind: "identifier", width: 18 } satisfies ReportColumn] : []),
-  ];
+/** Every column in page order. `hideable` names the page column that hides it. */
+const COLUMNS: (ReportColumn & { hideable?: ServiceStatusColumn })[] = [
+  { key: "number", header: "#", kind: "count", width: 6 },
+  { key: "reference", header: "AMC Reference", kind: "identifier", width: 13 },
+  { key: "client", header: "Client", kind: "text", width: 28, wrap: true, hideable: "client" },
+  { key: "system", header: "System", kind: "text", width: 20, wrap: true, hideable: "system" },
+  { key: "frequency", header: "Frequency", kind: "text", width: 14, wrap: true, hideable: "frequency" },
+  { key: "service", header: "Service", kind: "text", width: 14, hideable: "service" },
+  { key: "scheduledMonth", header: "Scheduled month", kind: "text", width: 15, excelOnly: true, hideable: "due" },
+  { key: "dueDate", header: "Due date", kind: "date", width: 13, hideable: "due" },
+  { key: "serviceStatus", header: "Service status", kind: "text", width: 18, hideable: "status" },
+  { key: "completedDate", header: "Completed date", kind: "date", width: 14, hideable: "status" },
+  { key: "salesEngineer", header: "Sales engineer", kind: "text", width: 20, wrap: true, hideable: "engineer" },
+  { key: "reportNumber", header: "Service report no.", kind: "identifier", width: 18, hideable: "report" },
+];
+
+/** The report's columns: everything the page shows. AMC Reference is always included. */
+export function serviceStatusColumns(reportNumber: boolean, hidden: readonly ServiceStatusColumn[] = []): ReportColumn[] {
+  return COLUMNS.filter((column) => (column.key !== "reportNumber" || reportNumber) && (!column.hideable || !hidden.includes(column.hideable))).map(({ hideable: _hideable, ...column }) => column);
 }
 
 function toRow(item: ServiceStatusItem, index: number): ReportRow {
@@ -88,9 +93,9 @@ function period(query: ExportServiceStatusQuery): string | null {
 /** The report, and the audit entry to write once the file has been produced. */
 export async function buildServiceStatusExport(
   auth: AuthContext,
-  query: ExportServiceStatusQuery
+  query: ExportServiceStatusQuery & { hidden?: readonly ServiceStatusColumn[] }
 ): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
-  const { format, ...filters } = query;
+  const { format, hidden = [], ...filters } = query;
   const { items, total, kpis, features } = await listAllServiceStatus(filters, (count) => assertExportSize(format, count));
   const notes = [
     `Completed ${kpis.completed} · Not Completed ${kpis.notCompleted} · Waiting for Renewal ${kpis.waitingForRenewal} (of ${kpis.total} services matching the other filters).`,
@@ -110,7 +115,7 @@ export async function buildServiceStatusExport(
     tables: [
       {
         name: "Service Status",
-        columns: columns(features.reportNumber),
+        columns: serviceStatusColumns(features.reportNumber, hidden),
         rows: items.map(toRow),
         groupBy: (row) => String(row.scheduledMonth),
         notes,
@@ -126,7 +131,7 @@ export async function buildServiceStatusExport(
       entityType: "amc_visits",
       entityId: null,
       description: `Exported Service Status as ${format === "xlsx" ? "Excel" : "PDF"} (${total} ${total === 1 ? "service" : "services"}).`,
-      metadata: { format, filters, rowCount: total },
+      metadata: { format, filters, hidden, rowCount: total },
     });
 
   return { report, recordExport };

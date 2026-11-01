@@ -5,7 +5,7 @@ import { requireSchema } from "../../middleware/require-schema";
 import { validationError } from "../../shared/errors";
 import { parseIdParam } from "../../shared/validation";
 import { listAttachmentsSchema, uploadSchema, versionSchema } from "./attachments.schemas";
-import { listAttachments, listVersions, readAttachment, uploadAttachment, uploadVersion } from "./attachments.service";
+import { listAttachments, listRecordVersions, listVersions, readAttachment, uploadAttachment, uploadVersion } from "./attachments.service";
 
 // Mounted at /api/attachments. Permissions follow the record the file belongs
 // to (checked in the service). There is no delete: a document is replaced by a
@@ -37,6 +37,13 @@ attachmentsRouter.get("/", async (req, res) => {
   const { entityType, entityId } = listAttachmentsSchema.parse(req.query);
 
   res.json({ success: true, data: await listAttachments(requireAuth(req), entityType, entityId) });
+});
+
+// Every version of every document on a record, under the same permission as the list.
+attachmentsRouter.get("/versions", async (req, res) => {
+  const { entityType, entityId } = listAttachmentsSchema.parse(req.query);
+
+  res.json({ success: true, data: await listRecordVersions(requireAuth(req), entityType, entityId) });
 });
 
 attachmentsRouter.post("/", rawFile, async (req, res) => {

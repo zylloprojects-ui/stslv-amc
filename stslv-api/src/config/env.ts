@@ -159,7 +159,7 @@ export const env = {
   trustProxyHops: readWholeNumber("TRUST_PROXY", 0, 0, 10),
   // Attachments: storage folder (null = uploads unavailable) and largest file accepted, in MB. PROVISIONAL (Q14).
   attachmentsDir: readAttachmentsDir(),
-  attachmentMaxMb: readWholeNumber("ATTACHMENT_MAX_MB", 10, 1, 50),
+  attachmentMaxMb: readWholeNumber("ATTACHMENT_MAX_MB", 12, 1, 50),
   // Manual backups: storage folder (null = unavailable; no default anywhere) and tools. In production
   // the folder must also be declared durable, because a hosting disk may not survive a restart.
   backupDir: process.env.BACKUP_DIR?.trim() ? path.resolve(process.env.BACKUP_DIR.trim()) : null,

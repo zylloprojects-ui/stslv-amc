@@ -119,7 +119,7 @@ describe('contract page', () => {
     // The commercial figures.
     const figures = within(page.getByRole('region', { name: 'Contract figures' }))
     const row = (label: string) => figures.getByText(label).parentElement as HTMLElement
-    expect(row('Contract value')).toHaveTextContent('1,620.000')
+    expect(row('AMC Value / Year')).toHaveTextContent('1,620.000')
     expect(row('Default visit amount')).toHaveTextContent('405.000')
     expect(row('Final credit')).toHaveTextContent('1,500.000')
 

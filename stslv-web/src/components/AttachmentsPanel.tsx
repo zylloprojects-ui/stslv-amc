@@ -28,6 +28,46 @@ export interface Attachment {
   uploadedBy: { id: string; fullName: string }
   uploadedAt: string
   versionCount?: number
+  integrity?: IntegrityState
+}
+
+/** The stored file checked against its recorded SHA-256 when the list was read. */
+export type IntegrityState = 'VERIFIED' | 'FAILED' | 'MISSING' | 'UNAVAILABLE'
+
+/** GET /attachments/versions: every version on the record, and the upload rules the page states. */
+interface RecordVersions {
+  items: Attachment[]
+  limits: { maxMb: number; allowedTypes: string[] }
+}
+
+/** The current documents of a record, so other panels can show the same figure from the same request. */
+export function attachmentsQuery(entityType: AttachmentEntity, entityId: string) {
+  return {
+    queryKey: ['attachments', entityType, entityId],
+    queryFn: () => api.get<Attachment[]>(`/attachments?entityType=${entityType}&entityId=${entityId}`),
+    retry: false,
+  }
+}
+
+const INTEGRITY: Record<IntegrityState, { label: string; tone: string }> = {
+  VERIFIED: { label: 'Verified', tone: 'bg-emerald-100 text-emerald-800 ring-emerald-200' },
+  FAILED: { label: 'Failed', tone: 'bg-red-100 text-red-800 ring-red-200' },
+  MISSING: { label: 'File missing', tone: 'bg-amber-100 text-amber-900 ring-amber-200' },
+  UNAVAILABLE: { label: 'Not checked', tone: 'bg-slate-200 text-slate-800 ring-slate-300' },
+}
+
+function Integrity({ attachment }: { attachment: Attachment }) {
+  const state = attachment.integrity ? INTEGRITY[attachment.integrity] : INTEGRITY.UNAVAILABLE
+
+  return (
+    <>
+      <span className="block font-mono text-xs text-slate-700" title={`SHA-256: ${attachment.sha256}`}>
+        <span className="sr-only">SHA-256 starting </span>
+        {attachment.sha256.slice(0, 12)}…
+      </span>
+      <span className={`mt-0.5 inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${state.tone}`}>{state.label}</span>
+    </>
+  )
 }
 
 // PROVISIONAL: the document types are a starting point until the business confirms its document requirements.
@@ -81,11 +121,17 @@ async function fetchAndSave(attachment: Attachment) {
 export function AttachmentsPanel({ entityType, entityId, canUpload, label = 'Documents' }: { entityType: AttachmentEntity; entityId: string; canUpload: boolean; label?: string }) {
   const [dialog, setDialog] = useState<{ kind: 'none' } | { kind: 'upload' } | { kind: 'replace'; attachment: Attachment } | { kind: 'versions'; attachment: Attachment }>({ kind: 'none' })
   const [downloadError, setDownloadError] = useState<string | null>(null)
-  const query = useQuery({
-    queryKey: ['attachments', entityType, entityId],
-    queryFn: () => api.get<Attachment[]>(`/attachments?entityType=${entityType}&entityId=${entityId}`),
+  const query = useQuery(attachmentsQuery(entityType, entityId))
+  const versions = useQuery({
+    queryKey: ['attachments', entityType, entityId, 'versions'],
+    queryFn: () => api.get<RecordVersions>(`/attachments/versions?entityType=${entityType}&entityId=${entityId}`),
     retry: false,
+    enabled: query.isSuccess,
   })
+  const limits = versions.data?.limits
+  const rules = limits ? `Allowed types: ${limits.allowedTypes.join(', ')}. Size limit: ${limits.maxMb} MB per file.` : 'PDF, PNG or JPEG.'
+  const versionTotal = (query.data ?? []).reduce((sum, attachment) => sum + (attachment.versionCount ?? 1), 0)
+  const latestUpload = (query.data ?? []).reduce<string | null>((latest, attachment) => (latest === null || attachment.uploadedAt > latest ? attachment.uploadedAt : latest), null)
   const unavailable = unavailableMessage(query.error)
   const open = async (attachment: Attachment) => {
     setDownloadError(null)
@@ -99,7 +145,7 @@ export function AttachmentsPanel({ entityType, entityId, canUpload, label = 'Doc
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-3">
-        <p className="text-sm text-slate-600">PDF, PNG or JPEG. A replacement keeps the earlier versions.</p>
+        <p className="text-sm text-slate-600">{rules} A replacement keeps the earlier versions.</p>
         {canUpload && !unavailable && query.isSuccess && (
           <Button size="sm" onClick={() => setDialog({ kind: 'upload' })}>
             Attach document
@@ -115,6 +161,20 @@ export function AttachmentsPanel({ entityType, entityId, canUpload, label = 'Doc
         <div className="px-6 pb-3">
           <Alert onDismiss={() => setDownloadError(null)}>{downloadError}</Alert>
         </div>
+      )}
+      {query.data && (
+        <dl aria-label={`${label} figures`} className="grid grid-cols-1 gap-3 px-6 pb-4 sm:grid-cols-3">
+          {[
+            { term: 'Current documents', value: String(query.data.length) },
+            { term: 'Versions', value: String(versionTotal) },
+            { term: 'Latest upload', value: latestUpload ? formatDateTime(latestUpload) : '—' },
+          ].map((figure) => (
+            <div key={figure.term} className="min-w-0 rounded-xl border border-slate-200 px-4 py-3">
+              <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{figure.term}</dt>
+              <dd className="mt-1 break-words text-lg font-bold tabular-nums text-[#0b3b66]">{figure.value}</dd>
+            </div>
+          ))}
+        </dl>
       )}
       {query.isPending && <Spinner size="sm" label="Loading documents" />}
       {query.isError && !unavailable && <LoadError error={query.error} onRetry={() => void query.refetch()} />}
@@ -136,6 +196,9 @@ export function AttachmentsPanel({ entityType, entityId, canUpload, label = 'Doc
                 </th>
                 <th scope="col" className={TABLE.th}>
                   Uploaded
+                </th>
+                <th scope="col" className={TABLE.th}>
+                  Integrity
                 </th>
                 <th scope="col" className={`${TABLE.th} text-right`}>
                   Actions
@@ -162,6 +225,9 @@ export function AttachmentsPanel({ entityType, entityId, canUpload, label = 'Doc
                     <span className="block whitespace-nowrap">{formatDateTime(attachment.uploadedAt)}</span>
                     <span className="block text-xs text-slate-500">{attachment.uploadedBy.fullName}</span>
                   </td>
+                  <td className={TABLE.td}>
+                    <Integrity attachment={attachment} />
+                  </td>
                   <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                     <ActionGroup>
                       <ActionButton label={`Download ${attachment.title}`} icon="download" onClick={() => void open(attachment)} />
@@ -176,14 +242,64 @@ export function AttachmentsPanel({ entityType, entityId, canUpload, label = 'Doc
         </div>
       )}
 
-      {dialog.kind === 'upload' && <UploadModal entityType={entityType} entityId={entityId} onClose={() => setDialog({ kind: 'none' })} />}
-      {dialog.kind === 'replace' && <UploadModal entityType={entityType} entityId={entityId} replacing={dialog.attachment} onClose={() => setDialog({ kind: 'none' })} />}
+      {versions.data && versions.data.items.length > 0 && (
+        <section aria-labelledby={`${entityType}-version-history`} className="border-t border-slate-200">
+          <h3 id={`${entityType}-version-history`} className="px-6 pb-1 pt-4 text-sm font-semibold text-slate-900">
+            Version History
+          </h3>
+          <div className={TABLE.wrapper}>
+            <table className={TABLE.table}>
+              <caption className="sr-only">Every version of the {label.toLowerCase()}, newest first</caption>
+              <thead>
+                <tr>
+                  {['Title', 'Version', 'File', 'Uploaded By', 'Uploaded At', 'Integrity'].map((heading) => (
+                    <th key={heading} scope="col" className={TABLE.th}>
+                      {heading}
+                    </th>
+                  ))}
+                  <th scope="col" className={`${TABLE.th} text-right`}>
+                    Access
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {versions.data.items.map((version) => (
+                  <tr key={version.id}>
+                    <td className={TABLE.td}>{version.title}</td>
+                    <td className={`${TABLE.td} whitespace-nowrap`}>
+                      {version.version}
+                      {version.isCurrent && <span className="ml-2 text-xs font-semibold text-emerald-700">Current</span>}
+                    </td>
+                    <td className={TABLE.td}>
+                      <span className="block break-all">{version.originalName}</span>
+                      <span className="block text-xs text-slate-500">{formatSize(version.sizeBytes)}</span>
+                    </td>
+                    <td className={TABLE.td}>{version.uploadedBy.fullName}</td>
+                    <td className={`${TABLE.td} whitespace-nowrap`}>{formatDateTime(version.uploadedAt)}</td>
+                    <td className={TABLE.td}>
+                      <Integrity attachment={version} />
+                    </td>
+                    <td className={`${TABLE.td} whitespace-nowrap text-right`}>
+                      <ActionGroup>
+                        <ActionButton label={`Download version ${version.version} of ${version.title}`} icon="download" onClick={() => void open(version)} />
+                      </ActionGroup>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {dialog.kind === 'upload' && <UploadModal entityType={entityType} entityId={entityId} rules={rules} onClose={() => setDialog({ kind: 'none' })} />}
+      {dialog.kind === 'replace' && <UploadModal entityType={entityType} entityId={entityId} rules={rules} replacing={dialog.attachment} onClose={() => setDialog({ kind: 'none' })} />}
       {dialog.kind === 'versions' && <VersionsModal attachment={dialog.attachment} onOpen={open} onClose={() => setDialog({ kind: 'none' })} />}
     </div>
   )
 }
 
-function UploadModal({ entityType, entityId, replacing, onClose }: { entityType: AttachmentEntity; entityId: string; replacing?: Attachment; onClose: () => void }) {
+function UploadModal({ entityType, entityId, replacing, rules, onClose }: { entityType: AttachmentEntity; entityId: string; replacing?: Attachment; rules: string; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [category, setCategory] = useState(CATEGORIES[entityType][0] ?? 'OTHER')
   const [title, setTitle] = useState('')
@@ -261,6 +377,7 @@ function UploadModal({ entityType, entityId, replacing, onClose }: { entityType:
             aria-describedby={fileMessage ? 'attachment-file-error' : undefined}
             className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-sky-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-[#1479BD]"
           />
+          <p className="mt-1 text-xs text-slate-500">{rules}</p>
           {fileMessage && (
             <p id="attachment-file-error" role="alert" className="mt-1 text-xs font-medium text-red-700">
               {fileMessage}

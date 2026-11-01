@@ -90,7 +90,7 @@ function VisitChip({ visit, onOpen }: { visit: ScheduleVisit; onOpen: (id: strin
       )}
     >
       {visit.isOverdue && <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500 align-middle" aria-hidden="true" />}
-      <span className={cx('mr-1 inline-block h-2 w-2 rounded-sm align-middle', visit.invoiceEligibility === 'INVOICED' ? 'bg-emerald-600' : 'bg-[#1479BD]')} aria-hidden="true" />
+      <span className={cx('mr-1 inline-block h-2 w-2 rounded-sm align-middle', visit.manualInvoiceNo ? 'bg-emerald-600' : 'bg-[#1479BD]')} aria-hidden="true" />
       {visitLabel(visit)}
     </button>
   )
@@ -121,6 +121,7 @@ export function AmcCalendarPage() {
   const [frequency, setFrequency] = useState('')
   const [status, setStatus] = useState('')
   const [billingStatus, setBillingStatus] = useState('')
+  const [paymentStatus, setPaymentStatus] = useState('')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
@@ -150,8 +151,9 @@ export function AmcCalendarPage() {
     frequency,
     status: status || CALENDAR_STATUSES.join(','),
     billingStatus,
+    paymentStatus,
   }
-  const filtered = Boolean(search || clientId || salesEngineerId || system || frequency || status || billingStatus)
+  const filtered = Boolean(search || clientId || salesEngineerId || system || frequency || status || billingStatus || paymentStatus)
 
   const range = monthRange(month)
   const visits = useQuery({
@@ -366,7 +368,16 @@ export function AmcCalendarPage() {
               </select>
             )}
           </Filter>
-          <Filter label="Billing status">
+          <Filter label="Paid / Unpaid">
+            {(id, className) => (
+              <select id={id} value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value)} className={className}>
+                <option value="">All</option>
+                <option value="PAID">Paid</option>
+                <option value="UNPAID">Unpaid</option>
+              </select>
+            )}
+          </Filter>
+          <Filter label="Billing status (Zoho)">
             {(id, className) => (
               <select id={id} value={billingStatus} onChange={(event) => setBillingStatus(event.target.value)} className={className}>
                 <option value="">All</option>
@@ -396,8 +407,8 @@ export function AmcCalendarPage() {
 
       {view === 'month' && (
         <ul aria-label="Calendar colours" className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600">
-          <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-600" aria-hidden="true" />Square: invoice number recorded</li>
-          <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[#1479BD]" aria-hidden="true" />Square: no invoice number</li>
+          <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-600" aria-hidden="true" />Square: Paid (Invoice No. entered)</li>
+          <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[#1479BD]" aria-hidden="true" />Square: Unpaid (no Invoice No.)</li>
           <li>Card colour: service status</li>
         </ul>
       )}

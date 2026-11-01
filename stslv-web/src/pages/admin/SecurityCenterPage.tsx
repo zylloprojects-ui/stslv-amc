@@ -71,8 +71,8 @@ export function SecurityCenterPage() {
             <Link to="/admin/roles" className={LINK}>Roles & Permissions</Link>
             <Link to="/admin/login-history" className={LINK}>Login History</Link>
             <Link to="/admin/audit-log" className={LINK}>Audit Log</Link>
-            <Link to="/admin/deletion-log" className={LINK}>Deletion Log</Link>
-            <Link to="/admin/backups" className={LINK}>Backup & Restore</Link>
+            <Link to="/admin/deletion-log" className={LINK}>Recycle Bin</Link>
+            <Link to="/settings/backups" className={LINK}>Backup & Restore</Link>
           </nav>
 
           <Card>

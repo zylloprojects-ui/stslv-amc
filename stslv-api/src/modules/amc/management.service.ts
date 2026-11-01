@@ -7,7 +7,7 @@ import {
   contractKpis,
   COUNTED_VISIT,
   expiring,
-  PAYMENT_UNAVAILABLE,
+  paymentFigures,
   type ExpiringRow,
   type OperationsKpis,
 } from "../dashboard/operations.service";
@@ -255,26 +255,29 @@ async function scheduleFigures(canAmounts: boolean): Promise<ScheduleFigures> {
 }
 
 export interface InvoiceFigures {
-  /** Payment is not recorded (invoices are Issued or Cancelled only): never derived from an invoice number or status. */
-  paid: typeof PAYMENT_UNAVAILABLE;
-  unpaid: typeof PAYMENT_UNAVAILABLE;
-  paidTotal: typeof PAYMENT_UNAVAILABLE;
-  /** What Invoice Tracking records today. */
-  module: { issued: number; cancelled: number; paymentTracked: false };
+  /** Reference status from the manual Invoice No., over the same services as Accounts. Not verified payment. */
+  paid: { count: number };
+  unpaid: { count: number; amount: string };
+  paidTotal: { amount: string };
+  /** What Invoice Tracking (Zoho) records today. */
+  module: { issued: number; cancelled: number };
 }
 
 async function invoiceFigures(): Promise<InvoiceFigures> {
-  const result = await pool.query<{ issued: number; cancelled: number }>(
-    `SELECT count(*) FILTER (WHERE status <> 'CANCELLED')::int AS issued,
-            count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled
-     FROM invoices`
-  );
+  const [figures, payments] = await Promise.all([
+    pool.query<{ issued: number; cancelled: number }>(
+      `SELECT count(*) FILTER (WHERE status <> 'CANCELLED')::int AS issued,
+              count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled
+       FROM invoices`
+    ),
+    paymentFigures(),
+  ]);
 
   return {
-    paid: PAYMENT_UNAVAILABLE,
-    unpaid: PAYMENT_UNAVAILABLE,
-    paidTotal: PAYMENT_UNAVAILABLE,
-    module: { issued: result.rows[0]?.issued ?? 0, cancelled: result.rows[0]?.cancelled ?? 0, paymentTracked: false },
+    paid: { count: payments.paid },
+    unpaid: { count: payments.unpaid, amount: payments.unpaidValue },
+    paidTotal: { amount: payments.paidValue },
+    module: { issued: figures.rows[0]?.issued ?? 0, cancelled: figures.rows[0]?.cancelled ?? 0 },
   };
 }
 

@@ -149,7 +149,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
   const settingsAllowed = auth.can('SETTINGS', 'VIEW')
   const sections = NAVIGATION.map((section) => ({
     ...section,
-    items: section.items.filter((item) => item.path !== '/settings' && navItemVisible(item, auth.can, isAdmin(auth.user), auth.canRead)),
+    items: section.items.filter((item) => item.path !== '/settings' && !item.settingsArea && navItemVisible(item, auth.can, isAdmin(auth.user), auth.canRead)),
   })).filter((section) => section.items.length > 0)
 
   const topLevel = (...extra: (string | false)[]) => cx(TOP_LEVEL, collapsed && 'justify-center px-0', ...extra)

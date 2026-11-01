@@ -15,6 +15,10 @@ const OPERATIONAL = 'SCHEDULED,IN_PROGRESS,COMPLETED,POSTPONED,CANCELLED'
 
 function figures(overrides: Partial<VisitYearFigures> = {}): VisitYearFigures {
   return {
+    paid: 0,
+    paidValue: '0.000',
+    unpaid: 0,
+    unpaidValue: '0.000',
     services: 0,
     scheduledValue: '0.000',
     amountMissing: 0,
@@ -140,7 +144,7 @@ describe('Monthly Calendar, Year view', () => {
     expect(april.getByText('No visits')).toBeInTheDocument()
   })
 
-  it('shows the year’s figures, with Invoiced and Not yet invoiced instead of paid', async () => {
+  it('shows the year’s figures, with Paid and Unpaid from the manual Invoice No.', async () => {
     calendarApi()
     renderApp(`/amc/calendar?month=${YEAR}-03`)
 
@@ -150,10 +154,9 @@ describe('Monthly Calendar, Year view', () => {
     expect(figures.getByText('1 cancelled visit not counted')).toBeInTheDocument()
     expect(figures.getByText('Scheduled value').nextSibling).toHaveTextContent('810.000')
     expect(figures.getByText('1 service without an amount, not included')).toBeInTheDocument()
-    expect(figures.getByText('Invoiced').nextSibling).toHaveTextContent('1')
-    expect(figures.getByText(/an invoice is not proof of payment/)).toBeInTheDocument()
-    expect(figures.getByText('Not yet invoiced').nextSibling).toHaveTextContent('1')
-    expect(screen.queryByText(/\bpaid\b/i)).not.toBeInTheDocument()
+    expect(figures.getByText('Paid').nextSibling).toHaveTextContent('0')
+    expect(figures.getByText(/a reference status, not verified payment/)).toBeInTheDocument()
+    expect(figures.getByText('Unpaid').nextSibling).toHaveTextContent('0')
     expect(screen.queryByText(/ex vat/i)).not.toBeInTheDocument()
   })
 
@@ -194,7 +197,7 @@ describe('Monthly Calendar, Year view', () => {
     await monthsOf(YEAR)
     await userEvent.selectOptions(await screen.findByLabelText('Sales engineer'), '7')
     await userEvent.selectOptions(screen.getByLabelText('Frequency'), 'QUARTERLY')
-    await userEvent.selectOptions(screen.getByLabelText('Billing status'), 'NOT_YET_INVOICED')
+    await userEvent.selectOptions(screen.getByLabelText('Billing status (Zoho)'), 'NOT_YET_INVOICED')
     await userEvent.selectOptions(screen.getByLabelText('Visit status'), 'COMPLETED')
     await userEvent.selectOptions(await screen.findByLabelText('Client'), '10')
 
@@ -217,7 +220,7 @@ describe('Monthly Calendar, Year view', () => {
       expect(query?.get('billingStatus')).toBe('NOT_YET_INVOICED')
       expect(query?.get('from')).toBe(`${YEAR}-03-01`)
     })
-    expect(screen.getByLabelText('Billing status')).toHaveValue('NOT_YET_INVOICED')
+    expect(screen.getByLabelText('Billing status (Zoho)')).toHaveValue('NOT_YET_INVOICED')
   })
 
   it('offers every billing status, and none called paid', async () => {
@@ -225,7 +228,7 @@ describe('Monthly Calendar, Year view', () => {
     renderApp(`/amc/calendar?month=${YEAR}-03`)
 
     await monthsOf(YEAR)
-    const options = within(screen.getByLabelText('Billing status')).getAllByRole('option').map((option) => option.textContent)
+    const options = within(screen.getByLabelText('Billing status (Zoho)')).getAllByRole('option').map((option) => option.textContent)
     expect(options).toEqual(['All', 'Invoiced', 'Not yet invoiced', 'No invoice required', 'Not completed', 'Cancelled'])
   })
 
@@ -239,7 +242,7 @@ describe('Monthly Calendar, Year view', () => {
     renderApp(`/amc/calendar?month=${YEAR}-03`)
 
     await monthsOf(YEAR)
-    await userEvent.selectOptions(screen.getByLabelText('Billing status'), 'INVOICED')
+    await userEvent.selectOptions(screen.getByLabelText('Billing status (Zoho)'), 'INVOICED')
     await userEvent.click(screen.getByRole('button', { name: `Export March ${YEAR} visits to Excel` }))
 
     await waitFor(() => expect(saved).toEqual([`monthly-calendar-${YEAR}-03.xlsx`]))

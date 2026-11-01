@@ -7,10 +7,10 @@ import { SERVICE_STATUSES } from "./amc.constants";
  * The row colour of Master AMC Status, derived on read and never stored.
  * The first rule that applies wins:
  *   RED     the service is not completed (Service Status "Not Completed" or "Waiting for Renewal").
- *   YELLOW  completed, no active (not cancelled) invoice covers it.
- *   BLUE    completed and invoiced, no quotation number recorded.
- *   GREEN   completed, invoiced and with a quotation number.
- * An invoice number is not a payment: GREEN says nothing about money received.
+ *   YELLOW  completed and Unpaid: no manual Invoice No.
+ *   BLUE    completed and Paid, no quotation number recorded.
+ *   GREEN   completed, Paid and with a quotation number.
+ * Paid is a reference status: GREEN does not verify that money was received.
  */
 export const ROW_COLOURS = ["RED", "YELLOW", "BLUE", "GREEN"] as const;
 export type RowColour = (typeof ROW_COLOURS)[number];

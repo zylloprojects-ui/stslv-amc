@@ -26,7 +26,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   frequency: 'Frequency',
   service: 'Service',
   scheduledMonth: 'Scheduled Month',
-  visitValue: 'Visit Value',
+  visitValue: 'Value (Ex VAT, OMR)',
   serviceStatus: 'Service Status',
   serviceReportNo: 'Service Report No.',
   invoiceNo: 'Invoice No.',

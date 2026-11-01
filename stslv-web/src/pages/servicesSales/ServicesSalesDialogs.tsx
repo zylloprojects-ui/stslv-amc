@@ -97,7 +97,7 @@ interface HideColumnsProps {
   onClose: () => void
 }
 
-/** Show or hide table columns. AMC Reference always stays, so every row is identified; exports always hold every column. */
+/** Show or hide table columns. AMC Reference always stays, so every row is identified; downloads hold the columns shown. */
 export function HideColumnsDialog({ hidden, onSave, onClose }: HideColumnsProps) {
   const [draft, setDraft] = useState<Set<ColumnId>>(new Set(hidden))
   const toggle = (id: ColumnId) => {
@@ -125,7 +125,7 @@ export function HideColumnsDialog({ hidden, onSave, onClose }: HideColumnsProps)
         </div>
       }
     >
-      <p className="mb-3 text-sm text-slate-600">AMC Reference is always shown. Downloads always include every column.</p>
+      <p className="mb-3 text-sm text-slate-600">AMC Reference is always shown. Downloads include only the columns shown here, plus the sales status.</p>
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">

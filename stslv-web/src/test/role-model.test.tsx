@@ -4,6 +4,9 @@ import { describe, expect, it } from 'vitest'
 import { ACTIONS, MODULES, type PermissionSection, type Role, type SessionUser, type User } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
+/** The Users page asks for one page of the list; other pages ask for the whole list. */
+const usersReply = (query: URLSearchParams, list: User[]) => (query.has('page') ? ok({ items: list, total: list.length, pendingTotal: list.filter((entry) => entry.approvalStatus === 'PENDING').length, page: 1, pageSize: 25 }) : ok(list))
+
 // The six-role model (approved 2026-10-29): role tabs, scopes, dependencies, unsaved changes,
 // and Admin's limits towards Super Admin and Admin accounts. The API enforces the same rules.
 
@@ -80,7 +83,7 @@ function rolesApi(session: SessionUser = ADMIN, roles: Role[] = ROLES, onPut?: (
       if (reply) return reply
     }
     if (request.path === '/auth/me') return ok({ user: session })
-    if (request.method === 'GET' && request.path === '/users') return ok(USERS)
+    if (request.method === 'GET' && request.path === '/users') return usersReply(request.query, USERS)
     if (request.method === 'GET' && request.path === '/roles') {
       return ok({ roles, modules: MODULES, actions: ACTIONS, catalog: CATALOG, fixedAccess: { adminOnly: [], everyone: [] } })
     }
@@ -350,7 +353,7 @@ describe('concurrent permission changes', () => {
     signIn()
     mockApi((request) => {
       if (request.path === '/auth/me') return ok({ user: ADMIN })
-      if (request.method === 'GET' && request.path === '/users') return ok(USERS)
+      if (request.method === 'GET' && request.path === '/users') return usersReply(request.query, USERS)
       if (request.method === 'GET' && request.path === '/roles') return ok({ roles, modules: MODULES, actions: ACTIONS, catalog: CATALOG, fixedAccess: { adminOnly: [], everyone: [] } })
       return undefined
     })

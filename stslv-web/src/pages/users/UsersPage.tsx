@@ -1,7 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { ExportButtons } from '../../components/ExportButtons'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
+import { Pager } from '../../components/records'
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner, StatusBadge, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
@@ -9,10 +11,34 @@ import { cx, formatDateTime } from '../../lib/format'
 import type { RolesResponse, User } from '../../lib/types'
 import { RolesPanel } from './RolesPanel'
 import { isAdmin, isPrivilegedRole, isSuperAdmin } from '../../auth/roles'
-import { CreateUserModal, EditRolesModal, TemporaryPasswordModal } from './UserDialogs'
+import { CreateUserModal, EditRolesModal, EditUserModal, TemporaryPasswordModal } from './UserDialogs'
+import { queryString } from '../amc/amcApi'
+import { Filter } from '../amc/components'
+import { useHiddenColumns } from '../admin/useHiddenColumns'
+import { ColumnsMenu } from '../clients/ColumnsMenu'
 import { UnsavedChangesGuard } from '../../lib/unsavedChanges'
 
 type Tab = 'users' | 'roles'
+
+const PAGE_SIZE = 25
+
+interface UserPage {
+  items: User[]
+  total: number
+  /** Requests waiting for a decision, whatever the filters. */
+  pendingTotal: number
+  page: number
+  pageSize: number
+}
+
+// The name and the actions always show, so every row stays identified and usable.
+const COLUMN_IDS = ['email', 'role', 'status', 'lastSignIn'] as const
+const COLUMNS: { key: (typeof COLUMN_IDS)[number]; label: string }[] = [
+  { key: 'email', label: 'Email' },
+  { key: 'role', label: 'Role' },
+  { key: 'status', label: 'Status' },
+  { key: 'lastSignIn', label: 'Last sign-in' },
+]
 
 /** Requested from the Sign up page and still waiting for an administrator. */
 const isPending = (user: User) => user.approvalStatus === 'PENDING'
@@ -47,6 +73,7 @@ function TemporaryPasswordBadge({ expiresAt }: { expiresAt: string }) {
 type Dialog =
   | { kind: 'none' }
   | { kind: 'create' }
+  | { kind: 'edit'; user: User }
   | { kind: 'roles'; user: User }
   | { kind: 'temporary-password'; user: User }
   | { kind: 'toggle'; user: User }
@@ -62,7 +89,28 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
   const [rolesDirty, setRolesDirty] = useState(false)
   const [pendingTab, setPendingTab] = useState<Tab | null>(null)
 
-  const users = useQuery({ queryKey: ['users'], queryFn: () => api.get<User[]>('/users') })
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [hidden, setHidden] = useHiddenColumns('users', auth.user?.id ?? '', COLUMN_IDS)
+  const show = (key: (typeof COLUMN_IDS)[number]) => !hidden.has(key)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim())
+      setPage(1)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const users = useQuery({
+    queryKey: ['users', 'page', { search, status, page }],
+    queryFn: () => api.get<UserPage>(`/users${queryString({ search, status, page, pageSize: PAGE_SIZE })}`),
+    placeholderData: keepPreviousData,
+  })
   const roles = useQuery({ queryKey: ['roles'], queryFn: () => api.get<RolesResponse>('/roles') })
 
   const toggle = useMutation({
@@ -103,7 +151,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
   // Super Admin and Admin accounts are managed by Super Admin only; the API enforces the same.
   const lockedForMe = (user: User) => !isSuperAdmin(auth.user) && user.roles.some((role) => isPrivilegedRole(role.code))
   const roleList = roles.data?.roles ?? []
-  const pendingCount = users.data?.filter(isPending).length ?? 0
+  const pendingCount = users.data?.pendingTotal ?? 0
+  const filtered = search !== '' || status !== ''
 
   const tabButton = (value: Tab, label: string) => (
     <button
@@ -136,11 +185,16 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
         title={initialTab === 'roles' ? 'Roles & Permissions' : 'Users & Access'}
         description="Who can sign in, and what each role is allowed to do."
         actions={
-          canCreate &&
-          tab === 'users' && (
-            <Button onClick={() => setDialog({ kind: 'create' })} disabled={!roles.data}>
-              Create User
-            </Button>
+          tab === 'users' &&
+          (canCreate || isAdmin(auth.user)) && (
+            <div className="flex flex-wrap items-center gap-2.5">
+              {isAdmin(auth.user) && <ExportButtons what="Users" fileStem="users" path={(format) => `/users/export${queryString({ search, status, format })}`} onError={setExportError} />}
+              {canCreate && (
+                <Button onClick={() => setDialog({ kind: 'create' })} disabled={!roles.data}>
+                  Create User
+                </Button>
+              )}
+            </div>
           )
         }
       />
@@ -149,6 +203,12 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
         {tabButton('users', 'Users')}
         {tabButton('roles', 'Roles & Permissions')}
       </div>
+
+      {exportError && tab === 'users' && (
+        <div className="mb-4">
+          <Alert onDismiss={() => setExportError(null)}>{exportError}</Alert>
+        </div>
+      )}
 
       {notice && (
         <div className="mb-4">
@@ -169,14 +229,42 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
         )}
         {tab === 'users' && (
           <Card>
+            <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-3">
+              <Filter label="Search">
+                {(id, className) => <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Name, email or role" className={className} />}
+              </Filter>
+              <Filter label="Status">
+                {(id, className) => (
+                  <select
+                    id={id}
+                    value={status}
+                    onChange={(event) => {
+                      setStatus(event.target.value)
+                      setPage(1)
+                    }}
+                    className={className}
+                  >
+                    <option value="">All statuses</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="INACTIVE">Inactive</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="REJECTED">Rejected</option>
+                  </select>
+                )}
+              </Filter>
+              <div className="flex items-center justify-end sm:col-span-2 lg:col-span-1">
+                <ColumnsMenu options={COLUMNS} hidden={hidden} onChange={setHidden} />
+              </div>
+            </div>
             {users.isPending && <Spinner label="Loading users" />}
             {users.isError && (
               <div className="p-4">
                 <Alert>{errorMessage(users.error)}</Alert>
               </div>
             )}
-            {users.data && users.data.length === 0 && <EmptyState title="No users yet" />}
-            {users.data && users.data.length > 0 && (
+            {users.data && users.data.items.length === 0 && <EmptyState title={filtered ? 'No users match your filters' : 'No users yet'} description={filtered ? 'Try a different search or status.' : undefined} />}
+            {users.data && users.data.items.length > 0 && (
+              <>
               <TableScroll label="Users">
                 <table className={TABLE.table}>
                   <caption className="sr-only">Users</caption>
@@ -188,18 +276,11 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                       <th scope="col" className={TABLE.th}>
                         Name
                       </th>
-                      <th scope="col" className={TABLE.th}>
-                        Email
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Role
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Status
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Last sign-in
-                      </th>
+                      {COLUMNS.filter((column) => show(column.key)).map((column) => (
+                        <th key={column.key} scope="col" className={TABLE.th}>
+                          {column.label}
+                        </th>
+                      ))}
                       {(canEdit || canApprove) && (
                         <th scope="col" className={cx(TABLE.th, 'text-right')}>
                           Actions
@@ -208,19 +289,19 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {users.data.map((user, index) => {
+                    {users.data.items.map((user, index) => {
                       const isSelf = user.id === auth.user?.id
                       const locked = lockedForMe(user)
 
                       return (
                         <tr key={user.id} className={TABLE.row}>
-                          <td className={TABLE.sn}>{0 + index + 1}</td>
+                          <td className={TABLE.sn}>{(users.data.page - 1) * users.data.pageSize + index + 1}</td>
                           <td className={cx(TABLE.td, TABLE.text, 'font-medium text-slate-900')}>
                             {user.fullName}
                             {isSelf && <span className="ml-2 text-xs font-normal text-slate-500">(you)</span>}
                           </td>
-                          <td className={cx(TABLE.td, TABLE.unbroken)}>{user.email}</td>
-                          <td className={TABLE.td}>
+                          {show('email') && <td className={cx(TABLE.td, TABLE.unbroken)}>{user.email}</td>}
+                          {show('role') && <td className={TABLE.td}>
                             <div className="flex flex-wrap gap-1">
                               {user.roles.length === 0 && <span className="text-slate-500">No role</span>}
                               {hasSeveralRoles(user) && <Badge tone="amber">Several roles: choose one</Badge>}
@@ -230,8 +311,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                 </Badge>
                               ))}
                             </div>
-                          </td>
-                          <td className={TABLE.td}>
+                          </td>}
+                          {show('status') && <td className={TABLE.td}>
                             {isPending(user) ? (
                               <Badge tone="amber">Pending approval</Badge>
                             ) : isRejected(user) ? (
@@ -244,14 +325,23 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                                 <TemporaryPasswordBadge expiresAt={user.temporaryCredentialExpiresAt} />
                               </div>
                             )}
-                          </td>
-                          <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>
+                          </td>}
+                          {show('lastSignIn') && <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>}
                           {(canEdit || canApprove) && (
                             <td className={cx(TABLE.td, 'whitespace-nowrap text-right')}>
                               {isRejected(user) ? (
                                 <span className="text-xs text-slate-500">No actions</span>
                               ) : (
                               <ActionGroup>
+                                {canEdit && (
+                                  <ActionButton
+                                    label={`Edit ${user.fullName}`}
+                                    icon="edit"
+                                    disabled={locked}
+                                    hint={locked ? PRIVILEGED_ACCOUNT_ONLY : undefined}
+                                    onClick={() => setDialog({ kind: 'edit', user })}
+                                  />
+                                )}
                                 {canEdit && (
                                   <ActionButton
                                     label={`Change role of ${user.fullName}`}
@@ -312,6 +402,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                   </tbody>
                 </table>
               </TableScroll>
+              <Pager page={users.data.page} pageSize={users.data.pageSize} total={users.data.total} shown={users.data.items.length} onPage={setPage} />
+              </>
             )}
           </Card>
         )}
@@ -353,6 +445,17 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
           onClose={closeDialog}
           onSaved={(user) => {
             setNotice(`${user.fullName} was created.`)
+            setDialog({ kind: 'none' })
+          }}
+        />
+      )}
+
+      {dialog.kind === 'edit' && (
+        <EditUserModal
+          user={dialog.user}
+          onClose={closeDialog}
+          onSaved={(user) => {
+            setNotice(`${user.fullName} was updated.`)
             setDialog({ kind: 'none' })
           }}
         />

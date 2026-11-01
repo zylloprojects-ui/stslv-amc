@@ -81,7 +81,7 @@ beforeAll(async () => {
 
   // Z: cancelled, its four past visits left scheduled. They are not due and the contract is not active.
   const z = await activeContract(admin, client, { systemDescription: "Z", validFrom: "2025-01-01", validTo: "2025-12-31" });
-  await api().post(`/api/amc/contracts/${z}/status`).set(admin.headers).send({ status: "CANCELLED" });
+  await api().post(`/api/amc/contracts/${z}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" });
 
   // --- Projects and expenses.
   const open = await newProject(admin, client, { jobValue: "1000" });

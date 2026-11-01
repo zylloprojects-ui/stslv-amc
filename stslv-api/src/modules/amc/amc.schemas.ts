@@ -11,6 +11,7 @@ import {
   VISIT_STATUSES,
 } from "./amc.constants";
 import { isValidIsoDate } from "./amc.schedule";
+import { serviceStatusHiddenSchema } from "./service-status.schemas";
 
 // ---------------------------------------------------------------------------
 // Money
@@ -131,6 +132,11 @@ export const createContractSchema = z.strictObject({
   status: z.enum(["DRAFT", "ACTIVE"]).default("DRAFT"),
 });
 
+/** A renewal: the same fields, plus optional notes kept in the activity log of the new contract. */
+export const createRenewalSchema = createContractSchema.extend({
+  renewalNotes: optionalText("Renewal notes", 1000).optional(),
+});
+
 // Every field optional: a field that is left out is not changed.
 // Status is not editable here; use the status route.
 export const updateContractSchema = z
@@ -159,6 +165,7 @@ export const changeContractStatusSchema = z.strictObject({
   // Only meaningful when the contract becomes EXPIRED or CANCELLED: also
   // cancels its visits that are still scheduled or postponed. Never implied.
   cancelOpenVisits: z.boolean().default(false),
+  // Required when the contract becomes CANCELLED (checked in the service, after permission and transition).
   reason: optionalText("Reason", 500).optional(),
 });
 
@@ -179,8 +186,29 @@ export const listContractsSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 
-/** The register's own filters, without paging, plus the file format. */
-export const exportContractsSchema = listContractsSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+/** The register's columns a user may hide. # and Client always stay, so every row stays identified. */
+export const CONTRACT_HIDEABLE_COLUMNS = ["reference", "system", "engineer", "validity", "frequency", "contractValue", "finalCredit", "visits", "status"] as const;
+export type ContractColumn = (typeof CONTRACT_HIDEABLE_COLUMNS)[number];
+
+/** The register's own filters, without paging, plus the file format and the columns hidden on the page ("system,engineer"). */
+export const exportContractsSchema = listContractsSchema.omit({ page: true, pageSize: true }).extend({
+  format: exportFormatSchema,
+  hidden: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((value, ctx) => {
+      const ids = (value ?? "").split(",").map((id) => id.trim()).filter((id) => id !== "");
+      const unknown = ids.filter((id) => !(CONTRACT_HIDEABLE_COLUMNS as readonly string[]).includes(id));
+
+      if (unknown.length > 0) {
+        ctx.addIssue({ code: "custom", message: `Unknown column: ${unknown.join(", ")}.` });
+        return z.NEVER;
+      }
+      return [...new Set(ids)] as ContractColumn[];
+    }),
+});
 
 /** The activity history of one contract, newest first. */
 export const contractHistorySchema = z.object({
@@ -254,6 +282,7 @@ export const listVisitsSchema = z.object({
   frequency: frequency.optional(),
   // The Monthly Calendar's billing status; see BILLING_STATUSES.
   billingStatus: z.enum(BILLING_STATUSES, { error: "Select a billing status." }).optional(),
+  paymentStatus: z.enum(["PAID", "UNPAID"], { error: "Select Paid or Unpaid." }).optional(),
   overdue: z.enum(["true", "false"]).optional(),
   search: z.string().trim().max(200).optional(),
   page,
@@ -328,7 +357,7 @@ export const listServiceStatusSchema = z.object({
 });
 
 /** The page's own filters, without paging, plus the file format. */
-export const exportServiceStatusSchema = listServiceStatusSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+export const exportServiceStatusSchema = listServiceStatusSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema, hidden: serviceStatusHiddenSchema });
 
 const REPORT_NUMBER_MESSAGE = "Service report number must be at most 50 characters, without line breaks.";
 
@@ -354,6 +383,11 @@ export const saveServiceStatusSchema = z
 
 /** The manual colour of a service (Color Priority level 1). Null clears it. */
 export const COLOR_OVERRIDES = ["RED", "AMBER", "GREEN", "BLUE", "PURPLE", "GREY"] as const;
+/** An explicit Regenerate always says why; the reason stays in the schedule history. */
+export const regenerateScheduleSchema = z.strictObject({
+  reason: z.string({ error: "Enter the reason for regenerating." }).trim().min(3, "Enter the reason for regenerating.").max(300, "A reason has at most 300 characters."),
+});
+
 export const setVisitColorSchema = z.strictObject({ color: z.enum(COLOR_OVERRIDES, { error: "Select a colour." }).nullable() });
 export type SetVisitColorInput = z.infer<typeof setVisitColorSchema>;
 

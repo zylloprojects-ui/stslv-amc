@@ -9,8 +9,9 @@ import { getAccountsOptions, listAccounts } from "./accounts.service";
 
 export const accountsRouter = Router();
 
-// Read only: one row per scheduled visit with its service report number and
-// the invoices recorded in Invoice Tracking. Its own module (0091): ACCOUNTS:VIEW
+// One row per scheduled visit with its service report number, manual Invoice No.
+// and the Zoho invoices of Invoice Tracking. These routes only read: the page's
+// Invoice No. field saves through PATCH /api/amc/visits/:id/manual-invoice. Its own module (0091): ACCOUNTS:VIEW
 // opens it, with everything it shows, and exporting also needs ACCOUNTS:EXPORT.
 // Needs migration 0077; without it every route answers 503 FEATURE_UNAVAILABLE.
 accountsRouter.use(authenticate);

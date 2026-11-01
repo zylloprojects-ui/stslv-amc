@@ -1,18 +1,34 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { useAuth } from '../../auth/context'
+import { isAdmin } from '../../auth/roles'
+import { ExportButtons } from '../../components/ExportButtons'
 import { LoadError, Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Badge, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Badge, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
 import { Filter } from '../amc/components'
+import { ColumnsMenu } from '../clients/ColumnsMenu'
+import { useHiddenColumns } from './useHiddenColumns'
 import { FAILURE_REASON_LABELS, type LoginList } from './auditTypes'
 
 const PAGE_SIZE = 25
+const COLUMN_IDS = ['user', 'outcome', 'ip', 'userAgent'] as const
+const COLUMNS: { key: (typeof COLUMN_IDS)[number]; label: string }[] = [
+  { key: 'user', label: 'User' },
+  { key: 'outcome', label: 'Outcome' },
+  { key: 'ip', label: 'Network address' },
+  { key: 'userAgent', label: 'Browser / device' },
+]
 
 /** Successful and failed sign-ins, newest first. Read-only. */
 export function LoginHistoryPage() {
+  const auth = useAuth()
+  const [hidden, setHidden] = useHiddenColumns('sign-in-history', auth.user?.id ?? '', COLUMN_IDS)
+  const show = (key: (typeof COLUMN_IDS)[number]) => !hidden.has(key)
+  const [exportError, setExportError] = useState<string | null>(null)
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [outcome, setOutcome] = useState('')
@@ -41,7 +57,16 @@ export function LoginHistoryPage() {
 
   return (
     <>
-      <PageHeader title="Login History" description="Every sign-in to the application, successful or not, newest first." />
+      <PageHeader
+        title="Login History"
+        description="Every sign-in to the application, successful or not, newest first."
+        actions={isAdmin(auth.user) ? <ExportButtons what="Login History" fileStem="sign-in-history" path={(format) => `/audit/logins/export${queryString({ search, outcome, from, to, format })}`} onError={setExportError} /> : undefined}
+      />
+      {exportError && (
+        <div className="mb-4">
+          <Alert onDismiss={() => setExportError(null)}>{exportError}</Alert>
+        </div>
+      )}
 
       <Card>
         <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
@@ -105,9 +130,14 @@ export function LoginHistoryPage() {
         )}
         {data && data.items.length > 0 && (
           <>
-            <p className="px-5 pt-3 text-sm text-slate-600" aria-live="polite">
-              {data.total} sign-in{data.total === 1 ? '' : 's'}, {data.failedTotal} failed.
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-3">
+              <p className="text-sm text-slate-600" aria-live="polite">
+                {data.total} sign-in{data.total === 1 ? '' : 's'}, {data.failedTotal} failed.
+              </p>
+              <div className="ml-auto">
+                <ColumnsMenu options={COLUMNS} hidden={hidden} onChange={setHidden} />
+              </div>
+            </div>
             <div className={TABLE.wrapper}>
               <table className={TABLE.table}>
                 <caption className="sr-only">Sign-ins</caption>
@@ -116,22 +146,18 @@ export function LoginHistoryPage() {
                     <th scope="col" className={TABLE.th}>
                       Date and time
                     </th>
-                    <th scope="col" className={TABLE.th}>
-                      User
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Outcome
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Network address
-                    </th>
+                    {COLUMNS.filter((column) => show(column.key)).map((column) => (
+                      <th key={column.key} scope="col" className={TABLE.th}>
+                        {column.label}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {data.items.map((login) => (
                     <tr key={login.id}>
                       <td className={`${TABLE.td} whitespace-nowrap`}>{formatDateTime(login.createdAt)}</td>
-                      <td className={TABLE.td}>
+                      {show('user') && <td className={TABLE.td}>
                         {login.user ? (
                           <>
                             <span className="block font-medium text-slate-900">{login.user.fullName}</span>
@@ -140,8 +166,8 @@ export function LoginHistoryPage() {
                         ) : (
                           <span className="text-slate-500">No account (email not recorded)</span>
                         )}
-                      </td>
-                      <td className={TABLE.td}>
+                      </td>}
+                      {show('outcome') && <td className={TABLE.td}>
                         {login.outcome === 'SUCCESS' ? (
                           <Badge tone="green">Successful</Badge>
                         ) : (
@@ -150,8 +176,9 @@ export function LoginHistoryPage() {
                             {login.reason && <span className="text-xs text-slate-600">{FAILURE_REASON_LABELS[login.reason] ?? login.reason}</span>}
                           </span>
                         )}
-                      </td>
-                      <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs`}>{login.ip ?? '—'}</td>
+                      </td>}
+                      {show('ip') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs`}>{login.ip ?? '—'}</td>}
+                      {show('userAgent') && <td className={`${TABLE.td} ${TABLE.unbroken} text-xs`}>{login.userAgent ?? ''}</td>}
                     </tr>
                   ))}
                 </tbody>

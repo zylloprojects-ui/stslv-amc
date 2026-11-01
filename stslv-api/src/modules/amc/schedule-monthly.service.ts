@@ -4,6 +4,7 @@ import { logActivity } from "../../shared/activity-log";
 import { assertExportSize, exportFormatSchema, type ReportColumn, type ReportDefinition } from "../../shared/export/report";
 import { escapeLike, idSchema } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
+import { PAID_STATUS_NOTE } from "./manual-invoice.service";
 import { amcReference, IN_SCOPE } from "./service-status.service";
 
 // The consolidated monthly schedule: one row per AMC contract with its services
@@ -33,6 +34,9 @@ export interface MonthlyService {
   scheduledDate: string;
   status: string;
   visitValue: string | null;
+  /** The manual Invoice No.: entered = Paid, cleared = Unpaid. A reference status. */
+  manualInvoiceNo: string | null;
+  /** Zoho numbers from Invoice Tracking. They do not decide Paid or Unpaid. */
   invoiceNumbers: string[];
 }
 
@@ -79,6 +83,7 @@ async function load(query: MonthlyFilters, limit: number | null, offset: number)
             json_agg(json_build_object(
               'id', v.id::text, 'serviceCode', v.service_code, 'sequenceNo', v.sequence_no,
               'scheduledDate', v.scheduled_date::text, 'status', v.status, 'visitValue', v.visit_amount::text,
+              'manualInvoiceNo', v.manual_invoice_no,
               'invoiceNumbers', COALESCE((
                 SELECT json_agg(i.invoice_number ORDER BY i.invoice_date, i.id)
                 FROM invoice_allocations al JOIN invoices i ON i.id = al.invoice_id
@@ -125,8 +130,24 @@ const COLUMNS: ReportColumn[] = [
   { key: "engineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true },
   { key: "services", header: "Services", kind: "text", width: 28, wrap: true },
   { key: "invoices", header: "Invoice No.", kind: "identifier", width: 18, wrap: true },
-  { key: "value", header: "Visit Value", kind: "money", width: 14 },
+  { key: "paid", header: "Paid / Unpaid", kind: "text", width: 14, wrap: true },
+  { key: "zoho", header: "Zoho Invoice", kind: "identifier", width: 16, wrap: true },
+  { key: "value", header: "Value (Ex VAT)", kind: "money", width: 14 },
 ];
+
+/** The chosen filters in words. Names are read from the database, never taken from the request. */
+async function describeFilters(query: MonthlyFilters): Promise<ReportDefinition["filters"]> {
+  const found: ReportDefinition["filters"] = [];
+  const nameOf = async (table: "clients" | "sales_engineers", id: string, unknown: string) =>
+    (await pool.query<{ name: string }>(`SELECT name FROM ${table} WHERE id = $1`, [id])).rows[0]?.name ?? unknown;
+
+  if (query.clientId) found.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
+  if (query.salesEngineerId) found.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
+  if (query.system) found.push({ label: "System", value: query.system });
+  if (query.search) found.push({ label: "Search", value: query.search });
+
+  return found;
+}
 
 export async function buildMonthlyScheduleExport(auth: AuthContext, query: z.infer<typeof exportMonthlyScheduleSchema>) {
   const { format, ...rest } = query;
@@ -137,7 +158,7 @@ export async function buildMonthlyScheduleExport(auth: AuthContext, query: z.inf
   const report: ReportDefinition = {
     title: "Consolidated Monthly Schedule",
     period: query.month,
-    filters: query.search ? [{ label: "Search", value: query.search }] : [],
+    filters: await describeFilters(rest),
     generatedAt: new Date(),
     generatedBy: auth.user.fullName,
     orientation: "landscape",
@@ -152,12 +173,15 @@ export async function buildMonthlyScheduleExport(auth: AuthContext, query: z.inf
           system: item.systemDescription,
           frequency: item.frequency,
           engineer: item.salesEngineer,
-          services: item.services.map((service) => service.serviceCode ?? `No. ${service.sequenceNo}`).join(", "),
-          invoices: item.services.flatMap((service) => service.invoiceNumbers).join(", ") || null,
+          services: item.services.map((service) => `${service.serviceCode ?? `No. ${service.sequenceNo}`} (${service.manualInvoiceNo ? "Paid" : "Unpaid"})`).join(", "),
+          // One number may cover several services.
+          invoices: [...new Set(item.services.flatMap((service) => (service.manualInvoiceNo ? [service.manualInvoiceNo] : [])))].join(", ") || null,
+          paid: `${item.services.filter((service) => service.manualInvoiceNo).length} Paid, ${item.services.filter((service) => !service.manualInvoiceNo).length} Unpaid`,
+          zoho: item.services.flatMap((service) => service.invoiceNumbers).join(", ") || null,
           value: item.totalValue,
         })),
         totals: { label: `Total (${totals.contracts} contracts, ${totals.services} services)`, values: { value: totals.totalValue } },
-        notes: ["An invoice number shows that an invoice was recorded, not that it was paid."],
+        notes: [PAID_STATUS_NOTE, "A Zoho Invoice number shows that an invoice was recorded in Invoice Tracking; it does not decide Paid or Unpaid."],
       },
     ],
   };

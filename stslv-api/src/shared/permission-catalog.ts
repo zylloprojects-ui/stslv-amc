@@ -366,10 +366,13 @@ export const FIXED_ACCESS = {
     { label: "Changing any role's permissions", path: "/admin/roles" },
     { label: "Adding, renaming, deactivating or reactivating roles", path: "/api/roles" },
     { label: "Managing Super Admin and Admin accounts", path: "/admin/users" },
+    { label: "Running and downloading backups", path: "/settings/backups" },
   ],
   adminOnly: [
     { label: "Audit Log", path: "/admin/audit-log" },
-    { label: "System readiness (Dashboard)", path: "/dashboard" },
+    { label: "Recycle Bin", path: "/admin/deletion-log" },
+    { label: "Backup & Restore status", path: "/settings/backups" },
+    { label: "System readiness (Security Center)", path: "/settings/security" },
     { label: "Historical import audit", path: "/api/historical-data/audit" },
   ],
   everyone: [

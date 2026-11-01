@@ -8,7 +8,7 @@ import { ADMIN, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest
 
 function api(user: SessionUser, handler: (request: MockRequest) => MockReply | undefined) {
   signIn()
-  return mockApi((request) => (request.path === '/auth/me' ? ok({ user }) : (handler(request) ?? (request.path === '/accounts/options' ? ok({ clients: [], salesEngineers: [], years: [] }) : request.path === '/amc/contracts/systems' ? ok([]) : ok({ items: [], total: 0, page: 1, pageSize: 50 })))))
+  return mockApi((request) => (request.path === '/auth/me' ? ok({ user }) : (handler(request) ?? (request.path === '/accounts/options' || request.path === '/amc/calendar/options' ? ok({ clients: [], salesEngineers: [], years: [] }) : request.path === '/amc/contracts/systems' ? ok([]) : ok({ items: [], total: 0, page: 1, pageSize: 50 })))))
 }
 
 const OPERATOR: SessionUser = { id: '20', email: 'admin2@example.com', fullName: 'Second Admin', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: ['USERS:VIEW'] }
@@ -34,7 +34,7 @@ const CATALOGUE = [
 
 describe('Reports', () => {
   it('shows a report with its API total, and follows the chosen report', async () => {
-    const calls = api(ADMIN, (request) => (request.path === '/reports' ? ok(CATALOGUE) : request.path.startsWith('/reports/') ? ok(REPORT) : undefined))
+    const calls = api(ADMIN, (request) => (request.path === '/reports' ? ok(CATALOGUE) : request.path === '/reports/options' ? ok({ clients: [], salesEngineers: [], systems: [] }) : request.path.startsWith('/reports/') ? ok(REPORT) : undefined))
     renderApp('/reports')
 
     expect(await screen.findByRole('heading', { name: 'Reports' })).toBeInTheDocument()
@@ -70,7 +70,7 @@ describe('Security Center and Deletion Log', () => {
     renderApp('/admin/security')
 
     expect(await screen.findByText('Failed sign-in.')).toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Security pages' })).getByRole('link', { name: 'Deletion Log' })).toHaveAttribute('href', '/admin/deletion-log')
+    expect(within(screen.getByRole('navigation', { name: 'Security pages' })).getByRole('link', { name: 'Recycle Bin' })).toHaveAttribute('href', '/admin/deletion-log')
     expect(screen.getByText(/there is no sign-out for other users/)).toBeInTheDocument()
   })
 
@@ -97,6 +97,11 @@ describe('Security Center and Deletion Log', () => {
     renderApp('/admin/deletion-log')
 
     expect(await screen.findByText('System type removed.')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Recycle Bin' })).toBeInTheDocument()
+    expect(screen.queryByText('Deletion Log')).not.toBeInTheDocument()
+    expect(screen.getByRole('note')).toHaveTextContent('Records cannot be recovered from this page')
+    // History only: no action on a row.
+    expect(screen.queryByRole('button', { name: /restore|recover|undo|empty|delete/i })).not.toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('Action'), 'DELETED')
     await waitFor(() => expect(calls.find('GET', '/security/deletions').at(-1)?.query.get('kind')).toBe('DELETED'))
   })
@@ -114,7 +119,7 @@ describe('Backup & Restore', () => {
     expect(screen.getByText('2.0 MB')).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Back up now' }))
     await waitFor(() => expect(calls.find('POST', '/security/backups')).toHaveLength(1))
-    expect(screen.queryByRole('button', { name: /restore/i })).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /restore/i }).map((button) => button.textContent)).toEqual(['Backup & Restore']) // Only the Settings item: no restore action.
     expect(screen.getByText(/cannot be started from this application/)).toBeInTheDocument()
   })
 

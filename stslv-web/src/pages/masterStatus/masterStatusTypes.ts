@@ -12,16 +12,16 @@ export const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
 
 /**
  * Derived by the API, first rule that applies:
- * Red not completed · Yellow completed, no invoice · Blue invoiced, no quotation · Green invoiced and quoted.
+ * Red not completed · Yellow completed, Unpaid · Blue Paid, no quotation · Green Paid and quoted.
  */
 export const ROW_COLOURS = ['RED', 'YELLOW', 'BLUE', 'GREEN'] as const
 export type RowColour = (typeof ROW_COLOURS)[number]
 
 export const ROW_COLOUR_LABELS: Record<RowColour, string> = {
   RED: 'Red · Not completed',
-  YELLOW: 'Yellow · Invoice pending',
+  YELLOW: 'Yellow · Invoice pending (Unpaid)',
   BLUE: 'Blue · Quote pending',
-  GREEN: 'Green · Invoiced and quoted',
+  GREEN: 'Green · Paid and quoted',
 }
 
 export interface MasterStatusItem {
@@ -36,9 +36,12 @@ export interface MasterStatusItem {
   visitStatus: string
   serviceStatus: ServiceStatus
   completedDate: string | null
-  /** The visit amount as a decimal string; null when none is set. Whether it includes VAT is not confirmed. */
+  /** The visit amount as a decimal string, OMR excluding VAT; null when none is set. */
   visitValue: string | null
-  /** Every active invoice covering the visit; empty when none. */
+  /** The manual Invoice No.: entered = Paid, cleared = Unpaid (reference status). */
+  manualInvoiceNo: string | null
+  paymentStatus: 'PAID' | 'UNPAID'
+  /** Every active Zoho invoice in Invoice Tracking covering the visit; empty when none. */
   invoiceNumbers: string[]
   quotationNo: string | null
   salesEngineer: { id: string; name: string } | null
@@ -71,8 +74,8 @@ export interface MasterStatusOptions {
 
 /** The Service column: the service code of migration 0076 ("Q3"), or the visit number of an older visit. */
 export const INVOICE_STATUS_FILTERS = [
-  { value: 'RECORDED', label: 'Invoice recorded' },
-  { value: 'NOT_RECORDED', label: 'No invoice recorded' },
+  { value: 'RECORDED', label: 'Paid' },
+  { value: 'NOT_RECORDED', label: 'Unpaid' },
 ] as const
 
 export const QUOTATION_STATUS_FILTERS = [

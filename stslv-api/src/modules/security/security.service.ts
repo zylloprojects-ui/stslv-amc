@@ -6,7 +6,7 @@ import { escapeLike, idSchema } from "../../shared/validation";
 import { logActivity } from "../../shared/activity-log";
 import { assertExportSize, exportFormatSchema, type ReportDefinition } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
-import { getReadiness } from "../dashboard/readiness.service";
+import { getReadiness, type RequestTransport } from "../dashboard/readiness.service";
 import { backupStatus } from "./backups.service";
 
 // Security Center and Deletion Log: read-only views over what the application
@@ -14,11 +14,13 @@ import { backupStatus } from "./backups.service";
 
 const SECURITY_ACTIONS = [
   "auth.login_failed",
+  "auth.logout",
   "auth.password_changed",
   "auth.temporary_password_replaced",
   "user.created",
   "user.updated",
   "user.roles_changed",
+  "user.registration_approved",
   "user.registration_rejected",
   "user.temporary_password_issued",
   "role.created",
@@ -76,7 +78,7 @@ export async function listSecurityEvents(query: z.infer<typeof listSecurityEvent
   };
 }
 
-export async function getSecurityOverview() {
+export async function getSecurityOverview(transport: RequestTransport | null = null) {
   const [users, roles, signIns, backup, readiness] = await Promise.all([
     pool.query<{ total: number; active: number; inactive: number; pending: number; must_change: number; no_role: number; admins: number }>(
       `SELECT count(*)::int AS total,
@@ -99,7 +101,7 @@ export async function getSecurityOverview() {
        FROM activity_logs WHERE created_at >= now() - interval '30 days' AND action IN ('auth.login', 'auth.login_failed')`
     ),
     backupStatus(),
-    getReadiness(),
+    getReadiness(transport),
   ]);
   const user = users.rows[0];
 
@@ -115,7 +117,7 @@ export async function getSecurityOverview() {
     },
     roles: roles.rows.map((role) => ({ id: role.id, code: role.code, name: role.name, isActive: role.is_active, activeUsers: role.users })),
     signIns30Days: { succeeded: signIns.rows[0]?.succeeded ?? 0, failed: signIns.rows[0]?.failed ?? 0 },
-    // Each check on its own, with no combined score. Backed by the same checks as the Dashboard's Production Readiness.
+    // Each check on its own, with no combined score. Backed by the readiness checks (readiness.service.ts).
     checks: [
       ...readiness.checks,
       { id: "headers", label: "Security headers", state: "OK", detail: `nosniff, frame denial and referrer policy are sent by the API${process.env.NODE_ENV === "production" ? ", with HSTS." : "; HSTS only in production."}` },
@@ -136,7 +138,7 @@ export async function getSecurityOverview() {
   };
 }
 
-// --- Deletion Log ---------------------------------------------------------
+// --- Recycle Bin (formerly Deletion Log; routes and logged actions keep that name) ---------------------------------------------------------
 
 /**
  * The recorded removal events. DELETED: the row was removed from the database.
@@ -144,7 +146,7 @@ export async function getSecurityOverview() {
  * when it removed untouched visits. Reads activity_logs; deletion itself is unchanged.
  */
 const DELETED = `(l.action IN ('holiday.deleted', 'system_type.deleted', 'role.deleted')
-  OR (l.action = 'amc_contract.schedule_generated' AND jsonb_array_length(COALESCE(l.metadata -> 'removed', '[]'::jsonb)) > 0))`;
+  OR (l.action IN ('amc_contract.schedule_generated', 'amc_contract.schedule_regenerated') AND jsonb_array_length(COALESCE(l.metadata -> 'removed', '[]'::jsonb)) > 0))`;
 const VOIDED = `(l.action IN ('invoice.cancelled', 'expense.voided', 'user.registration_rejected')
   OR (l.action LIKE '%.status_changed' AND l.metadata -> 'changes' -> 'status' ->> 'to' = 'CANCELLED'))`;
 /** The record stays and can be switched back on: clients, masters, users. */
@@ -220,7 +222,7 @@ export async function listDeletions(query: z.infer<typeof listDeletionsSchema>) 
   };
 }
 
-/** The Deletion Log as a report, for the same filters. */
+/** The Recycle Bin as a report, for the same filters. */
 export async function buildDeletionsExport(auth: AuthContext, query: z.infer<typeof exportDeletionsSchema>) {
   const { format, ...filters } = query;
   const { where, params } = deletionFilter(filters);
@@ -233,16 +235,16 @@ export async function buildDeletionsExport(auth: AuthContext, query: z.infer<typ
   assertExportSize(format, rows.rows.length);
 
   const report: ReportDefinition = {
-    title: "Deletion Log",
+    title: "Recycle Bin",
     period: filters.from || filters.to ? `${filters.from ?? "Start"} to ${filters.to ?? "End"}` : null,
     filters: filters.kind ? [{ label: "Action", value: filters.kind }] : [],
     generatedAt: new Date(),
     generatedBy: auth.user.fullName,
     orientation: "landscape",
-    fileStem: "deletion-log",
+    fileStem: "recycle-bin",
     tables: [
       {
-        name: "Deletion Log",
+        name: "Recycle Bin",
         columns: [
           { key: "when", header: "When (UTC)", kind: "text", width: 20 },
           { key: "kind", header: "Action", kind: "text", width: 13 },
@@ -257,7 +259,7 @@ export async function buildDeletionsExport(auth: AuthContext, query: z.infer<typ
     ],
   };
   const recordExport = () =>
-    logActivity(pool, { userId: auth.user.id, action: "deletion_log.exported", module: "USERS", entityType: "activity_logs", entityId: null, description: `Exported the Deletion Log as ${format === "xlsx" ? "Excel" : "PDF"} (${rows.rows.length} entries).`, metadata: { format, filters, rowCount: rows.rows.length } });
+    logActivity(pool, { userId: auth.user.id, action: "deletion_log.exported", module: "USERS", entityType: "activity_logs", entityId: null, description: `Exported the Recycle Bin as ${format === "xlsx" ? "Excel" : "PDF"} (${rows.rows.length} entries).`, metadata: { format, filters, rowCount: rows.rows.length } });
 
   return { report, recordExport };
 }

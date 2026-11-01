@@ -36,6 +36,7 @@ export function BackupRestorePage() {
   const auth = useAuth()
   const queryClient = useQueryClient()
   const [failure, setFailure] = useState<string | null>(null)
+  const [downloaded, setDownloaded] = useState(false)
   const superAdmin = auth.user?.roles.some((role) => role.code === 'ADMIN') ?? false
 
   const backups = useQuery({
@@ -50,8 +51,10 @@ export function BackupRestorePage() {
   })
   const fetchFile = async (record: BackupRecord) => {
     setFailure(null)
+    setDownloaded(false)
     try {
       saveFile(await download(`/security/backups/${record.id}/download`), `${record.id}.dump`)
+      setDownloaded(true)
     } catch (error) {
       setFailure(errorMessage(error))
     }
@@ -85,12 +88,31 @@ export function BackupRestorePage() {
           <Alert onDismiss={() => setFailure(null)}>{failure}</Alert>
         </div>
       )}
+      {downloaded && (
+        <div className="mb-4">
+          <Alert tone="success" onDismiss={() => setDownloaded(false)}>
+            Download check passed: the server matched the file to its recorded SHA-256 checksum before sending it.
+          </Alert>
+        </div>
+      )}
       {backups.isPending && <Spinner label="Loading backups" />}
       {backups.isError && <Alert>{errorMessage(backups.error)}</Alert>}
 
       {data && (
         <div className="space-y-5">
           {!data.status.available && <Alert tone="info">Manual backups are not available here. {data.status.unavailableReason}</Alert>}
+
+          <Card>
+            <h2 className="border-b border-slate-200 px-5 py-3 text-base font-semibold text-slate-900">Not provided by this application</h2>
+            <div className="space-y-2 px-5 py-4 text-sm text-slate-700">
+              <p>These are not provided, and await approval:</p>
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Automatic backups: no backup runs on a schedule.</li>
+                <li>Retention: no backup is removed or expired automatically, and no retention period applies.</li>
+                <li>Restore from this screen: no page or button restores a database.</li>
+              </ul>
+            </div>
+          </Card>
 
           <Card>
             <h2 className="border-b border-slate-200 px-5 py-3 text-base font-semibold text-slate-900">Configuration</h2>
@@ -108,7 +130,7 @@ export function BackupRestorePage() {
             <dl className="grid divide-y divide-slate-100 text-sm sm:grid-cols-2 sm:divide-y-0">
               {[
                 ['Manual backups', data.status.available ? 'Available' : 'Not available'],
-                ['Automatic backups', 'Off. No schedule runs from this application.'],
+                ['Automatic backups', 'Not provided. Awaiting approval.'],
                 ['Storage', data.status.storageConfigured ? 'Configured' : 'Not configured'],
                 ['Declared durable storage', data.status.storageDeclaredDurable ? 'Yes' : 'No'],
                 ['Backup tool', data.status.toolVersion ? `pg_dump ${data.status.toolVersion}` : 'Not checked or not found'],
@@ -127,6 +149,10 @@ export function BackupRestorePage() {
             {data.items.length === 0 ? (
               <EmptyState title="No backups recorded here" description="This list shows backups made from this page only. Backups made outside the application are not listed." />
             ) : (
+              <>
+              <p className="border-b border-slate-200 px-5 py-3 text-sm text-slate-700">
+                <span className="font-semibold text-slate-900">Download check:</span> before every download the server recalculates the file's SHA-256 checksum and compares it with the one recorded when the backup was verified. A changed or missing file is refused.
+              </p>
               <div className={TABLE.wrapper}>
                 <table className={TABLE.table}>
                   <caption className="sr-only">Backup history</caption>
@@ -150,9 +176,7 @@ export function BackupRestorePage() {
                         </td>
                         <td className={cx(TABLE.td, 'whitespace-nowrap tabular-nums')}>{size(record.sizeBytes)}</td>
                         <td className={cx(TABLE.td, 'tabular-nums')}>{record.tableEntries ?? '—'}</td>
-                        <td className={cx(TABLE.td, 'font-mono text-xs')} title={record.sha256 ?? undefined}>
-                          {record.sha256 ? `${record.sha256.slice(0, 16)}…` : '—'}
-                        </td>
+                        <td className={cx(TABLE.td, TABLE.unbroken, 'font-mono text-xs')}>{record.sha256 ?? '—'}</td>
                         <td className={cx(TABLE.td, 'text-right')}>
                           {superAdmin && record.state === 'VERIFIED' && (
                             <Button variant="secondary" size="sm" aria-label={`Download backup from ${formatDateTime(record.startedAt)}`} onClick={() => void fetchFile(record)}>
@@ -165,6 +189,7 @@ export function BackupRestorePage() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </Card>
 

@@ -405,11 +405,11 @@ export function ServiceStatusPage() {
         description="Every scheduled AMC service, one row per visit: completion and service report number."
         actions={
           canExport ? (
-            // Covers every service that matches the filters below, on every page.
+            // Covers every service that matches the filters below, on every page, with the columns shown.
             <ExportButtons
               what="service status"
               fileStem="service-status"
-              path={(format) => `/amc/service-status/export${queryString({ format, ...params })}`}
+              path={(format) => `/amc/service-status/export${queryString({ format, ...params, hidden: [...hidden].join(',') })}`}
               onError={setExportError}
             />
           ) : undefined

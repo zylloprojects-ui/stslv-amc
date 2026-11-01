@@ -50,7 +50,12 @@ export function makeContract(overrides: Partial<Contract> = {}): Contract {
       cancelledCount: 0,
       amountMissingCount: 0,
       scheduledTotal: '1620.000',
-      valueDifference: '0.000',
+      annualAmount: null,
+      servicesPerCycle: 4,
+      perServiceAmount: null,
+      expectedTermTotal: null,
+      generatedTotal: '1620.000',
+      valueDifference: null,
     },
     ...overrides,
   }
@@ -59,6 +64,9 @@ export function makeContract(overrides: Partial<Contract> = {}): Contract {
 export function makeVisit(overrides: Partial<ScheduleVisit> = {}): ScheduleVisit {
   return {
     id: '500',
+    manualInvoiceNo: null,
+    paymentStatus: 'UNPAID',
+    paidAt: null,
     contract: { id: '100', status: 'ACTIVE', systemDescription: 'FIRE', maintenanceFrequency: 'QUARTERLY' },
     client: { id: '10', name: 'Test Hotel One' },
     sequenceNo: 1,

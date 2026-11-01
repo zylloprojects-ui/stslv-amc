@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../auth/context'
-import { Badge, Button, Card, PageHeader } from '../components/ui'
+import { isAdmin } from '../auth/roles'
+import { Badge, Button, Card, NestedPageContext, PageHeader } from '../components/ui'
 import { apiUrl } from '../lib/api'
 import { ROLE_LIST_ENABLED } from '../lib/features'
 import { cx, initialsOf } from '../lib/format'
@@ -132,10 +133,26 @@ const ICONS = {
       <circle cx="16.5" cy="16.5" r="2" />
     </>,
   ),
+  securityCenter: svg(
+    <>
+      <path d="M12 3.5 5 6v5.5c0 4.2 2.8 7.2 7 9 4.2-1.8 7-4.8 7-9V6l-7-2.5Z" strokeLinejoin="round" />
+      <path d="M12 9v3.5M12 15.5h.01" strokeLinecap="round" />
+    </>,
+  ),
+  backup: svg(
+    <>
+      <ellipse cx="12" cy="6" rx="7.5" ry="2.5" />
+      <path d="M4.5 6v12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5V6M4.5 12c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5" strokeLinecap="round" />
+    </>,
+  ),
   logout: svg(<path d="M9 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H9M15 8l4 4-4 4M19 12H9" strokeLinecap="round" strokeLinejoin="round" />),
 }
 
-type SectionId = 'profile' | 'preferences' | 'security' | 'users' | 'access' | 'activity' | OrganizationSection | 'status' | 'business'
+/** Pages with their own address, shown in this layout. Each has its own administrator guard in App.tsx and on the API. */
+type AreaId = 'security-center' | 'backups'
+const AREA_PATHS: Record<AreaId, string> = { 'security-center': '/settings/security', backups: '/settings/backups' }
+
+type SectionId = 'profile' | 'preferences' | 'security' | 'users' | 'access' | 'activity' | OrganizationSection | 'status' | 'business' | AreaId
 
 interface NavItem {
   id: SectionId
@@ -422,9 +439,10 @@ const OVERVIEW_PARTS: Partial<Record<SectionId, { part: OverviewPart; title: str
   activity: { part: 'activity', title: 'Account activity', subtitle: 'Who signed in lately and which accounts have not been used.' },
 }
 
-export function SettingsPage() {
+export function SettingsPage({ area, children }: { area?: 'security' | 'backups'; children?: ReactNode } = {}) {
   const auth = useAuth()
-  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
+  const [params] = useSearchParams()
 
   const mine: NavItem[] = [
     { id: 'profile', label: 'Profile', icon: ICONS.profile },
@@ -448,12 +466,38 @@ export function SettingsPage() {
   const system: NavItem[] = [
     { id: 'status', label: 'System status', icon: ICONS.status },
     { id: 'business', label: 'Business settings', icon: ICONS.business },
+    ...(isAdmin(auth.user)
+      ? [
+          { id: 'security-center' as const, label: 'Security Center', icon: ICONS.securityCenter },
+          { id: 'backups' as const, label: 'Backup & Restore', icon: ICONS.backup },
+        ]
+      : []),
   ]
   const groups = [{ title: 'My settings', items: mine }, ...(admin.length > 0 ? [{ title: 'Administration', items: admin }] : []), { title: 'Organization', items: organization }, { title: 'System', items: system }]
   const known = groups.flatMap((group) => group.items.map((item) => item.id))
   const wanted = params.get('section') as SectionId | null
-  const section: SectionId = wanted && known.includes(wanted) ? wanted : 'profile'
+  const areaSection: AreaId | null = area === 'security' ? 'security-center' : area === 'backups' ? 'backups' : null
+  // An area is opened by its own address only, so ?section= can never select one.
+  const section: SectionId = areaSection ?? (wanted && known.includes(wanted) && !(wanted in AREA_PATHS) ? wanted : 'profile')
   const overview = OVERVIEW_PARTS[section]
+  const selected = useRef<HTMLButtonElement>(null)
+
+  // The list scrolls sideways on a narrow screen and downwards on a short one: keep the selected item in view.
+  useEffect(() => {
+    const item = selected.current
+    const strip = item?.closest<HTMLElement>('[data-settings-strip]')
+
+    // Only the list moves, at once: scrolling the item into view could also move the page, or be cut short.
+    if (item && strip) {
+      const box = item.getBoundingClientRect()
+      const frame = strip.getBoundingClientRect()
+
+      if (box.left < frame.left) strip.scrollLeft -= frame.left - box.left
+      else if (box.right > frame.right) strip.scrollLeft += box.right - frame.right
+      if (box.top < frame.top) strip.scrollTop -= frame.top - box.top
+      else if (box.bottom > frame.bottom) strip.scrollTop += box.bottom - frame.bottom
+    }
+  }, [section])
 
   return (
     <>
@@ -461,7 +505,7 @@ export function SettingsPage() {
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[17rem_minmax(0,1fr)]">
         <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-24 lg:self-start">
-          <div className="flex gap-6 overflow-x-auto pb-1 lg:block lg:space-y-6 lg:overflow-visible">
+          <div data-settings-strip className="flex gap-6 overflow-x-auto pb-1 lg:block lg:max-h-[calc(100vh-15rem)] lg:space-y-6 lg:overflow-y-auto lg:overflow-x-hidden lg:pb-0 lg:pr-1">
             {groups.map((group) => (
               <div key={group.title} className="shrink-0 lg:shrink">
                 <p className="mb-2 hidden px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500 lg:block">{group.title}</p>
@@ -473,8 +517,14 @@ export function SettingsPage() {
                       <li key={item.id}>
                         <button
                           type="button"
+                          ref={on ? selected : undefined}
                           aria-current={on ? 'page' : undefined}
-                          onClick={() => setParams({ section: item.id }, { replace: true })}
+                          onClick={() => {
+                            const path = AREA_PATHS[item.id as AreaId]
+
+                            if (path) navigate(path)
+                            else navigate(`/settings?section=${item.id}`, { replace: !areaSection })
+                          }}
                           className={cx(
                             'flex w-full items-center gap-3 whitespace-nowrap rounded-xl border-l-4 px-3 py-2.5 text-sm font-medium transition-all duration-150',
                             on ? 'border-[#1479BD] bg-white text-[#0b3b66] shadow-sm ring-1 ring-slate-200' : 'border-transparent text-slate-700 hover:bg-white/70 hover:text-[#0b3b66]',
@@ -508,6 +558,7 @@ export function SettingsPage() {
           {ORGANIZATION.includes(section as OrganizationSection) && <OrganizationPanel section={section as OrganizationSection} />}
           {section === 'status' && <StatusPanel />}
           {section === 'business' && <BusinessPanel />}
+          {areaSection && <NestedPageContext.Provider value={true}>{children}</NestedPageContext.Provider>}
         </div>
       </div>
     </>

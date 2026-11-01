@@ -440,14 +440,14 @@ describe("suggestions: submitting and reviewing are separate", () => {
 });
 
 describe("the contract form's client list", () => {
-  it("needs a permission to save the form, shows only id and name, and opens nothing about clients", async () => {
+  it("needs a permission to save the form, shows only id, derived code and name, and opens nothing about clients", async () => {
     await createClient(superAdmin, "Lookup Client");
     const master = await signedIn("master@example.com", ["AMC_OPERATIONS_EXECUTIVE"]);
     await remove("AMC_OPERATIONS_EXECUTIVE", "CLIENTS:READ");
 
     const lookup = await api().get("/api/amc/contracts/client-options").set(master.headers);
     expect(lookup.status).toBe(200);
-    expect(lookup.body.data).toEqual([{ id: expect.any(String), name: "Lookup Client" }]);
+    expect(lookup.body.data).toEqual([{ id: expect.any(String), code: expect.stringMatching(/^CL-/), name: "Lookup Client" }]);
     expect(await status(master, "/api/clients")).toBe(403);
     expect(await status(master, `/api/clients/${lookup.body.data[0].id}`)).toBe(403);
 

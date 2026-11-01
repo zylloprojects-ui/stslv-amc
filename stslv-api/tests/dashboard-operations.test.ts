@@ -302,21 +302,20 @@ describe("with contracts and visits", () => {
     expect(JSON.stringify(schedule)).not.toContain("visitAmount");
   });
 
-  it("reports payment figures as unavailable instead of inventing them", async () => {
-    const { kpis, payments } = (await operations()).body.data;
+  it("reports Paid and Unpaid from the manual Invoice No. and a six-month trend", async () => {
+    const { kpis, paymentTrend } = (await operations()).body.data;
 
-    expect(kpis.unpaidInvoices).toMatchObject({ available: false });
-    expect(kpis.paidThisMonth).toMatchObject({ available: false });
-    expect(payments).toMatchObject({ available: false });
-    expect(payments.reason).toMatch(/not recorded/);
+    expect(kpis.payments).toMatchObject({ paid: 0, paidValue: "0.000", paidThisMonth: 0, paidThisMonthValue: "0.000" });
+    expect(paymentTrend.months).toHaveLength(6);
+    expect(paymentTrend.months.every((month: { count: number; value: string }) => month.count === 0 && month.value === "0.000")).toBe(true);
   });
 
-  it("counts services by recorded invoice number over the same rows as Accounts", async () => {
+  it("counts Paid and Unpaid over the same rows as Accounts", async () => {
     const { kpis } = (await operations()).body.data;
     const accounts = (await api().get("/api/accounts?pageSize=1").set(admin.headers)).body.data.kpis;
 
-    expect(kpis.invoicing.invoiced).toBe(accounts.invoiceFilled);
-    expect(kpis.invoicing.invoiced + kpis.invoicing.notInvoiced).toBe(accounts.rows);
+    expect(kpis.payments.paid).toBe(accounts.invoiceFilled);
+    expect(kpis.payments.paid + kpis.payments.unpaid).toBe(accounts.rows);
   });
 });
 
@@ -332,12 +331,12 @@ describe("permissions", () => {
     const user = await userWith("DASH_ONLY", ["DASHBOARD:VIEW"]);
     const data = (await operations(user)).body.data;
 
-    expect(data.kpis).toEqual({ contracts: null, services: null, unpaidInvoices: null, paidThisMonth: null, invoicing: null });
+    expect(data.kpis).toEqual({ contracts: null, services: null, payments: null });
     expect(data.portfolio).toBeNull();
     expect(data.expiring).toBeNull();
     expect(data.workload).toBeNull();
     expect(data.schedule).toBeNull();
-    expect(data.payments).toBeNull();
+    expect(data.paymentTrend).toBeNull();
     expect((await calendar(now.slice(0, 7), user)).status).toBe(403);
   });
 
@@ -351,7 +350,8 @@ describe("permissions", () => {
     expect(data.kpis.services).not.toBeNull();
     expect(data.workload).not.toBeNull();
     expect(data.schedule).not.toBeNull();
-    expect(data.payments).toBeNull();
+    expect(data.kpis.payments).toBeNull();
+    expect(data.paymentTrend).toBeNull();
     expect(JSON.stringify(data)).not.toContain("activeValue");
     expect((await calendar(now.slice(0, 7), user)).status).toBe(200);
   });
@@ -371,14 +371,16 @@ describe("permissions", () => {
     expect(data.kpis.contracts.active).toBe(5);
     expect(data.kpis.services).toBeNull();
     expect(data.schedule).toBeNull();
-    expect(data.payments).toBeNull();
+    expect(data.kpis.payments).toBeNull();
+    expect(data.paymentTrend).toBeNull();
   });
 
-  it("gives invoice viewers the payment availability only", async () => {
+  it("gives invoice viewers the payment figures only", async () => {
     const user = await userWith("INV_VIEW", ["DASHBOARD:VIEW", "INVOICES:VIEW"]);
     const data = (await operations(user)).body.data;
 
-    expect(data.payments).toMatchObject({ available: false });
+    expect(data.kpis.payments).not.toBeNull();
+    expect(data.paymentTrend.months).toHaveLength(6);
     expect(data.kpis.contracts).toBeNull();
   });
 

@@ -154,6 +154,20 @@ describe('AMC Renewal page', () => {
     expect(within(await rowOf('AMC-0045')).getByRole('button', { name: 'Restart Renewal' })).toBeInTheDocument()
   })
 
+  it('asks for a reason before cancelling a renewal from the queue', async () => {
+    const api = renewalApi()
+    renderApp('/amc/renewal')
+
+    await userEvent.click(within(await rowOf('AMC-0043')).getByRole('button', { name: 'Cancel' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cancel contract' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel contract' }))
+    expect(await within(dialog).findByText('Enter the reason for cancelling this contract.')).toBeInTheDocument()
+
+    await userEvent.type(within(dialog).getByLabelText(/Reason for cancelling/), 'Client declined')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel contract' }))
+    await waitFor(() => expect(api.requests.find((request) => request.method === 'POST' && request.path.endsWith('/status'))?.body).toMatchObject({ status: 'CANCELLED', reason: 'Client declined' }))
+  })
+
   it('shows no actions or downloads to a user who may only view contracts', async () => {
     renewalApi(VIEW_ONLY)
     renderApp('/amc/renewal')

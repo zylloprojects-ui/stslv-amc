@@ -51,7 +51,7 @@ const SELECT = `
          c.maintenance_frequency, mf.label AS frequency_label,
          v.sequence_no, v.cycle_no, v.service_code,
          v.period_start::text AS period_start, v.period_end::text AS period_end, v.scheduled_date::text AS scheduled_date,
-         v.status, v.completed_date::text AS completed_date,
+         v.status, v.completed_date::text AS completed_date, v.service_report_no,
          se.id AS sales_engineer_id, se.name AS sales_engineer_name,
          v.quotation_no, v.quotation_updated_at, qu.full_name AS quotation_updated_by_name,
          ${SERVICE_STATUS_SQL} AS service_status,
@@ -77,6 +77,7 @@ interface SalesRow {
   scheduled_date: string;
   status: VisitStatus;
   completed_date: string | null;
+  service_report_no: string | null;
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
   quotation_no: string | null;
@@ -105,6 +106,8 @@ export interface ServicesSalesItem {
   serviceStatus: ServiceStatus;
   salesStatus: SalesStatus;
   completedDate: string | null;
+  /** amc_visits.service_report_no as entered on Service Status. Read only on this page. */
+  serviceReportNo: string | null;
   salesEngineer: { id: string; name: string } | null;
   quotationNo: string | null;
   quotationUpdatedAt: string | null;
@@ -130,6 +133,7 @@ function toItem(row: SalesRow): ServicesSalesItem {
     serviceStatus: row.service_status,
     salesStatus: row.sales_status,
     completedDate: row.completed_date,
+    serviceReportNo: row.service_report_no,
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
     quotationNo: row.quotation_no,
     quotationUpdatedAt: row.quotation_updated_at ? row.quotation_updated_at.toISOString() : null,
@@ -165,6 +169,8 @@ function filterSql(query: ServicesSalesFilters) {
     conditions.push(`extract(month FROM v.scheduled_date) = ${add(query.month)}`);
   }
   if (query.serviceStatus) conditions.push(`(${SERVICE_STATUS_SQL}) = ${add(query.serviceStatus)}`);
+  if (query.quoteSubmission === "SUBMITTED") conditions.push("v.quotation_no IS NOT NULL");
+  if (query.quoteSubmission === "NOT_SUBMITTED") conditions.push("v.quotation_no IS NULL");
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
     const matches = [
@@ -172,6 +178,7 @@ function filterSql(query: ServicesSalesFilters) {
       `c.system_description ILIKE ${p}`,
       `st.name ILIKE ${p}`,
       `v.service_code ILIKE ${p}`,
+      `v.service_report_no ILIKE ${p}`,
       `v.quotation_no ILIKE ${p}`,
     ];
     const reference = REFERENCE_PATTERN.exec(query.search);

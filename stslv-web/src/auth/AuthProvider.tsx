@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { api, getToken, setForbiddenHandler, setToken, setUnauthorizedHandler } from '../lib/api'
+import { api, apiUrl, getToken, setForbiddenHandler, setToken, setUnauthorizedHandler } from '../lib/api'
 import type { Action, Module, SessionUser } from '../lib/types'
 import { AuthContext, type AuthValue } from './context'
 
@@ -16,6 +16,23 @@ interface LoginResponse {
   user: SessionUser
 }
 
+/**
+ * Tells the API the user signed out, so it can be recorded. Best effort: not awaited, every failure is ignored, and
+ * it bypasses the api client so a refusal cannot end a newer session. It revokes nothing.
+ */
+function recordSignOut(token: string): void {
+  try {
+    void fetch(apiUrl('/api/auth/logout'), {
+      method: 'POST',
+      keepalive: true,
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: '{}',
+    }).catch(() => undefined)
+  } catch {
+    // Nothing to do: signing out never depends on this.
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const [token, setTokenState] = useState<string | null>(() => getToken())
@@ -23,11 +40,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Why the last session was ended by the API, when the user needs to be told.
   const [signOutNotice, setSignOutNotice] = useState<string | null>(null)
 
-  const logout = useCallback(() => {
+  const endSession = useCallback(() => {
     setToken(null)
     setTokenState(null)
     queryClient.clear()
   }, [queryClient])
+
+  // The user chose to sign out. A session the API has already refused just ends (below).
+  const logout = useCallback(() => {
+    const current = getToken()
+
+    if (current !== null) recordSignOut(current)
+    endSession()
+  }, [endSession])
 
   // Any request rejected with 401 ends the session. A temporary password that expired
   // while the user was signed in (for example on the change-password screen) is
@@ -37,10 +62,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error.code === 'TEMPORARY_PASSWORD_EXPIRED' && getToken() !== null) {
         setSignOutNotice(error.message)
       }
-      logout()
+      endSession()
     })
     return () => setUnauthorizedHandler(null)
-  }, [logout])
+  }, [endSession])
 
   // A refused request may mean the role has just lost a permission: refresh the sidebar and the
   // route guards now, not at the next periodic check. The API has already enforced the refusal.

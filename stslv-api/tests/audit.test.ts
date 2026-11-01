@@ -48,7 +48,7 @@ describe("GET /api/audit/logins", () => {
     expect(forStaff[1]).toMatchObject({ reason: null });
     for (const item of forStaff) {
       expect(item.ip).toEqual(expect.any(String));
-      expect(Object.keys(item).sort()).toEqual(["createdAt", "id", "ip", "outcome", "reason", "user"]);
+      expect(Object.keys(item).sort()).toEqual(["createdAt", "id", "ip", "outcome", "reason", "user", "userAgent"]);
     }
 
     const unknown = items.find((item) => item.reason === "unknown_account");
@@ -107,7 +107,7 @@ describe("GET /api/audit/activity", () => {
 
     expect(created).toMatchObject({ module: "CLIENTS", entityType: "clients", user: { id: admin.id } });
     expect(Object.keys(created ?? {}).sort()).toEqual(
-      ["action", "changes", "createdAt", "description", "entityId", "entityType", "id", "module", "reason", "user"].sort()
+      ["action", "changes", "createdAt", "description", "entityId", "entityType", "id", "ip", "module", "reason", "user"].sort()
     );
     expect(JSON.stringify(items)).not.toContain('"metadata"');
     expect(JSON.stringify(items)).not.toContain("Wrong-Password-1");
