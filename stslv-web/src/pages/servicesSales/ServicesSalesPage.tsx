@@ -259,7 +259,7 @@ export function ServicesSalesPage() {
   return (
     <>
       <PageHeader
-        title="Quotations"
+        title="Service Sales"
         description="Track completed services and manually record quotation numbers."
         actions={
           <div className="flex flex-wrap gap-2">
@@ -272,8 +272,8 @@ export function ServicesSalesPage() {
             {canExport && (
               // The download covers every service that matches the filters, on every page, with the columns shown.
               <ExportButtons
-                what="Quotations"
-                fileStem="quotations"
+                what="Service Sales"
+                fileStem="service-sales"
                 path={(format) => `/services-sales/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
                 onError={setExportError}
               />
@@ -288,7 +288,7 @@ export function ServicesSalesPage() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Quotations figures">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Service Sales figures">
         {layout.order.map((id, index) => (
           <StatTile
             key={id}
@@ -485,7 +485,7 @@ export function ServicesSalesPage() {
           <>
             <div className={TABLE.wrapper}>
               <table className={TABLE.table}>
-                <caption className="sr-only">Quotations</caption>
+                <caption className="sr-only">Service Sales</caption>
                 <thead>
                   <tr>
                     <th scope="col" className={TABLE.snHead}>

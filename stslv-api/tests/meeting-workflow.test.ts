@@ -283,7 +283,7 @@ describe("meeting workflow", () => {
     ["/amc/service-status/export", "Service Status"],
     ["/accounts/export", "Accounts"],
     ["/amc/master-status/export", "Master AMC Status"],
-    ["/services-sales/export", "Quotations"],
+    ["/services-sales/export", "Service Sales"],
     ["/amc/renewals/queue/export", null],
   ])("17. %s produces Excel and PDF", async (path, sheetName) => {
     const excel = await get(path, { format: "xlsx" }).responseType("blob");

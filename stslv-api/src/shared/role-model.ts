@@ -124,6 +124,13 @@ const modulesOf = (title: string): Module[] =>
 const wholeModules = (modules: Module[]): PermissionKey[] =>
   modules.flatMap((module) => ACTIONS.filter((action) => action !== "READ" && isGrantable(module, action)).map((action) => permissionKey(module, action)));
 
+/**
+ * Service Sales is listed under Finance, but the seeded grants date from when it was an AMC Operations page.
+ * The starting grants stay as seeded, so where a module is listed never changes who starts with it.
+ */
+const FINANCE_STARTING_MODULES = (): Module[] => modulesOf("Finance").filter((module) => module !== "SERVICES_SALES");
+const OPERATIONS_STARTING_MODULES = (): Module[] => [...modulesOf("AMC Operations"), "SERVICES_SALES"];
+
 /** Every role could already submit and follow its own suggestions when the module was added (0092). */
 const SUGGESTIONS: PermissionKey[] = ["SUGGESTIONS:VIEW", "SUGGESTIONS:CREATE"];
 
@@ -141,13 +148,13 @@ export function defaultGrants(roleCode: string): PermissionKey[] {
       return all.filter((key) => !(key.endsWith(":READ") && all.includes(key.replace(/:READ$/, ":VIEW") as PermissionKey)));
     case "FINANCE_EXECUTIVE":
       // Data only: Invoice Tracking and Accounts show the visits they invoice and reconcile.
-      return ["DASHBOARD:VIEW", "AMC_SCHEDULE:READ", ...SUGGESTIONS, ...wholeModules(modulesOf("Finance"))];
+      return ["DASHBOARD:VIEW", "AMC_SCHEDULE:READ", ...SUGGESTIONS, ...wholeModules(FINANCE_STARTING_MODULES())];
     case "MASTER_DATA_EXECUTIVE":
       return ["DASHBOARD:VIEW", ...SUGGESTIONS, ...wholeModules(modulesOf("Master Data Center"))];
     case "AMC_OPERATIONS_EXECUTIVE":
       // Data only: the contract form and filters list clients; Master AMC Status, AMC Management
       // and the contract and visit details show invoice numbers.
-      return ["DASHBOARD:VIEW", "CLIENTS:READ", "INVOICES:READ", ...SUGGESTIONS, ...wholeModules(modulesOf("AMC Operations"))];
+      return ["DASHBOARD:VIEW", "CLIENTS:READ", "INVOICES:READ", ...SUGGESTIONS, ...wholeModules(OPERATIONS_STARTING_MODULES())];
     case "VIEWER": {
       const administration = new Set<Module>(modulesOf("Administration"));
       return ["SUGGESTIONS:CREATE", ...all.filter((key) => key.endsWith(":VIEW") && !administration.has(key.split(":")[0] as Module))];

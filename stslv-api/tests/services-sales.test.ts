@@ -336,10 +336,10 @@ describe("Services Sales", () => {
 
       const response = await exportFile({ format: "xlsx", clientId: fx.alphaId });
       expect(response.status).toBe(200);
-      expect(response.headers["content-disposition"]).toMatch(/services-sales/);
+      expect(response.headers["content-disposition"]).toMatch(/service-sales/);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(response.body as unknown as ExcelJS.Buffer);
-      const sheet = workbook.getWorksheet("Quotations") as ExcelJS.Worksheet;
+      const sheet = workbook.getWorksheet("Service Sales") as ExcelJS.Worksheet;
       const header = (sheet.getRow(6).values as unknown[]).slice(1);
       expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Frequency", "Service", "Due date", "Service status", "Completed date", "Service Report No.", "Quote No.", "Sales status", "Sales Engineer"]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));

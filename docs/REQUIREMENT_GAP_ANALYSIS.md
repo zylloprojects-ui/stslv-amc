@@ -101,7 +101,7 @@ The reference describes a legacy system. It is evidence of behaviour, not a rule
 |---|---|---|
 | Columns, four colours from the manual number, filters, Details, KPI rename, export | Verified | |
 
-## Quotations
+## Service Sales
 
 | Requirement | Status | Note |
 |---|---|---|

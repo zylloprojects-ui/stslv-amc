@@ -229,15 +229,16 @@ export function AppRoutes() {
             }
           />
           <Route
-            path="/amc/quotations"
+            path="/amc/service-sales"
             element={
               <RequirePermission module="SERVICES_SALES">
                 <ServicesSalesPage />
               </RequirePermission>
             }
           />
-          {/* The page's former address, so saved links keep working. */}
-          <Route path="/amc/services-sales" element={<Navigate to="/amc/quotations" replace />} />
+          {/* The page's former addresses, so saved links keep working. */}
+          <Route path="/amc/services-sales" element={<RedirectKeepingQuery to="/amc/service-sales" />} />
+          <Route path="/amc/quotations" element={<RedirectKeepingQuery to="/amc/service-sales" />} />
           <Route
             path="/amc/master-status"
             element={

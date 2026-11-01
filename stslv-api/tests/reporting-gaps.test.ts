@@ -8,7 +8,7 @@ import { addDays } from "../src/modules/amc/amc.schedule";
 import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
-// Quotations' Service Report No. and Quote filter, Accounts' contract filter, hidden columns in exports,
+// Service Sales' Service Report No. and Quote filter, Accounts' contract filter, hidden columns in exports,
 // the new reports, the Reports filters and KPI strip, and the totals against their source modules.
 
 let admin: Session;
@@ -63,7 +63,7 @@ beforeAll(async () => {
 });
 afterAll(closePool);
 
-describe("Quotations", () => {
+describe("Service Sales", () => {
   it("shows and searches the Service Report No.", async () => {
     const { data } = (await get("/services-sales", { search: "SR-GAP-1" })).body;
     expect(data.total).toBe(1);

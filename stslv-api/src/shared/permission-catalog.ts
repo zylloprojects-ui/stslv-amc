@@ -196,19 +196,6 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         },
       },
       {
-        module: "SERVICES_SALES",
-        label: "Quotations",
-        description: "Quotation numbers of completed visits.",
-        pages: [
-          { label: "Quotations", path: "/amc/quotations" },
-        ],
-        actions: {
-          VIEW: "See quotation numbers",
-          EDIT: "Record quotation numbers",
-          EXPORT: "Export Quotations",
-        },
-      },
-      {
         module: "MASTER_AMC_STATUS",
         label: "Master AMC Status",
         description: "One read-only row per scheduled visit, with its invoice and quotation numbers. Needs no other module's permission.",
@@ -244,6 +231,19 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         actions: {
           VIEW: "See Accounts, including the visits and invoices it shows",
           EXPORT: "Export Accounts",
+        },
+      },
+      {
+        module: "SERVICES_SALES",
+        label: "Service Sales",
+        description: "Quotation numbers of completed visits.",
+        pages: [
+          { label: "Service Sales", path: "/amc/service-sales" },
+        ],
+        actions: {
+          VIEW: "See quotation numbers",
+          EDIT: "Record quotation numbers",
+          EXPORT: "Export Service Sales",
         },
       },
     ],

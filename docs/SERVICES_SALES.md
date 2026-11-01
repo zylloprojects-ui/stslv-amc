@@ -1,6 +1,8 @@
-# Quotations (formerly Services Sales)
+# Service Sales
 
-Renamed 2026-10-31 to follow the client's written instruction "rename service sales to quotations". The page is `/amc/quotations`; `/amc/services-sales` redirects there. Only the names shown to people changed: the API path `/api/services-sales`, the permission code `SERVICES_SALES`, the database columns and users' saved layouts are unchanged, so no grant or record is affected.
+Final module name, confirmed 2026-11-01, under Finance in the sidebar and in Roles & Permissions. It was briefly named Quotations. Its page address is `/amc/service-sales`; the former addresses `/amc/quotations` and `/amc/services-sales` redirect there. The API `/api/services-sales` and the permission code `SERVICES_SALES` are unchanged; quotation numbers keep that name because that is what they are.
+
+Renamed 2026-10-31 to follow the client's written instruction "rename service sales to quotations". Only the names shown to people changed: the API path `/api/services-sales`, the permission code `SERVICES_SALES`, the database columns and users' saved layouts are unchanged, so no grant or record is affected.
 
 Service Report No. and Quote filter: added 2026-11-01 from the written specification. Service Report No. is read only here; it is entered on Service Status.
 
