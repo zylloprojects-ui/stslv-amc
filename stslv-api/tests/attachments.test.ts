@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
+import { env } from "../src/config/env";
 import { setStorageForTests } from "../src/modules/attachments/attachments.service";
 import { LocalDiskStorage } from "../src/shared/storage";
 import { activeContract, createClient } from "./amc-helpers";
@@ -130,7 +131,8 @@ describe("uploading", () => {
   });
 
   it("refuses a file larger than the limit", async () => {
-    const big = Buffer.concat([Buffer.from("%PDF-"), Buffer.alloc(10 * 1024 * 1024 + 10)]);
+    // Just over the configured limit, whatever it is in this environment.
+    const big = Buffer.concat([Buffer.from("%PDF-"), Buffer.alloc(env.attachmentMaxMb * 1024 * 1024 + 10)]);
     const response = await contractDoc(admin, big, "big.pdf");
 
     expect([400, 413]).toContain(response.status);
