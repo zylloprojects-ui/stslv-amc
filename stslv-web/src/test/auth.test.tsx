@@ -181,8 +181,8 @@ describe('permission-based navigation', () => {
     expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center', 'Settings'])
     expect(await linksByGroup(nav)).toEqual({
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
-      'AMC Operations': ['AMC Management', 'AMC Contracts', 'Master AMC Status', 'Service Status', 'Accounts', 'Quotations', 'AMC Renewal', 'Monthly Calendar', 'AMC Schedule'],
-      Finance: ['Invoice Tracking'],
+      'AMC Operations': ['AMC Management', 'AMC Contracts', 'Master AMC Status', 'Service Status', 'AMC Renewal', 'Monthly Calendar', 'AMC Schedule'],
+      Finance: ['Invoice Tracking', 'Accounts', 'Service Sales'],
       Reporting: ['Reports'],
       Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log', 'Recycle Bin', 'Suggestions Review'],
     })

@@ -75,7 +75,7 @@ const MODULE_LABELS: Record<string, string> = {
   DEPARTMENTS: 'Departments',
   MAINTENANCE_FREQUENCIES: 'Maintenance frequencies',
   HISTORICAL_DATA: 'Historical data',
-  SERVICES_SALES: 'Quotations',
+  SERVICES_SALES: 'Service Sales',
 }
 
 function sentence(text: string): string {
@@ -88,7 +88,15 @@ function sentence(text: string): string {
 export const moduleLabel = (code: string) => MODULE_LABELS[code] ?? sentence(code)
 
 /** "amc_contract.status_changed" -> "Amc contract status changed". */
-export const actionLabel = (action: string) => sentence(action)
+// A module's current name. The stored action keeps its original code, so audit history stays valid.
+const RENAMED_ACTIONS: Record<string, string> = { services_sales: 'service_sales', deletion_log: 'recycle_bin' }
+
+export const actionLabel = (action: string) => {
+  const dot = action.indexOf('.')
+  const name = RENAMED_ACTIONS[action.slice(0, dot)]
+
+  return sentence(name ? `${name}${action.slice(dot)}` : action)
+}
 
 /** "amc_contracts" -> "Amc contracts"; "contractValue" -> "Contract value". */
 export const fieldLabel = (name: string) => sentence(name)

@@ -141,13 +141,25 @@ describe("role scopes", () => {
     expect(roleScope("CUSTOM_ROLE")).toBeNull();
   });
 
+  it("does not let where a module is listed change who starts with it", () => {
+    const sectionOf = new Map(PERMISSION_CATALOG.flatMap((section) => section.modules.map((entry) => [entry.module, section.title] as const)));
+    const quotations = (code: string) => defaultGrants(code).filter((key) => key.startsWith("SERVICES_SALES:")).sort();
+
+    expect(sectionOf.get("SERVICES_SALES")).toBe("Finance");
+    expect(sectionOf.get("ACCOUNTS")).toBe("Finance");
+    expect(quotations("AMC_OPERATIONS_EXECUTIVE")).toEqual(["SERVICES_SALES:EDIT", "SERVICES_SALES:EXPORT", "SERVICES_SALES:VIEW"]);
+    expect(quotations("FINANCE_EXECUTIVE")).toEqual([]);
+    expect(defaultGrants("FINANCE_EXECUTIVE")).toEqual(expect.arrayContaining(["ACCOUNTS:VIEW", "ACCOUNTS:EXPORT"]));
+    expect(defaultGrants("AMC_OPERATIONS_EXECUTIVE").filter((key) => key.startsWith("ACCOUNTS:"))).toEqual([]);
+  });
+
   it("starts each Executive role with View only on the pages of its own section (and the Dashboard)", () => {
     const sectionOf = new Map(PERMISSION_CATALOG.flatMap((section) => section.modules.map((entry) => [entry.module, section.title] as const)));
     const own: Record<string, string> = { FINANCE_EXECUTIVE: "Finance", MASTER_DATA_EXECUTIVE: "Master Data Center", AMC_OPERATIONS_EXECUTIVE: "AMC Operations" };
 
     for (const [code, section] of Object.entries(own)) {
       const views = defaultGrants(code).filter((key) => key.endsWith(":VIEW")).map((key) => key.split(":")[0]);
-      expect(views.filter((module) => module !== "DASHBOARD" && module !== "SUGGESTIONS" && sectionOf.get(module as never) !== section), code).toEqual([]);
+      expect(views.filter((module) => module !== "DASHBOARD" && module !== "SUGGESTIONS" && !(code === "AMC_OPERATIONS_EXECUTIVE" && module === "SERVICES_SALES") && sectionOf.get(module as never) !== section), code).toEqual([]);
     }
   });
 

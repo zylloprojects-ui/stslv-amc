@@ -60,8 +60,6 @@ export const NAVIGATION: NavSection[] = [
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },
       { label: 'Master AMC Status', path: '/amc/master-status', module: 'MASTER_AMC_STATUS' },
       { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },
-      { label: 'Accounts', path: '/finance/accounts', module: 'ACCOUNTS' },
-      { label: 'Quotations', path: '/amc/quotations', module: 'SERVICES_SALES' },
       { label: 'AMC Renewal', path: '/amc/renewal', module: 'AMC_RENEWAL' },
       { label: 'Monthly Calendar', path: '/amc/calendar', module: 'MONTHLY_CALENDAR' },
       { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
@@ -71,6 +69,8 @@ export const NAVIGATION: NavSection[] = [
     title: 'Finance',
     items: [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
+      { label: 'Accounts', path: '/finance/accounts', module: 'ACCOUNTS' },
+      { label: 'Service Sales', path: '/amc/service-sales', module: 'SERVICES_SALES' },
     ],
   },
   { title: 'Reporting', items: [{ label: 'Reports', path: '/reports', module: 'REPORTS' }] },

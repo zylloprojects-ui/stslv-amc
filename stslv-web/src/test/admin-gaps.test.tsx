@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionUser, User } from '../lib/types'
 import { AuthContext, type AuthValue } from '../auth/context'
-import { moduleLabel } from '../pages/admin/auditTypes'
+import { actionLabel, moduleLabel } from '../pages/admin/auditTypes'
 import { ModulePlaceholderPage } from '../pages/ModulePlaceholderPage'
 import { ACCOUNTANT, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 import { MemoryRouter } from 'react-router-dom'
@@ -86,8 +86,11 @@ describe('small wording', () => {
     expect(screen.queryByText(/Phase/)).not.toBeInTheDocument()
   })
 
-  it('labels Services sales as Quotations in the logs', () => {
-    expect(moduleLabel('SERVICES_SALES')).toBe('Quotations')
+  it('labels the module Service Sales in the logs', () => {
+    expect(moduleLabel('SERVICES_SALES')).toBe('Service Sales')
+    expect(actionLabel('services_sales.exported')).toMatch(/^Service sales exported$/i)
+    expect(actionLabel('deletion_log.exported')).toMatch(/^Recycle bin exported$/i)
+    expect(actionLabel('amc_visit.quotation_changed')).toMatch(/quotation changed/i)
   })
 })
 

@@ -57,13 +57,13 @@ describe('Finance Executive and AMC Schedule', () => {
         .map((item) => item.label)
     }
 
-    expect(offered(STARTING)).toEqual(['Dashboard', 'Accounts', 'Invoice Tracking'])
-    expect(offered([...STARTING, 'AMC_SCHEDULE:VIEW'])).toEqual(['Dashboard', 'Accounts', 'AMC Schedule', 'Invoice Tracking'])
+    expect(offered(STARTING)).toEqual(['Dashboard', 'Invoice Tracking', 'Accounts'])
+    expect(offered([...STARTING, 'AMC_SCHEDULE:VIEW'])).toEqual(['Dashboard', 'AMC Schedule', 'Invoice Tracking', 'Accounts'])
     expect(offered(['INVOICES:VIEW'])).toEqual(['Invoice Tracking'])
     // Master AMC Status and Accounts: only on their own permission.
     expect(offered(['MASTER_AMC_STATUS:VIEW'])).toEqual(['Master AMC Status'])
     expect(offered(['ACCOUNTS:VIEW'])).toEqual(['Accounts'])
-    expect(offered(['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'INVOICES:VIEW', 'AMC_SCHEDULE:READ'])).toEqual(['Quotations', 'AMC Schedule', 'Invoice Tracking'])
+    expect(offered(['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'INVOICES:VIEW', 'AMC_SCHEDULE:READ'])).toEqual(['AMC Schedule', 'Invoice Tracking', 'Service Sales'])
     expect(offered(['SUGGESTIONS_REVIEW:VIEW'])).toEqual(['Suggestions Review'])
     expect(offered(['SETTINGS:VIEW'])).toEqual(['Settings'])
     expect(offered([])).toEqual([])
