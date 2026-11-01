@@ -1,6 +1,6 @@
 # Backup & Restore
 
-Page: `/admin/backups`. API: `/api/security/backups`. Everything below is off until configured. Nothing has been changed on the live hosting.
+Page: `/settings/backups`, under Settings (the old `/admin/backups` redirects there). API: `/api/security/backups`. Everything below is off until configured. Nothing has been changed on the live hosting.
 
 ## What the application does
 

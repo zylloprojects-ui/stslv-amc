@@ -1,13 +1,17 @@
 # Accounts
 
+> **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
+
 Route: `/finance/accounts` (navigation: AMC Operations → Accounts, the written specification's module order).
-API: `GET /api/accounts`, `GET /api/accounts/options`, `GET /api/accounts/export` (all read-only).
+API: `GET /api/accounts`, `GET /api/accounts/options`, `GET /api/accounts/export` (these read; the Invoice No. field saves through `PATCH /api/amc/visits/:id/manual-invoice`).
 Status: built 2026-10-28 on branch `feature/accounts-reconciliation`. No migration of its own; needs migration 0077.
 
-Accounts is a read-only **billing reconciliation** with one row per scheduled maintenance visit
+Accounts is a **billing reconciliation**, editable only where the Invoice No. field is, with one row per scheduled maintenance visit
 (`amc_visits`), never one per contract. It shows, for each visit, whether the service is completed,
 its service report number and the invoice numbers recorded against it. It reads the same records
-as Service Status, Master AMC Status and Invoice Tracking. Nothing on the page writes.
+as Service Status, Master AMC Status and Invoice Tracking. Entering or clearing the Invoice No. (`INVOICES:EDIT`) is the page's own write; "Record Zoho invoice" uses Invoice Tracking's API.
+
+Filters include **AMC Contract** (`contractId`, options from `GET /api/accounts/options`); cards, rows and export follow it and the export header names the contract.
 
 ## Sources of truth (nothing is copied)
 

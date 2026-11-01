@@ -1,5 +1,7 @@
 # STSLEV AMC — Invoice Tracking Module
 
+> **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
+
 | | |
 |---|---|
 | Status | Implemented and tested. **Migration `0060_invoices` has not been applied to `stslv_amc_dev`.** |

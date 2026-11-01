@@ -1,5 +1,7 @@
 # STSLV AMC — Complete Meeting Requirements Compliance and Functional Verification Report
 
+> **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
+
 Date: 2026-10-31. Code audited: `bd954cc`. Work is uncommitted on `feature/meeting-requirements-audit` in the worktree `D:\Projects\STSLV-AMC-meeting-audit`.
 
 Sources: `Complete_Meeting_Analysis.md`, `Meeting_Requirements.md`, `Meeting_Action_Items.md` (from Downloads), the requirements brief, and the project's docs. The recording itself was not re-analysed: its audio has no reliable transcript. The reference ERP was not opened: the only login available is a password shown in the meeting analysis, which was not used.

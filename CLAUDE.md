@@ -37,6 +37,8 @@ The system should help prevent:
 
 The project must remain simple, reliable, auditable and suitable for daily business operations.
 
+Exception on financial workflow: on 2026-11-01 the project owner approved the Aqua Executive reference financial rules recorded in docs/FINANCE_WORKFLOW.md.
+
 This is a standalone project. Do not copy code, database structures, assumptions, or business rules from any other project.
 
 ---
@@ -243,9 +245,9 @@ Phase 1 should support:
 - contract status
 - notes
 
-Exact interpretation of "Final Credit" from the client's existing Excel is NOT yet confirmed.
+Final Credit Value is approved as one of the annual Billing Basis options (see docs/FINANCE_WORKFLOW.md).
 
-Do not invent its accounting meaning.
+Its wider accounting meaning is not stated. Do not invent one.
 
 ---
 
@@ -390,6 +392,8 @@ The design must allow more than one invoice against a project when required.
 
 Do not assume every project has exactly one invoice.
 
+Separately, each AMC service carries a manual Invoice No. Approved rule (2026-11-01): entered = Paid, cleared = Unpaid, with no invoice generation, VAT calculation or mandatory date or amount. This Paid is a reference status: it does not verify that money was received, and it must always be distinguishable from externally verified payment. Zoho records in Invoice Tracking do not decide it. See docs/FINANCE_WORKFLOW.md.
+
 ---
 
 ### 4.10 Dashboard and Reports
@@ -437,7 +441,7 @@ Do not automatically describe this as formal accounting profit unless the client
 
 VAT must not be permanently assumed to be a fixed rate without confirming whether it should be configurable.
 
-AMC contract value, cost per visit and number of visits must reconcile where the client's business rules require it.
+AMC amounts are OMR, excluding VAT, with three decimals. With a Billing Basis (an annual amount), a service's amount is the annual amount divided by the services in one annual cycle, and the last service of each complete cycle takes the rounding remainder. Partial years are not prorated. Without a basis, the manual Cost per Visit stands. Existing visits are recalculated only by an explicit Regenerate, which keeps completed, Paid and other acted-on values. Older contract values may be whole-term amounts and are never reinterpreted automatically. docs/FINANCE_WORKFLOW.md has the full rules.
 
 If a financial business rule is ambiguous, STOP and ask for clarification instead of inventing it.
 
@@ -900,7 +904,7 @@ CLAUDE.md defines the persistent development guardrails.
 
 The following must remain explicitly unresolved until confirmed:
 
-1. Exact meaning of AMC "Final Credit".
+1. Wider accounting meaning of AMC "Final Credit" (it is approved as an annual Billing Basis option).
 2. Exact AMC frequency options.
 3. Whether billing frequency and maintenance frequency are always the same.
 4. AMC rescheduling/postponement behavior.
