@@ -46,8 +46,8 @@ describe('Monthly Calendar, Month view', () => {
     renderApp('/amc/calendar?view=month')
 
     const grid = await monthGrid()
-    expect(grid.getByRole('button', { name: 'Test Hotel One — FIRE, visit 5, Scheduled, overdue' })).toBeInTheDocument()
-    expect(grid.getByRole('button', { name: 'Test Hotel One — FIRE, visit 1, Completed' })).toBeInTheDocument()
+    expect(grid.getByRole('button', { name: 'Test Hotel One — FIRE, visit 5, Scheduled, overdue, no invoice recorded' })).toBeInTheDocument()
+    expect(grid.getByRole('button', { name: /Test Hotel One — FIRE, visit 1, Completed, / })).toBeInTheDocument()
   })
 
   it('shows every visit of a busy day on request, with a link to the contract', async () => {

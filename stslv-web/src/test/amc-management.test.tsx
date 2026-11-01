@@ -9,7 +9,6 @@ import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockR
 // AMC Management. The API is mocked: every figure here is a fixture, and each
 // test checks that the page shows exactly what the API sent.
 
-const UNAVAILABLE = { available: false as const, reason: 'Payment is not recorded in STSLV AMC. Invoices are tracked as Issued or Cancelled only, with no paid date or paid amount.' }
 
 const SUMMARY: AmcManagementSummary = {
   asOf: '2026-10-28',
@@ -30,7 +29,7 @@ const SUMMARY: AmcManagementSummary = {
     currentScheduledValue: { amount: '3645.125', visits: 9, amountMissing: 1 },
     engine: { activeContracts: 12, withoutSchedule: 0 },
   },
-  invoices: { paid: UNAVAILABLE, unpaid: UNAVAILABLE, paidTotal: UNAVAILABLE, module: { issued: 14, cancelled: 1, paymentTracked: false } },
+  invoices: { paid: { count: 3 }, unpaid: { count: 8, amount: '640.500' }, paidTotal: { amount: '240.000' }, module: { issued: 14, cancelled: 1 } },
   expiry: {
     renewalsInstalled: true,
     bands: [
@@ -111,7 +110,7 @@ describe('AMC Management page', () => {
     expect(within(card('Contract KPIs', 'Active AMC')).getByText(/2 past validity/)).toBeInTheDocument()
     expect(within(card('Contract KPIs', 'Total AMC Value')).getByText('8,010.500')).toBeInTheDocument()
     expect(within(card('Contract KPIs', 'Total Final Credit')).getByText('300.501')).toBeInTheDocument()
-    expect(within(card('Contract KPIs', 'Total Final Credit')).getByText(/meaning not confirmed/)).toBeInTheDocument()
+    expect(within(card('Contract KPIs', 'Total Final Credit')).getByText(/Final Credit Value as entered/)).toBeInTheDocument()
     expect(within(card('Contract KPIs', 'Expiring within 45 days')).getByText('3')).toBeInTheDocument()
     expect(within(card('Contract KPIs', 'Expiring within 45 days')).getByText(/1 with a renewal/)).toBeInTheDocument()
 
@@ -122,13 +121,12 @@ describe('AMC Management page', () => {
     expect(within(card('Schedule KPIs', 'Current Scheduled Value')).getByText(/9 visits, 1 without an amount/)).toBeInTheDocument()
     expect(within(card('Schedule KPIs', 'Schedule Engine Status')).getByText('In sync')).toBeInTheDocument()
 
-    // Payment is not recorded: never shown as a number.
-    for (const label of ['Paid Invoices', 'Unpaid Invoices', 'Paid Invoice Total']) {
-      expect(within(card('Invoice KPIs', label)).getByText('Not available')).toBeInTheDocument()
-      expect(within(card('Invoice KPIs', label)).getByText('Payment is not recorded in STSLV AMC.')).toBeInTheDocument()
-    }
+    // The reference status from the manual Invoice No.
+    expect(within(card('Invoice KPIs', 'Paid Invoices')).getByText('3')).toBeInTheDocument()
+    expect(within(card('Invoice KPIs', 'Unpaid Invoices')).getByText(/640\.500/)).toBeInTheDocument()
+    expect(within(card('Invoice KPIs', 'Paid Invoice Total')).getByText('240.000')).toBeInTheDocument()
     expect(within(card('Invoice KPIs', 'Invoice Module Status')).getByText('Tracking')).toBeInTheDocument()
-    expect(within(card('Invoice KPIs', 'Invoice Module Status')).getByText(/14 issued invoices · 1 cancelled · payment not recorded/)).toBeInTheDocument()
+    expect(within(card('Invoice KPIs', 'Invoice Module Status')).getByText(/14 issued invoices · 1 cancelled · Zoho records/)).toBeInTheDocument()
   })
 
   it('reports active contracts without a schedule as needing attention', async () => {
@@ -139,7 +137,7 @@ describe('AMC Management page', () => {
     expect(within(card('Schedule KPIs', 'Schedule Engine Status')).getByText(/2 of 12 active contracts have no scheduled visits/)).toBeInTheDocument()
   })
 
-  it('offers the top-level actions as links to the existing modules, and Reports as not built', async () => {
+  it('offers the top-level actions as links to the existing modules, including Reports', async () => {
     managementApi(ADMIN)
     renderApp('/amc/management')
 
@@ -147,8 +145,7 @@ describe('AMC Management page', () => {
     expect(within(banner).getByRole('link', { name: 'Schedule Engine' })).toHaveAttribute('href', '/amc/schedule')
     expect(within(banner).getByRole('link', { name: 'Invoices' })).toHaveAttribute('href', '/invoices')
     expect(within(banner).getByRole('link', { name: 'Alerts' })).toHaveAttribute('href', '/notifications')
-    expect(within(banner).queryByRole('link', { name: /Reports/ })).not.toBeInTheDocument()
-    expect(within(banner).getByText('Reports').closest('[aria-disabled="true"]')).not.toBeNull()
+    expect(within(banner).getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports')
 
     await userEvent.click(within(banner).getByRole('button', { name: '+ New AMC' }))
     expect(await screen.findByRole('dialog', { name: 'Add AMC Contract' })).toBeInTheDocument()
@@ -355,5 +352,32 @@ describe('permissions', () => {
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'AMC Management' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Reports and Accounts links', () => {
+  it('links Reports only with its permission, and the Paid cards to Accounts', async () => {
+    managementApi(ADMIN)
+    renderApp('/amc/management')
+
+    const banner = (await screen.findByRole('heading', { level: 1, name: 'AMC Management' })).closest('.app-banner') as HTMLElement
+    expect(within(banner).getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports')
+    expect(screen.queryByText('(not built yet)')).not.toBeInTheDocument()
+
+    await waitFor(() => expect(within(card('Invoice KPIs', 'Paid Invoices')).getByRole('link', { name: 'Accounts' })).toHaveAttribute('href', '/finance/accounts'))
+    expect(within(card('Invoice KPIs', 'Unpaid Invoices')).getByRole('link', { name: 'Accounts' })).toHaveAttribute('href', '/finance/accounts')
+    expect(within(card('Invoice KPIs', 'Paid Invoice Total')).getByRole('link', { name: 'Accounts' })).toHaveAttribute('href', '/finance/accounts')
+    expect(within(card('Invoice KPIs', 'Invoice Module Status')).getByRole('link', { name: 'Invoice Tracking' })).toHaveAttribute('href', '/invoices')
+    expect(document.body.textContent).not.toMatch(/figures are unavailable/)
+  })
+
+  it('shows neither link without the permission', async () => {
+    managementApi({ ...CONTRACTS_ONLY, permissions: ['AMC_CONTRACTS:VIEW', 'INVOICES:VIEW'] })
+    renderApp('/amc/management')
+
+    const banner = (await screen.findByRole('heading', { level: 1, name: 'AMC Management' })).closest('.app-banner') as HTMLElement
+    expect(within(banner).queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument()
+    await waitFor(() => expect(within(card('Invoice KPIs', 'Paid Invoices')).getByText('3')).toBeInTheDocument())
+    expect(within(card('Invoice KPIs', 'Paid Invoices')).queryByRole('link', { name: 'Accounts' })).not.toBeInTheDocument()
   })
 })

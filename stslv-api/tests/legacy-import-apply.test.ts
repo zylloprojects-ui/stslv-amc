@@ -237,8 +237,11 @@ describe("import", () => {
       "SELECT (SELECT count(*)::int FROM invoices) AS invoices, (SELECT count(*)::int FROM invoice_allocations) AS allocations"
     );
     const columns = await pool.query(
-      "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name IN ('projects', 'amc_visits') AND column_name ILIKE '%invoice%'"
+      "SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name IN ('projects', 'amc_visits') AND column_name ILIKE '%invoice%' AND column_name NOT LIKE 'manual\\_invoice\\_%'"
     );
+    // The manual Invoice No. columns (0100) exist, but an import never fills them: only a person marks a service Paid.
+    const paid = await one<{ n: number }>("SELECT count(*)::int AS n FROM amc_visits WHERE manual_invoice_no IS NOT NULL");
+    expect(paid.n).toBe(0);
     const references = await one<{ with_cell: number; shared: number; marker: number }>(
       `SELECT count(*) FILTER (WHERE invoice_reference->>'rawCell' IS NOT NULL)::int AS with_cell,
               count(*) FILTER (WHERE invoice_reference->>'classification' = 'INVOICE_ON_MULTIPLE_JOBS_CROSS_CLIENT')::int AS shared,

@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { ACTIONS, MODULES, type PermissionSection, type Role, type SessionUser, type User } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply } from './helpers'
 
+/** The Users page asks for one page of the list; other pages ask for the whole list. */
+const usersReply = (query: URLSearchParams, list: User[]) => (query.has('page') ? ok({ items: list, total: list.length, pendingTotal: list.filter((entry) => entry.approvalStatus === 'PENDING').length, page: 1, pageSize: 25 }) : ok(list))
+
 const ROLES: Role[] = [
   {
     id: '1',
@@ -44,7 +47,7 @@ function usersApi(user: SessionUser = ADMIN, onReset: ResetReply = () => ok(null
 
   return mockApi((request) => {
     if (request.path === '/auth/me') return ok({ user })
-    if (request.method === 'GET' && request.path === '/users') return ok(users)
+    if (request.method === 'GET' && request.path === '/users') return usersReply(request.query, users)
     if (request.method === 'GET' && request.path === '/roles') return ok({ roles: ROLES, modules: MODULES, actions: ACTIONS })
     if (request.method === 'POST' && request.path === '/users') {
       const body = request.body as { email: string; fullName: string; roleIds: string[] }
@@ -326,7 +329,7 @@ describe('sign-up requests', () => {
 
     return mockApi((request) => {
       if (request.path === '/auth/me') return ok({ user })
-      if (request.method === 'GET' && request.path === '/users') return ok(users)
+      if (request.method === 'GET' && request.path === '/users') return usersReply(request.query, users)
       if (request.method === 'GET' && request.path === '/roles') return ok({ roles: ROLES, modules: MODULES, actions: ACTIONS })
       if (request.method === 'PUT' && request.path === '/users/7/roles') {
         const { roleIds } = request.body as { roleIds: string[] }
@@ -595,7 +598,7 @@ describe('roles and permissions drawn from the permission catalog', () => {
 
     return mockApi((request) => {
       if (request.path === '/auth/me') return ok({ user: ADMIN })
-      if (request.method === 'GET' && request.path === '/users') return ok(USERS)
+      if (request.method === 'GET' && request.path === '/users') return usersReply(request.query, USERS)
       if (request.method === 'GET' && request.path === '/roles') {
         return ok({
           roles: [ROLES[0], accountant],
@@ -737,7 +740,7 @@ describe('rejecting a sign-up request', () => {
 
     return mockApi((request) => {
       if (request.path === '/auth/me') return ok({ user: options.user ?? ADMIN })
-      if (request.method === 'GET' && request.path === '/users') return ok(users)
+      if (request.method === 'GET' && request.path === '/users') return usersReply(request.query, users)
       if (request.method === 'GET' && request.path === '/roles') return ok({ roles: ROLES, modules: MODULES, actions: ACTIONS })
 
       const match = /^\/users\/(\d+)\/reject$/.exec(request.path)
@@ -876,7 +879,7 @@ describe('rejecting a sign-up request', () => {
     await screen.findByRole('table', { name: 'Users' })
 
     expect(screen.getAllByText('Pending approval')).toHaveLength(2)
-    expect(screen.getByText('Rejected')).toBeInTheDocument()
+    expect(within(screen.getByRole('table', { name: 'Users' })).getByText('Rejected')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^(Reject|Approve) / })).not.toBeInTheDocument()
   })
 })

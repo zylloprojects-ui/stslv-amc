@@ -12,11 +12,10 @@ export const COLUMN_IDS = [
   'frequency',
   'service',
   'scheduledMonth',
-  'visitValue',
   'serviceStatus',
   'serviceReportNo',
+  'visitValue',
   'invoiceNo',
-  'payment',
   'salesEngineer',
 ] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
@@ -27,11 +26,10 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   frequency: 'Frequency',
   service: 'Service',
   scheduledMonth: 'Scheduled Month',
-  visitValue: 'Visit Value',
+  visitValue: 'Value (Ex VAT, OMR)',
   serviceStatus: 'Service Status',
   serviceReportNo: 'Service Report No.',
   invoiceNo: 'Invoice No.',
-  payment: 'Paid / Unpaid',
   salesEngineer: 'Sales Engineer',
 }
 

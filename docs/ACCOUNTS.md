@@ -1,13 +1,17 @@
 # Accounts
 
-Route: `/finance/accounts` (navigation: Finance → Accounts).
-API: `GET /api/accounts`, `GET /api/accounts/options`, `GET /api/accounts/export` (all read-only).
+> **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
+
+Route: `/finance/accounts` (navigation: AMC Operations → Accounts, the written specification's module order).
+API: `GET /api/accounts`, `GET /api/accounts/options`, `GET /api/accounts/export` (these read; the Invoice No. field saves through `PATCH /api/amc/visits/:id/manual-invoice`).
 Status: built 2026-10-28 on branch `feature/accounts-reconciliation`. No migration of its own; needs migration 0077.
 
-Accounts is a read-only **billing reconciliation** with one row per scheduled maintenance visit
+Accounts is a **billing reconciliation**, editable only where the Invoice No. field is, with one row per scheduled maintenance visit
 (`amc_visits`), never one per contract. It shows, for each visit, whether the service is completed,
 its service report number and the invoice numbers recorded against it. It reads the same records
-as Service Status, Master AMC Status and Invoice Tracking. Nothing on the page writes.
+as Service Status, Master AMC Status and Invoice Tracking. Entering or clearing the Invoice No. (`INVOICES:EDIT`) is the page's own write; "Record Zoho invoice" uses Invoice Tracking's API.
+
+Filters include **AMC Contract** (`contractId`, options from `GET /api/accounts/options`); cards, rows and export follow it and the export header names the contract.
 
 ## Sources of truth (nothing is copied)
 
@@ -63,7 +67,9 @@ Month, Year, Invoice Status, Service Status. Applied with **Apply**, cleared wit
 ## Columns and actions
 
 `#`, AMC Reference (link to the contract), Client, System, Frequency, Service, Scheduled Month,
-Visit Value, Service Status, Service Report No., Invoice No., Paid / Unpaid, Sales Engineer, Actions.
+Service Status, Service Report No., Visit Value, Invoice No., Sales Engineer, Actions. This is the written
+specification's order. The former Paid / Unpaid column, which could only ever say "Not available", was removed from
+the page and the export on 2026-10-31; the API field `paymentStatus` stays `NOT_AVAILABLE`.
 Every column except AMC Reference and Actions can be hidden (stored per user in this browser).
 
 Actions: **View** (contract, needs `AMC_CONTRACTS:VIEW`); **Record invoice** on Blue rows for users
@@ -84,8 +90,8 @@ any inline save (see questions).
 
 | Part | Needs |
 |---|---|
-| Page, navigation item, list and options | `AMC_SCHEDULE:VIEW` **and** `INVOICES:VIEW` |
-| Excel / PDF download | the above, plus `INVOICES:EXPORT` |
+| Page, navigation item, list and options | `ACCOUNTS:VIEW` |
+| Excel / PDF download | the above, plus `ACCOUNTS:EXPORT` |
 
 Seeded roles: Admin, Accountant and Invoicing can view; Execution (no invoice view) and Procurement
 (no AMC access) cannot; only Admin can download. No permission was added.

@@ -112,14 +112,14 @@ describe('contract page', () => {
     expect(page.getByText('Test Hotel One')).toBeInTheDocument()
     expect(page.getByText('FIRE')).toBeInTheDocument()
     expect(page.getByText('Test Engineer')).toBeInTheDocument()
-    expect(page.getByText('Quarterly')).toBeInTheDocument()
+    expect(page.getAllByText('Quarterly')[0]!).toBeInTheDocument()
     expect(page.getByText('Active')).toBeInTheDocument()
     expect(page.getByText('01 Jan 2027 – 31 Dec 2027')).toBeInTheDocument()
 
     // The commercial figures.
     const figures = within(page.getByRole('region', { name: 'Contract figures' }))
     const row = (label: string) => figures.getByText(label).parentElement as HTMLElement
-    expect(row('Contract value')).toHaveTextContent('1,620.000')
+    expect(row('AMC Value / Year')).toHaveTextContent('1,620.000')
     expect(row('Default visit amount')).toHaveTextContent('405.000')
     expect(row('Final credit')).toHaveTextContent('1,500.000')
 

@@ -12,7 +12,6 @@ import { ACCOUNTANT, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply
 // The AMC Operations Dashboard. The API is mocked: every figure here is a
 // fixture, and each test checks that the page shows exactly what the API sent.
 
-const UNAVAILABLE = { available: false as const, reason: 'Payment is not recorded in STSLV AMC. Invoices are tracked as Issued or Cancelled only, with no paid date or paid amount.' }
 
 const OPERATIONS: OperationsDashboard = {
   asOf: '2026-10-27',
@@ -29,8 +28,7 @@ const OPERATIONS: OperationsDashboard = {
       expiringSoonWithRenewal: 1,
     },
     services: { thisMonth: 9, completedThisMonth: 4, openThisMonth: 5 },
-    unpaidInvoices: UNAVAILABLE,
-    paidThisMonth: UNAVAILABLE,
+    payments: { paid: 3, paidValue: '240.000', unpaid: 8, unpaidValue: '640.500', paidThisMonth: 2, paidThisMonthValue: '160.000' },
   },
   portfolio: {
     total: 16,
@@ -72,7 +70,16 @@ const OPERATIONS: OperationsDashboard = {
     upcomingTotal: 1,
     upcomingDays: 7,
   },
-  payments: UNAVAILABLE,
+  paymentTrend: {
+    months: [
+      { month: '2026-06', count: 0, value: '0.000' },
+      { month: '2026-07', count: 0, value: '0.000' },
+      { month: '2026-08', count: 0, value: '0.000' },
+      { month: '2026-09', count: 0, value: '0.000' },
+      { month: '2026-10', count: 1, value: '80.000' },
+      { month: '2026-11', count: 2, value: '160.000' },
+    ],
+  },
 }
 
 const SUMMARY = {
@@ -193,13 +200,13 @@ describe('KPI cards', () => {
     expect(await within(active).findByText('12')).toBeInTheDocument()
     expect(within(active).getByText(/2 past validity/)).toBeInTheDocument()
 
-    const value = await kpiCard('Active AMC Value')
+    const value = await kpiCard('Annual AMC Value (OMR)')
     expect(within(value).getByText('8,010.500')).toBeInTheDocument()
-    expect(within(value).getByTitle(/not annualised/)).toBeInTheDocument()
+    expect(within(value).getByTitle(/may be whole-term amounts/)).toBeInTheDocument()
 
-    const credit = await kpiCard('Total Final Credit')
+    const credit = await kpiCard('Total Credit (OMR)')
     expect(within(credit).getByText('300.501')).toBeInTheDocument()
-    expect(within(credit).getByTitle(/meaning not yet confirmed, not revenue/)).toBeInTheDocument()
+    expect(within(credit).getByTitle(/Final Credit Value as entered/)).toBeInTheDocument()
 
     const services = await kpiCard('Services This Month')
     expect(within(services).getByText('9')).toBeInTheDocument()
@@ -211,22 +218,22 @@ describe('KPI cards', () => {
     expect(kpiOrder()).toEqual(['active', 'value', 'credit', 'services', 'unpaid', 'paid', 'expiring'])
   })
 
-  it('shows unpaid and paid invoices as not available, never as a number', async () => {
+  it('shows Unpaid Invoices and Paid This Month from the reference status, with what Paid means', async () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    for (const label of ['Unpaid Invoices', 'Paid This Month']) {
-      const card = await kpiCard(label)
+    const unpaid = await kpiCard('Unpaid Invoices')
+    expect(await within(unpaid).findByText('8')).toBeInTheDocument()
+    expect(within(unpaid).getByText(/640\.500 scheduled value/)).toBeInTheDocument()
 
-      expect(await within(card).findByText('Not available')).toBeInTheDocument()
-      expect(within(card).getByText(/Payment is not recorded/)).toBeInTheDocument()
-      expect(within(card).queryByText(/^\d/)).not.toBeInTheDocument()
-    }
+    const paid = await kpiCard('Paid This Month')
+    expect(await within(paid).findByText('2')).toBeInTheDocument()
+    expect(within(paid).getByText(/160\.000 · reference status/)).toBeInTheDocument()
   })
 
   it('shows a role only the KPIs its permissions allow, and only what the API returned', async () => {
     dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']), {
-      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, unpaidInvoices: null, paidThisMonth: null }, portfolio: null, expiring: null, payments: null }),
+      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, payments: null }, portfolio: null, expiring: null, paymentTrend: null }),
     })
     renderApp('/dashboard')
 
@@ -273,7 +280,7 @@ describe('KPI layout preferences', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
     await userEvent.click(screen.getByRole('button', { name: 'Move Active AMC later' }))
     expect(kpiOrder().slice(0, 2)).toEqual(['value', 'active'])
-    expect(screen.getByRole('button', { name: 'Move Active AMC Value earlier' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Move Annual AMC Value (OMR) earlier' })).toBeDisabled()
 
     expect(JSON.parse(localStorage.getItem('stslev.dashboard.kpi-order.1') ?? '[]').slice(0, 2)).toEqual(['value', 'active'])
 
@@ -286,6 +293,19 @@ describe('KPI layout preferences', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Layout' }))
     expect(kpiOrder().slice(0, 2)).toEqual(['active', 'value'])
     expect(localStorage.getItem('stslev.dashboard.kpi-order.1')).toBeNull()
+  })
+
+  it('renames a card without changing its figure, and resets the name', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+    const card = await kpiCard('Services This Month')
+    const figure = await within(card).findByText('9')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
+    await userEvent.type(screen.getByLabelText('Display name for Services This Month'), 'Visits Due')
+    expect(await kpiCard('Visits Due')).toContainElement(figure)
+    await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Names' }))
+    expect(await kpiCard('Services This Month')).toBeInTheDocument()
   })
 
   it('moves a card past the ones the user cannot see', async () => {
@@ -323,17 +343,20 @@ describe('maintenance calendar', () => {
 
     const details = within(panel).getByRole('region', { name: 'Service details' })
     expect(await within(details).findByText('Quarterly')).toBeInTheDocument()
-    expect(within(details).getByRole('link', { name: 'Contract record 41' })).toHaveAttribute('href', '/amc/contracts/41')
+    expect(within(details).getByRole('link', { name: 'AMC-0041' })).toHaveAttribute('href', '/amc/contracts/41')
     expect(within(details).getByText('R. Engineer')).toBeInTheDocument()
     expect(within(details).getByText('405.125')).toBeInTheDocument()
     expect(within(details).getByText('Invoiced')).toBeInTheDocument()
+    expect(within(details).getByText('Zoho invoices')).toBeInTheDocument()
     expect(await within(details).findByText('INV-0091')).toBeInTheDocument()
-    expect(within(details).getByText('Not tracked in STSLV AMC')).toBeInTheDocument()
+    expect(within(details).getByText('Invoice No.')).toBeInTheDocument()
+    expect(within(details).getByText('None entered')).toBeInTheDocument()
+    expect(within(details).getByText('Unpaid')).toBeInTheDocument()
   })
 
   it('does not ask for invoice numbers without Invoice Tracking access', async () => {
     const api = dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']), {
-      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, unpaidInvoices: null, paidThisMonth: null }, portfolio: null, expiring: null, payments: null }),
+      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, payments: null }, portfolio: null, expiring: null, paymentTrend: null }),
     })
     renderApp('/dashboard')
 
@@ -401,13 +424,14 @@ describe('charts and widgets', () => {
     expect(within(panel).getByRole('link', { name: 'Schedule →' })).toHaveAttribute('href', '/amc/schedule')
   })
 
-  it('says the payment trend is not available instead of drawing zeros', async () => {
+  it('draws the payment trend from the API and says Paid is a reference status', async () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
     const panel = (await screen.findByRole('heading', { name: 'Payment Trend' })).closest('section') as HTMLElement
-    expect(within(panel).getByText('Payment data not available')).toBeInTheDocument()
-    expect(within(panel).queryByRole('img')).not.toBeInTheDocument()
+    expect(within(panel).getByText('160.000')).toBeInTheDocument()
+    expect(within(panel).getByText('2026-11')).toBeInTheDocument()
+    expect(within(panel).getByText(/does not verify that money was received/)).toBeInTheDocument()
   })
 
   it('breaks the portfolio down by every status with the API’s percentages', async () => {
@@ -450,7 +474,7 @@ describe('charts and widgets', () => {
 })
 
 describe('recent invoices', () => {
-  const panel = async () => (await screen.findByRole('heading', { name: 'Recent Invoices' })).closest('section') as HTMLElement
+  const panel = async () => (await screen.findByRole('heading', { name: 'Recent Invoices (Zoho)' })).closest('section') as HTMLElement
 
   it('lists invoices without a paid date, pages through them, and links to Invoice Tracking', async () => {
     const api = dashboardApi(ADMIN)
@@ -458,7 +482,6 @@ describe('recent invoices', () => {
 
     const section = await panel()
     expect(await within(section).findByText('INV-0091')).toBeInTheDocument()
-    expect(within(section).getAllByText('Not tracked')).toHaveLength(2)
     expect(within(section).getAllByText('420.000')).toHaveLength(2)
     expect(within(section).getByRole('link', { name: 'Open Invoice Tracking →' })).toHaveAttribute('href', '/invoices')
 
@@ -488,11 +511,10 @@ describe('recent invoices', () => {
     const section = await panel()
     await within(section).findByText('INV-0091')
     await userEvent.click(within(section).getByText('Columns'))
-    await userEvent.click(within(section).getByRole('checkbox', { name: 'Paid on' }))
+    await userEvent.click(within(section).getByRole('checkbox', { name: 'Status' }))
 
-    expect(within(section).queryByRole('columnheader', { name: 'Paid on' })).not.toBeInTheDocument()
-    expect(within(section).queryByText('Not tracked')).not.toBeInTheDocument()
-    expect(JSON.parse(localStorage.getItem('stslev.dashboard.columns.recent-invoices.1') ?? '[]')).toEqual(['paid'])
+    expect(within(section).queryByRole('columnheader', { name: 'Status' })).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem('stslev.dashboard.columns.recent-invoices.1') ?? '[]')).toEqual(['status'])
   })
 
   it('offers Excel and PDF only with the export permission, using the current filters', async () => {
@@ -517,12 +539,12 @@ describe('recent invoices', () => {
   })
 
   it('is not shown without Invoice Tracking access', async () => {
-    const api = dashboardApi(ACCOUNTANT, { operations: () => ok({ ...OPERATIONS, kpis: { contracts: null, services: null, unpaidInvoices: null, paidThisMonth: null }, portfolio: null, expiring: null, workload: null, schedule: null, payments: null }) })
+    const api = dashboardApi(ACCOUNTANT, { operations: () => ok({ ...OPERATIONS, kpis: { contracts: null, services: null, payments: null }, portfolio: null, expiring: null, workload: null, schedule: null, payments: null }) })
     renderApp('/dashboard')
 
     await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
     await screen.findByText(/Figures as of/)
-    expect(screen.queryByRole('heading', { name: 'Recent Invoices' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Recent Invoices (Zoho)' })).not.toBeInTheDocument()
     expect(api.find('GET', '/invoices')).toHaveLength(0)
   })
 })
@@ -533,7 +555,7 @@ describe('production readiness', () => {
     renderApp('/dashboard')
 
     await kpiCard('Active AMC')
-    await screen.findByRole('heading', { name: 'Recent Invoices' })
+    await screen.findByRole('heading', { name: 'Recent Invoices (Zoho)' })
     expect(screen.queryByRole('heading', { name: 'Production Readiness' })).not.toBeInTheDocument()
     expect(api.find('GET', '/dashboard/readiness')).toHaveLength(0)
   })
@@ -545,7 +567,7 @@ describe('module figures', () => {
     renderApp('/dashboard')
 
     await kpiCard('Active AMC')
-    await screen.findByRole('heading', { name: 'Recent Invoices' })
+    await screen.findByRole('heading', { name: 'Recent Invoices (Zoho)' })
     expect(screen.queryByRole('region', { name: 'Waiting for an invoice and other figures' })).not.toBeInTheDocument()
     for (const label of ['Active Clients', 'Visits Due', 'Ready for Invoice', 'Tracked Expenses', 'Invoices Recorded', 'Ready-for-Invoice Value']) {
       expect(screen.queryByRole('heading', { name: label, level: 3 })).not.toBeInTheDocument()
@@ -578,5 +600,27 @@ describe('a metric with no data source', () => {
 
     expect(within(card).getByText('Not yet available')).toBeInTheDocument()
     expect(card.textContent).not.toMatch(/\d/)
+  })
+})
+
+describe('references and the Expiry report', () => {
+  it('shows the AMC reference and links Expiring Contracts to the report with the Reports permission', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    const panel = (await screen.findByRole('heading', { name: 'Expiring Contracts' })).closest('section') as HTMLElement
+    expect(within(panel).getByRole('link', { name: 'AMC-0041' })).toHaveAttribute('href', '/amc/contracts/41')
+    expect(within(panel).queryByText(/^Record /)).not.toBeInTheDocument()
+    expect(within(panel).getByRole('link', { name: /Expiry report/ })).toHaveAttribute('href', '/reports?report=expiry-renewal')
+    expect(screen.getByText(/Contracts, scheduled maintenance, invoicing and renewals at a glance\./)).toBeInTheDocument()
+  })
+
+  it('keeps the AMC Contracts link without the Reports permission', async () => {
+    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_CONTRACTS:VIEW']))
+    renderApp('/dashboard')
+
+    const panel = (await screen.findByRole('heading', { name: 'Expiring Contracts' })).closest('section') as HTMLElement
+    expect(within(panel).queryByRole('link', { name: /Expiry report/ })).not.toBeInTheDocument()
+    expect(within(panel).getByRole('link', { name: /AMC Contracts/ })).toHaveAttribute('href', '/amc/contracts')
   })
 })

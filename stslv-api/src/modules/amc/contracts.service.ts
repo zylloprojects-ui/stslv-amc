@@ -8,6 +8,8 @@ import type { AuthContext } from "../auth/access";
 import { featureUnavailable } from "../../middleware/require-schema";
 import { schemaHas } from "../../shared/schema-features";
 import { assertContractNotInvoiced } from "../invoices/invoice-locks";
+import { clientCode } from "../clients/clients.service";
+import { amountForService, expectedTermTotal, serviceAmounts, servicesPerCycle, subtractMoney } from "./amc.billing";
 import { applyContractMasters } from "./contract-masters.service";
 import { CONTRACT_TRANSITIONS, MAX_CONTRACT_YEARS, type ContractStatus, type VisitStatus } from "./amc.constants";
 import {
@@ -28,6 +30,7 @@ import type {
   ListContractsQuery,
   SchedulePreviewQuery,
   UpdateContractInput,
+  BillingBasis,
 } from "./amc.schemas";
 
 interface ContractRow {
@@ -42,6 +45,8 @@ interface ContractRow {
   description: string | null;
   contract_value: string;
   final_credit: string | null;
+  billing_basis: BillingBasis | null;
+  custom_billing_value: string | null;
   maintenance_frequency: string;
   custom_months: number[] | null;
   default_visit_amount: string | null;
@@ -51,6 +56,11 @@ interface ContractRow {
   notes: string | null;
   created_at: Date;
   updated_at: Date;
+  created_by_id: string | null;
+  created_by_name: string | null;
+  updated_by_id: string | null;
+  updated_by_name: string | null;
+  first_service_date: string | null;
   visit_count: number;
   completed_count: number;
   open_count: number;
@@ -58,7 +68,8 @@ interface ContractRow {
   cancelled_count: number;
   amount_missing_count: number;
   scheduled_total: string;
-  value_difference: string;
+  generated_total: string;
+  frequency_interval_months: number | null;
 }
 
 export interface Contract {
@@ -73,6 +84,12 @@ export interface Contract {
   contractValue: string;
   /** Stored as entered. Its meaning is unconfirmed, so nothing is calculated from it. */
   finalCredit: string | null;
+  /** Which amount the contract is billed on (migration 0093). A record only: visit amounts do not read it. */
+  billingBasis: BillingBasis | null;
+  /** Entered by hand when the basis is CUSTOM. */
+  customBillingValue: string | null;
+  /** The stored amount the chosen basis names; null when no basis is set or the amount is empty. Nothing is calculated. */
+  selectedBillingAmount: string | null;
   /** A maintenance frequency code (migration 0076: the frequency master; before it, one of the four built-in codes). */
   maintenanceFrequency: string;
   /** The selected months (1 = January) of a contract on a custom frequency; empty otherwise. PROVISIONAL rule. */
@@ -90,7 +107,14 @@ export interface Contract {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Null on a record with no signed-in author, such as an imported contract. */
+  createdBy: { id: string; fullName: string } | null;
+  updatedBy: { id: string; fullName: string } | null;
   schedule: {
+    /** The earliest planned date of a visit that is neither cancelled nor historical. */
+    firstServiceDate: string | null;
+    /** Months between services; null for a custom frequency, which runs on selected months. */
+    intervalMonths: number | null;
     /** Visits that are not cancelled. */
     visitCount: number;
     completedCount: number;
@@ -102,11 +126,22 @@ export interface Contract {
     amountMissingCount: number;
     /** Sum of the visit amounts of the non-cancelled visits. */
     scheduledTotal: string;
+    /** The selected annual Billing Basis amount; null when no basis is selected. */
+    annualAmount: string | null;
+    /** Services in one annual cycle, from the maintenance frequency; null when the rule is unknown. */
+    servicesPerCycle: number | null;
+    /** The standard amount per service; null when no basis is selected. */
+    perServiceAmount: string | null;
+    /** What the generated visits of the whole term should add up to: annual amounts, partial years not prorated. Null when no basis is selected. */
+    expectedTermTotal: string | null;
+    /** Sum of the amounts of the visits that count against expectedTermTotal: not cancelled, not historical. */
+    generatedTotal: string;
     /**
-     * contractValue minus scheduledTotal. Shown for information only: no rule
-     * says the two must be equal, so a difference is never treated as an error.
+     * expectedTermTotal minus generatedTotal. Null when no basis is selected: whether
+     * a legacy contract value is annual or for the whole term is not recorded, so it is
+     * never compared. Shown for information; a difference is never treated as an error.
      */
-    valueDifference: string;
+    valueDifference: string | null;
   };
 }
 
@@ -122,24 +157,30 @@ export interface ScheduleChange {
 const contractSelect = (withMonths: boolean) => `
   SELECT c.id, c.client_id, cl.name AS client_name, cl.is_active AS client_is_active,
          c.responsible_engineer, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
-         c.system_description, c.description, c.contract_value, c.final_credit,
+         c.system_description, c.description, c.contract_value, c.final_credit, c.billing_basis, c.custom_billing_value,
          c.maintenance_frequency,
          ${withMonths ? "(SELECT array_agg(m.month::int ORDER BY m.month) FROM amc_contract_custom_months m WHERE m.amc_contract_id = c.id)" : "NULL::int[]"} AS custom_months,
          c.default_visit_amount, c.status,
          (c.valid_to < current_date) AS is_past_validity, c.schedule_cutover_date::text AS schedule_cutover_date,
          c.notes, c.created_at, c.updated_at,
-         s.visit_count, s.completed_count, s.open_count, s.historical_count, s.cancelled_count, s.amount_missing_count,
-         s.scheduled_total, (c.contract_value - s.scheduled_total)::numeric(16,3) AS value_difference
+         c.created_by AS created_by_id, cb.full_name AS created_by_name, c.updated_by AS updated_by_id, ub.full_name AS updated_by_name,
+         s.first_service_date, s.visit_count, s.completed_count, s.open_count, s.historical_count, s.cancelled_count, s.amount_missing_count,
+         s.scheduled_total, s.generated_total,
+         (SELECT mf.interval_months FROM maintenance_frequencies mf WHERE mf.code = c.maintenance_frequency) AS frequency_interval_months
   FROM amc_contracts c
   JOIN clients cl ON cl.id = c.client_id
+  LEFT JOIN users cb ON cb.id = c.created_by
+  LEFT JOIN users ub ON ub.id = c.updated_by
   CROSS JOIN LATERAL (
     SELECT count(*) FILTER (WHERE v.status <> 'CANCELLED')::int AS visit_count,
+           (min(v.scheduled_date) FILTER (WHERE v.status NOT IN ('CANCELLED', 'HISTORICAL')))::text AS first_service_date,
            count(*) FILTER (WHERE v.status = 'COMPLETED')::int AS completed_count,
            count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED'))::int AS open_count,
            count(*) FILTER (WHERE v.status = 'HISTORICAL')::int AS historical_count,
            count(*) FILTER (WHERE v.status = 'CANCELLED')::int AS cancelled_count,
            count(*) FILTER (WHERE v.status <> 'CANCELLED' AND v.visit_amount IS NULL)::int AS amount_missing_count,
-           COALESCE(sum(v.visit_amount) FILTER (WHERE v.status <> 'CANCELLED'), 0)::numeric(16,3) AS scheduled_total
+           COALESCE(sum(v.visit_amount) FILTER (WHERE v.status <> 'CANCELLED'), 0)::numeric(16,3) AS scheduled_total,
+           COALESCE(sum(v.visit_amount) FILTER (WHERE v.status NOT IN ('CANCELLED', 'HISTORICAL')), 0)::numeric(16,3) AS generated_total
     FROM amc_visits v
     WHERE v.amc_contract_id = c.id
   ) s`;
@@ -152,6 +193,10 @@ export const VISIT_LOCKED_SQL = `(
   v.status <> 'SCHEDULED'
   OR v.scheduled_date <> v.original_scheduled_date
   OR v.amount_is_custom
+  OR v.manual_invoice_no IS NOT NULL
+  OR v.service_report_no IS NOT NULL
+  OR v.quotation_no IS NOT NULL
+  OR v.color_override IS NOT NULL
   OR v.assigned_to IS NOT NULL
   OR v.work_performed IS NOT NULL
   OR v.execution_notes IS NOT NULL
@@ -168,6 +213,8 @@ const EDITABLE_FIELDS = [
   "description",
   "contractValue",
   "finalCredit",
+  "billingBasis",
+  "customBillingValue",
   "maintenanceFrequency",
   "customMonths",
   "defaultVisitAmount",
@@ -178,6 +225,36 @@ const SCHEDULE_FIELDS = ["validFrom", "validTo", "maintenanceFrequency", "custom
 
 /** The editable values of a contract, flat, as compared and logged on update. Custom months as "2,5,8,11". */
 type ContractValues = { [K in (typeof EDITABLE_FIELDS)[number]]: string | null };
+
+function selectedAmount(row: ContractRow): string | null {
+  return row.billing_basis === "CONTRACT_VALUE" ? row.contract_value : row.billing_basis === "FINAL_CREDIT" ? row.final_credit : row.billing_basis === "CUSTOM" ? row.custom_billing_value : null;
+}
+
+/** The contract's schedule rule from its own row, without a further query. Null when the rule is not known. */
+function ruleOf(row: ContractRow): ScheduleRule | null {
+  if (row.custom_months && row.custom_months.length > 0) return { kind: "months", months: row.custom_months };
+
+  return row.frequency_interval_months ? { kind: "interval", intervalMonths: row.frequency_interval_months } : null;
+}
+
+function billingFigures(row: ContractRow) {
+  const annualAmount = selectedAmount(row);
+  const rule = ruleOf(row);
+
+  if (annualAmount === null || rule === null) {
+    return { annualAmount, servicesPerCycle: rule ? servicesPerCycle(rule) : null, perServiceAmount: null, expectedTermTotal: null, valueDifference: null };
+  }
+
+  const expected = expectedTermTotal(annualAmount, row.valid_from, row.valid_to, rule, row.schedule_cutover_date);
+
+  return {
+    annualAmount,
+    servicesPerCycle: servicesPerCycle(rule),
+    perServiceAmount: serviceAmounts(annualAmount, servicesPerCycle(rule)).standard,
+    expectedTermTotal: expected,
+    valueDifference: subtractMoney(expected, row.generated_total),
+  };
+}
 
 function toContract(row: ContractRow): Contract {
   return {
@@ -190,6 +267,9 @@ function toContract(row: ContractRow): Contract {
     description: row.description,
     contractValue: row.contract_value,
     finalCredit: row.final_credit,
+    billingBasis: row.billing_basis,
+    customBillingValue: row.custom_billing_value,
+    selectedBillingAmount: selectedAmount(row),
     maintenanceFrequency: row.maintenance_frequency,
     customMonths: row.custom_months ?? [],
     defaultVisitAmount: row.default_visit_amount,
@@ -199,7 +279,11 @@ function toContract(row: ContractRow): Contract {
     notes: row.notes,
     createdAt: row.created_at.toISOString(),
     updatedAt: row.updated_at.toISOString(),
+    createdBy: row.created_by_id && row.created_by_name ? { id: row.created_by_id, fullName: row.created_by_name } : null,
+    updatedBy: row.updated_by_id && row.updated_by_name ? { id: row.updated_by_id, fullName: row.updated_by_name } : null,
     schedule: {
+      firstServiceDate: row.first_service_date,
+      intervalMonths: row.custom_months && row.custom_months.length > 0 ? null : row.frequency_interval_months,
       visitCount: row.visit_count,
       completedCount: row.completed_count,
       openCount: row.open_count,
@@ -207,7 +291,8 @@ function toContract(row: ContractRow): Contract {
       cancelledCount: row.cancelled_count,
       amountMissingCount: row.amount_missing_count,
       scheduledTotal: row.scheduled_total,
-      valueDifference: row.value_difference,
+      generatedTotal: row.generated_total,
+      ...billingFigures(row),
     },
   };
 }
@@ -222,11 +307,22 @@ function valuesOf(contract: Contract): ContractValues {
     description: contract.description,
     contractValue: contract.contractValue,
     finalCredit: contract.finalCredit,
+    billingBasis: contract.billingBasis,
+    customBillingValue: contract.customBillingValue,
     maintenanceFrequency: contract.maintenanceFrequency,
     customMonths: monthsKey(contract.customMonths),
     defaultVisitAmount: contract.defaultVisitAmount,
     notes: contract.notes,
   };
+}
+
+function assertBillingBasis(basis: BillingBasis | null, finalCredit: string | null, customValue: string | null): void {
+  if (basis === "CUSTOM" && customValue === null) {
+    throw validationError("Enter the custom billing value, or choose another billing basis.", [{ field: "customBillingValue", message: "This basis needs a custom billing value." }]);
+  }
+  if (basis === "FINAL_CREDIT" && finalCredit === null) {
+    throw validationError("Enter the final credit, or choose another billing basis.", [{ field: "billingBasis", message: "This basis needs a final credit amount." }]);
+  }
 }
 
 function assertValidity(validFrom: string, validTo: string): void {
@@ -330,8 +426,12 @@ export async function listContracts(query: ListContractsQuery) {
   }
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-  const total = await pool.query<{ count: number }>(
-    `SELECT count(*)::int AS count FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id ${where}`,
+  // The Filtered Total covers every contract the filters select, not only the page shown. PostgreSQL adds the amounts.
+  const total = await pool.query<{ count: number; contract_value: string; final_credit: string }>(
+    `SELECT count(*)::int AS count,
+            COALESCE(sum(c.contract_value), 0)::numeric(16,3) AS contract_value,
+            COALESCE(sum(c.final_credit), 0)::numeric(16,3) AS final_credit
+     FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id ${where}`,
     params
   );
   const rows = await pool.query<ContractRow>(
@@ -346,6 +446,7 @@ export async function listContracts(query: ListContractsQuery) {
     total: total.rows[0]?.count ?? 0,
     page: query.page,
     pageSize: query.pageSize,
+    totals: { contractValue: total.rows[0]?.contract_value ?? "0.000", finalCredit: total.rows[0]?.final_credit ?? "0.000" },
   };
 }
 
@@ -483,14 +584,41 @@ function planForTerms(current: Terms, proposed: Terms, existing: ExistingVisit[]
   return { ...plan, blockedReason };
 }
 
+/**
+ * The amount a NEW visit gets. With a Billing Basis: calculated from the annual
+ * amount. Without one: the manually entered Cost per Visit, unchanged. Existing
+ * visits are never touched here; only an explicit Regenerate recalculates them.
+ */
+function newVisitAmount(contract: Contract, rule: ScheduleRule, periodStart: string): string | null {
+  return contract.selectedBillingAmount === null
+    ? contract.defaultVisitAmount
+    : amountForService(contract.selectedBillingAmount, contract.validFrom, rule, periodStart);
+}
+
+function termsSnapshot(contract: Contract) {
+  return {
+    validFrom: contract.validFrom,
+    validTo: contract.validTo,
+    maintenanceFrequency: contract.maintenanceFrequency,
+    ...(contract.customMonths.length > 0 ? { customMonths: contract.customMonths } : {}),
+  };
+}
+
+function billingSnapshot(contract: Contract) {
+  return { billingBasis: contract.billingBasis, annualAmount: contract.selectedBillingAmount, defaultVisitAmount: contract.defaultVisitAmount };
+}
+
 /** Removes the untouched visits and inserts the missing ones. The contract row must already be locked. */
 async function applyPlan(
   db: Queryable,
   auth: AuthContext,
   contract: Contract,
   plan: SchedulePlan,
-  label: ResolvedTerms["label"]
+  terms: Pick<ResolvedTerms, "label" | "rule">,
+  /** Why the schedule is being updated, for its history. Null when the caller logs the change itself. */
+  reason: string | null
 ): Promise<ScheduleChange> {
+  const { label } = terms;
   if (plan.toRemove.length > 0) {
     // The locked condition is checked again in SQL: only a visit that is still
     // untouched at this moment is ever deleted.
@@ -521,17 +649,17 @@ async function applyPlan(
          (amc_contract_id, sequence_no, period_start, period_end, original_scheduled_date, scheduled_date,
           visit_amount, created_by, updated_by${labels ? ", cycle_no, service_code" : ""})
        SELECT $1, $2 + p.ordinality - 1, p.period_start, p.period_end, p.scheduled_date, p.scheduled_date,
-              $3::numeric(14,3), $4, $4${labels ? ", p.cycle_no, p.service_code" : ""}
-       FROM unnest($5::date[], $6::date[], $7::date[]${labels ? ", $8::int[], $9::text[]" : ""})
-         WITH ORDINALITY AS p (period_start, period_end, scheduled_date${labels ? ", cycle_no, service_code" : ""}, ordinality)`,
+              p.visit_amount, $3, $3${labels ? ", p.cycle_no, p.service_code" : ""}
+       FROM unnest($4::date[], $5::date[], $6::date[], $7::numeric(14,3)[]${labels ? ", $8::int[], $9::text[]" : ""})
+         WITH ORDINALITY AS p (period_start, period_end, scheduled_date, visit_amount${labels ? ", cycle_no, service_code" : ""}, ordinality)`,
       [
         contract.id,
         first,
-        contract.defaultVisitAmount,
         auth.user.id,
         plan.toCreate.map((period) => period.periodStart),
         plan.toCreate.map((period) => period.periodEnd),
         plan.toCreate.map((period) => period.scheduledDate),
+        plan.toCreate.map((period) => newVisitAmount(contract, terms.rule, period.periodStart)),
         ...(labels ? [labels.map((item) => item.cycleNo), labels.map((item) => item.serviceCode)] : []),
       ]
     );
@@ -539,7 +667,7 @@ async function applyPlan(
 
   const change = { created: plan.toCreate.length, removed: plan.toRemove.length, kept: plan.kept.length };
 
-  if (change.created > 0 || change.removed > 0) {
+  if (reason !== null && (change.created > 0 || change.removed > 0)) {
     await logActivity(db, {
       userId: auth.user.id,
       action: "amc_contract.schedule_generated",
@@ -548,12 +676,9 @@ async function applyPlan(
       entityId: contract.id,
       description: `Schedule updated: ${change.created} visit(s) added, ${change.removed} untouched visit(s) removed, ${change.kept} kept.`,
       metadata: {
-        terms: {
-          validFrom: contract.validFrom,
-          validTo: contract.validTo,
-          maintenanceFrequency: contract.maintenanceFrequency,
-          ...(contract.customMonths.length > 0 ? { customMonths: contract.customMonths } : {}),
-        },
+        reason,
+        ...billingSnapshot(contract),
+        terms: termsSnapshot(contract),
         created: plan.toCreate.map((period) => period.periodStart),
         removed: plan.toRemove.map((visit) => ({ id: visit.id, sequenceNo: visit.sequenceNo, periodStart: visit.periodStart })),
       },
@@ -564,7 +689,7 @@ async function applyPlan(
 }
 
 /** Brings an ACTIVE contract's visits in line with its stored terms. */
-async function syncSchedule(db: Queryable, auth: AuthContext, contract: Contract): Promise<ScheduleChange> {
+async function syncSchedule(db: Queryable, auth: AuthContext, contract: Contract, reason: string): Promise<ScheduleChange> {
   // The contract keeps its frequency even when it has since been disabled or archived.
   const terms = await resolveTerms(db, contract.maintenanceFrequency, contract.customMonths, false);
   const existing = await loadExistingVisits(db, contract.id, true);
@@ -574,7 +699,7 @@ async function syncSchedule(db: Queryable, auth: AuthContext, contract: Contract
     throw conflict(plan.blockedReason);
   }
 
-  return applyPlan(db, auth, contract, plan, terms.label);
+  return applyPlan(db, auth, contract, plan, terms, reason);
 }
 
 export interface SchedulePreview {
@@ -614,7 +739,10 @@ export async function previewSchedule(id: string, query: SchedulePreviewQuery): 
     toCreate: plan.toCreate.map((period) => {
       const label = terms.label?.(proposed.validFrom, period.periodStart) ?? null;
 
-      return { ...period, visitAmount: contract.defaultVisitAmount, cycleNo: label?.cycleNo ?? null, serviceCode: label?.serviceCode ?? null };
+      // The proposed terms decide where the annual cycles fall.
+      const visitAmount = newVisitAmount({ ...contract, validFrom: proposed.validFrom }, terms.rule, period.periodStart);
+
+      return { ...period, visitAmount, cycleNo: label?.cycleNo ?? null, serviceCode: label?.serviceCode ?? null };
     }),
     toRemove: plan.toRemove,
     keptCount: plan.kept.length,
@@ -634,9 +762,162 @@ export function generateSchedule(
       throw conflict("A schedule is generated only for an active contract. Activate the contract first.");
     }
 
-    const scheduleChange = await syncSchedule(client, auth, contract);
+    const scheduleChange = await syncSchedule(client, auth, contract, "Missing visits generated");
 
     return { contract: await findContract(client, id), scheduleChange };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Regenerate: the only way existing visit amounts are recalculated
+// ---------------------------------------------------------------------------
+
+/** Why a visit keeps its amount. The first that applies is shown. */
+const PRESERVED_REASON_SQL = `CASE
+    WHEN v.status = 'COMPLETED' THEN 'Completed'
+    WHEN v.status = 'HISTORICAL' THEN 'Historical'
+    WHEN v.status = 'CANCELLED' THEN 'Cancelled'
+    WHEN v.manual_invoice_no IS NOT NULL THEN 'Paid'
+    WHEN EXISTS (SELECT 1 FROM invoice_allocations al JOIN invoices i ON i.id = al.invoice_id
+                 WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED') THEN 'Zoho invoice recorded'
+    WHEN v.amount_is_custom THEN 'Amount set by hand'
+  END`;
+
+interface RegenerateRow {
+  id: string;
+  sequence_no: number;
+  period_start: string;
+  scheduled_date: string;
+  service_code: string | null;
+  visit_amount: string | null;
+  preserved_reason: string | null;
+}
+
+export interface RegeneratePreview {
+  canApply: boolean;
+  /** Why it cannot be applied; null when it can. */
+  blockedReason: string | null;
+  billingBasis: BillingBasis | null;
+  annualAmount: string | null;
+  servicesPerCycle: number | null;
+  perServiceAmount: string | null;
+  lastServiceAmount: string | null;
+  toCreate: number;
+  toRemove: number;
+  /** Visits whose amount would change. */
+  changes: { id: string; sequenceNo: number; serviceCode: string | null; scheduledDate: string; from: string | null; to: string }[];
+  /** Visits that keep their amount, and why. */
+  preserved: { id: string; sequenceNo: number; serviceCode: string | null; scheduledDate: string; amount: string | null; reason: string }[];
+  /** Visits already at the calculated amount. */
+  unchanged: number;
+}
+
+async function regenerationPlan(db: Queryable, contract: Contract, lock: boolean): Promise<{ preview: RegeneratePreview; terms: ResolvedTerms; plan: TermsPlan }> {
+  const terms = await resolveTerms(db, contract.maintenanceFrequency, contract.customMonths, false);
+  const plan = planForTerms(contract, contract, await loadExistingVisits(db, contract.id, lock), contract.scheduleCutoverDate, terms.rule);
+  const rows = await db.query<RegenerateRow>(
+    `SELECT v.id, v.sequence_no, v.period_start::text AS period_start, v.scheduled_date::text AS scheduled_date,
+            v.service_code, v.visit_amount, ${PRESERVED_REASON_SQL} AS preserved_reason
+     FROM amc_visits v
+     WHERE v.amc_contract_id = $1 AND NOT (v.id = ANY($2::bigint[]))
+     ORDER BY v.sequence_no`,
+    [contract.id, plan.toRemove.map((visit) => visit.id)]
+  );
+  const annual = contract.selectedBillingAmount;
+  const changes: RegeneratePreview["changes"] = [];
+  const preserved: RegeneratePreview["preserved"] = [];
+  let unchanged = 0;
+
+  for (const row of rows.rows) {
+    if (row.preserved_reason !== null) {
+      preserved.push({ id: row.id, sequenceNo: row.sequence_no, serviceCode: row.service_code, scheduledDate: row.scheduled_date, amount: row.visit_amount, reason: row.preserved_reason });
+    } else if (annual !== null) {
+      const to = amountForService(annual, contract.validFrom, terms.rule, row.period_start);
+
+      if (row.visit_amount === to) {
+        unchanged += 1;
+      } else {
+        changes.push({ id: row.id, sequenceNo: row.sequence_no, serviceCode: row.service_code, scheduledDate: row.scheduled_date, from: row.visit_amount, to });
+      }
+    }
+  }
+
+  const amounts = annual === null ? null : serviceAmounts(annual, servicesPerCycle(terms.rule));
+  let blockedReason = plan.blockedReason;
+
+  if (contract.status !== "ACTIVE") blockedReason = "A schedule is regenerated only for an active contract.";
+  else if (annual === null) blockedReason = "Select a Billing Basis first. A contract without one keeps its manually entered Cost per Visit.";
+
+  return {
+    terms,
+    plan,
+    preview: {
+      canApply: blockedReason === null,
+      blockedReason,
+      billingBasis: contract.billingBasis,
+      annualAmount: annual,
+      servicesPerCycle: servicesPerCycle(terms.rule),
+      perServiceAmount: amounts?.standard ?? null,
+      lastServiceAmount: amounts?.last ?? null,
+      toCreate: plan.toCreate.length,
+      toRemove: plan.toRemove.length,
+      changes,
+      preserved,
+      unchanged,
+    },
+  };
+}
+
+/** What Regenerate would do now. Changes nothing. */
+export async function previewRegeneration(id: string): Promise<RegeneratePreview> {
+  return (await regenerationPlan(pool, await findContract(pool, id), false)).preview;
+}
+
+/**
+ * Explicit, audited recalculation. Completed, Paid, Zoho-invoiced, historical,
+ * cancelled and hand-set visits keep their amounts. The old and new amount of
+ * every changed visit stay in the activity log.
+ */
+export function regenerateSchedule(auth: AuthContext, id: string, reason: string): Promise<{ contract: Contract; scheduleChange: ScheduleChange; recalculated: number; preserved: number; unchanged: number }> {
+  return withTransaction(async (client) => {
+    const contract = await findContract(client, id, true);
+    const { preview, terms, plan } = await regenerationPlan(client, contract, true);
+
+    if (preview.blockedReason) {
+      throw conflict(preview.blockedReason);
+    }
+
+    const scheduleChange = await applyPlan(client, auth, contract, plan, terms, null);
+
+    if (preview.changes.length > 0) {
+      await client.query(
+        `UPDATE amc_visits v SET visit_amount = c.amount, updated_by = $1
+         FROM unnest($2::bigint[], $3::numeric(14,3)[]) AS c (id, amount)
+         WHERE v.id = c.id`,
+        [auth.user.id, preview.changes.map((change) => change.id), preview.changes.map((change) => change.to)]
+      );
+    }
+
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: "amc_contract.schedule_regenerated",
+      module: "AMC_SCHEDULE",
+      entityType: "amc_contracts",
+      entityId: contract.id,
+      description: `Schedule regenerated: ${preview.changes.length} visit amount(s) recalculated, ${preview.preserved.length} preserved, ${scheduleChange.created} visit(s) added, ${scheduleChange.removed} untouched visit(s) removed. Reason: ${reason}`,
+      metadata: {
+        reason,
+        ...billingSnapshot(contract),
+        servicesPerCycle: preview.servicesPerCycle,
+        terms: termsSnapshot(contract),
+        created: plan.toCreate.map((period) => period.periodStart),
+        removed: plan.toRemove.map((visit) => ({ id: visit.id, sequenceNo: visit.sequenceNo, periodStart: visit.periodStart })),
+        recalculated: preview.changes.map((change) => ({ id: change.id, sequenceNo: change.sequenceNo, from: change.from, to: change.to })),
+        preserved: preview.preserved.map((visit) => ({ id: visit.id, sequenceNo: visit.sequenceNo, amount: visit.amount, reason: visit.reason })),
+      },
+    });
+
+    return { contract: await findContract(client, id), scheduleChange, recalculated: preview.changes.length, preserved: preview.preserved.length, unchanged: preview.unchanged };
   });
 }
 
@@ -696,7 +977,7 @@ async function assertRenewalEngineerChosen(db: Queryable, sourceId: string): Pro
   throw validationError("Select an active sales engineer for the renewal.", [{ field: "salesEngineerId", message }]);
 }
 
-async function linkRenewal(db: Queryable, auth: AuthContext, source: Contract, renewal: Contract): Promise<void> {
+async function linkRenewal(db: Queryable, auth: AuthContext, source: Contract, renewal: Contract, notes: string | null): Promise<void> {
   await db.query("UPDATE amc_contracts SET renewed_from_id = $1 WHERE id = $2", [source.id, renewal.id]);
   await logActivity(db, {
     userId: auth.user.id,
@@ -713,8 +994,8 @@ async function linkRenewal(db: Queryable, auth: AuthContext, source: Contract, r
     module: "AMC_CONTRACTS",
     entityType: "amc_contracts",
     entityId: renewal.id,
-    description: `Created as the renewal of the contract valid ${source.validFrom} to ${source.validTo}.`,
-    metadata: { renewedFromId: source.id },
+    description: `Created as the renewal of the contract valid ${source.validFrom} to ${source.validTo}.${notes ? ` Renewal notes: ${notes}` : ""}`,
+    metadata: { renewedFromId: source.id, ...(notes ? { renewalNotes: notes } : {}) },
   });
 }
 
@@ -733,7 +1014,7 @@ async function writeCustomMonths(db: Queryable, auth: AuthContext, contractId: s
 export function createContract(
   auth: AuthContext,
   input: CreateContractInput,
-  options: { renewedFromId?: string } = {}
+  options: { renewedFromId?: string; renewalNotes?: string | null } = {}
 ): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
   assertValidity(input.validFrom, input.validTo);
 
@@ -748,6 +1029,7 @@ export function createContract(
     if (source && !input.salesEngineerId) {
       await assertRenewalEngineerChosen(client, source.id);
     }
+    assertBillingBasis(input.billingBasis ?? null, input.finalCredit ?? null, input.customBillingValue ?? null);
     // A new contract or renewal may only choose an active frequency; custom months only for a custom one.
     const months = monthsOf(monthsKey(input.customMonths));
     await resolveTerms(client, input.maintenanceFrequency, months, true);
@@ -756,8 +1038,8 @@ export function createContract(
       `INSERT INTO amc_contracts
          (client_id, responsible_engineer, valid_from, valid_to, system_description, description,
           contract_value, final_credit, maintenance_frequency, default_visit_amount, status, notes,
-          created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+          created_by, updated_by, billing_basis, custom_billing_value)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13, $14, $15)
        RETURNING id`,
       [
         input.clientId,
@@ -773,6 +1055,8 @@ export function createContract(
         input.status,
         input.notes ?? null,
         auth.user.id,
+        input.billingBasis ?? null,
+        input.billingBasis === "CUSTOM" ? (input.customBillingValue ?? null) : null,
       ]
     );
     const id = (inserted.rows[0] as { id: string }).id;
@@ -791,13 +1075,13 @@ export function createContract(
     });
 
     if (source) {
-      await linkRenewal(client, auth, source, created);
+      await linkRenewal(client, auth, source, created, options.renewalNotes ?? null);
     }
     if (input.salesEngineerId) {
       await applyContractMasters(client, auth, id, { salesEngineerId: input.salesEngineerId });
     }
 
-    const scheduleChange = created.status === "ACTIVE" ? await syncSchedule(client, auth, created) : null;
+    const scheduleChange = created.status === "ACTIVE" ? await syncSchedule(client, auth, created, "Contract created") : null;
 
     return { ...(await findContract(client, id)), scheduleChange };
   });
@@ -827,6 +1111,10 @@ export function updateContract(
         afterValues[field] = value;
       }
     }
+
+    // A custom amount belongs to the custom basis only.
+    if (afterValues.billingBasis !== "CUSTOM") afterValues.customBillingValue = null;
+    assertBillingBasis(afterValues.billingBasis as BillingBasis | null, afterValues.finalCredit as string | null, afterValues.customBillingValue as string | null);
 
     // A change to a fixed frequency drops the months of the custom one it replaces.
     if (afterValues.maintenanceFrequency !== beforeValues.maintenanceFrequency && input.customMonths === undefined) {
@@ -872,7 +1160,7 @@ export function updateContract(
       `UPDATE amc_contracts
        SET client_id = $1, responsible_engineer = $2, valid_from = $3, valid_to = $4, system_description = $5,
            description = $6, contract_value = $7, final_credit = $8, maintenance_frequency = $9,
-           default_visit_amount = $10, notes = $11, updated_by = $12
+           default_visit_amount = $10, notes = $11, updated_by = $12, billing_basis = $14, custom_billing_value = $15
        WHERE id = $13`,
       [
         afterValues.clientId,
@@ -888,6 +1176,8 @@ export function updateContract(
         afterValues.notes,
         auth.user.id,
         id,
+        afterValues.billingBasis,
+        afterValues.customBillingValue,
       ]
     );
 
@@ -908,7 +1198,7 @@ export function updateContract(
         throw conflict(plan.blockedReason);
       }
 
-      scheduleChange = await applyPlan(client, auth, updated, plan, terms.label);
+      scheduleChange = await applyPlan(client, auth, updated, plan, terms, "Contract terms changed");
     }
 
     await logActivity(client, {
@@ -966,6 +1256,10 @@ export function changeContractStatus(
     if (!CONTRACT_TRANSITIONS[before.status].includes(input.status)) {
       throw conflict(`A ${before.status.toLowerCase()} contract cannot be changed to ${input.status.toLowerCase()}.`);
     }
+    // Cancellation is audited: the reason stays in the contract's history.
+    if (input.status === "CANCELLED" && !input.reason) {
+      throw validationError("Enter the reason for cancelling this contract.", [{ field: "reason", message: "Enter the reason for cancelling this contract." }]);
+    }
     // Reactivating a cancelled renewal (0072): its source may have been renewed again since.
     if (before.status === "CANCELLED" && (await schemaHas(["amc_contracts.renewed_from_id"]))) {
       await assertNoOtherOpenRenewal(client, id);
@@ -982,13 +1276,13 @@ export function changeContractStatus(
 
     if (input.status === "ACTIVE") {
       // Activation is what creates the schedule.
-      scheduleChange = await syncSchedule(client, auth, { ...before, status: "ACTIVE" });
+      scheduleChange = await syncSchedule(client, auth, { ...before, status: "ACTIVE" }, "Contract activated");
     } else if (input.cancelOpenVisits) {
       // Only on the user's explicit request. Visits in progress are left for a person to decide.
       const cancelled = await client.query(
         `UPDATE amc_visits
          SET status = 'CANCELLED', status_reason = $1, updated_by = $2
-         WHERE amc_contract_id = $3 AND status IN ('SCHEDULED', 'POSTPONED')`,
+         WHERE amc_contract_id = $3 AND status IN ('SCHEDULED', 'POSTPONED') AND manual_invoice_no IS NULL`,
         [input.reason ?? `Contract ${input.status.toLowerCase()}.`, auth.user.id, id]
       );
       cancelledVisits = cancelled.rowCount ?? 0;
@@ -1012,9 +1306,9 @@ export function changeContractStatus(
   });
 }
 
-/** Active clients, id and name only, for the contract form. */
-export async function listContractClientOptions(): Promise<{ id: string; name: string }[]> {
+/** Active clients, id, code and name only, for the contract form. The code is derived from the id. */
+export async function listContractClientOptions(): Promise<{ id: string; code: string; name: string }[]> {
   const result = await pool.query<{ id: string; name: string }>("SELECT id, name FROM clients WHERE is_active ORDER BY lower(name), id");
 
-  return result.rows;
+  return result.rows.map((row) => ({ id: row.id, code: clientCode(row.id), name: row.name }));
 }

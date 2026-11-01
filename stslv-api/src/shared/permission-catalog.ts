@@ -197,15 +197,15 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
       },
       {
         module: "SERVICES_SALES",
-        label: "Services Sales (Quotations)",
+        label: "Quotations",
         description: "Quotation numbers of completed visits.",
         pages: [
-          { label: "Services Sales", path: "/amc/services-sales" },
+          { label: "Quotations", path: "/amc/quotations" },
         ],
         actions: {
           VIEW: "See quotation numbers",
           EDIT: "Record quotation numbers",
-          EXPORT: "Export Services Sales",
+          EXPORT: "Export Quotations",
         },
       },
       {
@@ -310,6 +310,21 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
     ],
   },
   {
+    title: "Reporting",
+    modules: [
+      {
+        module: "REPORTS",
+        label: "Reports",
+        description: "The consolidated reports. Needs no other module's permission.",
+        pages: [{ label: "Reports", path: "/reports" }],
+        actions: {
+          VIEW: "Open Reports and read every report",
+          EXPORT: "Export a report to Excel or PDF",
+        },
+      },
+    ],
+  },
+  {
     title: "Retired modules",
     retired: true,
     modules: [
@@ -341,13 +356,6 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         pages: [],
         actions: { VIEW: "Read the historical import review through the API" },
       },
-      {
-        module: "REPORTS",
-        label: "Reports",
-        description: "Not checked anywhere in the application: a grant has no effect.",
-        pages: [],
-        actions: {},
-      },
     ],
   },
 ];
@@ -358,10 +366,13 @@ export const FIXED_ACCESS = {
     { label: "Changing any role's permissions", path: "/admin/roles" },
     { label: "Adding, renaming, deactivating or reactivating roles", path: "/api/roles" },
     { label: "Managing Super Admin and Admin accounts", path: "/admin/users" },
+    { label: "Running and downloading backups", path: "/settings/backups" },
   ],
   adminOnly: [
     { label: "Audit Log", path: "/admin/audit-log" },
-    { label: "System readiness (Dashboard)", path: "/dashboard" },
+    { label: "Recycle Bin", path: "/admin/deletion-log" },
+    { label: "Backup & Restore status", path: "/settings/backups" },
+    { label: "System readiness (Security Center)", path: "/settings/security" },
     { label: "Historical import audit", path: "/api/historical-data/audit" },
   ],
   everyone: [

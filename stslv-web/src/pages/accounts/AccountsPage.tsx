@@ -1,4 +1,5 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
@@ -6,12 +7,13 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner, TextField } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
+import { ManualInvoiceField, PAID_STATUS_NOTE } from '../amc/ManualInvoiceField'
 import { Filter, Pager } from '../amc/components'
 import { SERVICE_STATUS_LABELS } from '../amc/serviceStatusTypes'
 import { displayName, KPI_NAME_MAX, useKpiCustomization } from '../amcManagement/managementPreferences'
@@ -32,7 +34,6 @@ import {
 
 const PAGE_SIZE = 50
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-const PAYMENT_NOTE = 'Payment is not recorded in STSLV AMC. An invoice number is not a payment.'
 
 const icon = (path: ReactNode) => (
   <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
@@ -91,16 +92,16 @@ const KPI_CARDS: KpiCard[] = [
     id: 'invoiceFilled',
     label: 'Invoice No. Filled',
     count: (k) => k.invoiceFilled,
-    hint: () => 'Invoice recorded, not proof of payment',
+    hint: () => 'Paid: reference status, not verified payment',
     icon: icon(<><path d="M7 3.5h7.5L18 7v13.5H7z" strokeLinejoin="round" /><path d="M10 11h5M10 14.5h5" strokeLinecap="round" /></>),
     tone: 'from-[#1479BD] to-sky-400',
     edge: '#1479BD',
   },
   {
     id: 'totalValue',
-    label: 'Total Visit Value',
+    label: 'Total Value (Ex VAT)',
     count: () => null,
-    hint: (k) => (k.valueMissing > 0 ? `${k.valueMissing} ${k.valueMissing === 1 ? 'service has' : 'services have'} no value set` : 'Scheduled visit values; VAT basis not confirmed'),
+    hint: (k) => (k.valueMissing > 0 ? `${k.valueMissing} ${k.valueMissing === 1 ? 'service has' : 'services have'} no value set` : 'Scheduled service values, OMR excluding VAT'),
     icon: icon(<><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6.5 9.5v5M17.5 9.5v5" strokeLinecap="round" /></>),
     tone: 'from-[#0b3b66] to-[#1479BD]',
     edge: '#0b3b66',
@@ -277,17 +278,95 @@ function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<Co
   )
 }
 
+/**
+ * Records the Zoho invoice details of one service through Invoice Tracking's own API, so every rule and
+ * check still applies. Optional and separate from the manual Invoice No., which alone decides Paid / Unpaid.
+ */
+function RecordInvoiceDialog({ item, onClose }: { item: AccountsItem; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [invoiceDate, setInvoiceDate] = useState('')
+  const [amountExclVat, setAmountExclVat] = useState(item.visitValue ?? '')
+  const [vatAmount, setVatAmount] = useState('')
+  const [failure, setFailure] = useState<string | null>(null)
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.post('/invoices', {
+        invoiceNumber: invoiceNumber.trim(),
+        clientId: item.client.id,
+        invoiceDate,
+        amountExclVat: amountExclVat.trim(),
+        vatAmount: vatAmount.trim(),
+        allocations: [{ amcVisitId: item.id, amount: amountExclVat.trim() }],
+      }),
+    onSuccess: async () => {
+      await refreshOperationalData(queryClient)
+      onClose()
+    },
+    onError: (error) => setFailure(errorMessage(error)),
+  })
+  const ready = invoiceNumber.trim() !== '' && invoiceDate !== '' && amountExclVat.trim() !== '' && vatAmount.trim() !== ''
+
+  return (
+    <Modal
+      title={`Record Zoho invoice · ${item.reference}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
+            Cancel
+          </Button>
+          <Button type="submit" form="record-invoice-form" loading={save.isPending} disabled={!ready}>
+            Save invoice
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="record-invoice-form"
+        className="space-y-4"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault()
+          setFailure(null)
+          if (ready) save.mutate()
+        }}
+      >
+        {failure && <Alert>{failure}</Alert>}
+        <p className="text-sm text-slate-600">
+          {item.client.name} · {serviceCodeLabel(item.service)}. Enter the details from the Zoho invoice for Invoice Tracking. This does not change Paid / Unpaid: that follows the manual Invoice No. on the row.
+        </p>
+        <TextField label="Invoice No." required maxLength={50} value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
+        <TextField label="Invoice date" type="date" required value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField label="Amount excluding VAT" required inputMode="decimal" value={amountExclVat} onChange={(event) => setAmountExclVat(event.target.value)} />
+          <TextField label="VAT amount" required inputMode="decimal" value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} />
+        </div>
+        <p className="text-xs text-slate-500">
+          One invoice covering several services:{' '}
+          <Link to={`/invoices?recordForVisit=${item.id}`} className="font-medium text-[#1479BD] underline">
+            use Invoice Tracking
+          </Link>
+          .
+        </p>
+      </form>
+    </Modal>
+  )
+}
+
 interface Filters {
   search: string
   clientId: string
   salesEngineerId: string
+  contractId: string
   month: string
   year: string
   invoiceStatus: string
   serviceStatus: string
 }
 
-const NO_FILTERS: Filters = { search: '', clientId: '', salesEngineerId: '', month: '', year: '', invoiceStatus: '', serviceStatus: '' }
+const NO_FILTERS: Filters = { search: '', clientId: '', salesEngineerId: '', contractId: '', month: '', year: '', invoiceStatus: '', serviceStatus: '' }
 
 export function AccountsPage() {
   const auth = useAuth()
@@ -304,6 +383,7 @@ export function AccountsPage() {
   const canExport = auth.can('ACCOUNTS', 'EXPORT')
   const canViewContract = auth.can('AMC_CONTRACTS', 'VIEW')
   const canRecordInvoice = auth.can('INVOICES', 'CREATE')
+  const canEditInvoiceNo = auth.can('INVOICES', 'EDIT')
 
   const options = useQuery({ queryKey: ['accounts', 'options'], queryFn: () => api.get<AccountsOptions>('/accounts/options') })
   const accounts = useQuery({
@@ -334,7 +414,7 @@ export function AccountsPage() {
     <>
       <PageHeader
         title="Accounts"
-        description="Billing reconciliation of every scheduled AMC service: completion, service report and invoice number. Read only; invoices are recorded in Invoice Tracking."
+        description="Billing reconciliation of every scheduled AMC service: completion, service report and Invoice No. Enter the Invoice No. to mark a service Paid; clear it to return it to Unpaid. Amounts are OMR excluding VAT."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
@@ -418,6 +498,19 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
+            <Filter label="AMC Contract">
+              {(id, className) => (
+                <select id={id} value={draft.contractId} onChange={(event) => set('contractId')(event.target.value)} className={className}>
+                  <option value="">All contracts</option>
+                  <OptionsNotice source={options} count={options.data?.contracts.length ?? 0} empty="No contracts with current AMC visits" />
+                  {(options.data?.contracts ?? []).map((contract) => (
+                    <option key={contract.id} value={contract.id}>
+                      {contract.reference} · {contract.client} · {contract.system}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
             <Filter label="Scheduled month">
               {(id, className) => (
                 <select id={id} value={draft.month} onChange={(event) => set('month')(event.target.value)} className={className}>
@@ -443,7 +536,7 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Invoice Status">
+            <Filter label="Paid / Unpaid">
               {(id, className) => (
                 <select id={id} value={draft.invoiceStatus} onChange={(event) => set('invoiceStatus')(event.target.value)} className={className} aria-describedby="accounts-payment-note">
                   <option value="">All</option>
@@ -476,7 +569,7 @@ export function AccountsPage() {
               </Button>
               {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
               <span id="accounts-payment-note" className="basis-full text-xs text-slate-500">
-                Paid / Unpaid cannot be filtered: {PAYMENT_NOTE}
+                {PAID_STATUS_NOTE}
               </span>
             </div>
           </form>
@@ -535,6 +628,7 @@ export function AccountsPage() {
                       shown={shown}
                       canViewContract={canViewContract}
                       canRecordInvoice={canRecordInvoice}
+                      canEditInvoiceNo={canEditInvoiceNo}
                     />
                   ))}
                 </tbody>
@@ -567,10 +661,12 @@ interface RowProps {
   shown: (id: ColumnId) => boolean
   canViewContract: boolean
   canRecordInvoice: boolean
+  canEditInvoiceNo: boolean
 }
 
-function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProps) {
+function Row({ item, number, shown, canViewContract, canRecordInvoice, canEditInvoiceNo }: RowProps) {
   const tone = COLOUR_TONE[item.colour]
+  const [recording, setRecording] = useState(false)
 
   return (
     <tr className={cx(TABLE.row, 'acc-row')} data-colour={item.colour}>
@@ -609,9 +705,6 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
           <div className="text-xs text-slate-500">Due {formatDate(item.scheduledDate)}</div>
         </td>
       )}
-      {shown('visitValue') && (
-        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{item.visitValue === null ? <Missing title="No visit value set" /> : formatMoney(item.visitValue)}</td>
-      )}
       {shown('serviceStatus') && (
         <td className={TABLE.td}>
           <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', tone.pill)}>
@@ -626,34 +719,22 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
           {item.serviceReportNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.serviceReportNo}</span> : <Missing title="No service report number recorded" />}
         </td>
       )}
+      {shown('visitValue') && (
+        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{item.visitValue === null ? <Missing title="No visit value set" /> : formatMoney(item.visitValue)}</td>
+      )}
       {shown('invoiceNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
-          {item.invoiceNumbers.length === 0 ? (
-            <Missing title="No invoice recorded" />
-          ) : (
-            <ul>
-              {item.invoiceNumbers.map((invoiceNumber) => (
-                <li key={invoiceNumber} className="font-mono text-sm font-semibold text-slate-900">
-                  {invoiceNumber}
-                </li>
-              ))}
-            </ul>
-          )}
-        </td>
-      )}
-      {shown('payment') && (
-        <td className={`${TABLE.td} whitespace-nowrap text-sm text-slate-500`} title={PAYMENT_NOTE}>
-          Not available
+          <ManualInvoiceField visitId={item.id} invoiceNo={item.manualInvoiceNo} updatedAt={item.updatedAt} canEdit={canEditInvoiceNo} label={`${item.reference} ${serviceCodeLabel(item.service)}`} />
+          {item.invoiceNumbers.length > 0 && <div className="mt-1 text-xs text-slate-500">Zoho: {item.invoiceNumbers.join(', ')}</div>}
         </td>
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
         <span className="inline-flex gap-2">
-          {item.colour === 'BLUE' && canRecordInvoice && (
-            // Invoices are recorded, with their date and amounts, only in Invoice Tracking; it opens with this visit ticked.
-            <Link to={`/invoices?recordForVisit=${item.id}`} aria-label={`Record an invoice for ${item.reference} in Invoice Tracking`} className={ACTION_LINK}>
-              Record invoice
-            </Link>
+          {item.visitStatus === 'COMPLETED' && item.invoiceNumbers.length === 0 && canRecordInvoice && (
+            <button type="button" onClick={() => setRecording(true)} aria-label={`Record a Zoho invoice for ${item.reference} ${serviceCodeLabel(item.service)}`} className={ACTION_LINK}>
+              Record Zoho invoice
+            </button>
           )}
           {canViewContract ? (
             <Link to={`/amc/contracts/${item.contract.id}`} aria-label={`View contract ${item.reference}`} className={ACTION_LINK}>
@@ -665,6 +746,7 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
             </span>
           )}
         </span>
+        {recording && <RecordInvoiceDialog item={item} onClose={() => setRecording(false)} />}
       </td>
     </tr>
   )

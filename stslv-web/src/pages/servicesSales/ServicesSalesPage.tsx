@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
@@ -14,6 +15,7 @@ import { Filter, Pager } from '../amc/components'
 import { CustomizeKpisDialog, HideColumnsDialog } from './ServicesSalesDialogs'
 import { COLUMN_IDS, COLUMN_LABELS, useHiddenColumns, useKpiLayout, type ColumnId, type KpiId } from './servicesSalesPreferences'
 import {
+  QUOTE_SUBMISSION_FILTERS,
   QUOTATION_MAX_LENGTH,
   SALES_STATUS_LABELS,
   SERVICE_STATUSES,
@@ -206,6 +208,7 @@ export function ServicesSalesPage() {
   const [month, setMonth] = useState('')
   const [year, setYear] = useState('')
   const [serviceStatus, setServiceStatus] = useState('')
+  const [quoteSubmission, setQuoteSubmission] = useState('')
   const [page, setPage] = useState(1)
 
   useEffect(() => {
@@ -221,7 +224,7 @@ export function ServicesSalesPage() {
   const canExport = auth.can('SERVICES_SALES', 'EXPORT')
 
   // One set of filters for the rows, the cards and the downloads.
-  const filters = { search, clientId, salesEngineerId, systemTypeId, frequency, month, year, serviceStatus }
+  const filters = { search, clientId, salesEngineerId, systemTypeId, frequency, month, year, serviceStatus, quoteSubmission }
   const options = useQuery({ queryKey: ['services-sales', 'options'], queryFn: () => api.get<ServicesSalesOptions>('/services-sales/options') })
   const sales = useQuery({
     queryKey: ['services-sales', 'list', { ...filters, page }],
@@ -244,10 +247,11 @@ export function ServicesSalesPage() {
     setMonth('')
     setYear('')
     setServiceStatus('')
+    setQuoteSubmission('')
     setPage(1)
   }
   // A save can change the cards and the visit's version, so the list and the other AMC pages read it again.
-  const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['services-sales', 'list'] }), queryClient.invalidateQueries({ queryKey: ['amc'] })])
+  const refresh = () => refreshOperationalData(queryClient)
 
   const data = sales.data
   const shown = (id: ColumnId) => !hidden.has(id)
@@ -255,7 +259,7 @@ export function ServicesSalesPage() {
   return (
     <>
       <PageHeader
-        title="Services Sales"
+        title="Quotations"
         description="Track completed services and manually record quotation numbers."
         actions={
           <div className="flex flex-wrap gap-2">
@@ -266,11 +270,11 @@ export function ServicesSalesPage() {
               Hide Columns{hidden.size > 0 ? ` (${hidden.size})` : ''}
             </Button>
             {canExport && (
-              // The download covers every service that matches the filters, on every page.
+              // The download covers every service that matches the filters, on every page, with the columns shown.
               <ExportButtons
-                what="Services Sales"
-                fileStem="services-sales"
-                path={(format) => `/services-sales/export${queryString({ ...filters, format })}`}
+                what="Quotations"
+                fileStem="quotations"
+                path={(format) => `/services-sales/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
                 onError={setExportError}
               />
             )}
@@ -284,7 +288,7 @@ export function ServicesSalesPage() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Services Sales figures">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Quotations figures">
         {layout.order.map((id, index) => (
           <StatTile
             key={id}
@@ -334,7 +338,7 @@ export function ServicesSalesPage() {
                   type="search"
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="AMC reference, client, system or quote no."
+                  placeholder="AMC reference, client, system, report or quote no."
                   className={className}
                 />
               )}
@@ -428,6 +432,18 @@ export function ServicesSalesPage() {
                 </select>
               )}
             </Filter>
+            <Filter label="Quote">
+              {(id, className) => (
+                <select id={id} value={quoteSubmission} onChange={(event) => change(setQuoteSubmission)(event.target.value)} className={className}>
+                  <option value="">All</option>
+                  {QUOTE_SUBMISSION_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
             <div className="flex items-stretch">
               <button
                 type="button"
@@ -469,7 +485,7 @@ export function ServicesSalesPage() {
           <>
             <div className={TABLE.wrapper}>
               <table className={TABLE.table}>
-                <caption className="sr-only">Services Sales</caption>
+                <caption className="sr-only">Quotations</caption>
                 <thead>
                   <tr>
                     <th scope="col" className={TABLE.snHead}>
@@ -514,6 +530,11 @@ export function ServicesSalesPage() {
                         <td className={TABLE.td}>
                           <ServiceStatusPill item={item} />
                           {item.completedDate && <div className="mt-1 text-xs text-slate-500">{formatDate(item.completedDate)}</div>}
+                        </td>
+                      )}
+                      {shown('serviceReportNo') && (
+                        <td className={`${TABLE.td} whitespace-nowrap`}>
+                          {item.serviceReportNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.serviceReportNo}</span> : <span className="text-slate-400" title="No service report number recorded">—<span className="sr-only">No service report number recorded</span></span>}
                         </td>
                       )}
                       {shown('quotation') && (

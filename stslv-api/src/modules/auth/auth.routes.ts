@@ -1,11 +1,11 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { z } from "zod";
 import { env } from "../../config/env";
 import { authenticate, authenticateAllowingPasswordChange, requireAuth } from "../../middleware/authenticate";
 import { rateLimit } from "../../middleware/rate-limit";
 import { emailSchema, newPasswordSchema, requiredText } from "../../shared/validation";
 import { toSessionUser } from "./access";
-import { changeOwnPassword, completeRequiredPasswordChange, login } from "./auth.service";
+import { changeOwnPassword, cleanUserAgent, completeRequiredPasswordChange, login, recordLogout, type LoginContext } from "./auth.service";
 import { registerAccount } from "./registration.service";
 
 const loginSchema = z.object({
@@ -53,12 +53,14 @@ const loginFailureLimit = rateLimit({
   clearWhen: (status) => status >= 200 && status < 300,
 });
 
+const connection = (req: Request): LoginContext => ({ ip: req.ip ?? null, userAgent: cleanUserAgent(req.get("user-agent")) });
+
 export const authRouter = Router();
 
 authRouter.post("/login", loginLimit, loginFailureLimit, async (req, res) => {
   const { email, password } = loginSchema.parse(req.body);
 
-  res.json({ success: true, data: await login(email, password, { ip: req.ip ?? null }) });
+  res.json({ success: true, data: await login(email, password, connection(req)) });
 });
 
 authRouter.post("/signup", publicLimit(), async (req, res) => {
@@ -70,6 +72,13 @@ authRouter.post("/signup", publicLimit(), async (req, res) => {
 // Answers a user who must change their password too, so the web application can send them to that screen.
 authRouter.get("/me", authenticateAllowingPasswordChange, (req, res) => {
   res.json({ success: true, data: { user: toSessionUser(requireAuth(req)) } });
+});
+
+// Records the sign-out and nothing else: no token or session is revoked. Open to a user who
+// must change their password too, because they can sign out from that screen.
+authRouter.post("/logout", authenticateAllowingPasswordChange, async (req, res) => {
+  await recordLogout(requireAuth(req), connection(req));
+  res.json({ success: true, data: null });
 });
 
 // The only other route open to a user signed in with a temporary password. Every session ends afterwards.

@@ -69,7 +69,7 @@ describe('login page design', () => {
 
   it('switches every decorative animation off for people who prefer reduced motion', () => {
     const sources = Object.values(import.meta.glob('../pages/**/*.tsx', { query: '?raw', import: 'default', eager: true })) as string[]
-    const used = new Set(sources.flatMap((source) => source.match(/\blogin-[a-z]+(?:-[a-z]+)*/g) ?? []))
+    const used = new Set(sources.flatMap((source) => source.match(/(?<![/-])\blogin-[a-z]+(?:-[a-z]+)*/g) ?? []))
     const reduced = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/.exec(styles)?.[1] ?? ''
 
     expect(used.size).toBeGreaterThan(8)

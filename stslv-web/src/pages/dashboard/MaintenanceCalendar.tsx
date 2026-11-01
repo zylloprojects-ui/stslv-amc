@@ -9,6 +9,7 @@ import { api } from '../../lib/api'
 import { cx, formatCount } from '../../lib/format'
 import type { Invoice } from '../../lib/invoiceTypes'
 import { queryString } from '../amc/amcApi'
+import { amcReference } from '../amc/calendar/calendarTypes'
 import { formatDate, formatMoney, monthLabel, shiftMonth } from '../amc/amcFormat'
 import { VisitStatusPill } from '../amc/components'
 import {
@@ -335,9 +336,8 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
               <p className="mt-0.5 break-words text-sm text-slate-600">{data.contract.systemDescription}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <VisitStatusPill status={data.status} overdue={data.isOverdue} />
-                {/* STSLV AMC has no contract number yet; the record number identifies the contract. */}
                 <ContractLink id={data.contract.id} className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#1479BD] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
-                  Contract record {data.contract.id}
+                  {amcReference(data.contract.id)}
                 </ContractLink>
               </div>
             </div>
@@ -351,7 +351,8 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
               <span className="text-base font-bold tabular-nums text-[#0b3b66]">{data.visitAmount === null ? 'Not set' : formatMoney(data.visitAmount)}</span>
             </Field>
             <Field label="Invoice status">{INVOICE_ELIGIBILITY_LABELS[data.invoiceEligibility]}</Field>
-            <Field label="Invoice no.">
+            <Field label="Invoice No.">{data.manualInvoiceNo ?? 'None entered'}</Field>
+            <Field label="Zoho invoices">
               {!canInvoices
                 ? 'Needs Invoice Tracking access'
                 : invoices.isPending
@@ -363,7 +364,7 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
                       : 'None recorded'}
             </Field>
             <Field label="Payment status" wide>
-              Not tracked in STSLV AMC
+              {data.manualInvoiceNo ? `Paid · Invoice No. ${data.manualInvoiceNo} (reference status, not verified payment)` : 'Unpaid'}
             </Field>
           </dl>
         </div>

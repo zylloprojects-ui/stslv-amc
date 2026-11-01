@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { exportFormatSchema } from "../../shared/export/report";
 import { idSchema } from "../../shared/validation";
+import { hiddenColumnsSchema } from "../amc/service-status.schemas";
 
 /**
  * The completion state Services Sales shows. Read from the visit's own status,
@@ -22,12 +23,22 @@ export type ServiceStatus = (typeof SERVICE_STATUSES)[number];
 export const SALES_STATUSES = ["NOT_COMPLETED", "QUOTE_PENDING", "QUOTED"] as const;
 export type SalesStatus = (typeof SALES_STATUSES)[number];
 
+/**
+ * Whether a quote was submitted. Assumption, see docs/SERVICES_SALES.md:
+ * SUBMITTED means a quotation number is recorded (quotation_no IS NOT NULL).
+ */
+export const QUOTE_SUBMISSION_FILTERS = ["SUBMITTED", "NOT_SUBMITTED"] as const;
+
+/** The columns a user may hide. AMC Reference and the sales status always stay. */
+export const SERVICES_SALES_HIDEABLE_COLUMNS = ["client", "system", "frequency", "service", "dueDate", "serviceStatus", "serviceReportNo", "quotation", "salesEngineer"] as const;
+export type ServicesSalesColumn = (typeof SERVICES_SALES_HIDEABLE_COLUMNS)[number];
+
 const page = z.coerce.number().int().min(1).default(1);
 const MONTH_MESSAGE = "Month must be a number from 1 to 12.";
 const YEAR_MESSAGE = "Year must be between 2000 and 2100.";
 
 export const listServicesSalesSchema = z.object({
-  // AMC reference ("AMC-0007"), client, system, service code or quotation number.
+  // AMC reference ("AMC-0007"), client, system, service code, service report number or quotation number.
   search: z.string().trim().max(200).optional(),
   clientId: idSchema.optional(),
   salesEngineerId: idSchema.optional(),
@@ -41,12 +52,13 @@ export const listServicesSalesSchema = z.object({
   month: z.coerce.number({ error: MONTH_MESSAGE }).int().min(1, MONTH_MESSAGE).max(12, MONTH_MESSAGE).optional(),
   year: z.coerce.number({ error: YEAR_MESSAGE }).int().min(2000, YEAR_MESSAGE).max(2100, YEAR_MESSAGE).optional(),
   serviceStatus: z.enum(SERVICE_STATUSES, { error: "Select Completed or Not Completed." }).optional(),
+  quoteSubmission: z.enum(QUOTE_SUBMISSION_FILTERS, { error: "Select Quote Submitted or Not Submitted." }).optional(),
   page,
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 
-/** The page's own filters, without paging, plus the file format. */
-export const exportServicesSalesSchema = listServicesSalesSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+/** The page's own filters, without paging, plus the file format and the columns hidden on the page. */
+export const exportServicesSalesSchema = listServicesSalesSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema, hidden: hiddenColumnsSchema(SERVICES_SALES_HIDEABLE_COLUMNS) });
 
 export const QUOTATION_MAX_LENGTH = 50;
 const QUOTATION_MESSAGE = `Quotation number must be at most ${QUOTATION_MAX_LENGTH} characters, without line breaks.`;

@@ -6,6 +6,8 @@ export interface LoginRecord {
   /** Null when the email did not belong to an account. */
   user: { id: string; fullName: string; email: string } | null
   ip: string | null
+  /** The browser's description of itself: untrusted text. Blank on entries from before it was recorded. */
+  userAgent?: string | null
   reason: string | null
   createdAt: string
 }
@@ -28,6 +30,8 @@ export interface ActivityRecord {
   user: { id: string; fullName: string } | null
   changes: Record<string, { from: unknown; to: unknown }> | null
   reason: string | null
+  /** On the entries that recorded a network address. */
+  ip?: string | null
   createdAt: string
 }
 
@@ -71,7 +75,7 @@ const MODULE_LABELS: Record<string, string> = {
   DEPARTMENTS: 'Departments',
   MAINTENANCE_FREQUENCIES: 'Maintenance frequencies',
   HISTORICAL_DATA: 'Historical data',
-  SERVICES_SALES: 'Services sales',
+  SERVICES_SALES: 'Quotations',
 }
 
 function sentence(text: string): string {

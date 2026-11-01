@@ -1,5 +1,7 @@
 # STSLV AMC — AMC Contracts, Schedule and Execution
 
+> **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
+
 | | |
 |---|---|
 | Status | Implemented on branch `feature/amc` (2026-10-01). Not yet merged to `develop`. |

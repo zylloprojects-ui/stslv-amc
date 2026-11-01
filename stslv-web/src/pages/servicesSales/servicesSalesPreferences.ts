@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react'
 
 // Services Sales layout choices, remembered in this browser for each signed-in
 // user. They change only how the page looks: a renamed or moved card still
-// counts the same business status, a hidden column still exists in the data
-// and the export, and a blocked browser store gives the default layout.
+// counts the same business status, a hidden column is left out of the page and
+// its downloads only, and a blocked browser store gives the default layout.
 
 const PREFIX = 'stslev.services-sales'
 
@@ -19,7 +19,7 @@ export const DEFAULT_KPI_LABELS: Record<KpiId, string> = {
 
 export const KPI_LABEL_MAX = 40
 
-export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'dueDate', 'serviceStatus', 'quotation', 'salesEngineer'] as const
+export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'dueDate', 'serviceStatus', 'serviceReportNo', 'quotation', 'salesEngineer'] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
 
 export const COLUMN_LABELS: Record<ColumnId, string> = {
@@ -29,6 +29,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   service: 'Service',
   dueDate: 'Scheduled Month / Due Date',
   serviceStatus: 'Service Status',
+  serviceReportNo: 'Service Report No.',
   quotation: 'Quote No.',
   salesEngineer: 'Sales Engineer',
 }

@@ -96,18 +96,16 @@ function YearKpis({ year, totals }: { year: number; totals: VisitYearFigures }) 
       />
       <Kpi label="Scheduled value" value={formatMoney(totals.scheduledValue)} note={valueNote} warn={totals.amountMissing > 0} tone="bg-[#00A6C8]" />
       <Kpi
-        label="Invoiced"
-        value={String(totals.invoiced)}
-        note={`Visit value ${formatMoney(totals.invoicedValue)} · an invoice is not proof of payment`}
+        label="Paid"
+        value={String(totals.paid)}
+        note={`${formatMoney(totals.paidValue)} · Invoice No. entered, a reference status, not verified payment`}
         tone="bg-emerald-600"
       />
       <Kpi
-        label="Not yet invoiced"
-        value={String(totals.notYetInvoiced)}
-        note={`Completed, no active invoice · visit value ${formatMoney(totals.notYetInvoicedValue)}${
-          totals.noInvoiceRequired > 0 ? ` · ${totals.noInvoiceRequired} with a zero amount need no invoice` : ''
-        }`}
-        warn={totals.notYetInvoiced > 0}
+        label="Unpaid"
+        value={String(totals.unpaid)}
+        note={`${formatMoney(totals.unpaidValue)} · no Invoice No. entered`}
+        warn={totals.unpaid > 0}
         tone="bg-amber-500"
       />
     </dl>
@@ -165,9 +163,13 @@ function MonthCard({ month, figures, isCurrent, onOpen, download }: MonthCardPro
             {formatMoney(figures.scheduledValue)}
             {figures.amountMissing > 0 && <span className="block text-xs font-medium text-amber-800">{figures.amountMissing} without amount</span>}
           </dd>
-          <dt className="text-slate-500">Invoiced</dt>
+          <dt className="text-slate-500">Paid</dt>
+          <dd className="text-right font-semibold tabular-nums text-emerald-800">{figures.paid}</dd>
+          <dt className="text-slate-500">Unpaid</dt>
+          <dd className={cx('text-right tabular-nums', figures.unpaid > 0 ? 'font-semibold text-amber-800' : 'text-slate-700')}>{figures.unpaid}</dd>
+          <dt className="text-slate-500">Zoho invoiced</dt>
           <dd className="text-right tabular-nums text-emerald-800">{figures.invoiced}</dd>
-          <dt className="text-slate-500">Not yet invoiced</dt>
+          <dt className="text-slate-500">Zoho not yet invoiced</dt>
           <dd className={cx('text-right tabular-nums', figures.notYetInvoiced > 0 ? 'font-semibold text-amber-800' : 'text-slate-700')}>{figures.notYetInvoiced}</dd>
         </dl>
 

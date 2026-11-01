@@ -1183,7 +1183,18 @@ input[type="datetime-local"] {
 .dark .ring-violet-200 {
   --tw-ring-color: #4b3d7a;
 }
-/* Tinted table rows (Services Sales, AMC Schedule): a faint wash over the dark table. */
+/* Suggestions Review: the Under Review tile and the selected tab. */
+.dark .text-violet-800 {
+  color: #d6c8ff;
+}
+.dark .text-\[\#0f62a3\] {
+  color: #7cc0f0;
+}
+/* Row numbers in tables, including tinted rows. */
+.dark .table-scroll td.text-slate-400 {
+  color: #cbd5e1;
+}
+/* Tinted table rows (Quotations, AMC Schedule): a faint wash over the dark table. */
 .dark .bg-rose-50\/50,
 .dark .bg-rose-50\/60 {
   background-color: rgba(225, 29, 72, 0.12);

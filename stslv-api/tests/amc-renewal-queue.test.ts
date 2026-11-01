@@ -49,7 +49,7 @@ const renew = (sourceId: string, overrides: Record<string, unknown> = {}, sessio
     .post(`/api/amc/contracts/${sourceId}/renewals`)
     .set(session.headers)
     .send(contractBody(fx.clientId, { validFrom: shift(400), validTo: shift(764), status: "DRAFT", salesEngineerId: engineerId, ...overrides }));
-const setStatus = (id: string, status: string, session: Session = admin) => api().post(`/api/amc/contracts/${id}/status`).set(session.headers).send({ status });
+const setStatus = (id: string, status: string, session: Session = admin) => api().post(`/api/amc/contracts/${id}/status`).set(session.headers).send({ status, ...(status === "CANCELLED" ? { reason: "Test" } : {}) });
 
 async function contract(endsIn: number, overrides: Record<string, unknown> = {}): Promise<string> {
   return activeContract(admin, fx.clientId, endingIn(endsIn, overrides));

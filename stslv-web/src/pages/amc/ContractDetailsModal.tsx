@@ -1,3 +1,4 @@
+import { BILLING_BASIS_LABELS } from './types'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Modal, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
@@ -95,24 +96,26 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               </DetailRow>
             </dl>
             <dl>
-              <DetailRow label="Contract value">{formatMoney(contract.contractValue)}</DetailRow>
+              <DetailRow label="AMC Value / Year">{formatMoney(contract.contractValue)}</DetailRow>
               <DetailRow label="Default visit amount">{formatMoney(contract.defaultVisitAmount)}</DetailRow>
               <DetailRow label="Final credit">{formatMoney(contract.finalCredit)}</DetailRow>
+              <DetailRow label="Billing basis">{contract.billingBasis ? `${BILLING_BASIS_LABELS[contract.billingBasis]} · ${formatMoney(contract.selectedBillingAmount ?? null)}` : 'Not set'}</DetailRow>
               <DetailRow label="Visits">
                 {contract.schedule.visitCount} ({contract.schedule.completedCount} completed, {contract.schedule.openCount} open
                 {contract.schedule.historicalCount > 0 && `, ${contract.schedule.historicalCount} historical`}
                 {contract.schedule.cancelledCount > 0 && `, ${contract.schedule.cancelledCount} cancelled`})
               </DetailRow>
               <DetailRow label="Total of visit amounts">{formatMoney(contract.schedule.scheduledTotal)}</DetailRow>
-              <DetailRow label="Contract value less visit amounts">{formatMoney(contract.schedule.valueDifference)}</DetailRow>
+              <DetailRow label="Expected for the term less visits">{contract.schedule.valueDifference === null ? 'Not compared: no billing basis' : formatMoney(contract.schedule.valueDifference)}</DetailRow>
               <DetailRow label="Created">{formatDateTime(contract.createdAt)}</DetailRow>
               <DetailRow label="Last updated">{formatDateTime(contract.updatedAt)}</DetailRow>
             </dl>
           </div>
 
-          {contract.schedule.visitCount > 0 && (!isZeroMoney(contract.schedule.valueDifference) || contract.schedule.amountMissingCount > 0) && (
+          {contract.schedule.visitCount > 0 && (contract.schedule.valueDifference === null || !isZeroMoney(contract.schedule.valueDifference) || contract.schedule.amountMissingCount > 0) && (
             <p className="text-xs text-slate-500">
-              {!isZeroMoney(contract.schedule.valueDifference) && 'The visit amounts do not add up to the contract value. This is shown for information; it is not treated as an error. '}
+              {contract.schedule.valueDifference === null && 'No billing basis is selected, so the visit amounts are not compared with the contract value. '}
+              {contract.schedule.valueDifference !== null && !isZeroMoney(contract.schedule.valueDifference) && 'The visits differ from the amount expected for the term at the annual billing amount. This is shown for information; it is not treated as an error. '}
               {contract.schedule.amountMissingCount > 0 && `${contract.schedule.amountMissingCount} visit(s) have no amount yet.`}
             </p>
           )}

@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
-import { createBrowserRouter, Navigate, Route, RouterProvider, Routes } from 'react-router-dom'
+import { createBrowserRouter, Navigate, Route, RouterProvider, Routes, useLocation } from 'react-router-dom'
 import { appRouteObjects } from './appRoutes'
 import { AuthProvider } from './auth/AuthProvider'
 import { LandingRedirect, ProtectedRoute, RequireAdmin, RequireAnyPermission, RequirePermission } from './auth/guards'
@@ -20,6 +20,10 @@ import { AmcManagementPage } from './pages/amcManagement/AmcManagementPage'
 import { AccountsPage } from './pages/accounts/AccountsPage'
 import { MasterStatusPage } from './pages/masterStatus/MasterStatusPage'
 import { AuditLogPage } from './pages/admin/AuditLogPage'
+import { BackupRestorePage } from './pages/admin/BackupRestorePage'
+import { DeletionLogPage } from './pages/admin/DeletionLogPage'
+import { SecurityCenterPage } from './pages/admin/SecurityCenterPage'
+import { ReportsPage } from './pages/reports/ReportsPage'
 import { LoginHistoryPage } from './pages/admin/LoginHistoryPage'
 import { DepartmentsPage } from './pages/masters/DepartmentsPage'
 import { MasterDataCenterPage } from './pages/masters/MasterDataCenterPage'
@@ -44,6 +48,13 @@ import { MySuggestionsPage } from './pages/suggestions/MySuggestionsPage'
 import { SuggestionDetailPage } from './pages/suggestions/SuggestionDetailPage'
 import { SuggestionReviewPage } from './pages/suggestions/SuggestionReviewPage'
 import { UsersPage } from './pages/users/UsersPage'
+
+/** A former address: goes to the new one, keeping any query string and fragment of a saved link. */
+function RedirectKeepingQuery({ to }: { to: string }) {
+  const { search, hash } = useLocation()
+
+  return <Navigate to={{ pathname: to, search, hash }} replace />
+}
 
 function createQueryClient() {
   return new QueryClient({
@@ -218,13 +229,15 @@ export function AppRoutes() {
             }
           />
           <Route
-            path="/amc/services-sales"
+            path="/amc/quotations"
             element={
               <RequirePermission module="SERVICES_SALES">
                 <ServicesSalesPage />
               </RequirePermission>
             }
           />
+          {/* The page's former address, so saved links keep working. */}
+          <Route path="/amc/services-sales" element={<Navigate to="/amc/quotations" replace />} />
           <Route
             path="/amc/master-status"
             element={
@@ -282,6 +295,45 @@ export function AppRoutes() {
               <RequirePermission module="USERS">
                 <LoginHistoryPage />
               </RequirePermission>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequirePermission module="REPORTS">
+                <ReportsPage />
+              </RequirePermission>
+            }
+          />
+          {/* The pages' former addresses, so saved links keep working. The guard is on the new address. */}
+          <Route path="/admin/security" element={<RedirectKeepingQuery to="/settings/security" />} />
+          <Route path="/admin/backups" element={<RedirectKeepingQuery to="/settings/backups" />} />
+          <Route
+            path="/settings/security"
+            element={
+              <RequireAdmin>
+                <SettingsPage area="security">
+                  <SecurityCenterPage />
+                </SettingsPage>
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/settings/backups"
+            element={
+              <RequireAdmin>
+                <SettingsPage area="backups">
+                  <BackupRestorePage />
+                </SettingsPage>
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/deletion-log"
+            element={
+              <RequireAdmin>
+                <DeletionLogPage />
+              </RequireAdmin>
             }
           />
           <Route

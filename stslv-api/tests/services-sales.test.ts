@@ -339,16 +339,16 @@ describe("Services Sales", () => {
       expect(response.headers["content-disposition"]).toMatch(/services-sales/);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(response.body as unknown as ExcelJS.Buffer);
-      const sheet = workbook.getWorksheet("Services Sales") as ExcelJS.Worksheet;
+      const sheet = workbook.getWorksheet("Quotations") as ExcelJS.Worksheet;
       const header = (sheet.getRow(6).values as unknown[]).slice(1);
-      expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Frequency", "Service", "Due date", "Service status", "Completed date", "Quote No.", "Sales status", "Sales Engineer"]);
+      expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Frequency", "Service", "Due date", "Service status", "Completed date", "Service Report No.", "Quote No.", "Sales status", "Sales Engineer"]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
       expect(rows.map((row) => row[2])).toEqual(["Alpha Towers", "Alpha Towers", "Alpha Towers", "Alpha Towers"]);
       // A formula-like number is written as text, never run.
-      expect(rows[0]?.[9]).not.toBe("=QT-1");
-      expect(String(rows[0]?.[9])).toContain("QT-1");
+      expect(rows[0]?.[10]).not.toBe("=QT-1");
+      expect(String(rows[0]?.[10])).toContain("QT-1");
       expect(rows[0]?.[7]).toBe("Completed");
-      expect(rows[0]?.[10]).toBe("Quoted");
+      expect(rows[0]?.[11]).toBe("Quoted");
       expect(rows[1]?.[7]).toBe("Not Completed");
       expect(sheet.getRow(11).getCell(3).value).not.toBe("Alpha Towers");
 

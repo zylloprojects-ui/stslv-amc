@@ -34,6 +34,10 @@ export interface VisitYearFigures {
   notYetInvoicedValue: string
   noInvoiceRequired: number
   notCompleted: number
+  paid: number
+  paidValue: string
+  unpaid: number
+  unpaidValue: string
 }
 
 export interface VisitYearSummary {
@@ -77,6 +81,7 @@ export interface CalendarFilters {
   /** One visit status, or the calendar's statuses separated by commas. */
   status: string
   billingStatus: string
+  paymentStatus: string
 }
 
 /** Renewal warnings cover contracts ending within this many days (approved 2026-10-28). */

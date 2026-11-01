@@ -187,6 +187,67 @@ export function CreateUserModal({ roles, onClose, onSaved }: { roles: Role[]; on
   )
 }
 
+const editUserSchema = createUserSchema.pick({ fullName: true })
+
+type EditUserForm = z.infer<typeof editUserSchema>
+
+/** Changes the user's full name. The API applies the same rules as for any change to this account. */
+export function EditUserModal({ user, onClose, onSaved }: { user: User; onClose: () => void; onSaved: (user: User) => void }) {
+  const queryClient = useQueryClient()
+  const [failure, setFailure] = useState<string | null>(null)
+  const {
+    register,
+    handleSubmit,
+    setError,
+    formState: { errors },
+  } = useForm<EditUserForm>({ resolver: zodResolver(editUserSchema), defaultValues: { fullName: user.fullName } })
+
+  const save = useMutation({
+    mutationFn: (values: EditUserForm) => api.patch<User>(`/users/${user.id}`, values),
+    onSuccess: async (updated) => {
+      // The signed-in user's own name is shown in the header.
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['users'] }), queryClient.invalidateQueries({ queryKey: ['auth', 'me'] })])
+      onSaved(updated)
+    },
+    onError: (error) => {
+      const onField = error instanceof ApiError ? error.details.find((detail) => detail.field === 'fullName') : undefined
+
+      if (onField) setError('fullName', { message: onField.message })
+      setFailure(onField ? null : errorMessage(error))
+    },
+  })
+
+  return (
+    <Modal
+      title={`Edit ${user.fullName}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
+            Cancel
+          </Button>
+          <Button type="submit" form="edit-user-form" loading={save.isPending}>
+            Save
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="edit-user-form"
+        noValidate
+        className="space-y-4"
+        onSubmit={handleSubmit((values) => {
+          setFailure(null)
+          save.mutate(values)
+        })}
+      >
+        {failure && <Alert>{failure}</Alert>}
+        <TextField label="Full name" required autoComplete="off" error={errors.fullName?.message} {...register('fullName')} />
+      </form>
+    </Modal>
+  )
+}
+
 export function EditRolesModal({ user, roles, onClose, onSaved }: { user: User; roles: Role[]; onClose: () => void; onSaved: (user: User) => void }) {
   const queryClient = useQueryClient()
   // Preselected only when the user holds exactly one role; several (from before the rule) must be resolved by a choice.

@@ -19,10 +19,10 @@ const IN_SCOPE = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLET
 /** Service Status's own rule, so a visit shows the same status on both pages. */
 const SERVICE_STATUS_SQL = serviceStatusSql({ renewals: true });
 
-/** See ROW_COLOURS. Only an active invoice counts; a cancelled one is ignored, as in Invoice Tracking. */
+/** See ROW_COLOURS. The manual Invoice No. decides; a Zoho record in Invoice Tracking does not. */
 const COLOUR_SQL = `CASE
     WHEN v.status <> 'COMPLETED' THEN 'RED'
-    WHEN inv.numbers IS NULL THEN 'YELLOW'
+    WHEN v.manual_invoice_no IS NULL THEN 'YELLOW'
     WHEN v.quotation_no IS NULL THEN 'BLUE'
     ELSE 'GREEN'
   END`;
@@ -50,7 +50,7 @@ const SELECT = `
          c.maintenance_frequency, mf.label AS frequency_label,
          v.sequence_no, v.cycle_no, v.service_code,
          v.scheduled_date::text AS scheduled_date, v.status, v.completed_date::text AS completed_date,
-         v.visit_amount::text AS visit_amount,
+         v.visit_amount::text AS visit_amount, v.manual_invoice_no,
          se.id AS sales_engineer_id, se.name AS sales_engineer_name,
          COALESCE(inv.numbers, '{}') AS invoice_numbers, v.quotation_no,
          ${SERVICE_STATUS_SQL} AS service_status,
@@ -74,6 +74,7 @@ interface MasterRow {
   status: VisitStatus;
   completed_date: string | null;
   visit_amount: string | null;
+  manual_invoice_no: string | null;
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
   invoice_numbers: string[];
@@ -96,9 +97,12 @@ export interface MasterStatusItem {
   visitStatus: VisitStatus;
   serviceStatus: ServiceStatus;
   completedDate: string | null;
-  /** amc_visits.visit_amount as a decimal string; null when no amount is set. Whether it includes VAT is not confirmed. */
+  /** amc_visits.visit_amount as a decimal string, OMR excluding VAT; null when no amount is set. */
   visitValue: string | null;
-  /** Every active invoice that covers the visit, oldest first. Empty when none. */
+  /** The manual Invoice No.: entered = Paid, cleared = Unpaid (reference status). */
+  manualInvoiceNo: string | null;
+  paymentStatus: "PAID" | "UNPAID";
+  /** Every active Zoho invoice in Invoice Tracking that covers the visit, oldest first. Empty when none. */
   invoiceNumbers: string[];
   quotationNo: string | null;
   salesEngineer: { id: string; name: string } | null;
@@ -119,6 +123,8 @@ function toItem(row: MasterRow): MasterStatusItem {
     serviceStatus: row.service_status,
     completedDate: row.completed_date,
     visitValue: row.visit_amount,
+    manualInvoiceNo: row.manual_invoice_no,
+    paymentStatus: row.manual_invoice_no ? "PAID" : "UNPAID",
     invoiceNumbers: row.invoice_numbers,
     quotationNo: row.quotation_no,
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
@@ -126,7 +132,14 @@ function toItem(row: MasterRow): MasterStatusItem {
   };
 }
 
-export type MasterStatusFilters = Omit<ListMasterStatusQuery, "page" | "pageSize">;
+export type MasterStatusFilters = Omit<ListMasterStatusQuery, "page" | "pageSize" | "sort" | "direction">;
+
+const SORT_SQL: Record<ListMasterStatusQuery["sort"], string> = {
+  scheduledDate: "v.scheduled_date",
+  reference: "c.id",
+  client: "lower(cl.name)",
+  visitValue: "v.visit_amount",
+};
 
 /** "AMC-0007", "amc7" or "7" names contract 7. */
 const REFERENCE_PATTERN = /^(?:amc-?)?0*(\d{1,15})$/i;
@@ -150,10 +163,12 @@ function filterSql(query: MasterStatusFilters) {
     conditions.push(`extract(month FROM v.scheduled_date) = ${add(query.month)}`);
   }
   if (query.serviceStatus) conditions.push(`(${SERVICE_STATUS_SQL}) = ${add(query.serviceStatus)}`);
+  if (query.invoiceStatus) conditions.push(query.invoiceStatus === "RECORDED" ? "v.manual_invoice_no IS NOT NULL" : "v.manual_invoice_no IS NULL");
+  if (query.quotationStatus) conditions.push(query.quotationStatus === "RECORDED" ? "v.quotation_no IS NOT NULL" : "v.quotation_no IS NULL");
   if (query.colour) conditions.push(`(${COLOUR_SQL}) = ${add(query.colour)}`);
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
-    const matches = [`cl.name ILIKE ${p}`, `v.quotation_no ILIKE ${p}`, `EXISTS (SELECT 1 FROM unnest(inv.numbers) AS n (number) WHERE n.number ILIKE ${p})`];
+    const matches = [`cl.name ILIKE ${p}`, `v.quotation_no ILIKE ${p}`, `v.manual_invoice_no ILIKE ${p}`, `EXISTS (SELECT 1 FROM unnest(inv.numbers) AS n (number) WHERE n.number ILIKE ${p})`];
     const reference = REFERENCE_PATTERN.exec(query.search);
 
     if (reference) matches.push(`c.id = ${add(reference[1])}::bigint`);
@@ -207,7 +222,7 @@ export async function listMasterStatus(query: ListMasterStatusQuery) {
   const { where, params } = filterSql(query);
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<MasterRow>(`${SELECT} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<MasterRow>(`${SELECT} ${FROM} ${where} ORDER BY ${SORT_SQL[query.sort]} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,

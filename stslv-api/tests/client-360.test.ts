@@ -42,7 +42,7 @@ beforeAll(async () => {
   // A draft and a cancelled contract.
   await api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { contractValue: "500.000" }));
   const cancelled = await api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { contractValue: "9000.000" }));
-  await api().post(`/api/amc/contracts/${cancelled.body.data.id}/status`).set(admin.headers).send({ status: "CANCELLED" });
+  await api().post(`/api/amc/contracts/${cancelled.body.data.id}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" });
   // Another client's contract is never counted.
   await activeContract(admin, otherClientId, { contractValue: "7777.000" });
 

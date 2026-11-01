@@ -1,15 +1,19 @@
 import { Router, type RequestHandler } from "express";
 import { env } from "../../config/env";
+import { adminOnly } from "../../middleware/admin-only";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
 import { rateLimit } from "../../middleware/rate-limit";
 import { forbidden } from "../../shared/errors";
 import { parseIdParam } from "../../shared/validation";
-import { createUserSchema, issueTemporaryPasswordSchema, setUserRolesSchema, updateUserSchema } from "./users.schemas";
+import { sendExport } from "../../shared/export/send";
+import { buildUsersExport } from "./users.export";
+import { createUserSchema, exportUsersSchema, issueTemporaryPasswordSchema, listUsersSchema, setUserRolesSchema, updateUserSchema } from "./users.schemas";
 import {
   createUser,
   issueTemporaryPassword,
   listUsers,
+  listUsersPage,
   rejectRegistration,
   setUserActive,
   setUserRoles,
@@ -37,8 +41,20 @@ const canEditOrApprove: RequestHandler = (req, _res, next) => {
   next();
 };
 
-usersRouter.get("/", authorize("USERS", "VIEW"), async (_req, res) => {
-  res.json({ success: true, data: await listUsers() });
+// Without a filter or paging parameter: the whole list, as an array, for the pages that show or count every user.
+// With one: { items, total, pendingTotal, page, pageSize }.
+usersRouter.get("/", authorize("USERS", "VIEW"), async (req, res) => {
+  const paged = ["page", "pageSize", "search", "status"].some((key) => key in req.query);
+
+  res.json({ success: true, data: paged ? await listUsersPage(listUsersSchema.parse(req.query)) : await listUsers() });
+});
+
+// USERS has no Export action, and adding one would change what roles can be granted: administrators only.
+usersRouter.get("/export", authorize("USERS", "VIEW"), adminOnly, async (req, res) => {
+  const query = exportUsersSchema.parse(req.query);
+  const { report, recordExport } = await buildUsersExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
 });
 
 usersRouter.post("/", authorize("USERS", "CREATE"), async (req, res) => {

@@ -244,7 +244,7 @@ describe('sales engineers', () => {
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'QUARTERLY')
-    await userEvent.type(within(dialog).getByLabelText(/Contract value/), '1620')
+    await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '1620')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts')).toHaveLength(1))

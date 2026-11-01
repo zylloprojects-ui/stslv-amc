@@ -74,7 +74,7 @@ describe("POST /api/amc/contracts/:id/renewals", () => {
     expect(second.status).toBe(409);
     expect(second.body.error.message).toBe("This contract already has a renewal. Open that renewal instead, or cancel it first.");
 
-    await api().post(`/api/amc/contracts/${renewalId}/status`).set(admin.headers).send({ status: "CANCELLED" });
+    await api().post(`/api/amc/contracts/${renewalId}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" });
     expect((await renew(sourceId)).status).toBe(201);
   });
 

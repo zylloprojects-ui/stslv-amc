@@ -35,6 +35,7 @@ const plural = (count: number, one: string, many: string) => `${formatCount(coun
 const CONTRACTS_LINK = { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' as Module }
 const SCHEDULE_LINK = { to: '/amc/schedule', label: 'AMC Schedule', module: 'AMC_SCHEDULE' as Module }
 const INVOICES_LINK = { to: '/invoices', label: 'Invoice Tracking', module: 'INVOICES' as Module }
+const ACCOUNTS_LINK = { to: '/finance/accounts', label: 'Accounts', module: 'ACCOUNTS' as Module }
 
 const canVisits = (canView: (module: Module) => boolean) => canView('AMC_SCHEDULE') || canView('AMC_EXECUTION')
 
@@ -62,12 +63,12 @@ export const CONTRACT_KPIS: KpiGroupDefinition = {
       icon: 'wallet',
       visible: (canView) => canView('AMC_CONTRACTS'),
       link: CONTRACTS_LINK,
-      // The stored contract value of Active contracts, summed. Contracts run for different periods, so it is not annual.
+      // AMC Value / Year of Active contracts, as entered. Values entered before that rule are not reinterpreted.
       read: ({ contracts }) => ({
         kind: 'value',
         value: formatMoney(contracts.activeValue),
-        detail: 'Sum of active contract values',
-        hint: 'Sum of the contract value of every Active contract · not annualised, not invoiced, not collected',
+        detail: 'Sum of AMC Value / Year, excluding VAT',
+        hint: 'Sum of AMC Value / Year of every Active contract, as entered. Older multi-year values may be whole-term amounts: see the Contract Value Review report.',
       }),
     },
     {
@@ -76,12 +77,12 @@ export const CONTRACT_KPIS: KpiGroupDefinition = {
       icon: 'chart',
       visible: (canView) => canView('AMC_CONTRACTS'),
       link: CONTRACTS_LINK,
-      // The meaning of Final Credit is not confirmed. It is summed as entered and never called revenue or collected.
+      // Final Credit Value, an annual Billing Basis option, summed as entered.
       read: ({ contracts }) => ({
         kind: 'value',
         value: formatMoney(contracts.finalCreditTotal),
-        detail: 'Final credit as entered · meaning not confirmed',
-        hint: `Sum of the Final credit field as entered on ${formatCount(contracts.finalCreditRecorded)} of ${plural(contracts.active, 'active contract', 'active contracts')}. Its meaning is not yet confirmed by the client; it is not revenue.`,
+        detail: 'Final Credit Value as entered',
+        hint: `Sum of Final Credit Value as entered on ${formatCount(contracts.finalCreditRecorded)} of ${plural(contracts.active, 'active contract', 'active contracts')}.`,
       }),
     },
     {
@@ -180,7 +181,7 @@ export const SCHEDULE_KPIS: KpiGroupDefinition = {
 export const INVOICE_KPIS: KpiGroupDefinition = {
   id: 'invoices',
   title: 'Invoice KPIs',
-  description: 'From Invoice Tracking (invoices raised in Zoho).',
+  description: 'Paid and Unpaid follow the manual Invoice No. of each service: a reference status, not verified payment.',
   visible: (canView) => canView('INVOICES'),
   kpis: [
     {
@@ -188,24 +189,24 @@ export const INVOICE_KPIS: KpiGroupDefinition = {
       label: 'Paid Invoices',
       icon: 'invoice',
       visible: (canView) => canView('INVOICES'),
-      link: INVOICES_LINK,
-      read: ({ invoices }) => invoices && { kind: 'unavailable', reason: invoices.paid.reason },
+      link: ACCOUNTS_LINK,
+      read: ({ invoices }) => invoices && { kind: 'value', value: formatCount(invoices.paid.count), detail: 'Services with a manual Invoice No.' },
     },
     {
       id: 'unpaid',
       label: 'Unpaid Invoices',
       icon: 'invoice',
       visible: (canView) => canView('INVOICES'),
-      link: INVOICES_LINK,
-      read: ({ invoices }) => invoices && { kind: 'unavailable', reason: invoices.unpaid.reason },
+      link: ACCOUNTS_LINK,
+      read: ({ invoices }) => invoices && { kind: 'value', value: formatCount(invoices.unpaid.count), detail: `Services without one · ${formatMoney(invoices.unpaid.amount)}` },
     },
     {
       id: 'paidTotal',
       label: 'Paid Invoice Total',
       icon: 'wallet',
       visible: (canView) => canView('INVOICES'),
-      link: INVOICES_LINK,
-      read: ({ invoices }) => invoices && { kind: 'unavailable', reason: invoices.paidTotal.reason },
+      link: ACCOUNTS_LINK,
+      read: ({ invoices }) => invoices && { kind: 'value', value: formatMoney(invoices.paidTotal.amount), detail: 'Value of Paid services, OMR excluding VAT' },
     },
     {
       id: 'module',
@@ -217,8 +218,8 @@ export const INVOICE_KPIS: KpiGroupDefinition = {
         invoices && {
           kind: 'value',
           value: 'Tracking',
-          detail: `${plural(invoices.module.issued, 'issued invoice', 'issued invoices')} · ${formatCount(invoices.module.cancelled)} cancelled · payment not recorded`,
-          hint: 'Invoice Tracking records invoices raised in Zoho as Issued or Cancelled. Payment status is not recorded, so paid and unpaid figures are unavailable.',
+          detail: `${plural(invoices.module.issued, 'issued invoice', 'issued invoices')} · ${formatCount(invoices.module.cancelled)} cancelled · Zoho records`,
+          hint: 'Invoice Tracking records invoices raised in Zoho as Issued or Cancelled. They do not decide Paid or Unpaid: those follow the manual Invoice No. entered on Accounts, shown on the cards beside this one.',
         },
     },
   ],

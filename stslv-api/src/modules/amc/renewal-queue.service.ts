@@ -54,6 +54,9 @@ const BASE = `(
   ${FROM}
 ) q`;
 
+/** The queue as a subquery with alias q, for the AMC Renewal report. */
+export const RENEWAL_QUEUE_SQL = BASE;
+
 // Service progress of each listed contract, read only for the rows on the page.
 const SERVICES = `
   LEFT JOIN LATERAL (

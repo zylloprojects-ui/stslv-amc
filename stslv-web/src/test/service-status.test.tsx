@@ -469,3 +469,20 @@ describe('service status filter lists', () => {
     expect(screen.queryByLabelText('System')).not.toBeInTheDocument()
   })
 })
+
+describe('service status download', () => {
+  it('sends the hidden columns', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const api = serviceApi(ADMIN, { override: (request) => (request.path === '/amc/service-status/export' ? ok(null) : undefined) })
+    renderApp('/amc/service-status')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Sales Engineer' }))
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(screen.getByRole('button', { name: 'Export service status to Excel' }))
+    await waitFor(() => expect(api.find('GET', '/amc/service-status/export').length).toBe(1))
+    expect(api.find('GET', '/amc/service-status/export')[0]?.query.get('hidden')).toBe('engineer')
+  })
+})

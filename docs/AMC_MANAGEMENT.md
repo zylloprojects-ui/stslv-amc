@@ -1,5 +1,7 @@
 # AMC Management
 
+> **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
+
 Route: `/amc/management` (navigation: Operations → AMC Management).
 API: `GET /api/amc/management/summary` (read-only).
 Status: built 2026-10-28 on local `alpha`, uncommitted. No migration. No scheduled job.
@@ -29,7 +31,7 @@ cards and actions. No permission was added or widened.
 | Schedule Engine | `/amc/schedule` (the visit schedule the engine generates) | `AMC_SCHEDULE:VIEW` |
 | Invoices | `/invoices` | `INVOICES:VIEW` |
 | Alerts | `/notifications` | always |
-| Reports | — shown disabled, "not built yet": there is no Reports page | always |
+| Reports | `/reports` | `REPORTS:VIEW` |
 | + New AMC | opens the Add AMC Contract form in place | `AMC_CONTRACTS:CREATE` |
 
 ## KPI formulas
@@ -59,16 +61,16 @@ Dates are the database's `current_date`, as everywhere else in STSLV AMC.
 
 ### Invoice KPIs
 
-Invoices are `ISSUED` or `CANCELLED` only (migration 0060). **Payment is not recorded**, so:
+Zoho invoices are `ISSUED` or `CANCELLED` only (migration 0060). Paid and Unpaid follow the manual Invoice No. of each service (migration 0100):
 
 | KPI | Shown |
 |---|---|
-| Paid Invoices | Not available (reason from the API) |
-| Unpaid Invoices | Not available |
-| Paid Invoice Total | Not available |
-| Invoice Module Status | "Tracking", with the counts of issued and cancelled invoices and "payment not recorded" |
+| Paid Invoices | Services with a manual Invoice No. Links to Accounts when the user has `ACCOUNTS:VIEW` |
+| Unpaid Invoices | Services without one, with their value. Links to Accounts likewise |
+| Paid Invoice Total | Value of the Paid services, OMR excluding VAT. Links to Accounts likewise |
+| Invoice Module Status | "Tracking", with the counts of issued and cancelled Zoho invoices. Links to Invoice Tracking |
 
-An invoice number is never treated as proof of payment.
+Paid is a reference status: it does not verify that money was received. See [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md).
 
 ## KPI customization
 
@@ -120,8 +122,7 @@ contract ids in the alert, so a read alert becomes unread when a contract enters
 alert read never hides it, from that user or any other. **True per-user dismissal (hiding)** is
 not built: it needs a new column or table (migration) and approval.
 
-Also fixed: the existing "Active contracts past their validity" alert linked to `/reports`, which
-has no page; it now links to `/amc/management`.
+The "Active contracts past their validity" alert links to `/amc/management`.
 
 ### Renewal
 
@@ -160,8 +161,6 @@ Proposed design, if approved:
 * Total AMC Value counts Active contracts only (consistent with the dashboard); confirm whether the
   client expects Draft/Expired included.
 * "AMC-0007" references are derived from the id (provisional, as in Service Status).
-* Payment tracking (paid/unpaid) does not exist in the data model.
-* Reports page does not exist.
 * Server-side KPI preferences and alert dismissal need migrations.
 * Daily expiry job (above).
 

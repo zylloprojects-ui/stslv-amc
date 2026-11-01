@@ -181,7 +181,7 @@ describe("visit amount", () => {
     await patch(visits[3]?.id as string, { visitAmount: "0.000" });
 
     expect((await visitsOf(id)).map((visit) => visit.visit_amount)).toEqual(["500.000", "0.000", "500.000", "0.000"]);
-    expect((await contract(id)).schedule).toMatchObject({ scheduledTotal: "1000.000", valueDifference: "0.000", amountMissingCount: 0 });
+    expect((await contract(id)).schedule).toMatchObject({ scheduledTotal: "1000.000", valueDifference: null, amountMissingCount: 0 });
   });
 
   it("can be cleared, and the contract then reports a visit without an amount", async () => {

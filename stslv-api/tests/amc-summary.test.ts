@@ -58,7 +58,7 @@ beforeAll(async () => {
 
   // Z: cancelled, with its four scheduled visits left as they were.
   const z = await activeContract(admin, client, { systemDescription: "Z", validFrom: "2025-01-01", validTo: "2025-12-31" });
-  await api().post(`/api/amc/contracts/${z}/status`).set(admin.headers).send({ status: "CANCELLED" });
+  await api().post(`/api/amc/contracts/${z}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" });
 
   allVisits = (await pool.query<{ scheduled_date: string; status: string }>("SELECT scheduled_date::text AS scheduled_date, status FROM amc_visits")).rows;
 });

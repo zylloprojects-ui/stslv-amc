@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { exportFormatSchema } from "../../shared/export/report";
+import { pagingSchema } from "../../shared/money";
 import { emailSchema, idSchema, newPasswordSchema, requiredText } from "../../shared/validation";
 
 export const ONE_ROLE_MESSAGE = "Select exactly one role.";
@@ -28,4 +30,14 @@ export const issueTemporaryPasswordSchema = z.strictObject({
   identityVerified: z.literal(true, { error: "Confirm that you have verified the person's identity." }),
 });
 
+const userFilters = {
+  // Matches the name, the email or the role's name.
+  search: z.string().trim().max(200).optional(),
+  status: z.enum(["ACTIVE", "INACTIVE", "PENDING", "REJECTED"], { error: "Select a status." }).optional(),
+};
+
+export const listUsersSchema = z.object({ ...userFilters, ...pagingSchema });
+export const exportUsersSchema = z.object({ ...userFilters, format: exportFormatSchema });
+
 export type CreateUserInput = z.infer<typeof createUserSchema>;
+export type UserFilters = Omit<z.infer<typeof exportUsersSchema>, "format">;

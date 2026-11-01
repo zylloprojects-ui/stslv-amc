@@ -93,8 +93,9 @@ describe("permission catalog", () => {
     expect(isGrantable("SETTINGS", "EXPORT")).toBe(false);
     expect(isGrantable("MONTHLY_CALENDAR", "EDIT")).toBe(false);
     expect(isGrantable("PROJECTS", "VIEW")).toBe(false);
-    expect(isGrantable("REPORTS", "VIEW")).toBe(false);
-    expect(ACTIONS.some((action) => isUsed("REPORTS", action))).toBe(false);
+    expect(isGrantable("REPORTS", "VIEW")).toBe(true);
+    expect(isGrantable("REPORTS", "EXPORT")).toBe(true);
+    expect(isGrantable("REPORTS", "EDIT")).toBe(false);
   });
 });
 

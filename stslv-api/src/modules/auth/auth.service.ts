@@ -13,6 +13,27 @@ const invalidCredentials = () => new AppError(401, "INVALID_CREDENTIALS", "Incor
 
 type LoginFailureReason = "unknown_account" | "wrong_password" | "inactive_account" | "temporary_password_expired";
 
+const USER_AGENT_MAX_LENGTH = 300;
+
+/**
+ * The browser's own description of itself. The sender controls it, so it is only ever text:
+ * control characters are removed and the length is limited before it is stored.
+ */
+export function cleanUserAgent(value: string | undefined): string | null {
+  // eslint-disable-next-line no-control-regex
+  const text = (value ?? "").replace(/[\u0000-\u001f\u007f-\u009f]+/g, " ").trim().slice(0, USER_AGENT_MAX_LENGTH);
+
+  return text === "" ? null : text;
+}
+
+export interface LoginContext {
+  ip: string | null;
+  userAgent?: string | null;
+}
+
+/** Stored in the entry's metadata. A request without a user agent stores none. */
+const connectionDetails = ({ ip, userAgent }: LoginContext) => ({ ip, ...(userAgent ? { userAgent } : {}) });
+
 /**
  * Records a failed sign-in. Every failure writes one entry, so the response takes
  * the same time whether or not the email has an account. An email with no account
@@ -21,7 +42,7 @@ type LoginFailureReason = "unknown_account" | "wrong_password" | "inactive_accou
 async function recordFailedLogin(
   user: { id: string; full_name: string } | undefined,
   reason: LoginFailureReason,
-  ip: string | null
+  context: LoginContext
 ) {
   await logActivity(pool, {
     userId: null,
@@ -30,11 +51,11 @@ async function recordFailedLogin(
     entityType: "users",
     entityId: user?.id ?? null,
     description: user ? `Failed sign-in for ${user.full_name}.` : "Failed sign-in for an email with no account.",
-    metadata: { reason, ip },
+    metadata: { reason, ...connectionDetails(context) },
   });
 }
 
-export async function login(email: string, password: string, context: { ip: string | null } = { ip: null }) {
+export async function login(email: string, password: string, context: LoginContext = { ip: null }) {
   const result = await pool.query<{
     id: string;
     email: string;
@@ -53,19 +74,19 @@ export async function login(email: string, password: string, context: { ip: stri
 
   if (!user) {
     await verifyAgainstDummy(password);
-    await recordFailedLogin(undefined, "unknown_account", context.ip);
+    await recordFailedLogin(undefined, "unknown_account", context);
     throw invalidCredentials();
   }
 
   const passwordMatches = await verifyPassword(password, user.password_hash);
 
   if (!passwordMatches || !user.is_active) {
-    await recordFailedLogin(user, passwordMatches ? "inactive_account" : "wrong_password", context.ip);
+    await recordFailedLogin(user, passwordMatches ? "inactive_account" : "wrong_password", context);
     throw invalidCredentials();
   }
   // Said plainly, because only someone who typed the right temporary password gets this far.
   if (user.must_change_password && user.temporary_password_expired) {
-    await recordFailedLogin(user, "temporary_password_expired", context.ip);
+    await recordFailedLogin(user, "temporary_password_expired", context);
     throw new AppError(401, "TEMPORARY_PASSWORD_EXPIRED", TEMPORARY_PASSWORD_EXPIRED_MESSAGE);
   }
 
@@ -79,7 +100,7 @@ export async function login(email: string, password: string, context: { ip: stri
     description: user.must_change_password
       ? `${user.full_name} signed in with a temporary password.`
       : `${user.full_name} signed in.`,
-    metadata: user.must_change_password ? { ip: context.ip, temporaryPassword: true } : { ip: context.ip },
+    metadata: user.must_change_password ? { ...connectionDetails(context), temporaryPassword: true } : connectionDetails(context),
   });
 
   const [roles, permissions] = await Promise.all([loadUserRoles(pool, user.id), loadUserPermissions(pool, user.id)]);
@@ -91,6 +112,19 @@ export async function login(email: string, password: string, context: { ip: stri
   };
 
   return { ...issueToken(user.id, { passwordChange: user.must_change_password }), user: toSessionUser(auth) };
+}
+
+/** Records that a user signed out. It ends nothing: the web application discards its own token, and that token stays valid until it expires. */
+export async function recordLogout(auth: AuthContext, context: LoginContext): Promise<void> {
+  await logActivity(pool, {
+    userId: auth.user.id,
+    action: "auth.logout",
+    module: "AUTH",
+    entityType: "users",
+    entityId: auth.user.id,
+    description: `${auth.user.fullName} signed out.`,
+    metadata: connectionDetails(context),
+  });
 }
 
 /**

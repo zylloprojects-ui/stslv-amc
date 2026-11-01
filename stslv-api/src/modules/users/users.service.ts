@@ -1,6 +1,7 @@
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
+import { escapeLike } from "../../shared/validation";
 import { conflict, forbidden, isUniqueViolation, notFound, validationError } from "../../shared/errors";
 import { ADMIN_ROLE_CODE, holdsPermission, type PermissionKey } from "../../shared/permissions";
 import { hasAdminAccess, isPrivilegedRole, isSuperAdmin } from "../../shared/role-model";
@@ -8,7 +9,7 @@ import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth
 import { hashPassword } from "../auth/password";
 import { revokeResetTokens } from "../auth/password-reset.service";
 import { generateTemporaryPassword, TEMPORARY_PASSWORD_MINUTES } from "../auth/temporary-password";
-import { ONE_ROLE_MESSAGE, type CreateUserInput } from "./users.schemas";
+import { ONE_ROLE_MESSAGE, type CreateUserInput, type UserFilters } from "./users.schemas";
 
 /**
  * PENDING: requested from the Sign up page and not yet decided by an administrator.
@@ -72,6 +73,51 @@ export async function listUsers(): Promise<User[]> {
   const result = await pool.query<UserRow>(`${USER_SELECT} GROUP BY u.id ORDER BY lower(u.full_name), u.id`);
 
   return result.rows.map(toUser);
+}
+
+function userFilter(filters: UserFilters) {
+  const params: unknown[] = [];
+  const conditions: string[] = [];
+
+  if (filters.search) {
+    params.push(`%${escapeLike(filters.search)}%`);
+    const p = `$${params.length}`;
+    conditions.push(
+      `(f.full_name ILIKE ${p} OR f.email ILIKE ${p} OR EXISTS (SELECT 1 FROM user_roles fur JOIN roles fr ON fr.id = fur.role_id WHERE fur.user_id = f.id AND fr.name ILIKE ${p}))`
+    );
+  }
+  // The same four states the Users table shows: a pending or rejected account is also inactive, but is shown as what it is.
+  if (filters.status === "ACTIVE") conditions.push("f.is_active");
+  if (filters.status === "INACTIVE") conditions.push("NOT f.is_active AND f.approval_status = 'APPROVED'");
+  if (filters.status === "PENDING") conditions.push("f.approval_status = 'PENDING'");
+  if (filters.status === "REJECTED") conditions.push("f.approval_status = 'REJECTED'");
+
+  return { params, where: conditions.length > 0 ? conditions.join(" AND ") : "true" };
+}
+
+/** One page of the Users table. pendingTotal ignores the filters: requests waiting for a decision are always announced. */
+export async function listUsersPage(query: UserFilters & { page: number; pageSize: number }) {
+  const { params, where } = userFilter(query);
+  const [total, pending, rows] = await Promise.all([
+    pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM users f WHERE ${where}`, params),
+    pool.query<{ count: number }>("SELECT count(*)::int AS count FROM users WHERE approval_status = 'PENDING'"),
+    pool.query<UserRow>(
+      `${USER_SELECT} WHERE u.id IN (SELECT f.id FROM users f WHERE ${where})
+       GROUP BY u.id ORDER BY lower(u.full_name), u.id
+       LIMIT ${query.pageSize} OFFSET ${(query.page - 1) * query.pageSize}`,
+      params
+    ),
+  ]);
+
+  return { items: rows.rows.map(toUser), total: total.rows[0]?.count ?? 0, pendingTotal: pending.rows[0]?.count ?? 0, page: query.page, pageSize: query.pageSize };
+}
+
+/** Every user matching the filters, for the export. */
+export async function listUsersMatching(filters: UserFilters): Promise<User[]> {
+  const { params, where } = userFilter(filters);
+  const rows = await pool.query<UserRow>(`${USER_SELECT} WHERE u.id IN (SELECT f.id FROM users f WHERE ${where}) GROUP BY u.id ORDER BY lower(u.full_name), u.id`, params);
+
+  return rows.rows.map(toUser);
 }
 
 async function findUser(db: Queryable, id: string): Promise<User> {

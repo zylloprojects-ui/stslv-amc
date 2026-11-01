@@ -1,6 +1,6 @@
 /** Shared table styling. Put the table inside <TableScroll> so a wide table scrolls within its card. */
 export const TABLE = {
-  wrapper: 'table-scroll overflow-x-auto',
+  wrapper: 'relative table-scroll overflow-x-auto',
   table: 'min-w-full divide-y divide-slate-100 text-sm',
   th: 'whitespace-nowrap border-b border-slate-200 bg-slate-50/70 px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500',
   td: 'px-4 py-3.5 align-middle text-slate-700',

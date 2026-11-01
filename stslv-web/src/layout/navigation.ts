@@ -13,6 +13,8 @@ export interface NavItem {
   alsoRequires?: Module[]
   /** Modules whose data the page shows: View or data-only Read is enough, and their own pages are not opened. */
   alsoReads?: Module[]
+  /** Opened from Settings, not the sidebar. Still offered by the page search and checked like any other item. */
+  settingsArea?: true
 }
 
 /** Whether a navigation item is offered to the user. A convenience only: the API enforces every permission. */
@@ -56,21 +58,22 @@ export const NAVIGATION: NavSection[] = [
     items: [
       { label: 'AMC Management', path: '/amc/management', module: 'AMC_CONTRACTS' },
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },
-      { label: 'AMC Renewal', path: '/amc/renewal', module: 'AMC_RENEWAL' },
-      { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
-      { label: 'Monthly Calendar', path: '/amc/calendar', module: 'MONTHLY_CALENDAR' },
-      { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },
-      { label: 'Services Sales', path: '/amc/services-sales', module: 'SERVICES_SALES' },
       { label: 'Master AMC Status', path: '/amc/master-status', module: 'MASTER_AMC_STATUS' },
+      { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },
+      { label: 'Accounts', path: '/finance/accounts', module: 'ACCOUNTS' },
+      { label: 'Quotations', path: '/amc/quotations', module: 'SERVICES_SALES' },
+      { label: 'AMC Renewal', path: '/amc/renewal', module: 'AMC_RENEWAL' },
+      { label: 'Monthly Calendar', path: '/amc/calendar', module: 'MONTHLY_CALENDAR' },
+      { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
     ],
   },
   {
     title: 'Finance',
     items: [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
-      { label: 'Accounts', path: '/finance/accounts', module: 'ACCOUNTS' },
     ],
   },
+  { title: 'Reporting', items: [{ label: 'Reports', path: '/reports', module: 'REPORTS' }] },
   {
     title: 'Administration',
     items: [
@@ -78,8 +81,11 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Login History', path: '/admin/login-history', module: 'USERS' },
       { label: 'Audit Log', path: '/admin/audit-log', module: 'USERS', adminOnly: true },
+      { label: 'Recycle Bin', path: '/admin/deletion-log', module: 'USERS', adminOnly: true },
       { label: 'Suggestions Review', path: '/admin/suggestions', module: 'SUGGESTIONS_REVIEW' },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
+      { label: 'Security Center', path: '/settings/security', module: 'USERS', adminOnly: true, settingsArea: true },
+      { label: 'Backup & Restore', path: '/settings/backups', module: 'USERS', adminOnly: true, settingsArea: true },
     ],
   },
 ]

@@ -11,6 +11,7 @@ import {
   VISIT_STATUSES,
 } from "./amc.constants";
 import { isValidIsoDate } from "./amc.schedule";
+import { serviceStatusHiddenSchema } from "./service-status.schemas";
 
 // ---------------------------------------------------------------------------
 // Money
@@ -88,6 +89,9 @@ const page = z.coerce.number().int().min(1).default(1);
 // Contracts
 // ---------------------------------------------------------------------------
 
+export const BILLING_BASES = ["CONTRACT_VALUE", "FINAL_CREDIT", "CUSTOM"] as const;
+export type BillingBasis = (typeof BILLING_BASES)[number];
+
 const contractFields = {
   clientId: idSchema,
   responsibleEngineer: optionalText("Responsible engineer", 200),
@@ -97,6 +101,9 @@ const contractFields = {
   description: optionalText("Description", 2000),
   contractValue: requiredMoney("Contract value"),
   finalCredit: optionalMoney("Final credit"),
+  // Which amount the contract is billed on. Recorded only; no calculation reads it.
+  billingBasis: z.enum(BILLING_BASES, { error: "Select a billing basis." }).nullable(),
+  customBillingValue: optionalMoney("Custom billing value"),
   maintenanceFrequency: frequency,
   customMonths,
   defaultVisitAmount: optionalMoney("Default visit amount"),
@@ -112,6 +119,8 @@ export const createContractSchema = z.strictObject({
   description: contractFields.description.optional(),
   contractValue: contractFields.contractValue,
   finalCredit: contractFields.finalCredit.optional(),
+  billingBasis: contractFields.billingBasis.optional(),
+  customBillingValue: contractFields.customBillingValue.optional(),
   maintenanceFrequency: contractFields.maintenanceFrequency,
   // Only for a custom frequency; left out or empty otherwise.
   customMonths: contractFields.customMonths.optional(),
@@ -121,6 +130,11 @@ export const createContractSchema = z.strictObject({
   salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
   // A contract is created as a draft (no schedule) or active (schedule generated at once).
   status: z.enum(["DRAFT", "ACTIVE"]).default("DRAFT"),
+});
+
+/** A renewal: the same fields, plus optional notes kept in the activity log of the new contract. */
+export const createRenewalSchema = createContractSchema.extend({
+  renewalNotes: optionalText("Renewal notes", 1000).optional(),
 });
 
 // Every field optional: a field that is left out is not changed.
@@ -135,6 +149,8 @@ export const updateContractSchema = z
     description: contractFields.description.optional(),
     contractValue: contractFields.contractValue.optional(),
     finalCredit: contractFields.finalCredit.optional(),
+    billingBasis: contractFields.billingBasis.optional(),
+    customBillingValue: contractFields.customBillingValue.optional(),
     maintenanceFrequency: contractFields.maintenanceFrequency.optional(),
     // Replaces the selected months. Left out: unchanged (cleared when the frequency changes to a fixed one).
     customMonths: contractFields.customMonths.optional(),
@@ -149,6 +165,7 @@ export const changeContractStatusSchema = z.strictObject({
   // Only meaningful when the contract becomes EXPIRED or CANCELLED: also
   // cancels its visits that are still scheduled or postponed. Never implied.
   cancelOpenVisits: z.boolean().default(false),
+  // Required when the contract becomes CANCELLED (checked in the service, after permission and transition).
   reason: optionalText("Reason", 500).optional(),
 });
 
@@ -167,6 +184,30 @@ export const listContractsSchema = z.object({
   year: z.coerce.number({ error: CONTRACT_YEAR_MESSAGE }).int(CONTRACT_YEAR_MESSAGE).min(2000, CONTRACT_YEAR_MESSAGE).max(2100, CONTRACT_YEAR_MESSAGE).optional(),
   page,
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
+});
+
+/** The register's columns a user may hide. # and Client always stay, so every row stays identified. */
+export const CONTRACT_HIDEABLE_COLUMNS = ["reference", "system", "engineer", "validity", "frequency", "contractValue", "finalCredit", "visits", "status"] as const;
+export type ContractColumn = (typeof CONTRACT_HIDEABLE_COLUMNS)[number];
+
+/** The register's own filters, without paging, plus the file format and the columns hidden on the page ("system,engineer"). */
+export const exportContractsSchema = listContractsSchema.omit({ page: true, pageSize: true }).extend({
+  format: exportFormatSchema,
+  hidden: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .transform((value, ctx) => {
+      const ids = (value ?? "").split(",").map((id) => id.trim()).filter((id) => id !== "");
+      const unknown = ids.filter((id) => !(CONTRACT_HIDEABLE_COLUMNS as readonly string[]).includes(id));
+
+      if (unknown.length > 0) {
+        ctx.addIssue({ code: "custom", message: `Unknown column: ${unknown.join(", ")}.` });
+        return z.NEVER;
+      }
+      return [...new Set(ids)] as ContractColumn[];
+    }),
 });
 
 /** The activity history of one contract, newest first. */
@@ -241,6 +282,7 @@ export const listVisitsSchema = z.object({
   frequency: frequency.optional(),
   // The Monthly Calendar's billing status; see BILLING_STATUSES.
   billingStatus: z.enum(BILLING_STATUSES, { error: "Select a billing status." }).optional(),
+  paymentStatus: z.enum(["PAID", "UNPAID"], { error: "Select Paid or Unpaid." }).optional(),
   overdue: z.enum(["true", "false"]).optional(),
   search: z.string().trim().max(200).optional(),
   page,
@@ -315,7 +357,7 @@ export const listServiceStatusSchema = z.object({
 });
 
 /** The page's own filters, without paging, plus the file format. */
-export const exportServiceStatusSchema = listServiceStatusSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
+export const exportServiceStatusSchema = listServiceStatusSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema, hidden: serviceStatusHiddenSchema });
 
 const REPORT_NUMBER_MESSAGE = "Service report number must be at most 50 characters, without line breaks.";
 
@@ -339,6 +381,16 @@ export const saveServiceStatusSchema = z
   })
   .refine((value) => value.status !== undefined || value.reportNumber !== undefined || value.completedDate !== undefined, "Provide a status, completion date or report number to save.");
 
+/** The manual colour of a service (Color Priority level 1). Null clears it. */
+export const COLOR_OVERRIDES = ["RED", "AMBER", "GREEN", "BLUE", "PURPLE", "GREY"] as const;
+/** An explicit Regenerate always says why; the reason stays in the schedule history. */
+export const regenerateScheduleSchema = z.strictObject({
+  reason: z.string({ error: "Enter the reason for regenerating." }).trim().min(3, "Enter the reason for regenerating.").max(300, "A reason has at most 300 characters."),
+});
+
+export const setVisitColorSchema = z.strictObject({ color: z.enum(COLOR_OVERRIDES, { error: "Select a colour." }).nullable() });
+export type SetVisitColorInput = z.infer<typeof setVisitColorSchema>;
+
 export const summarySchema = z.object({
   upcomingDays: z.coerce.number().int().min(1).max(366).default(30),
 });
@@ -347,6 +399,7 @@ export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type UpdateContractInput = z.infer<typeof updateContractSchema>;
 export type ChangeContractStatusInput = z.infer<typeof changeContractStatusSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsSchema>;
+export type ExportContractsQuery = z.infer<typeof exportContractsSchema>;
 export type ContractHistoryQuery = z.infer<typeof contractHistorySchema>;
 export type ContractMastersInput = z.infer<typeof contractMastersSchema>;
 export type ExpiringContractsQuery = z.infer<typeof expiringContractsSchema>;

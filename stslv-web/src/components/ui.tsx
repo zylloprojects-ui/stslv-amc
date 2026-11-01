@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useContext, createContext, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import { cx } from '../lib/format'
@@ -274,12 +274,28 @@ export function EmptyState({ title, description, action }: { title: string; desc
  * The heading of a page, as a banner: icon tile, title and subtitle, with optional actions on the right.
  * The icon and the default subtitle come from the current address. It also names the browser tab after the page.
  */
+/** True inside a page that already has its banner: a page shown there heads its panel instead of adding a second banner. */
+export const NestedPageContext = createContext(false)
+
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
   usePageTitle(title)
 
   const location = useLocation()
+  const nested = useContext(NestedPageContext)
   const meta = pageMetaFor(location.pathname)
   const subtitle = description ?? meta.description
+
+  if (nested) {
+    return (
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold tracking-tight text-[#0b3b66]">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap gap-2 max-sm:w-full [&>*]:max-sm:flex-1">{actions}</div>}
+      </div>
+    )
+  }
 
   return (
     <div className="login-rise relative mb-6 overflow-hidden rounded-2xl app-banner shadow-lg shadow-sky-900/10">

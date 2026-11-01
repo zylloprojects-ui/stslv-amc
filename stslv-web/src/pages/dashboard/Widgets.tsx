@@ -1,11 +1,13 @@
+import { formatMoney } from '../../lib/money'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { TABLE } from '../../components/table'
 import { cx, formatCount } from '../../lib/format'
 import { formatDate, monthLabel } from '../amc/amcFormat'
 import { ContractStatusPill } from '../amc/components'
+import { amcReference } from '../amc/calendar/calendarTypes'
 import { CONTRACT_STATUS_LABELS } from '../amc/types'
-import type { OperationsDashboard, Unavailable, WorkloadMonth } from './operationsTypes'
+import type { OperationsDashboard, PaymentTrendMonth, WorkloadMonth } from './operationsTypes'
 
 const shortMonth = (month: string) => monthLabel(month).slice(0, 3)
 
@@ -144,25 +146,25 @@ export function WorkloadChart({ months }: { months: WorkloadMonth[] }) {
   )
 }
 
-/** The payment trend cannot be drawn: STSLV AMC records no payments. Says so instead of drawing zeros. */
-export function PaymentTrend({ payments }: { payments: Unavailable }) {
+/** The value of the services marked Paid per month, by when the Invoice No. was entered. A reference status, not verified payment. */
+export function PaymentTrend({ months }: { months: PaymentTrendMonth[] }) {
+  // Compared in whole thousandths, so the bar heights use no money arithmetic beyond a ratio for drawing.
+  const units = months.map((month) => Number(month.value.replace('.', '')))
+  const highest = Math.max(...units, 1)
+
   return (
-    <div className="relative flex flex-1 min-h-72 items-center justify-center overflow-hidden rounded-xl border border-slate-300 bg-slate-50 p-6">
-      <div className="pointer-events-none absolute inset-x-6 inset-y-8 flex flex-col justify-between" aria-hidden="true">
-        {[0, 1, 2, 3].map((line) => (
-          <span key={line} className="border-t border-dashed border-slate-300" />
+    <div className="flex flex-1 flex-col rounded-xl border border-slate-300 bg-white p-4">
+      <ul aria-label="Paid value per month" className="flex min-h-56 flex-1 items-end gap-2">
+        {months.map((month, index) => (
+          <li key={month.month} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-1 text-center">
+            <span className="text-xs font-semibold tabular-nums text-slate-800">{formatMoney(month.value)}</span>
+            <span className="w-full rounded-t bg-emerald-500" style={{ height: `${Math.max(((units[index] ?? 0) / highest) * 70, (units[index] ?? 0) > 0 ? 3 : 0.5)}%` }} aria-hidden="true" />
+            <span className="text-xs text-slate-600">{month.month}</span>
+            <span className="sr-only">{month.count} service(s)</span>
+          </li>
         ))}
-      </div>
-      <div className="relative max-w-md rounded-2xl border border-slate-300 bg-white px-6 py-5 text-center shadow-sm">
-        <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-[#1479BD]" aria-hidden="true">
-          <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M4 19V9m6 10V5m6 14v-7m4 7H3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </span>
-        <p className="text-sm font-bold text-slate-800">Payment data not available</p>
-        <p className="mt-1.5 text-xs leading-relaxed text-slate-600">{payments.reason}</p>
-        <p className="mt-2 border-t border-slate-200 pt-2 text-xs leading-relaxed text-slate-600">Invoice dates are not payment dates, so they are not used for this chart.</p>
-      </div>
+      </ul>
+      <p className="mt-3 text-xs text-slate-600">OMR excluding VAT. Paid means a manual Invoice No. is entered; it does not verify that money was received.</p>
     </div>
   )
 }
@@ -275,7 +277,7 @@ export function ExpiringContracts({ expiring }: { expiring: NonNullable<Operatio
               <tr key={row.id} className={TABLE.row}>
                 <td className={TABLE.td}>
                   <Link to={`/amc/contracts/${row.id}`} className="font-medium text-[#1479BD] hover:underline">
-                    Record {row.id}
+                    {amcReference(row.id)}
                   </Link>
                 </td>
                 <td className={cx(TABLE.td, TABLE.text)}>{row.client.name}</td>
