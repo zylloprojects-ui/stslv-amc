@@ -77,6 +77,9 @@ export interface Contract {
   description: string | null
   contractValue: string
   finalCredit: string | null
+  billingBasis?: 'CONTRACT_VALUE' | 'FINAL_CREDIT' | 'CUSTOM' | null
+  customBillingValue?: string | null
+  selectedBillingAmount?: string | null
   maintenanceFrequency: MaintenanceFrequency
   /** Months (1 = January) of a contract on a custom frequency; empty or absent otherwise. */
   customMonths?: number[]
@@ -172,7 +175,13 @@ export interface ScheduleVisit extends ExecutionVisit {
   visitAmount: string | null
   amountIsCustom: boolean
   invoiceEligibility: InvoiceEligibility
+  colorOverride?: string | null
+  colorState?: 'MANUAL' | 'CANCELLED' | 'INVOICE_PENDING' | 'FIRST_SERVICE' | 'NORMAL'
 }
+
+export const COLOR_PRIORITY_RULE = 'Manual → Cancelled → Invoice Pending → First Service → Normal'
+
+export const BILLING_BASIS_LABELS = { CONTRACT_VALUE: 'Contract value', FINAL_CREDIT: 'Final credit', CUSTOM: 'Custom value' } as const
 
 export interface VisitList {
   items: ScheduleVisit[]

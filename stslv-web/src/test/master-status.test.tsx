@@ -189,12 +189,14 @@ describe('Master AMC Status page', () => {
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
+    await userEvent.selectOptions(screen.getByLabelText('Invoice Status'), 'RECORDED')
+    await userEvent.selectOptions(screen.getByLabelText('Quotation Status'), 'NOT_RECORDED')
     await userEvent.selectOptions(screen.getByLabelText('Row Colour'), 'GREEN')
     // Nothing is requested until Apply.
     expect(api.find('GET', '/amc/master-status')).toHaveLength(before)
 
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    const expected = { search: 'inv-3', clientId: '10', salesEngineerId: '4', month: '10', year: '2026', serviceStatus: 'COMPLETED', colour: 'GREEN', page: '1', pageSize: '50' }
+    const expected = { search: 'inv-3', clientId: '10', salesEngineerId: '4', month: '10', year: '2026', serviceStatus: 'COMPLETED', invoiceStatus: 'RECORDED', quotationStatus: 'NOT_RECORDED', colour: 'GREEN', page: '1', pageSize: '50' }
     await waitFor(() => expect(Object.fromEntries(api.find('GET', '/amc/master-status').at(-1)?.query ?? [])).toEqual(expected))
     await waitFor(() => expect(screen.queryByText('AMC-0007')).not.toBeInTheDocument())
     expect(screen.getByText('AMC-0010')).toBeInTheDocument()
@@ -226,7 +228,7 @@ describe('Master AMC Status page', () => {
     expect(headers()).not.toContain('Visit Value')
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
-    expect(within(rowOf('AMC-0010')).getByRole('link', { name: 'View contract AMC-0010' })).toBeInTheDocument()
+    expect(within(rowOf('AMC-0010')).getByRole('button', { name: /Details of AMC-0010/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide Columns · 8 of 10 shown' })).toBeInTheDocument()
 
     // Remembered for this user.
@@ -278,7 +280,8 @@ describe('Master AMC Status page', () => {
     statusApi(VIEWER, [BLUE])
     renderPage()
 
-    const link = await screen.findByRole('link', { name: 'View contract AMC-0009' })
+    await userEvent.click(await screen.findByRole('button', { name: /Details of AMC-0009/ }))
+    const link = await screen.findByRole('link', { name: 'Open contract' })
     expect(link).toHaveAttribute('href', '/amc/contracts/9')
     await userEvent.click(link)
     expect(await screen.findByRole('heading', { name: 'Contract detail stand-in' })).toBeInTheDocument()
@@ -330,11 +333,13 @@ describe('Master AMC Status routing and permissions', () => {
     expect(api.find('GET', '/amc/master-status')).toHaveLength(0)
   })
 
-  it('shows no View link to a user who may not open contracts', async () => {
+  it('shows Details but no contract link to a user who may not open contracts', async () => {
     statusApi({ ...VIEWER, permissions: ['MASTER_AMC_STATUS:VIEW'] }, [RED])
     renderPage()
     await screen.findByText('AMC-0007')
     expect(within(rowOf('AMC-0007')).queryByRole('link')).not.toBeInTheDocument()
-    expect(within(rowOf('AMC-0007')).getByText('No access')).toBeInTheDocument()
+    await userEvent.click(within(rowOf('AMC-0007')).getByRole('button', { name: /Details of AMC-0007/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open contract' })).not.toBeInTheDocument()
   })
 })

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
+import { ExportButtons } from '../../components/ExportButtons'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
@@ -199,6 +200,8 @@ export function AmcContractsPage() {
   })
 
   const canCreate = auth.can('AMC_CONTRACTS', 'CREATE')
+  const canExport = auth.can('AMC_CONTRACTS', 'EXPORT')
+  const [exportError, setExportError] = useState<string | null>(null)
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
 
   const data = contracts.data
@@ -227,8 +230,27 @@ export function AmcContractsPage() {
       <PageHeader
         title="AMC Contracts"
         description="Maintenance contracts. An active contract generates its visit schedule from its validity period and frequency."
-        actions={canCreate && <Button onClick={() => setDialog({ kind: 'create' })}>Add Contract</Button>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            {canExport && (
+              // The download covers every contract that matches the filters, on every page.
+              <ExportButtons
+                what="AMC Contracts"
+                fileStem="amc-contracts"
+                path={(format) => `/amc/contracts/export${queryString({ search, status, clientId, system, year, salesEngineerId, frequency, format })}`}
+                onError={setExportError}
+              />
+            )}
+            {canCreate && <Button onClick={() => setDialog({ kind: 'create' })}>Add Contract</Button>}
+          </div>
+        }
       />
+
+      {exportError && (
+        <div className="mb-4">
+          <Alert onDismiss={() => setExportError(null)}>{exportError}</Alert>
+        </div>
+      )}
 
       {notice && (
         <div className="mb-4">

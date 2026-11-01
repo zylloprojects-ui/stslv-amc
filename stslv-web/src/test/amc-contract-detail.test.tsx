@@ -112,7 +112,7 @@ describe('contract page', () => {
     expect(page.getByText('Test Hotel One')).toBeInTheDocument()
     expect(page.getByText('FIRE')).toBeInTheDocument()
     expect(page.getByText('Test Engineer')).toBeInTheDocument()
-    expect(page.getByText('Quarterly')).toBeInTheDocument()
+    expect(page.getAllByText('Quarterly')[0]!).toBeInTheDocument()
     expect(page.getByText('Active')).toBeInTheDocument()
     expect(page.getByText('01 Jan 2027 – 31 Dec 2027')).toBeInTheDocument()
 

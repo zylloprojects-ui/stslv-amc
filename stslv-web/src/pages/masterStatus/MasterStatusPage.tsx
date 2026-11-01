@@ -16,6 +16,8 @@ import { Filter, Pager } from '../amc/components'
 import './masterStatus.css'
 import { COLUMN_IDS, COLUMN_LABELS, useHiddenColumns, type ColumnId } from './masterStatusPreferences'
 import {
+  INVOICE_STATUS_FILTERS,
+  QUOTATION_STATUS_FILTERS,
   ROW_COLOURS,
   ROW_COLOUR_LABELS,
   SERVICE_STATUSES,
@@ -152,10 +154,76 @@ interface Filters {
   month: string
   year: string
   serviceStatus: string
+  invoiceStatus: string
+  quotationStatus: string
   colour: string
 }
 
-const NO_FILTERS: Filters = { search: '', clientId: '', salesEngineerId: '', month: '', year: '', serviceStatus: '', colour: '' }
+type SortColumn = 'scheduledDate' | 'reference' | 'client' | 'visitValue'
+interface Sort {
+  column: SortColumn
+  direction: 'asc' | 'desc'
+}
+const SORTABLE: Partial<Record<ColumnId, SortColumn>> = { client: 'client', scheduledMonth: 'scheduledDate', visitValue: 'visitValue' }
+
+function SortHeader({ label, column, sort, onSort, right }: { label: string; column: SortColumn; sort: Sort; onSort: (column: SortColumn) => void; right?: boolean }) {
+  const active = sort.column === column
+
+  return (
+    <th scope="col" aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={cx(TABLE.th, right && 'text-right')}>
+      <button type="button" onClick={() => onSort(column)} className="inline-flex items-center gap-1 font-semibold uppercase hover:text-[#1479BD]">
+        {label}
+        {active && !(column === 'scheduledDate' && sort.direction === 'asc') && <span aria-hidden="true">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
+      </button>
+    </th>
+  )
+}
+
+function DetailsDialog({ item, canViewContract, onClose }: { item: MasterStatusItem; canViewContract: boolean; onClose: () => void }) {
+  const rows: [string, ReactNode][] = [
+    ['Client', item.client.name],
+    ['System', item.system.typeName ?? item.system.description],
+    ['Frequency', item.frequency.label],
+    ['Service', serviceCodeLabel(item.service)],
+    ['Due date', formatDate(item.scheduledDate)],
+    ['Visit Value', item.visitValue === null ? '—' : formatMoney(item.visitValue)],
+    ['Service Status', SERVICE_STATUS_LABELS[item.serviceStatus]],
+    ['Completed on', item.completedDate ? formatDate(item.completedDate) : '—'],
+    ['Invoice No.', item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(', ') : 'Not recorded'],
+    ['Quote No.', item.quotationNo ?? 'Not recorded'],
+    ['Sales Engineer', item.salesEngineer?.name ?? '—'],
+  ]
+
+  return (
+    <Modal
+      title={`${item.reference} · ${serviceCodeLabel(item.service)}`}
+      onClose={onClose}
+      footer={
+        <>
+          {canViewContract && (
+            <Link to={`/amc/contracts/${item.contract.id}`} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#0b3b66] hover:border-[#1479BD]">
+              Open contract
+            </Link>
+          )}
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </>
+      }
+    >
+      <dl className="divide-y divide-slate-100 text-sm">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-4 py-2">
+            <dt className="text-slate-600">{label}</dt>
+            <dd className="text-right font-medium text-slate-900">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Modal>
+  )
+}
+
+const NO_FILTERS: Filters = { search: '', clientId: '', salesEngineerId: '', month: '', year: '', serviceStatus: '', invoiceStatus: '', quotationStatus: '', colour: '' }
 
 export function MasterStatusPage() {
   const auth = useAuth()
@@ -168,14 +236,22 @@ export function MasterStatusPage() {
   const [draft, setDraft] = useState<Filters>(NO_FILTERS)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [page, setPage] = useState(1)
+  const [sort, setSort] = useState<Sort>({ column: 'scheduledDate', direction: 'asc' })
+  const chooseSort = (column: SortColumn) => {
+    setSort(sort.column === column ? { column, direction: sort.direction === 'asc' ? 'desc' : 'asc' } : { column, direction: 'asc' })
+    setPage(1)
+  }
 
   const canExport = auth.can('MASTER_AMC_STATUS', 'EXPORT')
   const canViewContract = auth.can('AMC_CONTRACTS', 'VIEW')
 
   const options = useQuery({ queryKey: ['amc', 'master-status', 'options'], queryFn: () => api.get<MasterStatusOptions>('/amc/master-status/options') })
   const status = useQuery({
-    queryKey: ['amc', 'master-status', 'list', { ...filters, page }],
-    queryFn: () => api.get<MasterStatusList>(`/amc/master-status${queryString({ ...filters, page, pageSize: PAGE_SIZE })}`),
+    queryKey: ['amc', 'master-status', 'list', { ...filters, page, sort }],
+    queryFn: () =>
+      api.get<MasterStatusList>(
+        `/amc/master-status${queryString({ ...filters, ...(sort.column === 'scheduledDate' && sort.direction === 'asc' ? {} : { sort: sort.column, direction: sort.direction }), page, pageSize: PAGE_SIZE })}`,
+      ),
     placeholderData: keepPreviousData,
   })
 
@@ -337,6 +413,30 @@ export function MasterStatusPage() {
                 </select>
               )}
             </Filter>
+            <Filter label="Invoice Status">
+              {(id, className) => (
+                <select id={id} value={draft.invoiceStatus} onChange={(event) => set('invoiceStatus')(event.target.value)} className={className}>
+                  <option value="">All invoice statuses</option>
+                  {INVOICE_STATUS_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
+            <Filter label="Quotation Status">
+              {(id, className) => (
+                <select id={id} value={draft.quotationStatus} onChange={(event) => set('quotationStatus')(event.target.value)} className={className}>
+                  <option value="">All quotation statuses</option>
+                  {QUOTATION_STATUS_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
             <Filter label="Row Colour">
               {(id, className) => (
                 <select id={id} value={draft.colour} onChange={(event) => set('colour')(event.target.value)} className={className}>
@@ -394,16 +494,18 @@ export function MasterStatusPage() {
                     <th scope="col" className={TABLE.snHead}>
                       #
                     </th>
+                    <SortHeader label="AMC Reference" column="reference" sort={sort} onSort={chooseSort} />
+                    {visible.map((id) =>
+                      id in SORTABLE ? (
+                        <SortHeader key={id} label={COLUMN_LABELS[id]} column={SORTABLE[id] as SortColumn} sort={sort} onSort={chooseSort} right={id === 'visitValue'} />
+                      ) : (
+                        <th key={id} scope="col" className={cx(TABLE.th, id === 'visitValue' && 'text-right')}>
+                          {COLUMN_LABELS[id]}
+                        </th>
+                      ),
+                    )}
                     <th scope="col" className={TABLE.th}>
-                      AMC Reference
-                    </th>
-                    {visible.map((id) => (
-                      <th key={id} scope="col" className={cx(TABLE.th, id === 'visitValue' && 'text-right')}>
-                        {COLUMN_LABELS[id]}
-                      </th>
-                    ))}
-                    <th scope="col" className={TABLE.th}>
-                      <span className="sr-only">Details</span>
+                      Details
                     </th>
                   </tr>
                 </thead>
@@ -435,6 +537,7 @@ export function MasterStatusPage() {
 
 function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem; number: number; shown: (id: ColumnId) => boolean; canViewContract: boolean }) {
   const tone = COLOUR_TONE[item.colour]
+  const [details, setDetails] = useState(false)
 
   return (
     <tr className={cx(TABLE.row, 'ms-row')} data-colour={item.colour}>
@@ -499,19 +602,15 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-        {canViewContract ? (
-          <Link
-            to={`/amc/contracts/${item.contract.id}`}
-            aria-label={`View contract ${item.reference}`}
-            className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-semibold text-[#0b3b66] shadow-sm hover:border-[#1479BD] hover:text-[#1479BD]"
-          >
-            View
-          </Link>
-        ) : (
-          <span className="text-xs text-slate-400" title="Viewing contracts needs the AMC Contracts permission">
-            No access
-          </span>
-        )}
+        <button
+          type="button"
+          onClick={() => setDetails(true)}
+          aria-label={`Details of ${item.reference} ${serviceCodeLabel(item.service)}`}
+          className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-semibold text-[#0b3b66] shadow-sm hover:border-[#1479BD] hover:text-[#1479BD]"
+        >
+          Details
+        </button>
+        {details && <DetailsDialog item={item} canViewContract={canViewContract} onClose={() => setDetails(false)} />}
       </td>
     </tr>
   )

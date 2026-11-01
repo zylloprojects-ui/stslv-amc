@@ -88,6 +88,9 @@ const page = z.coerce.number().int().min(1).default(1);
 // Contracts
 // ---------------------------------------------------------------------------
 
+export const BILLING_BASES = ["CONTRACT_VALUE", "FINAL_CREDIT", "CUSTOM"] as const;
+export type BillingBasis = (typeof BILLING_BASES)[number];
+
 const contractFields = {
   clientId: idSchema,
   responsibleEngineer: optionalText("Responsible engineer", 200),
@@ -97,6 +100,9 @@ const contractFields = {
   description: optionalText("Description", 2000),
   contractValue: requiredMoney("Contract value"),
   finalCredit: optionalMoney("Final credit"),
+  // Which amount the contract is billed on. Recorded only; no calculation reads it.
+  billingBasis: z.enum(BILLING_BASES, { error: "Select a billing basis." }).nullable(),
+  customBillingValue: optionalMoney("Custom billing value"),
   maintenanceFrequency: frequency,
   customMonths,
   defaultVisitAmount: optionalMoney("Default visit amount"),
@@ -112,6 +118,8 @@ export const createContractSchema = z.strictObject({
   description: contractFields.description.optional(),
   contractValue: contractFields.contractValue,
   finalCredit: contractFields.finalCredit.optional(),
+  billingBasis: contractFields.billingBasis.optional(),
+  customBillingValue: contractFields.customBillingValue.optional(),
   maintenanceFrequency: contractFields.maintenanceFrequency,
   // Only for a custom frequency; left out or empty otherwise.
   customMonths: contractFields.customMonths.optional(),
@@ -135,6 +143,8 @@ export const updateContractSchema = z
     description: contractFields.description.optional(),
     contractValue: contractFields.contractValue.optional(),
     finalCredit: contractFields.finalCredit.optional(),
+    billingBasis: contractFields.billingBasis.optional(),
+    customBillingValue: contractFields.customBillingValue.optional(),
     maintenanceFrequency: contractFields.maintenanceFrequency.optional(),
     // Replaces the selected months. Left out: unchanged (cleared when the frequency changes to a fixed one).
     customMonths: contractFields.customMonths.optional(),
@@ -168,6 +178,9 @@ export const listContractsSchema = z.object({
   page,
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
+
+/** The register's own filters, without paging, plus the file format. */
+export const exportContractsSchema = listContractsSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema });
 
 /** The activity history of one contract, newest first. */
 export const contractHistorySchema = z.object({
@@ -339,6 +352,11 @@ export const saveServiceStatusSchema = z
   })
   .refine((value) => value.status !== undefined || value.reportNumber !== undefined || value.completedDate !== undefined, "Provide a status, completion date or report number to save.");
 
+/** The manual colour of a service (Color Priority level 1). Null clears it. */
+export const COLOR_OVERRIDES = ["RED", "AMBER", "GREEN", "BLUE", "PURPLE", "GREY"] as const;
+export const setVisitColorSchema = z.strictObject({ color: z.enum(COLOR_OVERRIDES, { error: "Select a colour." }).nullable() });
+export type SetVisitColorInput = z.infer<typeof setVisitColorSchema>;
+
 export const summarySchema = z.object({
   upcomingDays: z.coerce.number().int().min(1).max(366).default(30),
 });
@@ -347,6 +365,7 @@ export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type UpdateContractInput = z.infer<typeof updateContractSchema>;
 export type ChangeContractStatusInput = z.infer<typeof changeContractStatusSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsSchema>;
+export type ExportContractsQuery = z.infer<typeof exportContractsSchema>;
 export type ContractHistoryQuery = z.infer<typeof contractHistorySchema>;
 export type ContractMastersInput = z.infer<typeof contractMastersSchema>;
 export type ExpiringContractsQuery = z.infer<typeof expiringContractsSchema>;

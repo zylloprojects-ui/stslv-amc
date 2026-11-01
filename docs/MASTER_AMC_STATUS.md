@@ -86,12 +86,14 @@ id (`stslev.master-amc-status.hidden-columns.<userId>`), so it applies in this b
 
 ## Filters
 
-Search, Client, Sales Engineer, Month, Year, Service Status and Row Colour. Filters change only
+Search, Client, Sales Engineer, Month, Year, Service Status, Invoice Status, Quotation Status and Row Colour. Filters change only
 when **Apply** is selected; **Reset** clears them. The rows, the six cards and the downloads all
 use the same applied filters (one SQL condition shared by all three), so they always agree.
 
 * **Search:** client name, invoice number, quotation number, or an AMC reference ("AMC-0007",
   "amc7" or "7" find contract 7). Case-insensitive.
+* **Invoice Status:** Invoice recorded / No invoice recorded (an active invoice covers the visit). Not a payment status.
+* **Quotation Status:** Quote recorded / No quote recorded (`amc_visits.quotation_no`).
 * **Month / Year:** of the scheduled date. Either may be used alone: a month alone means that month
   in every year.
 * Client, Sales Engineer and Year lists are taken from the contracts that have visits on the page

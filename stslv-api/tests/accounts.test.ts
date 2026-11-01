@@ -331,23 +331,21 @@ describe("Accounts", () => {
         "Frequency",
         "Service",
         "Scheduled Month",
-        "Visit Value",
         "Service Status",
         "Service Report No.",
+        "Visit Value",
         "Invoice No.",
-        "Paid / Unpaid",
         "Row Colour",
       ]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
       expect(rows.map((row) => row[2])).toEqual(["Alpha Towers", "Alpha Towers", "Alpha Towers", "Alpha Towers"]);
-      expect(rows[0]?.[7]).toBe("Completed");
+      expect(rows[0]?.[6]).toBe("Completed");
       // A formula-like number is written as text, never run.
-      expect(rows[0]?.[8]).not.toBe("=SR-1");
-      expect(String(rows[0]?.[8])).toContain("SR-1");
+      expect(rows[0]?.[7]).not.toBe("=SR-1");
+      expect(String(rows[0]?.[7])).toContain("SR-1");
       expect(String(rows[0]?.[9])).toBe("INV-9");
-      expect(rows[0]?.[10]).toBe("Not available");
-      expect(rows[0]?.[11]).toBe("Green · Completed, invoice number recorded");
-      expect(rows[1]?.[11]).toBe("Red · Service not completed");
+      expect(rows[0]?.[10]).toBe("Green · Completed, invoice number recorded");
+      expect(rows[1]?.[10]).toBe("Red · Service not completed");
 
       const audit = await pool.query<{ metadata: { rowCount: number; hidden: string[] } }>("SELECT metadata FROM activity_logs WHERE action = 'accounts.exported' ORDER BY id DESC LIMIT 1");
       expect(audit.rows[0]?.metadata).toMatchObject({ rowCount: 4, hidden: ["system", "salesEngineer"] });

@@ -102,7 +102,7 @@ function renderPage() {
   )
 }
 
-const figures = () => within(screen.getByRole('group', { name: 'Services Sales figures' }))
+const figures = () => within(screen.getByRole('group', { name: 'Quotations figures' }))
 const rowOf = (reference: string) => screen.getByText(reference).closest('tr') as HTMLElement
 
 beforeEach(() => signIn())
@@ -117,7 +117,7 @@ describe('Services Sales page', () => {
     const api = salesApi(EDITOR, [PENDING, QUOTED, OPEN])
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'Services Sales' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Quotations' })).toBeInTheDocument()
     expect(screen.getByText('Track completed services and manually record quotation numbers.')).toBeInTheDocument()
     await screen.findByText('AMC-0007')
 
@@ -197,7 +197,7 @@ describe('Services Sales page', () => {
     expect(screen.queryByRole('textbox', { name: /Quote No\./ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Save/ })).not.toBeInTheDocument()
     expect(within(rowOf('AMC-0008')).getByText('QT-55')).toBeInTheDocument()
-    expect(screen.queryByRole('group', { name: 'Export Services Sales' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Export Quotations' })).not.toBeInTheDocument()
   })
 
   it('sends every filter together, to the list and the download, and resets them', async () => {
@@ -224,10 +224,10 @@ describe('Services Sales page', () => {
     await waitFor(() => expect(Object.fromEntries(api.find('GET', '/services-sales').at(-1)?.query ?? [])).toEqual({ ...expected, page: '1', pageSize: '50' }))
     await waitFor(() => expect(figures().getByText('Total Services').closest('div')).toHaveTextContent('2'))
 
-    await userEvent.click(screen.getByRole('button', { name: 'Export Services Sales to Excel' }))
-    await waitFor(() => expect(saved).toEqual(['services-sales.xlsx']))
+    await userEvent.click(screen.getByRole('button', { name: 'Export Quotations to Excel' }))
+    await waitFor(() => expect(saved).toEqual(['quotations.xlsx']))
     expect(Object.fromEntries(api.find('GET', '/services-sales/export')[0]?.query ?? [])).toEqual({ ...expected, format: 'xlsx' })
-    await userEvent.click(screen.getByRole('button', { name: 'Export Services Sales to PDF' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Export Quotations to PDF' }))
     await waitFor(() => expect(api.find('GET', '/services-sales/export')[1]?.query.get('format')).toBe('pdf'))
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Reset Filters' })[0] as HTMLElement)
@@ -291,14 +291,15 @@ describe('Services Sales page', () => {
     expect(cardLabels()).toEqual(['Total Services', 'Not Completed', 'Completed / Quote Pending', 'Quoted'])
   })
 
-  it('is routed at /amc/services-sales and listed once in the menu, beside Service Status', async () => {
+  it('is named Quotations, routed at /amc/quotations with the old address redirected, and listed once in the menu', async () => {
     salesApi(EDITOR, [PENDING])
     renderApp('/amc/services-sales')
 
-    expect(await screen.findByRole('heading', { name: 'Services Sales' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Quotations' })).toBeInTheDocument()
+    expect(screen.queryByText('Services Sales')).not.toBeInTheDocument()
     const menu = within(screen.getByRole('navigation', { name: 'Main' }))
-    expect(menu.getAllByRole('link', { name: 'Services Sales' })).toHaveLength(1)
-    expect(menu.getByRole('link', { name: 'Services Sales' })).toHaveAttribute('href', '/amc/services-sales')
+    expect(menu.getAllByRole('link', { name: 'Quotations' })).toHaveLength(1)
+    expect(menu.getByRole('link', { name: 'Quotations' })).toHaveAttribute('href', '/amc/quotations')
   })
 
   it('is in the menu for an Admin', async () => {
@@ -307,7 +308,7 @@ describe('Services Sales page', () => {
     renderApp('/amc/services-sales')
 
     expect(await screen.findByRole('textbox', { name: 'Quote No. for AMC-0007 H1' })).toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Services Sales' })).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Quotations' })).toBeInTheDocument()
   })
 
   it('stays hidden and closed for a user without SERVICES_SALES, who still has Service Status', async () => {
@@ -317,7 +318,7 @@ describe('Services Sales page', () => {
     renderApp('/amc/services-sales')
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Services Sales' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Quotations' })).not.toBeInTheDocument()
     expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Service Status' })).toBeInTheDocument()
     expect(api.find('GET', '/services-sales')).toHaveLength(0)
   })

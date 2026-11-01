@@ -15,6 +15,7 @@ import { MaintenanceCalendar } from './dashboard/MaintenanceCalendar'
 import type { OperationsDashboard } from './dashboard/operationsTypes'
 import { RecentInvoices } from './dashboard/RecentInvoices'
 import { ExpiringContracts, PaymentTrend, PortfolioStatus, WorkloadChart } from './dashboard/Widgets'
+import { useKpiCustomization } from './amcManagement/managementPreferences'
 import { useKpiOrder, useStoredFlag } from './dashboard/dashboardPreferences'
 
 const SECTION_HEADING = 'mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#0b3b66]'
@@ -82,6 +83,7 @@ export function DashboardPage() {
   const operations = useQuery({ queryKey: ['dashboard', 'operations'], queryFn: () => api.get<OperationsDashboard>('/dashboard/operations') })
 
   const kpiOrder = useKpiOrder(userId, DEFAULT_KPI_ORDER)
+  const kpiNames = useKpiCustomization(userId, 'kpis', DEFAULT_KPI_ORDER, 'stslev.dashboard')
   const [arranging, setArranging] = useState(false)
   const [calendarOpen, setCalendarOpen] = useStoredFlag(userId, 'calendar-open', true)
 
@@ -164,10 +166,13 @@ export function DashboardPage() {
             <Button variant="secondary" size="sm" onClick={kpiOrder.reset}>
               Reset KPI Layout
             </Button>
+            <Button variant="secondary" size="sm" onClick={kpiNames.resetNames} disabled={!kpiNames.namesChanged}>
+              Reset KPI Names
+            </Button>
           </div>
         </div>
-        {arranging && <p className="mb-2 text-xs text-slate-600">Drag a card, or use its arrow buttons. The order is remembered in this browser for your account.</p>}
-        <KpiStrip data={data} failed={operations.isError} canView={canView} order={kpiOrder.order} arranging={arranging} onReorder={kpiOrder.setOrder} />
+        {arranging && <p className="mb-2 text-xs text-slate-600">Drag a card, use its arrow buttons, or give it your own name. A renamed card still shows the same figure. Names and order are remembered in this browser for your account.</p>}
+        <KpiStrip data={data} failed={operations.isError} canView={canView} order={kpiOrder.order} arranging={arranging} onReorder={kpiOrder.setOrder} names={kpiNames.names} onRename={kpiNames.rename} />
       </section>
 
       {operations.isPending && <Spinner label="Loading dashboard" />}

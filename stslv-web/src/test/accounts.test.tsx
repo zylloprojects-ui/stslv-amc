@@ -155,7 +155,7 @@ afterEach(() => {
 })
 
 describe('Accounts page', () => {
-  it('shows one coloured row per service, the five cards from the API and every column in order', async () => {
+  it('shows one coloured row per service, the five cards from the API and every column in the written order', async () => {
     accountsApi(VIEWER, [RED, BLUE, GREEN, RENEWAL])
     renderPage()
 
@@ -170,11 +170,10 @@ describe('Accounts page', () => {
       'Frequency',
       'Service',
       'Scheduled Month',
-      'Visit Value',
       'Service Status',
       'Service Report No.',
+      'Visit Value',
       'Invoice No.',
-      'Paid / Unpaid',
       'Sales Engineer',
       'Actions',
     ])
@@ -211,11 +210,10 @@ describe('Accounts page', () => {
     expect(within(rowOf('AMC-0009')).getByText('INV-1')).toBeInTheDocument()
     expect(within(rowOf('AMC-0009')).getByText('INV-2')).toBeInTheDocument()
     expect(within(rowOf('AMC-0009')).getByText('SR-15')).toBeInTheDocument()
-    expect(within(rowOf('AMC-0008')).getByText('No invoice recorded')).toBeInTheDocument()
+    expect(within(rowOf('AMC-0008')).getByText('Not recorded')).toBeInTheDocument()
     expect(within(rowOf('AMC-0007')).getByText('No service report number recorded')).toBeInTheDocument()
     expect(within(rowOf('AMC-0008')).getByText('No visit value set')).toBeInTheDocument()
     // An invoice number is not a payment.
-    for (const reference of ['AMC-0007', 'AMC-0008', 'AMC-0009']) expect(within(rowOf(reference)).getByText('Not available')).toBeInTheDocument()
     expect(screen.queryByText(/^Paid$/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Unpaid$/)).not.toBeInTheDocument()
   })
@@ -260,7 +258,7 @@ describe('Accounts page', () => {
 
     const options = within(screen.getByLabelText('Invoice Status')).getAllByRole('option').map((option) => option.textContent)
     expect(options).toEqual(['All', 'Invoice recorded', 'No invoice recorded'])
-    expect(screen.getByText(/Paid \/ Unpaid cannot be filtered/)).toBeInTheDocument()
+    expect(screen.getAllByText(/An invoice number is not a payment/).length).toBeGreaterThan(0)
   })
 
   it('renames and reorders the KPI cards, remembers them per user, and resets both', async () => {
@@ -296,25 +294,25 @@ describe('Accounts page', () => {
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Paid / Unpaid' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Invoice No.' }))
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
-    expect(headers()).not.toContain('Paid / Unpaid')
+    expect(headers()).not.toContain('Invoice No.')
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(headers()).toContain('Actions')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 9 of 11 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 8 of 10 shown' })).toBeInTheDocument()
 
     view.unmount()
     renderPage()
     await screen.findByText('AMC-0009')
-    expect(headers()).not.toContain('Paid / Unpaid')
+    expect(headers()).not.toContain('Invoice No.')
 
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset to Default' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
-    expect(headers()).toContain('Paid / Unpaid')
+    expect(headers()).toContain('Invoice No.')
   })
 
   it('downloads Excel and PDF with the applied filters and the hidden columns', async () => {
@@ -354,19 +352,42 @@ describe('Accounts page', () => {
 
     expect(within(rowOf('AMC-0008')).getByRole('link', { name: 'Contract AMC-0008' })).toHaveAttribute('href', '/amc/contracts/8')
     // Only a completed service without an invoice offers recording one; it opens Invoice Tracking and saves nothing here.
-    expect(within(rowOf('AMC-0007')).queryByRole('link', { name: /Record an invoice/ })).not.toBeInTheDocument()
-    expect(within(rowOf('AMC-0009')).queryByRole('link', { name: /Record an invoice/ })).not.toBeInTheDocument()
-    // The link names the visit, so Invoice Tracking opens its form with that visit ticked.
-    expect(within(rowOf('AMC-0008')).getByRole('link', { name: 'Record an invoice for AMC-0008 in Invoice Tracking' })).toHaveAttribute('href', `/invoices?recordForVisit=${BLUE.id}`)
-    await userEvent.click(within(rowOf('AMC-0008')).getByRole('link', { name: 'Record an invoice for AMC-0008 in Invoice Tracking' }))
-    expect(await screen.findByRole('heading', { name: 'Invoice Tracking stand-in' })).toBeInTheDocument()
+    expect(within(rowOf('AMC-0007')).queryByRole('button', { name: /Record an invoice/ })).not.toBeInTheDocument()
+    expect(within(rowOf('AMC-0009')).queryByRole('button', { name: /Record an invoice/ })).not.toBeInTheDocument()
+    await userEvent.click(within(rowOf('AMC-0008')).getByRole('button', { name: /Record an invoice for AMC-0008/ }))
+    // Several services on one invoice still go to Invoice Tracking, with this visit ticked.
+    expect(await screen.findByRole('link', { name: 'use Invoice Tracking' })).toHaveAttribute('href', `/invoices?recordForVisit=${BLUE.id}`)
+  })
+
+  it('records an invoice from the row with the typed figures, through the invoice API, and shows its refusal', async () => {
+    const api = accountsApi(INVOICER, [BLUE], (request) => (request.method === 'POST' && request.path === '/invoices' ? (request.body as { invoiceNumber: string }).invoiceNumber === 'DUP-1' ? fail(409, 'CONFLICT', 'This invoice number already exists.') : ok({ id: '1' }, 201) : undefined))
+    renderPage()
+    await userEvent.click(within(await screen.findByRole('row', { name: /AMC-0008/ })).getByRole('button', { name: /Record an invoice for AMC-0008/ }))
+    const dialog = within(await screen.findByRole('dialog'))
+    const save = dialog.getByRole('button', { name: 'Save invoice' })
+
+    // Nothing is assumed: number, date and VAT must be typed.
+    expect(save).toBeDisabled()
+    await userEvent.type(dialog.getByLabelText(/Invoice No\./), 'DUP-1')
+    await userEvent.type(dialog.getByLabelText(/Invoice date/), '2026-10-31')
+    await userEvent.clear(dialog.getByLabelText(/Amount excluding VAT/))
+    await userEvent.type(dialog.getByLabelText(/Amount excluding VAT/), '405.000')
+    await userEvent.type(dialog.getByLabelText(/VAT amount/), '20.250')
+    await userEvent.click(save)
+    expect(await dialog.findByText('This invoice number already exists.')).toBeInTheDocument()
+
+    await userEvent.clear(dialog.getByLabelText(/Invoice No\./))
+    await userEvent.type(dialog.getByLabelText(/Invoice No\./), 'ZOHO-9')
+    await userEvent.click(save)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(api.find('POST', '/invoices').at(-1)?.body).toEqual({ invoiceNumber: 'ZOHO-9', clientId: BLUE.client.id, invoiceDate: '2026-10-31', amountExclVat: '405.000', vatAmount: '20.250', allocations: [{ amcVisitId: BLUE.id, amount: '405.000' }] })
   })
 
   it('offers no invoice link to a user who may not record invoices, and has no editable invoice field', async () => {
     accountsApi(VIEWER, [BLUE])
     renderPage()
     await screen.findByText('AMC-0008')
-    expect(within(rowOf('AMC-0008')).queryByRole('link', { name: /Record an invoice/ })).not.toBeInTheDocument()
+    expect(within(rowOf('AMC-0008')).queryByRole('button', { name: /Record an invoice/ })).not.toBeInTheDocument()
     expect(within(rowOf('AMC-0008')).queryByRole('textbox')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument()
   })

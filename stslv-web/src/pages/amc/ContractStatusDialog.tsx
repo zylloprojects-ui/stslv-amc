@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { Alert, Button, Modal } from '../../components/ui'
@@ -29,10 +30,7 @@ export function ContractStatusDialog({ contract, status, onClose, onChanged }: C
   const change = useMutation({
     mutationFn: () => api.post<SavedContract>(`/amc/contracts/${contract.id}/status`, { status, ...(ending ? { cancelOpenVisits } : {}) }),
     onSuccess: async (saved) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['amc'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await refreshOperationalData(queryClient)
       onChanged(saved)
     },
   })

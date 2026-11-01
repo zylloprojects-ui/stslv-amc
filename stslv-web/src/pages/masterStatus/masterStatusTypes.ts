@@ -70,6 +70,16 @@ export interface MasterStatusOptions {
 }
 
 /** The Service column: the service code of migration 0076 ("Q3"), or the visit number of an older visit. */
+export const INVOICE_STATUS_FILTERS = [
+  { value: 'RECORDED', label: 'Invoice recorded' },
+  { value: 'NOT_RECORDED', label: 'No invoice recorded' },
+] as const
+
+export const QUOTATION_STATUS_FILTERS = [
+  { value: 'RECORDED', label: 'Quote recorded' },
+  { value: 'NOT_RECORDED', label: 'No quote recorded' },
+] as const
+
 export function serviceCodeLabel(service: MasterStatusItem['service']): string {
   return service.serviceCode ?? `No. ${service.sequenceNo}`
 }

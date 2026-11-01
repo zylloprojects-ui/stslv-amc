@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
@@ -188,12 +189,7 @@ export function InvoiceFormModal({ invoice, preset, onClose, onSaved }: InvoiceF
     },
     onSuccess: async (saved) => {
       // Invoice states of visits and projects are derived from invoices, so they are read again too.
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['invoices'] }),
-        queryClient.invalidateQueries({ queryKey: ['projects'] }),
-        queryClient.invalidateQueries({ queryKey: ['amc'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await refreshOperationalData(queryClient)
       onSaved(saved)
     },
     onError: (error) => {

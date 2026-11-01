@@ -47,7 +47,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   USERS: 'Users & Access',
   SETTINGS: 'Settings',
   HISTORICAL_DATA: 'Historical Data',
-  SERVICES_SALES: 'Services Sales',
+  SERVICES_SALES: 'Quotations',
   AMC_RENEWAL: 'AMC Renewal',
   MONTHLY_CALENDAR: 'Monthly Calendar',
   SERVICE_STATUS: 'Service Status',

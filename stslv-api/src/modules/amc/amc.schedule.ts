@@ -182,6 +182,18 @@ export function serviceLabel(validFrom: string, rule: ScheduleRule, prefix: stri
   return { cycleNo, serviceCode: `${prefix}${Math.max(1, serviceNo)}` };
 }
 
+/** Highest first: a row in several states shows the first that applies. Verbatim from the reference. */
+export const COLOR_PRIORITY_RULE = "Manual → Cancelled → Invoice Pending → First Service → Normal";
+export type ColorState = "MANUAL" | "CANCELLED" | "INVOICE_PENDING" | "FIRST_SERVICE" | "NORMAL";
+
+export function colorState(row: { override: string | null; cancelled: boolean; invoiceRecorded: boolean; firstService: boolean }): ColorState {
+  if (row.override !== null) return "MANUAL";
+  if (row.cancelled) return "CANCELLED";
+  if (!row.invoiceRecorded) return "INVOICE_PENDING";
+  if (row.firstService) return "FIRST_SERVICE";
+  return "NORMAL";
+}
+
 export interface ExistingVisit {
   id: string;
   sequenceNo: number;

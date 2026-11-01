@@ -83,6 +83,8 @@ async function describeFilters(query: ExportMasterStatusQuery): Promise<ReportDe
   if (query.month) filters.push({ label: "Month", value: MONTH_NAMES[query.month - 1] ?? String(query.month) });
   if (query.year) filters.push({ label: "Year", value: String(query.year) });
   if (query.serviceStatus) filters.push({ label: "Service status", value: SERVICE_STATUS_LABELS[query.serviceStatus] });
+  if (query.invoiceStatus) filters.push({ label: "Invoice status", value: query.invoiceStatus === "RECORDED" ? "Invoice recorded" : "No invoice recorded" });
+  if (query.quotationStatus) filters.push({ label: "Quotation status", value: query.quotationStatus === "RECORDED" ? "Quote recorded" : "No quote recorded" });
   if (query.colour) filters.push({ label: "Row colour", value: ROW_COLOUR_LABELS[query.colour] });
   if (query.search) filters.push({ label: "Search", value: query.search });
 

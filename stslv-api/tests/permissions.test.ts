@@ -190,7 +190,7 @@ describe("role permissions are data", () => {
 
     expect([...modules].sort()).toEqual([...MODULES].sort());
     expect(catalog.at(-1)).toMatchObject({ retired: true });
-    expect(catalog.at(-1).modules.map((entry: { module: string }) => entry.module)).toEqual(["PROJECTS", "PROCUREMENT", "EXPENSES", "HISTORICAL_DATA", "REPORTS"]);
+    expect(catalog.at(-1).modules.map((entry: { module: string }) => entry.module)).toEqual(["PROJECTS", "PROCUREMENT", "EXPENSES", "HISTORICAL_DATA"]);
     expect(fixedAccess.adminOnly.map((page: { label: string }) => page.label)).toContain("Audit Log");
   });
 

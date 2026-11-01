@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
@@ -247,7 +248,7 @@ export function ServicesSalesPage() {
     setPage(1)
   }
   // A save can change the cards and the visit's version, so the list and the other AMC pages read it again.
-  const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['services-sales', 'list'] }), queryClient.invalidateQueries({ queryKey: ['amc'] })])
+  const refresh = () => refreshOperationalData(queryClient)
 
   const data = sales.data
   const shown = (id: ColumnId) => !hidden.has(id)
@@ -255,7 +256,7 @@ export function ServicesSalesPage() {
   return (
     <>
       <PageHeader
-        title="Services Sales"
+        title="Quotations"
         description="Track completed services and manually record quotation numbers."
         actions={
           <div className="flex flex-wrap gap-2">
@@ -268,8 +269,8 @@ export function ServicesSalesPage() {
             {canExport && (
               // The download covers every service that matches the filters, on every page.
               <ExportButtons
-                what="Services Sales"
-                fileStem="services-sales"
+                what="Quotations"
+                fileStem="quotations"
                 path={(format) => `/services-sales/export${queryString({ ...filters, format })}`}
                 onError={setExportError}
               />
@@ -284,7 +285,7 @@ export function ServicesSalesPage() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Services Sales figures">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Quotations figures">
         {layout.order.map((id, index) => (
           <StatTile
             key={id}
@@ -469,7 +470,7 @@ export function ServicesSalesPage() {
           <>
             <div className={TABLE.wrapper}>
               <table className={TABLE.table}>
-                <caption className="sr-only">Services Sales</caption>
+                <caption className="sr-only">Quotations</caption>
                 <thead>
                   <tr>
                     <th scope="col" className={TABLE.snHead}>

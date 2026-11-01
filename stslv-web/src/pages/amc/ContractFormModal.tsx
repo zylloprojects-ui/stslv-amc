@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
@@ -6,10 +7,12 @@ import { z } from 'zod'
 import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage, isForbidden } from '../../lib/api'
 import { queryString } from './amcApi'
-import { formatDate, MONEY_PATTERN } from './amcFormat'
+import { contractEndDate, formatDate, MONEY_PATTERN } from './amcFormat'
 import { SelectField } from './components'
 import { MONTH_NAMES, useFrequencyOptions } from './frequencyOptions'
 import { frequencyLabel, type Contract, type SavedContract, type SchedulePreview } from './types'
+
+const DURATION_YEARS = [1, 2, 3, 4, 5, 6]
 
 // Mirrors the API's rules so most problems are caught before a request is sent.
 // The API validates again and remains the authority.
@@ -32,6 +35,8 @@ const contractSchema = z
     contractValue: z.string().trim().min(1, 'Contract value is required.').regex(MONEY_PATTERN, MONEY_MESSAGE),
     defaultVisitAmount: optionalMoney,
     finalCredit: optionalMoney,
+    billingBasis: z.enum(['', 'CONTRACT_VALUE', 'FINAL_CREDIT', 'CUSTOM']),
+    customBillingValue: optionalMoney,
     description: z.string().trim().max(2000, 'Description must be at most 2000 characters.'),
     notes: z.string().trim().max(2000, 'Notes must be at most 2000 characters.'),
     status: z.enum(['DRAFT', 'ACTIVE']),
@@ -56,6 +61,8 @@ const FIELDS = [
   'contractValue',
   'defaultVisitAmount',
   'finalCredit',
+  'billingBasis',
+  'customBillingValue',
   'description',
   'notes',
   'status',
@@ -112,6 +119,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       contractValue: start?.contractValue ?? '',
       defaultVisitAmount: start?.defaultVisitAmount ?? '',
       finalCredit: start?.finalCredit ?? '',
+      billingBasis: start?.billingBasis ?? '',
+      customBillingValue: start?.customBillingValue ?? '',
       description: start?.description ?? '',
       notes: contract?.notes ?? '',
       // A renewal starts as a draft, so nothing is scheduled until it is activated.
@@ -170,11 +179,19 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     setValue('customMonths', next, { shouldValidate: false })
   }
 
+  const [durationYears, setDurationYears] = useState('')
+  const chooseDuration = (value: string) => {
+    setDurationYears(value)
+    const from = getValues('validFrom')
+
+    if (value && from) setValue('validTo', contractEndDate(from, Number(value)), { shouldValidate: true })
+  }
+
   const save = useMutation({
     mutationFn: (values: ContractForm) => {
-      const { status, customMonths, ...rest } = values
+      const { status, customMonths, billingBasis, customBillingValue, ...rest } = values
       // Months are sent only for a custom frequency; for a fixed one the API clears them.
-      const fields = isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest
+      const fields = { ...(isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest), billingBasis: billingBasis === '' ? null : billingBasis, ...(billingBasis === 'CUSTOM' ? { customBillingValue } : {}) }
 
       // The Sales Engineer master link is sent only when the picker is offered and its value changed.
       const link = engineerPicker && engineerId !== currentEngineerId ? { salesEngineerId: engineerId || null } : {}
@@ -186,10 +203,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
           : api.post<SavedContract>('/amc/contracts', { ...fields, status, ...link })
     },
     onSuccess: async (saved) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['amc'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await refreshOperationalData(queryClient)
       onSaved(saved)
     },
     onError: (error) => {
@@ -275,6 +289,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   // saved for it (the API refuses an inactive client), so the field says why instead of showing an empty choice.
   const currentMissing = start !== null && !options.some((client) => client.id === start.client.id)
   const newStatus = useWatch({ control, name: 'status' })
+  const chosenBasis = useWatch({ control, name: 'billingBasis' })
 
   const plan = review?.preview ?? null
 
@@ -471,8 +486,29 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             </fieldset>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <TextField label="Valid from" type="date" required disabled={termsLocked} error={errors.validFrom?.message} {...register('validFrom')} />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <TextField
+              label="Valid from"
+              type="date"
+              required
+              disabled={termsLocked}
+              error={errors.validFrom?.message}
+              {...register('validFrom', { onChange: () => chooseDuration(durationYears) })}
+            />
+            <SelectField
+              label="Contract duration"
+              hint="Fills Valid to. You can still change it."
+              disabled={termsLocked}
+              value={durationYears}
+              onChange={(event) => chooseDuration(event.target.value)}
+            >
+              <option value="">Enter dates</option>
+              {DURATION_YEARS.map((years) => (
+                <option key={years} value={years}>
+                  {years} {years === 1 ? 'year' : 'years'}
+                </option>
+              ))}
+            </SelectField>
             <TextField label="Valid to" type="date" required disabled={termsLocked} error={errors.validTo?.message} {...register('validTo')} />
           </div>
           {termsLocked && (
@@ -498,6 +534,14 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               {...register('finalCredit')}
             />
           </div>
+
+          <SelectField label="Billing basis" hint="Recorded on the contract. Each visit's amount still comes from Default visit amount." error={errors.billingBasis?.message} {...register('billingBasis')}>
+            <option value="">Not set</option>
+            <option value="CONTRACT_VALUE">Contract value</option>
+            <option value="FINAL_CREDIT">Final credit</option>
+            <option value="CUSTOM">Custom value</option>
+          </SelectField>
+          {chosenBasis === 'CUSTOM' && <TextField label="Custom billing value" required inputMode="decimal" error={errors.customBillingValue?.message} {...register('customBillingValue')} />}
 
           <TextAreaField label="Description" rows={2} error={errors.description?.message} {...register('description')} />
           <TextAreaField label="Notes" rows={2} error={errors.notes?.message} {...register('notes')} />

@@ -2,6 +2,7 @@ import { useState, type CSSProperties, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
+import { displayName, KPI_NAME_MAX } from '../amcManagement/managementPreferences'
 import { KPIS, type KpiDefinition, type KpiReading } from './kpis'
 import { Icon, IconTile, type IconName } from './icons'
 import { ACCENTS, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
@@ -29,10 +30,13 @@ interface KpiStripProps {
   order: string[]
   arranging: boolean
   onReorder: (order: string[]) => void
+  /** The user's own card names. A renamed card still shows the same figure. */
+  names: Record<string, string>
+  onRename: (id: string, name: string) => void
 }
 
 /** The key figures, drawn exactly like the dashboard's other figure cards: label and icon on top, the figure, and one line with its link. */
-export function KpiStrip({ data, failed, canView, order, arranging, onReorder }: KpiStripProps) {
+export function KpiStrip({ data, failed, canView, order, arranging, onReorder, names, onRename }: KpiStripProps) {
   const [dragging, setDragging] = useState<string | null>(null)
 
   const cards = order
@@ -78,6 +82,7 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder }:
         const note = reading ? (reading.kind === 'value' ? reading.detail : (reading.reason.split(/(?<=\.)\s/)[0] ?? reading.reason)) : null
         const hint = reading ? (reading.kind === 'value' ? reading.hint : reading.reason) : undefined
         const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s` }
+        const name = displayName(names, kpi.id, kpi.label)
 
         return (
           <li
@@ -93,11 +98,13 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder }:
             <span className="card-dots" aria-hidden="true" />
             <Icon name={icon} className="card-watermark" />
             <IconTile icon={icon} from={from} to={to} className="absolute right-5 top-5" />
-            <h3 className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')}>{kpi.label}</h3>
+            <h3 className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')} title={name !== kpi.label ? `Standard name: ${kpi.label}` : undefined}>
+              {name}
+            </h3>
 
             {state.kind === 'loading' && (
               <div role="status" className="mt-4">
-                <span className="sr-only">Loading {kpi.label}</span>
+                <span className="sr-only">Loading {name}</span>
                 <span className="skeleton block h-9 w-24 rounded-lg" aria-hidden="true" />
                 <span className="skeleton mt-4 block h-3.5 w-32 rounded" aria-hidden="true" />
               </div>
@@ -125,13 +132,26 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder }:
             )}
 
             {arranging && (
+              <label className="relative mt-3 block text-xs font-medium text-slate-700">
+                Display name for {kpi.label}
+                <input
+                  type="text"
+                  value={names[kpi.id] ?? ''}
+                  placeholder={kpi.label}
+                  maxLength={KPI_NAME_MAX}
+                  onChange={(event) => onRename(kpi.id, event.target.value)}
+                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-500"
+                />
+              </label>
+            )}
+            {arranging && (
               <span className="relative mt-3 flex justify-end gap-1">
                 <button
                   type="button"
                   className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-40"
                   onClick={() => move(index, -1)}
                   disabled={index === 0}
-                  aria-label={`Move ${kpi.label} earlier`}
+                  aria-label={`Move ${name} earlier`}
                 >
                   ←
                 </button>
@@ -140,7 +160,7 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder }:
                   className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-40"
                   onClick={() => move(index, 1)}
                   disabled={index === cards.length - 1}
-                  aria-label={`Move ${kpi.label} later`}
+                  aria-label={`Move ${name} later`}
                 >
                   →
                 </button>

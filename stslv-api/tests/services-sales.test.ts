@@ -339,7 +339,7 @@ describe("Services Sales", () => {
       expect(response.headers["content-disposition"]).toMatch(/services-sales/);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(response.body as unknown as ExcelJS.Buffer);
-      const sheet = workbook.getWorksheet("Services Sales") as ExcelJS.Worksheet;
+      const sheet = workbook.getWorksheet("Quotations") as ExcelJS.Worksheet;
       const header = (sheet.getRow(6).values as unknown[]).slice(1);
       expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Frequency", "Service", "Due date", "Service status", "Completed date", "Quote No.", "Sales status", "Sales Engineer"]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));

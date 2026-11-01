@@ -28,6 +28,7 @@ import type {
   ListContractsQuery,
   SchedulePreviewQuery,
   UpdateContractInput,
+  BillingBasis,
 } from "./amc.schemas";
 
 interface ContractRow {
@@ -42,6 +43,8 @@ interface ContractRow {
   description: string | null;
   contract_value: string;
   final_credit: string | null;
+  billing_basis: BillingBasis | null;
+  custom_billing_value: string | null;
   maintenance_frequency: string;
   custom_months: number[] | null;
   default_visit_amount: string | null;
@@ -73,6 +76,12 @@ export interface Contract {
   contractValue: string;
   /** Stored as entered. Its meaning is unconfirmed, so nothing is calculated from it. */
   finalCredit: string | null;
+  /** Which amount the contract is billed on (migration 0093). A record only: visit amounts do not read it. */
+  billingBasis: BillingBasis | null;
+  /** Entered by hand when the basis is CUSTOM. */
+  customBillingValue: string | null;
+  /** The stored amount the chosen basis names; null when no basis is set or the amount is empty. Nothing is calculated. */
+  selectedBillingAmount: string | null;
   /** A maintenance frequency code (migration 0076: the frequency master; before it, one of the four built-in codes). */
   maintenanceFrequency: string;
   /** The selected months (1 = January) of a contract on a custom frequency; empty otherwise. PROVISIONAL rule. */
@@ -122,7 +131,7 @@ export interface ScheduleChange {
 const contractSelect = (withMonths: boolean) => `
   SELECT c.id, c.client_id, cl.name AS client_name, cl.is_active AS client_is_active,
          c.responsible_engineer, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
-         c.system_description, c.description, c.contract_value, c.final_credit,
+         c.system_description, c.description, c.contract_value, c.final_credit, c.billing_basis, c.custom_billing_value,
          c.maintenance_frequency,
          ${withMonths ? "(SELECT array_agg(m.month::int ORDER BY m.month) FROM amc_contract_custom_months m WHERE m.amc_contract_id = c.id)" : "NULL::int[]"} AS custom_months,
          c.default_visit_amount, c.status,
@@ -152,6 +161,7 @@ export const VISIT_LOCKED_SQL = `(
   v.status <> 'SCHEDULED'
   OR v.scheduled_date <> v.original_scheduled_date
   OR v.amount_is_custom
+  OR v.color_override IS NOT NULL
   OR v.assigned_to IS NOT NULL
   OR v.work_performed IS NOT NULL
   OR v.execution_notes IS NOT NULL
@@ -168,6 +178,8 @@ const EDITABLE_FIELDS = [
   "description",
   "contractValue",
   "finalCredit",
+  "billingBasis",
+  "customBillingValue",
   "maintenanceFrequency",
   "customMonths",
   "defaultVisitAmount",
@@ -190,6 +202,10 @@ function toContract(row: ContractRow): Contract {
     description: row.description,
     contractValue: row.contract_value,
     finalCredit: row.final_credit,
+    billingBasis: row.billing_basis,
+    customBillingValue: row.custom_billing_value,
+    selectedBillingAmount:
+      row.billing_basis === "CONTRACT_VALUE" ? row.contract_value : row.billing_basis === "FINAL_CREDIT" ? row.final_credit : row.billing_basis === "CUSTOM" ? row.custom_billing_value : null,
     maintenanceFrequency: row.maintenance_frequency,
     customMonths: row.custom_months ?? [],
     defaultVisitAmount: row.default_visit_amount,
@@ -222,11 +238,22 @@ function valuesOf(contract: Contract): ContractValues {
     description: contract.description,
     contractValue: contract.contractValue,
     finalCredit: contract.finalCredit,
+    billingBasis: contract.billingBasis,
+    customBillingValue: contract.customBillingValue,
     maintenanceFrequency: contract.maintenanceFrequency,
     customMonths: monthsKey(contract.customMonths),
     defaultVisitAmount: contract.defaultVisitAmount,
     notes: contract.notes,
   };
+}
+
+function assertBillingBasis(basis: BillingBasis | null, finalCredit: string | null, customValue: string | null): void {
+  if (basis === "CUSTOM" && customValue === null) {
+    throw validationError("Enter the custom billing value, or choose another billing basis.", [{ field: "customBillingValue", message: "This basis needs a custom billing value." }]);
+  }
+  if (basis === "FINAL_CREDIT" && finalCredit === null) {
+    throw validationError("Enter the final credit, or choose another billing basis.", [{ field: "billingBasis", message: "This basis needs a final credit amount." }]);
+  }
 }
 
 function assertValidity(validFrom: string, validTo: string): void {
@@ -748,6 +775,7 @@ export function createContract(
     if (source && !input.salesEngineerId) {
       await assertRenewalEngineerChosen(client, source.id);
     }
+    assertBillingBasis(input.billingBasis ?? null, input.finalCredit ?? null, input.customBillingValue ?? null);
     // A new contract or renewal may only choose an active frequency; custom months only for a custom one.
     const months = monthsOf(monthsKey(input.customMonths));
     await resolveTerms(client, input.maintenanceFrequency, months, true);
@@ -756,8 +784,8 @@ export function createContract(
       `INSERT INTO amc_contracts
          (client_id, responsible_engineer, valid_from, valid_to, system_description, description,
           contract_value, final_credit, maintenance_frequency, default_visit_amount, status, notes,
-          created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+          created_by, updated_by, billing_basis, custom_billing_value)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13, $14, $15)
        RETURNING id`,
       [
         input.clientId,
@@ -773,6 +801,8 @@ export function createContract(
         input.status,
         input.notes ?? null,
         auth.user.id,
+        input.billingBasis ?? null,
+        input.billingBasis === "CUSTOM" ? (input.customBillingValue ?? null) : null,
       ]
     );
     const id = (inserted.rows[0] as { id: string }).id;
@@ -828,6 +858,10 @@ export function updateContract(
       }
     }
 
+    // A custom amount belongs to the custom basis only.
+    if (afterValues.billingBasis !== "CUSTOM") afterValues.customBillingValue = null;
+    assertBillingBasis(afterValues.billingBasis as BillingBasis | null, afterValues.finalCredit as string | null, afterValues.customBillingValue as string | null);
+
     // A change to a fixed frequency drops the months of the custom one it replaces.
     if (afterValues.maintenanceFrequency !== beforeValues.maintenanceFrequency && input.customMonths === undefined) {
       const next = await findContractFrequency(client, afterValues.maintenanceFrequency as string);
@@ -872,7 +906,7 @@ export function updateContract(
       `UPDATE amc_contracts
        SET client_id = $1, responsible_engineer = $2, valid_from = $3, valid_to = $4, system_description = $5,
            description = $6, contract_value = $7, final_credit = $8, maintenance_frequency = $9,
-           default_visit_amount = $10, notes = $11, updated_by = $12
+           default_visit_amount = $10, notes = $11, updated_by = $12, billing_basis = $14, custom_billing_value = $15
        WHERE id = $13`,
       [
         afterValues.clientId,
@@ -888,6 +922,8 @@ export function updateContract(
         afterValues.notes,
         auth.user.id,
         id,
+        afterValues.billingBasis,
+        afterValues.customBillingValue,
       ]
     );
 

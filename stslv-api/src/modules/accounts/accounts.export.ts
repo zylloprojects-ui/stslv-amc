@@ -18,9 +18,6 @@ export const ACCOUNTS_COLOUR_LABELS: Record<AccountsColour, string> = {
 const SERVICE_FILTER_LABELS = { COMPLETED: "Completed", NOT_COMPLETED: "Not Completed" } as const;
 const INVOICE_FILTER_LABELS = { RECORDED: "Invoice recorded", NOT_RECORDED: "No invoice recorded" } as const;
 
-/** Shown wherever paid / unpaid would be: payment is not recorded in STSLV AMC. */
-export const PAYMENT_NOT_AVAILABLE = "Not available";
-
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 /** Every column in page order. `hideable` names the page column that hides it. */
@@ -32,11 +29,10 @@ const COLUMNS: (ReportColumn & { hideable?: AccountsColumn })[] = [
   { key: "frequency", header: "Frequency", kind: "text", width: 13, hideable: "frequency" },
   { key: "service", header: "Service", kind: "text", width: 12, hideable: "service" },
   { key: "scheduledMonth", header: "Scheduled Month", kind: "text", width: 15, hideable: "scheduledMonth" },
-  { key: "visitValue", header: "Visit Value", kind: "money", width: 14, hideable: "visitValue" },
   { key: "serviceStatus", header: "Service Status", kind: "text", width: 18, hideable: "serviceStatus" },
   { key: "serviceReportNo", header: "Service Report No.", kind: "identifier", width: 16, hideable: "serviceReportNo" },
+  { key: "visitValue", header: "Visit Value", kind: "money", width: 14, hideable: "visitValue" },
   { key: "invoiceNo", header: "Invoice No.", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
-  { key: "payment", header: "Paid / Unpaid", kind: "text", width: 13, hideable: "payment" },
   { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
   { key: "colour", header: "Row Colour", kind: "text", width: 30 },
 ];
@@ -66,7 +62,6 @@ function toRow(item: AccountsItem, index: number): ReportRow {
     serviceStatus: SERVICE_STATUS_LABELS[item.serviceStatus],
     serviceReportNo: item.serviceReportNo,
     invoiceNo: item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(", ") : null,
-    payment: PAYMENT_NOT_AVAILABLE,
     salesEngineer: item.salesEngineer?.name ?? null,
     colour: ACCOUNTS_COLOUR_LABELS[item.colour],
   };

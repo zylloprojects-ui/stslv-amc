@@ -294,7 +294,7 @@ export async function saveQuotation(auth: AuthContext, id: string, input: SaveQu
     const row = await findSalesRow(client, id);
 
     if (row.status === "HISTORICAL" || row.status === "CANCELLED") {
-      throw conflict(`This visit is ${row.status === "HISTORICAL" ? "a historical record" : "cancelled"} and is not managed on the Services Sales page.`);
+      throw conflict(`This visit is ${row.status === "HISTORICAL" ? "a historical record" : "cancelled"} and is not managed on the Quotations page.`);
     }
     // Compared in the database's own precision, so the check does not depend on how the page rounded the time.
     const unchanged = await client.query<{ same: boolean }>(

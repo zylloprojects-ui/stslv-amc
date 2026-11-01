@@ -132,7 +132,8 @@ const SUGGESTIONS: PermissionKey[] = ["SUGGESTIONS:VIEW", "SUGGESTIONS:CREATE"];
  * limit nothing: Super Admin changes them in Roles & Permissions. Changing this list changes no database.
  */
 export function defaultGrants(roleCode: string): PermissionKey[] {
-  const all = allGrantable();
+  // Reports came after those migrations and no seeded role holds it: Super Admin grants it on purpose.
+  const all = allGrantable().filter((key) => !key.startsWith("REPORTS:"));
 
   switch (roleCode) {
     case ADMINISTRATOR_ROLE_CODE:

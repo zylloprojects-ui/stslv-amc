@@ -30,11 +30,10 @@ export const ACCOUNTS_HIDEABLE_COLUMNS = [
   "frequency",
   "service",
   "scheduledMonth",
-  "visitValue",
   "serviceStatus",
   "serviceReportNo",
+  "visitValue",
   "invoiceNo",
-  "payment",
   "salesEngineer",
 ] as const;
 export type AccountsColumn = (typeof ACCOUNTS_HIDEABLE_COLUMNS)[number];

@@ -100,7 +100,7 @@ export async function buildServicesSalesExport(
   }
 
   const report: ReportDefinition = {
-    title: "Services Sales",
+    title: "Quotations",
     period: null,
     filters: await describeFilters(query),
     generatedAt: new Date(),
@@ -109,7 +109,7 @@ export async function buildServicesSalesExport(
     fileStem: "services-sales",
     tables: [
       {
-        name: "Services Sales",
+        name: "Quotations",
         columns: SERVICES_SALES_COLUMNS,
         rows: items.map(toRow),
         groupBy: (row) => displayMonth(String(row.scheduledDate)),
@@ -125,7 +125,7 @@ export async function buildServicesSalesExport(
       module: "SERVICES_SALES",
       entityType: "amc_visits",
       entityId: null,
-      description: `Exported Services Sales as ${format === "xlsx" ? "Excel" : "PDF"} (${kpis.total} ${kpis.total === 1 ? "service" : "services"}).`,
+      description: `Exported Quotations as ${format === "xlsx" ? "Excel" : "PDF"} (${kpis.total} ${kpis.total === 1 ? "service" : "services"}).`,
       metadata: { format, filters, rowCount: kpis.total },
     });
 

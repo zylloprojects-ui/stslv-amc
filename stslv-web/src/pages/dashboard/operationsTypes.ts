@@ -54,6 +54,8 @@ export interface OperationsDashboard {
     services: { thisMonth: number; completedThisMonth: number; openThisMonth: number } | null
     unpaidInvoices: Unavailable | null
     paidThisMonth: Unavailable | null
+    /** Scheduled services by whether an active invoice number is recorded. Not a payment figure. */
+    invoicing?: { notInvoiced: number; invoiced: number } | null
   }
   portfolio: { total: number; statuses: { status: ContractStatus; count: number; percent: string | null }[] } | null
   expiring: { days: number; total: number; pastValidity: number; items: ExpiringRow[]; renewalsInstalled: boolean } | null

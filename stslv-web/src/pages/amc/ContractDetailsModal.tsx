@@ -1,3 +1,4 @@
+import { BILLING_BASIS_LABELS } from './types'
 import { useQuery } from '@tanstack/react-query'
 import { Alert, Button, Modal, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
@@ -98,6 +99,7 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               <DetailRow label="Contract value">{formatMoney(contract.contractValue)}</DetailRow>
               <DetailRow label="Default visit amount">{formatMoney(contract.defaultVisitAmount)}</DetailRow>
               <DetailRow label="Final credit">{formatMoney(contract.finalCredit)}</DetailRow>
+              <DetailRow label="Billing basis">{contract.billingBasis ? `${BILLING_BASIS_LABELS[contract.billingBasis]} · ${formatMoney(contract.selectedBillingAmount ?? null)}` : 'Not set'}</DetailRow>
               <DetailRow label="Visits">
                 {contract.schedule.visitCount} ({contract.schedule.completedCount} completed, {contract.schedule.openCount} open
                 {contract.schedule.historicalCount > 0 && `, ${contract.schedule.historicalCount} historical`}

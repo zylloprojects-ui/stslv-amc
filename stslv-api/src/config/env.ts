@@ -160,4 +160,10 @@ export const env = {
   // Attachments: storage folder (null = uploads unavailable) and largest file accepted, in MB. PROVISIONAL (Q14).
   attachmentsDir: readAttachmentsDir(),
   attachmentMaxMb: readWholeNumber("ATTACHMENT_MAX_MB", 10, 1, 50),
+  // Manual backups: storage folder (null = unavailable; no default anywhere) and tools. In production
+  // the folder must also be declared durable, because a hosting disk may not survive a restart.
+  backupDir: process.env.BACKUP_DIR?.trim() ? path.resolve(process.env.BACKUP_DIR.trim()) : null,
+  backupStorageDurable: process.env.BACKUP_STORAGE_DURABLE?.trim() === "true",
+  pgDumpPath: process.env.PG_DUMP_PATH?.trim() || "pg_dump",
+  pgRestorePath: process.env.PG_RESTORE_PATH?.trim() || "pg_restore",
 };

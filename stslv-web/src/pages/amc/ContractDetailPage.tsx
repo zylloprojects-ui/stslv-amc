@@ -19,6 +19,8 @@ import { ContractFormModal } from './ContractFormModal'
 import { ContractMastersPanel } from './ContractMastersPanel'
 import { ContractRenewalsPanel } from './ContractRenewalsPanel'
 import { ContractStatusDialog } from './ContractStatusDialog'
+import { ScheduleRulePanel } from './ScheduleRulePanel'
+import { BILLING_BASIS_LABELS } from './types'
 import { validityState } from './contractValidity'
 import {
   CONTRACT_STATUS_LABELS,
@@ -60,6 +62,8 @@ const FIELD_LABELS: Record<string, string> = {
   description: 'Description',
   contractValue: 'Contract value',
   finalCredit: 'Final credit',
+  billingBasis: 'Billing basis',
+  customBillingValue: 'Custom billing value',
   maintenanceFrequency: 'Frequency',
   defaultVisitAmount: 'Default visit amount',
   notes: 'Notes',
@@ -68,7 +72,7 @@ const FIELD_LABELS: Record<string, string> = {
   systemType: 'System type',
 }
 
-const MONEY_FIELDS = new Set(['contractValue', 'finalCredit', 'defaultVisitAmount'])
+const MONEY_FIELDS = new Set(['contractValue', 'finalCredit', 'defaultVisitAmount', 'customBillingValue'])
 const DATE_FIELDS = new Set(['validFrom', 'validTo'])
 
 /** "amc_contract.some_action" -> "Some action", for an action without its own label. */
@@ -367,11 +371,13 @@ export function ContractDetailPage() {
 
         <section aria-label="Contract figures">
           <Card className="rounded-2xl">
-            <dl className="grid grid-cols-2 divide-x divide-y divide-slate-200 lg:grid-cols-5 lg:divide-y-0">
+            <dl className="grid grid-cols-2 divide-x divide-y divide-slate-200 lg:grid-cols-3 xl:grid-cols-7 xl:divide-y-0">
               {[
                 { label: 'Contract value', value: formatMoney(contract.contractValue) },
                 { label: 'Default visit amount', value: formatMoney(contract.defaultVisitAmount) },
                 { label: 'Final credit', value: formatMoney(contract.finalCredit) },
+                { label: 'Billing basis', value: contract.billingBasis ? BILLING_BASIS_LABELS[contract.billingBasis] : 'Not set' },
+                { label: 'Billing amount', value: formatMoney(contract.selectedBillingAmount ?? null) },
                 { label: 'Total of visit amounts', value: formatMoney(schedule.scheduledTotal) },
                 { label: 'Contract value less visit amounts', value: formatMoney(schedule.valueDifference) },
               ].map((figure) => (
@@ -423,6 +429,7 @@ export function ContractDetailPage() {
                       )}
                     </div>
                     {!canViewSchedule && <p className="px-6 pb-4 text-sm text-slate-600">Your role does not include access to the AMC schedule.</p>}
+                    {canViewSchedule && <ScheduleRulePanel contract={contract} />}
                     {canViewSchedule && visits.isPending && <Spinner size="sm" label="Loading visits" />}
                     {visits.isError && (
                       <div className="px-6 pb-4">

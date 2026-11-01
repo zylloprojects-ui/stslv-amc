@@ -1,6 +1,6 @@
 # Accounts
 
-Route: `/finance/accounts` (navigation: Finance → Accounts).
+Route: `/finance/accounts` (navigation: AMC Operations → Accounts, the written specification's module order).
 API: `GET /api/accounts`, `GET /api/accounts/options`, `GET /api/accounts/export` (all read-only).
 Status: built 2026-10-28 on branch `feature/accounts-reconciliation`. No migration of its own; needs migration 0077.
 
@@ -63,7 +63,9 @@ Month, Year, Invoice Status, Service Status. Applied with **Apply**, cleared wit
 ## Columns and actions
 
 `#`, AMC Reference (link to the contract), Client, System, Frequency, Service, Scheduled Month,
-Visit Value, Service Status, Service Report No., Invoice No., Paid / Unpaid, Sales Engineer, Actions.
+Service Status, Service Report No., Visit Value, Invoice No., Sales Engineer, Actions. This is the written
+specification's order. The former Paid / Unpaid column, which could only ever say "Not available", was removed from
+the page and the export on 2026-10-31; the API field `paymentStatus` stays `NOT_AVAILABLE`.
 Every column except AMC Reference and Actions can be hidden (stored per user in this browser).
 
 Actions: **View** (contract, needs `AMC_CONTRACTS:VIEW`); **Record invoice** on Blue rows for users
@@ -84,8 +86,8 @@ any inline save (see questions).
 
 | Part | Needs |
 |---|---|
-| Page, navigation item, list and options | `AMC_SCHEDULE:VIEW` **and** `INVOICES:VIEW` |
-| Excel / PDF download | the above, plus `INVOICES:EXPORT` |
+| Page, navigation item, list and options | `ACCOUNTS:VIEW` |
+| Excel / PDF download | the above, plus `ACCOUNTS:EXPORT` |
 
 Seeded roles: Admin, Accountant and Invoicing can view; Execution (no invoice view) and Procurement
 (no AMC access) cannot; only Admin can download. No permission was added.

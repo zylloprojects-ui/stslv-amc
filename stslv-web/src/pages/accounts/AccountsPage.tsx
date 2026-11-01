@@ -1,4 +1,5 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
@@ -6,7 +7,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner, TextField } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
@@ -277,6 +278,83 @@ function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<Co
   )
 }
 
+/**
+ * Records an invoice for one service through Invoice Tracking's own API, so every rule and check
+ * still applies. The user types the invoice's figures; the amount only starts from the visit value.
+ */
+function RecordInvoiceDialog({ item, onClose }: { item: AccountsItem; onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [invoiceDate, setInvoiceDate] = useState('')
+  const [amountExclVat, setAmountExclVat] = useState(item.visitValue ?? '')
+  const [vatAmount, setVatAmount] = useState('')
+  const [failure, setFailure] = useState<string | null>(null)
+
+  const save = useMutation({
+    mutationFn: () =>
+      api.post('/invoices', {
+        invoiceNumber: invoiceNumber.trim(),
+        clientId: item.client.id,
+        invoiceDate,
+        amountExclVat: amountExclVat.trim(),
+        vatAmount: vatAmount.trim(),
+        allocations: [{ amcVisitId: item.id, amount: amountExclVat.trim() }],
+      }),
+    onSuccess: async () => {
+      await refreshOperationalData(queryClient)
+      onClose()
+    },
+    onError: (error) => setFailure(errorMessage(error)),
+  })
+  const ready = invoiceNumber.trim() !== '' && invoiceDate !== '' && amountExclVat.trim() !== '' && vatAmount.trim() !== ''
+
+  return (
+    <Modal
+      title={`Record invoice · ${item.reference}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
+            Cancel
+          </Button>
+          <Button type="submit" form="record-invoice-form" loading={save.isPending} disabled={!ready}>
+            Save invoice
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="record-invoice-form"
+        className="space-y-4"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault()
+          setFailure(null)
+          if (ready) save.mutate()
+        }}
+      >
+        {failure && <Alert>{failure}</Alert>}
+        <p className="text-sm text-slate-600">
+          {item.client.name} · {serviceCodeLabel(item.service)}. Enter the details from the Zoho invoice. An invoice number is not a payment.
+        </p>
+        <TextField label="Invoice No." required maxLength={50} value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
+        <TextField label="Invoice date" type="date" required value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField label="Amount excluding VAT" required inputMode="decimal" value={amountExclVat} onChange={(event) => setAmountExclVat(event.target.value)} />
+          <TextField label="VAT amount" required inputMode="decimal" value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} />
+        </div>
+        <p className="text-xs text-slate-500">
+          One invoice covering several services:{' '}
+          <Link to={`/invoices?recordForVisit=${item.id}`} className="font-medium text-[#1479BD] underline">
+            use Invoice Tracking
+          </Link>
+          .
+        </p>
+      </form>
+    </Modal>
+  )
+}
+
 interface Filters {
   search: string
   clientId: string
@@ -334,7 +412,7 @@ export function AccountsPage() {
     <>
       <PageHeader
         title="Accounts"
-        description="Billing reconciliation of every scheduled AMC service: completion, service report and invoice number. Read only; invoices are recorded in Invoice Tracking."
+        description="Billing reconciliation of every scheduled AMC service: completion, service report and invoice number. Invoice numbers are entered here or in Invoice Tracking; an invoice number is not a payment."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
@@ -476,7 +554,7 @@ export function AccountsPage() {
               </Button>
               {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
               <span id="accounts-payment-note" className="basis-full text-xs text-slate-500">
-                Paid / Unpaid cannot be filtered: {PAYMENT_NOTE}
+                {PAYMENT_NOTE}
               </span>
             </div>
           </form>
@@ -571,6 +649,7 @@ interface RowProps {
 
 function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProps) {
   const tone = COLOUR_TONE[item.colour]
+  const [recording, setRecording] = useState(false)
 
   return (
     <tr className={cx(TABLE.row, 'acc-row')} data-colour={item.colour}>
@@ -609,9 +688,6 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
           <div className="text-xs text-slate-500">Due {formatDate(item.scheduledDate)}</div>
         </td>
       )}
-      {shown('visitValue') && (
-        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{item.visitValue === null ? <Missing title="No visit value set" /> : formatMoney(item.visitValue)}</td>
-      )}
       {shown('serviceStatus') && (
         <td className={TABLE.td}>
           <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', tone.pill)}>
@@ -626,10 +702,13 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
           {item.serviceReportNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.serviceReportNo}</span> : <Missing title="No service report number recorded" />}
         </td>
       )}
+      {shown('visitValue') && (
+        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{item.visitValue === null ? <Missing title="No visit value set" /> : formatMoney(item.visitValue)}</td>
+      )}
       {shown('invoiceNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
           {item.invoiceNumbers.length === 0 ? (
-            <Missing title="No invoice recorded" />
+            <span className="text-xs font-medium text-slate-600">Not recorded</span>
           ) : (
             <ul>
               {item.invoiceNumbers.map((invoiceNumber) => (
@@ -641,19 +720,13 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
           )}
         </td>
       )}
-      {shown('payment') && (
-        <td className={`${TABLE.td} whitespace-nowrap text-sm text-slate-500`} title={PAYMENT_NOTE}>
-          Not available
-        </td>
-      )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
         <span className="inline-flex gap-2">
           {item.colour === 'BLUE' && canRecordInvoice && (
-            // Invoices are recorded, with their date and amounts, only in Invoice Tracking; it opens with this visit ticked.
-            <Link to={`/invoices?recordForVisit=${item.id}`} aria-label={`Record an invoice for ${item.reference} in Invoice Tracking`} className={ACTION_LINK}>
+            <button type="button" onClick={() => setRecording(true)} aria-label={`Record an invoice for ${item.reference} ${serviceCodeLabel(item.service)}`} className={ACTION_LINK}>
               Record invoice
-            </Link>
+            </button>
           )}
           {canViewContract ? (
             <Link to={`/amc/contracts/${item.contract.id}`} aria-label={`View contract ${item.reference}`} className={ACTION_LINK}>
@@ -665,6 +738,7 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice }: RowProp
             </span>
           )}
         </span>
+        {recording && <RecordInvoiceDialog item={item} onClose={() => setRecording(false)} />}
       </td>
     </tr>
   )

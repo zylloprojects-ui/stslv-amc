@@ -13,6 +13,8 @@ import {
   expiringContractsSchema,
   renewalHistorySchema,
   saveServiceStatusSchema,
+  exportContractsSchema,
+  setVisitColorSchema,
   exportServiceStatusSchema,
   exportVisitsSchema,
   listContractsSchema,
@@ -42,6 +44,9 @@ import {
 } from "./contracts.service";
 import { getContractMasters, setContractMasters } from "./contract-masters.service";
 import { getAmcManagementSummary } from "./management.service";
+import { buildContractsExport } from "./contracts.export";
+import { listScheduleGenerations } from "./schedule-generations.service";
+import { buildMonthlyScheduleExport, exportMonthlyScheduleSchema, getMonthlySchedule, monthlyScheduleSchema } from "./schedule-monthly.service";
 import { buildMasterStatusExport } from "./master-status.export";
 import { exportMasterStatusSchema, listMasterStatusSchema } from "./master-status.schemas";
 import { getMasterStatusOptions, listMasterStatus } from "./master-status.service";
@@ -61,6 +66,7 @@ import {
   listExecutionVisits,
   listVisits,
   updateExecution,
+  setVisitColor,
   updateVisit,
 } from "./visits.service";
 
@@ -138,6 +144,18 @@ amcRouter.get("/reports/workload", authorize("AMC_SCHEDULE", "VIEW"), async (req
 // --- Contracts ---------------------------------------------------------------
 amcRouter.get("/contracts", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
   res.json({ success: true, data: await listContracts(listContractsSchema.parse(req.query)) });
+});
+
+amcRouter.get("/contracts/export", authorize("AMC_CONTRACTS", "VIEW"), authorize("AMC_CONTRACTS", "EXPORT"), async (req, res) => {
+  const query = exportContractsSchema.parse(req.query);
+  const { report, recordExport } = await buildContractsExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
+});
+
+// Each update of a contract's schedule, oldest first. Read from the activity log, which keeps them all.
+amcRouter.get("/contracts/:id/schedule/generations", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await listScheduleGenerations(parseIdParam(req.params.id)) });
 });
 
 amcRouter.get("/contracts/systems", authorize("AMC_CONTRACTS", "VIEW"), async (_req, res) => {
@@ -262,12 +280,27 @@ amcRouter.get("/visits/export", authorizeOnAny(SCHEDULE_PAGES, "VIEW", "EXPORT")
 });
 
 // The Monthly Calendar's year: counts and amounts per month, with the schedule's filters. Read-only.
+amcRouter.get("/visits/monthly-consolidated", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getMonthlySchedule(monthlyScheduleSchema.parse(req.query)) });
+});
+
+amcRouter.get("/visits/monthly-consolidated/export", authorize("AMC_SCHEDULE", "VIEW"), authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+  const query = exportMonthlyScheduleSchema.parse(req.query);
+  const { report, recordExport } = await buildMonthlyScheduleExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
+});
+
 amcRouter.get("/visits/year-summary", authorizeOnAny(SCHEDULE_PAGES, "VIEW"), async (req, res) => {
   res.json({ success: true, data: await getVisitYearSummary(visitYearSummarySchema.parse(req.query)) });
 });
 
 amcRouter.get("/visits/:id", authorizeOnAny(SCHEDULE_PAGES, "VIEW"), async (req, res) => {
   res.json({ success: true, data: await getScheduleVisit(parseIdParam(req.params.id)) });
+});
+
+amcRouter.patch("/visits/:id/color", authorize("AMC_SCHEDULE", "EDIT"), async (req, res) => {
+  res.json({ success: true, data: await setVisitColor(requireAuth(req), parseIdParam(req.params.id), setVisitColorSchema.parse(req.body)) });
 });
 
 amcRouter.patch("/visits/:id", authorize("AMC_SCHEDULE", "EDIT"), async (req, res) => {

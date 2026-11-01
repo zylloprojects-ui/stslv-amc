@@ -228,6 +228,7 @@ describe('add contract', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('POST', '/amc/contracts')[0]?.body).toEqual({
       clientId: '11',
+      billingBasis: null,
       systemDescription: 'Automation',
       responsibleEngineer: 'Second Engineer',
       validFrom: '2027-03-01',

@@ -1,3 +1,5 @@
+import { colorState, type ColorState } from "./amc.schedule";
+import type { SetVisitColorInput } from "./amc.schemas";
 import { pool } from "../../config/database";
 import { featureUnavailable } from "../../middleware/require-schema";
 import { diffFields, logActivity } from "../../shared/activity-log";
@@ -17,6 +19,9 @@ import type {
 } from "./amc.schemas";
 
 interface VisitRow {
+  color_override: string | null;
+  invoice_recorded: boolean;
+  first_service: boolean;
   id: string;
   amc_contract_id: string;
   contract_status: ContractStatus;
@@ -87,6 +92,10 @@ export interface ScheduleVisit extends ExecutionVisit {
   amountIsCustom: boolean;
   /** Derived by v_amc_visit_billing. */
   invoiceEligibility: InvoiceEligibility;
+  /** The manual colour of the service (Color Priority level 1); null when none is set. */
+  colorOverride: string | null;
+  /** The Color Priority state that wins for this service. Derived, never stored. */
+  colorState: ColorState;
 }
 
 const OVERDUE_SQL = "(v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < current_date)";
@@ -116,7 +125,10 @@ const VISIT_SELECT = `
          v.assigned_to, c.responsible_engineer, v.status, v.visit_amount, v.amount_is_custom,
          v.completed_date::text AS completed_date, v.completed_by, u.full_name AS completed_by_name,
          v.work_performed, v.execution_notes, v.status_reason, v.notes,
-         b.invoice_eligibility, v.created_at, v.updated_at`;
+         b.invoice_eligibility, v.created_at, v.updated_at, v.color_override,
+         EXISTS (SELECT 1 FROM invoice_allocations al JOIN invoices i ON i.id = al.invoice_id
+                 WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED') AS invoice_recorded,
+         NOT EXISTS (SELECT 1 FROM amc_visits e WHERE e.amc_contract_id = v.amc_contract_id AND e.sequence_no < v.sequence_no AND e.status <> 'HISTORICAL') AS first_service`;
 
 const VISIT_FROM = `
   FROM amc_visits v
@@ -164,6 +176,13 @@ function toScheduleVisit(row: VisitRow): ScheduleVisit {
     visitAmount: row.visit_amount,
     amountIsCustom: row.amount_is_custom,
     invoiceEligibility: row.invoice_eligibility,
+    colorOverride: row.color_override,
+    colorState: colorState({
+      override: row.color_override,
+      cancelled: row.status === "CANCELLED" || row.contract_status === "CANCELLED",
+      invoiceRecorded: row.invoice_recorded,
+      firstService: row.first_service,
+    }),
   };
 }
 
@@ -484,6 +503,29 @@ export async function getVisitYearSummary(query: VisitYearSummaryQuery): Promise
 }
 
 /** Planning changes to one visit: amount, planned date, assignment and office notes. */
+/** Sets or clears a service's manual colour. Changes nothing else about the visit. */
+export function setVisitColor(auth: AuthContext, id: string, input: SetVisitColorInput): Promise<ScheduleVisit> {
+  return withTransaction(async (client) => {
+    const row = await findVisitRow(client, id, true);
+
+    assertNotHistorical(row);
+    if (row.color_override === input.color) return toScheduleVisit(row);
+
+    await client.query("UPDATE amc_visits SET color_override = $1, updated_by = $2 WHERE id = $3", [input.color, auth.user.id, id]);
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: "amc_visit.color_changed",
+      module: "AMC_SCHEDULE",
+      entityType: "amc_visits",
+      entityId: id,
+      description: `Manual colour of AMC visit ${row.sequence_no} for "${row.client_name}" ${input.color ? `set to ${input.color}` : "cleared"}.`,
+      metadata: { changes: { colorOverride: { from: row.color_override, to: input.color } } },
+    });
+
+    return toScheduleVisit(await findVisitRow(client, id));
+  });
+}
+
 export function updateVisit(auth: AuthContext, id: string, input: UpdateVisitInput): Promise<ScheduleVisit> {
   return withTransaction(async (client) => {
     const row = await findVisitRow(client, id, true);

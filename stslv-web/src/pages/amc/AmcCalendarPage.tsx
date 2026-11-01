@@ -82,7 +82,7 @@ function VisitChip({ visit, onOpen }: { visit: ScheduleVisit; onOpen: (id: strin
     <button
       type="button"
       onClick={() => onOpen(visit.id)}
-      aria-label={`${visitLabel(visit)}, visit ${visit.sequenceNo}, ${VISIT_STATUS_LABELS[visit.status]}${visit.isOverdue ? ', overdue' : ''}`}
+      aria-label={`${visitLabel(visit)}, visit ${visit.sequenceNo}, ${VISIT_STATUS_LABELS[visit.status]}${visit.isOverdue ? ', overdue' : ''}, ${visit.invoiceEligibility === 'INVOICED' ? 'invoice recorded' : 'no invoice recorded'}`}
       className={cx(
         'block w-full truncate rounded-md border-l-[3px] px-1.5 py-1 text-left text-[11px] font-semibold shadow-sm ring-1 ring-inset transition-transform hover:-translate-y-px hover:shadow-md hover:ring-2 hover:ring-[#1479BD] focus-visible:outline-2 focus-visible:outline-[#1479BD]',
         CHIP[visit.status],
@@ -90,6 +90,7 @@ function VisitChip({ visit, onOpen }: { visit: ScheduleVisit; onOpen: (id: strin
       )}
     >
       {visit.isOverdue && <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500 align-middle" aria-hidden="true" />}
+      <span className={cx('mr-1 inline-block h-2 w-2 rounded-sm align-middle', visit.invoiceEligibility === 'INVOICED' ? 'bg-emerald-600' : 'bg-[#1479BD]')} aria-hidden="true" />
       {visitLabel(visit)}
     </button>
   )
@@ -391,6 +392,14 @@ export function AmcCalendarPage() {
             setSelectedDay(null)
           }}
         />
+      )}
+
+      {view === 'month' && (
+        <ul aria-label="Calendar colours" className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600">
+          <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-600" aria-hidden="true" />Square: invoice number recorded</li>
+          <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[#1479BD]" aria-hidden="true" />Square: no invoice number</li>
+          <li>Card colour: service status</li>
+        </ul>
       )}
 
       {view === 'month' && (

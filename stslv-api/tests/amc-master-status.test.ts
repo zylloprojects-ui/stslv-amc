@@ -226,6 +226,17 @@ describe("Master AMC Status", () => {
       expect((await list({ colour: "BLUE" })).body.data.items.map((item: Item) => item.id)).toEqual([alpha[1]!.id]);
       expect((await list({ colour: "YELLOW" })).body.data.items.map((item: Item) => item.id)).toEqual([alpha[0]!.id]);
 
+      // Invoice and quotation status, alone, together, with the cards and against bad values.
+      const ids = async (query: Record<string, string>) => (await list(query)).body.data.items.map((item: Item) => item.id);
+      expect(await ids({ clientId: fx.alphaId, invoiceStatus: "RECORDED" })).toEqual([alpha[1]!.id]);
+      expect((await list({ clientId: fx.alphaId, invoiceStatus: "NOT_RECORDED" })).body.data.total).toBe(3);
+      expect(await ids({ clientId: fx.alphaId, quotationStatus: "RECORDED" })).toEqual([alpha[0]!.id]);
+      expect((await list({ clientId: fx.alphaId, quotationStatus: "NOT_RECORDED" })).body.data.total).toBe(3);
+      expect(await ids({ clientId: fx.alphaId, invoiceStatus: "RECORDED", quotationStatus: "RECORDED" })).toEqual([]);
+      expect((await list({ clientId: fx.alphaId, invoiceStatus: "RECORDED", quotationStatus: "NOT_RECORDED" })).body.data.kpis).toMatchObject({ total: 1, blue: 1, totalValue: "405.000" });
+      expect((await list({ invoiceStatus: "PAID" })).status).toBe(400);
+      expect((await list({ quotationStatus: "SENT" })).status).toBe(400);
+
       // Search: invoice number, quotation number, AMC reference and client.
       expect((await list({ search: "zb-77" })).body.data.items.map((item: Item) => item.invoiceNumbers)).toEqual([[inv.invoiceNumber]]);
       expect((await list({ search: "QT-55" })).body.data.items.map((item: Item) => item.id)).toEqual([alpha[0]!.id]);

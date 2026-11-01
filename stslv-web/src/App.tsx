@@ -20,6 +20,10 @@ import { AmcManagementPage } from './pages/amcManagement/AmcManagementPage'
 import { AccountsPage } from './pages/accounts/AccountsPage'
 import { MasterStatusPage } from './pages/masterStatus/MasterStatusPage'
 import { AuditLogPage } from './pages/admin/AuditLogPage'
+import { BackupRestorePage } from './pages/admin/BackupRestorePage'
+import { DeletionLogPage } from './pages/admin/DeletionLogPage'
+import { SecurityCenterPage } from './pages/admin/SecurityCenterPage'
+import { ReportsPage } from './pages/reports/ReportsPage'
 import { LoginHistoryPage } from './pages/admin/LoginHistoryPage'
 import { DepartmentsPage } from './pages/masters/DepartmentsPage'
 import { MasterDataCenterPage } from './pages/masters/MasterDataCenterPage'
@@ -218,13 +222,15 @@ export function AppRoutes() {
             }
           />
           <Route
-            path="/amc/services-sales"
+            path="/amc/quotations"
             element={
               <RequirePermission module="SERVICES_SALES">
                 <ServicesSalesPage />
               </RequirePermission>
             }
           />
+          {/* The page's former address, so saved links keep working. */}
+          <Route path="/amc/services-sales" element={<Navigate to="/amc/quotations" replace />} />
           <Route
             path="/amc/master-status"
             element={
@@ -282,6 +288,38 @@ export function AppRoutes() {
               <RequirePermission module="USERS">
                 <LoginHistoryPage />
               </RequirePermission>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequirePermission module="REPORTS">
+                <ReportsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/admin/security"
+            element={
+              <RequireAdmin>
+                <SecurityCenterPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/deletion-log"
+            element={
+              <RequireAdmin>
+                <DeletionLogPage />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="/admin/backups"
+            element={
+              <RequireAdmin>
+                <BackupRestorePage />
+              </RequireAdmin>
             }
           />
           <Route

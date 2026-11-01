@@ -310,6 +310,14 @@ describe("with contracts and visits", () => {
     expect(payments).toMatchObject({ available: false });
     expect(payments.reason).toMatch(/not recorded/);
   });
+
+  it("counts services by recorded invoice number over the same rows as Accounts", async () => {
+    const { kpis } = (await operations()).body.data;
+    const accounts = (await api().get("/api/accounts?pageSize=1").set(admin.headers)).body.data.kpis;
+
+    expect(kpis.invoicing.invoiced).toBe(accounts.invoiceFilled);
+    expect(kpis.invoicing.invoiced + kpis.invoicing.notInvoiced).toBe(accounts.rows);
+  });
 });
 
 describe("permissions", () => {
@@ -324,7 +332,7 @@ describe("permissions", () => {
     const user = await userWith("DASH_ONLY", ["DASHBOARD:VIEW"]);
     const data = (await operations(user)).body.data;
 
-    expect(data.kpis).toEqual({ contracts: null, services: null, unpaidInvoices: null, paidThisMonth: null });
+    expect(data.kpis).toEqual({ contracts: null, services: null, unpaidInvoices: null, paidThisMonth: null, invoicing: null });
     expect(data.portfolio).toBeNull();
     expect(data.expiring).toBeNull();
     expect(data.workload).toBeNull();

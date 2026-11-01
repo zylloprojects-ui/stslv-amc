@@ -12,6 +12,7 @@ import { fetchClients, queryString } from './amcApi'
 import { currentMonth, formatDate, formatMoney, monthLabel, monthRange, shiftMonth } from './amcFormat'
 import { EligibilityPill, Filter, Pager, PlannedDate, RestrictedFilter, VisitStatusPill } from './components'
 import {
+  COLOR_PRIORITY_RULE,
   INVOICE_ELIGIBILITIES,
   INVOICE_ELIGIBILITY_LABELS,
   VISIT_STATUSES,
@@ -22,6 +23,8 @@ import {
 } from './types'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
+import { ConsolidatedSchedule } from './ConsolidatedSchedule'
+import { ServiceColor } from './ServiceColor'
 import { VisitActionsDialog } from './VisitActionsDialog'
 import { VisitDetailsModal, VisitEditModal } from './VisitModals'
 
@@ -112,6 +115,7 @@ export function AmcSchedulePage() {
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
+  const [view, setView] = useState<'visits' | 'consolidated'>('visits')
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
 
@@ -186,7 +190,23 @@ export function AmcSchedulePage() {
 
       <ScheduleStats month={month} />
 
-      <Card>
+      <div className="mb-3 flex gap-2" role="group" aria-label="Schedule view">
+        {(['visits', 'consolidated'] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={view === value}
+            onClick={() => setView(value)}
+            className={view === value ? 'rounded-lg bg-[#0b3b66] px-3.5 py-1.5 text-sm font-semibold text-white' : 'rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-[#0b3b66]'}
+          >
+            {value === 'visits' ? 'All Visits' : 'Monthly by AMC'}
+          </button>
+        ))}
+      </div>
+
+      {view === 'consolidated' && <ConsolidatedSchedule />}
+
+      {view === 'visits' && <Card>
         <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-4 sm:px-5">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -331,6 +351,7 @@ export function AmcSchedulePage() {
           </div>
         </div>
 
+        <p className="border-b border-slate-200 px-5 py-2 text-xs text-slate-600">Color priority: {COLOR_PRIORITY_RULE}</p>
         {visits.isPending && <Spinner label="Loading schedule" />}
 
         {visits.isError && (
@@ -380,7 +401,7 @@ export function AmcSchedulePage() {
                       Amount
                     </th>
                     <th scope="col" className={TABLE.th}>
-                      Invoicing
+                      Invoicing / Color
                     </th>
                     <th scope="col" className={`${TABLE.th} text-right`}>
                       Actions
@@ -425,6 +446,9 @@ export function AmcSchedulePage() {
                       <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{formatMoney(visit.visitAmount)}</td>
                       <td className={TABLE.td}>
                         <EligibilityPill eligibility={visit.invoiceEligibility} />
+                        <div className="mt-1">
+                          <ServiceColor visit={visit} canEdit={canEdit} />
+                        </div>
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                         <ActionGroup>
@@ -447,7 +471,7 @@ export function AmcSchedulePage() {
             </Pager>
           </>
         )}
-      </Card>
+      </Card>}
 
       {dialog.kind === 'view' && (
         <VisitDetailsModal visitId={dialog.visitId} canEdit={canEdit} onEdit={(visit) => setDialog({ kind: 'edit', visit })} onClose={closeDialog} />

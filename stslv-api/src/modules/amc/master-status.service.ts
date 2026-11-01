@@ -126,7 +126,14 @@ function toItem(row: MasterRow): MasterStatusItem {
   };
 }
 
-export type MasterStatusFilters = Omit<ListMasterStatusQuery, "page" | "pageSize">;
+export type MasterStatusFilters = Omit<ListMasterStatusQuery, "page" | "pageSize" | "sort" | "direction">;
+
+const SORT_SQL: Record<ListMasterStatusQuery["sort"], string> = {
+  scheduledDate: "v.scheduled_date",
+  reference: "c.id",
+  client: "lower(cl.name)",
+  visitValue: "v.visit_amount",
+};
 
 /** "AMC-0007", "amc7" or "7" names contract 7. */
 const REFERENCE_PATTERN = /^(?:amc-?)?0*(\d{1,15})$/i;
@@ -150,6 +157,8 @@ function filterSql(query: MasterStatusFilters) {
     conditions.push(`extract(month FROM v.scheduled_date) = ${add(query.month)}`);
   }
   if (query.serviceStatus) conditions.push(`(${SERVICE_STATUS_SQL}) = ${add(query.serviceStatus)}`);
+  if (query.invoiceStatus) conditions.push(query.invoiceStatus === "RECORDED" ? "inv.numbers IS NOT NULL" : "inv.numbers IS NULL");
+  if (query.quotationStatus) conditions.push(query.quotationStatus === "RECORDED" ? "v.quotation_no IS NOT NULL" : "v.quotation_no IS NULL");
   if (query.colour) conditions.push(`(${COLOUR_SQL}) = ${add(query.colour)}`);
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
@@ -207,7 +216,7 @@ export async function listMasterStatus(query: ListMasterStatusQuery) {
   const { where, params } = filterSql(query);
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<MasterRow>(`${SELECT} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<MasterRow>(`${SELECT} ${FROM} ${where} ORDER BY ${SORT_SQL[query.sort]} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,

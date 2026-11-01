@@ -206,7 +206,7 @@ function ExpiryRenewal({ expiry }: { expiry: AmcManagementSummary['expiry'] }) {
           )}
         >
           <span
-            className={cx('flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl font-bold text-white shadow-lg ring-4', renewalWarning.count > 0 ? 'bg-amber-500 ring-amber-200' : 'bg-emerald-500 ring-emerald-200')}
+            className={cx('flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl font-bold text-white shadow-lg ring-4', renewalWarning.count > 0 ? 'bg-amber-700 ring-amber-200' : 'bg-emerald-500 ring-emerald-200')}
             aria-hidden="true"
           >
             {renewalWarning.count > 0 ? '!' : '✓'}

@@ -1,6 +1,7 @@
 import { checkDatabaseHealth, pool } from "../../config/database";
 import { env } from "../../config/env";
 import { loadMigrationFiles } from "../../db/migrate";
+import { listBackups } from "../security/backups.service";
 
 // Production readiness, as far as this API can verify it itself at the moment
 // of the request. There is no composite score: each check is reported on its
@@ -79,11 +80,18 @@ export async function getReadiness(): Promise<Readiness> {
     checks.push({ id: "migrations", label: "Database updates", state: "UNAVAILABLE", detail: "Cannot be checked while the database is unreachable." });
   }
 
+  const { status: backup, items: backups } = await listBackups();
+  const lastVerified = backups.find((item) => item.state === "VERIFIED");
   checks.push({
     id: "backup",
     label: "Last verified backup",
-    state: "UNAVAILABLE",
-    detail: "STSLV AMC does not record backups. Backups are taken outside the application, so no backup time can be shown here.",
+    state: lastVerified ? "OK" : backup.available ? "ATTENTION" : "UNAVAILABLE",
+    // A date, not a judgement: how fresh a backup must be has not been decided.
+    detail: lastVerified
+      ? `Last verified backup from this application: ${lastVerified.finishedAt}.`
+      : backup.available
+        ? "No verified backup has been made from this application yet."
+        : "Backups are not available from this application here, so no backup time can be shown. Backups taken outside it are not visible to it.",
   });
 
   const wildcard = env.corsOrigins.includes("*");

@@ -1,6 +1,7 @@
 import { pool } from "../../config/database";
 import { CONTRACT_STATUSES, type ContractStatus, type VisitStatus } from "../amc/amc.constants";
 import { getWorkload, type WorkloadMonth } from "../amc/reports.service";
+import { IN_SCOPE } from "../amc/service-status.service";
 import type { AuthContext } from "../auth/access";
 import { schemaHas } from "../../shared/schema-features";
 
@@ -61,6 +62,12 @@ export interface OperationsKpis {
   /** Requires INVOICES:VIEW. Always unavailable today (see PAYMENT_UNAVAILABLE). */
   unpaidInvoices: typeof PAYMENT_UNAVAILABLE | null;
   paidThisMonth: typeof PAYMENT_UNAVAILABLE | null;
+  /**
+   * Requires INVOICES:VIEW. Scheduled services by whether an active invoice
+   * number is recorded, over the same rows as Accounts, so the two always agree.
+   * Not a payment figure: an invoice number is not a payment.
+   */
+  invoicing: { notInvoiced: number; invoiced: number } | null;
 }
 
 export interface PortfolioStatus {
@@ -235,6 +242,22 @@ export const COUNTED_VISIT = `v.status NOT IN ('CANCELLED', 'HISTORICAL')
 
 const UPCOMING_DAYS = 7;
 
+async function invoicing(): Promise<NonNullable<OperationsKpis["invoicing"]>> {
+  const result = await pool.query<{ not_invoiced: number; invoiced: number }>(
+    `SELECT count(*) FILTER (WHERE NOT covered)::int AS not_invoiced, count(*) FILTER (WHERE covered)::int AS invoiced
+     FROM (
+       SELECT EXISTS (
+                SELECT 1 FROM invoice_allocations al JOIN invoices i ON i.id = al.invoice_id
+                WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
+              ) AS covered
+       FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
+       WHERE ${IN_SCOPE}
+     ) services`
+  );
+
+  return { notInvoiced: result.rows[0]?.not_invoiced ?? 0, invoiced: result.rows[0]?.invoiced ?? 0 };
+}
+
 async function schedule(): Promise<NonNullable<OperationsDashboard["schedule"]>> {
   const select = `
     SELECT v.id, v.amc_contract_id, cl.id AS client_id, cl.name AS client_name, c.system_description,
@@ -297,13 +320,14 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
   const canInvoices = auth.permissions.has("INVOICES:VIEW");
   const renewals = canContracts ? await schemaHas(["amc_contracts.renewed_from_id"]) : false;
 
-  const [clock, contracts, statusBreakdown, expiringList, workload, todayWork] = await Promise.all([
+  const [clock, contracts, statusBreakdown, expiringList, workload, todayWork, invoiceCounts] = await Promise.all([
     pool.query<{ today: string; time_zone: string }>("SELECT current_date::text AS today, current_setting('TimeZone') AS time_zone"),
     canContracts ? contractKpis(renewals) : null,
     canContracts ? portfolio() : null,
     canContracts ? expiring(renewals) : null,
     canVisits ? getWorkload({ months: CHART_MONTHS }) : null,
     canVisits ? schedule() : null,
+    canInvoices ? invoicing() : null,
   ]);
   const thisMonth = workload?.months[0];
 
@@ -315,6 +339,7 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
       services: thisMonth ? { thisMonth: thisMonth.planned, completedThisMonth: thisMonth.completed, openThisMonth: thisMonth.open } : null,
       unpaidInvoices: canInvoices ? PAYMENT_UNAVAILABLE : null,
       paidThisMonth: canInvoices ? PAYMENT_UNAVAILABLE : null,
+      invoicing: invoiceCounts,
     },
     portfolio: statusBreakdown,
     expiring: expiringList,

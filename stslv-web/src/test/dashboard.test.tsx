@@ -193,11 +193,11 @@ describe('KPI cards', () => {
     expect(await within(active).findByText('12')).toBeInTheDocument()
     expect(within(active).getByText(/2 past validity/)).toBeInTheDocument()
 
-    const value = await kpiCard('Active AMC Value')
+    const value = await kpiCard('AMC Value (OMR)')
     expect(within(value).getByText('8,010.500')).toBeInTheDocument()
     expect(within(value).getByTitle(/not annualised/)).toBeInTheDocument()
 
-    const credit = await kpiCard('Total Final Credit')
+    const credit = await kpiCard('Total Final Credit (OMR)')
     expect(within(credit).getByText('300.501')).toBeInTheDocument()
     expect(within(credit).getByTitle(/meaning not yet confirmed, not revenue/)).toBeInTheDocument()
 
@@ -215,9 +215,10 @@ describe('KPI cards', () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    for (const label of ['Unpaid Invoices', 'Paid This Month']) {
+    for (const label of ['Not Invoiced Services', 'Invoice Recorded Services']) {
       const card = await kpiCard(label)
 
+      // An API without the invoice counts: the card says so, and never guesses a figure.
       expect(await within(card).findByText('Not available')).toBeInTheDocument()
       expect(within(card).getByText(/Payment is not recorded/)).toBeInTheDocument()
       expect(within(card).queryByText(/^\d/)).not.toBeInTheDocument()
@@ -273,7 +274,7 @@ describe('KPI layout preferences', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
     await userEvent.click(screen.getByRole('button', { name: 'Move Active AMC later' }))
     expect(kpiOrder().slice(0, 2)).toEqual(['value', 'active'])
-    expect(screen.getByRole('button', { name: 'Move Active AMC Value earlier' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Move AMC Value (OMR) earlier' })).toBeDisabled()
 
     expect(JSON.parse(localStorage.getItem('stslev.dashboard.kpi-order.1') ?? '[]').slice(0, 2)).toEqual(['value', 'active'])
 
@@ -288,6 +289,19 @@ describe('KPI layout preferences', () => {
     expect(localStorage.getItem('stslev.dashboard.kpi-order.1')).toBeNull()
   })
 
+  it('renames a card without changing its figure, and resets the name', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+    const card = await kpiCard('Services This Month')
+    const figure = await within(card).findByText('9')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
+    await userEvent.type(screen.getByLabelText('Display name for Services This Month'), 'Visits Due')
+    expect(await kpiCard('Visits Due')).toContainElement(figure)
+    await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Names' }))
+    expect(await kpiCard('Services This Month')).toBeInTheDocument()
+  })
+
   it('moves a card past the ones the user cannot see', async () => {
     // Saved order puts a contract card between two invoice cards; this role sees no contract cards.
     localStorage.setItem('stslev.dashboard.kpi-order.2', JSON.stringify(['unpaid', 'active', 'paid', 'value', 'credit', 'services', 'expiring']))
@@ -296,10 +310,10 @@ describe('KPI layout preferences', () => {
     })
     renderApp('/dashboard')
 
-    await kpiCard('Unpaid Invoices')
+    await kpiCard('Not Invoiced Services')
     expect(kpiOrder()).toEqual(['unpaid', 'paid'])
     await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Move Unpaid Invoices later' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Move Not Invoiced Services later' }))
     expect(kpiOrder()).toEqual(['paid', 'unpaid'])
   })
 

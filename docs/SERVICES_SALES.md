@@ -1,4 +1,8 @@
-# Services Sales
+# Quotations (formerly Services Sales)
+
+Renamed 2026-10-31 to follow the client's written instruction "rename service sales to quotations". The page is `/amc/quotations`; `/amc/services-sales` redirects there. Only the names shown to people changed: the API path `/api/services-sales`, the permission code `SERVICES_SALES`, the database columns and users' saved layouts are unchanged, so no grant or record is affected.
+
+Not built yet (Quotations is out of scope for now, see `docs/MEETING_REQUIREMENTS_AUDIT.md`): the Service Report No. column and the "quote submitted or not" filter from the written specification.
 
 The sales and quotation counterpart of Service Status: one row per scheduled AMC service (a row of `amc_visits`), never one per contract. Services Sales reads the same visit records as Service Status, the AMC Schedule and the AMC Calendar. The only thing it writes is the visit's quotation number.
 

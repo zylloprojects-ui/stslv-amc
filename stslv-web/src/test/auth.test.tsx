@@ -181,9 +181,10 @@ describe('permission-based navigation', () => {
     expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center', 'Settings'])
     expect(await linksByGroup(nav)).toEqual({
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
-      'AMC Operations': ['AMC Management', 'AMC Contracts', 'AMC Renewal', 'AMC Schedule', 'Monthly Calendar', 'Service Status', 'Services Sales', 'Master AMC Status'],
-      Finance: ['Invoice Tracking', 'Accounts'],
-      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log', 'Suggestions Review'],
+      'AMC Operations': ['AMC Management', 'AMC Contracts', 'Master AMC Status', 'Service Status', 'Accounts', 'Quotations', 'AMC Renewal', 'Monthly Calendar', 'AMC Schedule'],
+      Finance: ['Invoice Tracking'],
+      Reporting: ['Reports'],
+      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Security Center', 'Audit Log', 'Deletion Log', 'Backup & Restore', 'Suggestions Review'],
     })
   })
 
@@ -235,13 +236,11 @@ describe('permission-based navigation', () => {
     expect(api.find('GET', '/users')).toHaveLength(0)
   })
 
-  it.each(['/reports', '/historical-data', '/expenses'])('shows Not Found for the removed page %s', async (path) => {
+  it.each(['/historical-data', '/expenses'])('shows Not Found for the removed page %s', async (path) => {
     session(ADMIN)
     renderApp(path)
 
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
-    const nav = screen.getByRole('navigation', { name: 'Main' })
-    expect(within(nav).queryByRole('button', { name: 'Reporting' })).not.toBeInTheDocument()
   })
 })
 

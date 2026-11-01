@@ -21,6 +21,8 @@ export interface KpiDefinition {
   link?: { to: string; label: string; module: Module }
 }
 
+const PAYMENT_HINT = 'Counts the same services as Accounts. An invoice number is not a payment; payment is not recorded in STSLV AMC.'
+
 const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`
 
 export const KPIS: KpiDefinition[] = [
@@ -42,7 +44,7 @@ export const KPIS: KpiDefinition[] = [
   {
     id: 'value',
     code: 'VAL',
-    label: 'Active AMC Value',
+    label: 'AMC Value (OMR)',
     visible: (canView) => canView('AMC_CONTRACTS'),
     link: { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' },
     // The stored contract value, summed. Contracts run for different periods, so it is not an annual figure.
@@ -57,7 +59,7 @@ export const KPIS: KpiDefinition[] = [
   {
     id: 'credit',
     code: 'CRD',
-    label: 'Total Final Credit',
+    label: 'Total Final Credit (OMR)',
     visible: (canView) => canView('AMC_CONTRACTS'),
     link: { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' },
     // The meaning of Final Credit is not confirmed (Q1). It is summed as entered and never called revenue or collected.
@@ -85,18 +87,24 @@ export const KPIS: KpiDefinition[] = [
   {
     id: 'unpaid',
     code: 'DUE',
-    label: 'Unpaid Invoices',
+    label: 'Not Invoiced Services',
     visible: (canView) => canView('INVOICES'),
     link: { to: '/invoices', label: 'Invoice Tracking', module: 'INVOICES' },
-    read: ({ kpis: { unpaidInvoices } }) => unpaidInvoices && { kind: 'unavailable', reason: unpaidInvoices.reason },
+    read: ({ kpis: { invoicing, unpaidInvoices } }) =>
+      invoicing
+        ? { kind: 'value', value: formatCount(invoicing.notInvoiced), detail: 'Scheduled services with no invoice no.', hint: PAYMENT_HINT }
+        : unpaidInvoices && { kind: 'unavailable', reason: unpaidInvoices.reason },
   },
   {
     id: 'paid',
     code: 'INV',
-    label: 'Paid This Month',
+    label: 'Invoice Recorded Services',
     visible: (canView) => canView('INVOICES'),
     link: { to: '/invoices', label: 'Invoice Tracking', module: 'INVOICES' },
-    read: ({ kpis: { paidThisMonth } }) => paidThisMonth && { kind: 'unavailable', reason: paidThisMonth.reason },
+    read: ({ kpis: { invoicing, paidThisMonth } }) =>
+      invoicing
+        ? { kind: 'value', value: formatCount(invoicing.invoiced), detail: 'Scheduled services with an invoice no.', hint: PAYMENT_HINT }
+        : paidThisMonth && { kind: 'unavailable', reason: paidThisMonth.reason },
   },
   {
     id: 'expiring',
