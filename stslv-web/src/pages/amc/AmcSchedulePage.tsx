@@ -445,7 +445,7 @@ export function AmcSchedulePage() {
 
         {data && data.items.length > 0 && (
           <>
-            <div className="flex justify-end px-4 pt-3">
+            <div className="flex justify-end px-4 pb-3 pt-3">
               <ColumnsMenu options={SCHEDULE_COLUMN_OPTIONS} hidden={hiddenColumns} onChange={changeHiddenColumns} />
             </div>
             <div className={TABLE.wrapper}>

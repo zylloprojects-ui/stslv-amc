@@ -9,6 +9,7 @@ import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
+import { IconTile } from '../dashboard/icons'
 import { Filter, Pager } from '../amc/components'
 
 interface Catalogue {
@@ -65,17 +66,33 @@ function cell(column: Column, value: string | number | null | undefined) {
 
 const numeric = (column: Column) => column.kind === 'money' || column.kind === 'count'
 
+// Each figure keeps its own colour by position, so the same report always looks the same.
+const KPI_TONES: { from: string; to: string }[] = [
+  { from: '#1479BD', to: '#4aa3df' },
+  { from: '#059669', to: '#34D399' },
+  { from: '#7C3AED', to: '#A78BFA' },
+  { from: '#EA580C', to: '#FBBF24' },
+]
+
 /** The figures above a report that has any, from the API's row count and totals. */
 function KpiStrip({ title, kpis }: { title: string; kpis: ReportKpi[] }) {
   return (
-    <dl aria-label={`${title} figures`} className="grid grid-cols-1 gap-3 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 xl:grid-cols-4">
-      {kpis.map((kpi) => (
-        <div key={kpi.id} data-kpi={kpi.id} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-          <dt className="text-sm font-semibold text-slate-600">{kpi.label}</dt>
-          <dd className="mt-0.5 break-words text-2xl font-bold tabular-nums tracking-tight text-[#0b3b66]">{kpi.kind === 'money' ? formatMoney(kpi.value) : kpi.value}</dd>
-          {kpi.hint && <dd className="mt-1 text-xs text-slate-500">{kpi.hint}</dd>}
-        </div>
-      ))}
+    <dl aria-label={`${title} figures`} className="grid grid-cols-1 gap-4 border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white p-4 sm:grid-cols-2 sm:px-5 xl:grid-cols-4">
+      {kpis.map((kpi, index) => {
+        const tone = KPI_TONES[index % KPI_TONES.length] as { from: string; to: string }
+
+        return (
+          <div key={kpi.id} data-kpi={kpi.id} className="group relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-sky-300 hover:shadow-lg">
+            <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundImage: `linear-gradient(90deg, ${tone.from}, ${tone.to})` }} aria-hidden="true" />
+            <div className="flex items-start justify-between gap-3">
+              <dt className="min-w-0 text-[11px] font-bold uppercase leading-snug tracking-[0.12em] text-slate-500">{kpi.label}</dt>
+              <IconTile icon={kpi.kind === 'money' ? 'wallet' : 'chart'} from={tone.from} to={tone.to} className="h-9 w-9 rounded-xl" />
+            </div>
+            <dd className="mt-3 break-words text-3xl font-extrabold tabular-nums leading-none tracking-tight text-[#0b3b66]">{kpi.kind === 'money' ? formatMoney(kpi.value) : kpi.value}</dd>
+            {kpi.hint && <dd className="mt-3 border-t border-slate-100 pt-2.5 text-xs leading-snug text-slate-500">{kpi.hint}</dd>}
+          </div>
+        )
+      })}
     </dl>
   )
 }

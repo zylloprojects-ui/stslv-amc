@@ -130,7 +130,7 @@ export function LoginHistoryPage() {
         )}
         {data && data.items.length > 0 && (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-3 pt-3">
               <p className="text-sm text-slate-600" aria-live="polite">
                 {data.total} sign-in{data.total === 1 ? '' : 's'}, {data.failedTotal} failed.
               </p>
