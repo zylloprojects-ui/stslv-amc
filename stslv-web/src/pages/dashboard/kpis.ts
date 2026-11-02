@@ -21,6 +21,8 @@ export interface KpiDefinition {
   link?: { to: string; label: string; module: Module }
 }
 
+const PAYMENT_HINT = 'Counts the same services as Accounts. Paid means a manual Invoice No. is entered: a reference status that does not verify money was received.'
+
 const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`
 
 export const KPIS: KpiDefinition[] = [
@@ -42,31 +44,31 @@ export const KPIS: KpiDefinition[] = [
   {
     id: 'value',
     code: 'VAL',
-    label: 'Active AMC Value',
+    label: 'Annual AMC Value (OMR)',
     visible: (canView) => canView('AMC_CONTRACTS'),
     link: { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' },
-    // The stored contract value, summed. Contracts run for different periods, so it is not an annual figure.
+    // AMC Value / Year as entered, summed. Values entered before that rule are not reinterpreted: see the Contract Value Review report.
     read: ({ kpis: { contracts } }) =>
       contracts && {
         kind: 'value',
         value: formatMoney(contracts.activeValue),
-        detail: 'Sum of active contract values',
-        hint: 'Sum of contract values of active contracts · not annualised',
+        detail: 'OMR active portfolio, excluding VAT',
+        hint: 'Sum of AMC Value / Year of active contracts, as entered. Older multi-year values may be whole-term amounts: see the Contract Value Review report.',
       },
   },
   {
     id: 'credit',
     code: 'CRD',
-    label: 'Total Final Credit',
+    label: 'Total Credit (OMR)',
     visible: (canView) => canView('AMC_CONTRACTS'),
     link: { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' },
-    // The meaning of Final Credit is not confirmed (Q1). It is summed as entered and never called revenue or collected.
+    // Final Credit Value, an annual Billing Basis option, summed as entered.
     read: ({ kpis: { contracts } }) =>
       contracts && {
         kind: 'value',
         value: formatMoney(contracts.finalCreditTotal),
-        detail: 'Final credit as entered',
-        hint: `As entered on ${formatCount(contracts.finalCreditRecorded)} of ${plural(contracts.active, 'active contract', 'active contracts')} · meaning not yet confirmed, not revenue`,
+        detail: 'OMR active portfolio credit',
+        hint: `Final Credit Value as entered on ${formatCount(contracts.finalCreditRecorded)} of ${plural(contracts.active, 'active contract', 'active contracts')}`,
       },
   },
   {
@@ -74,7 +76,7 @@ export const KPIS: KpiDefinition[] = [
     code: 'SVC',
     label: 'Services This Month',
     visible: (canView) => canView('AMC_SCHEDULE') || canView('AMC_EXECUTION'),
-    link: { to: '/amc/calendar', label: 'Open calendar', module: 'AMC_SCHEDULE' },
+    link: { to: '/amc/calendar', label: 'Open calendar', module: 'MONTHLY_CALENDAR' },
     read: ({ kpis: { services } }) =>
       services && {
         kind: 'value',
@@ -87,16 +89,18 @@ export const KPIS: KpiDefinition[] = [
     code: 'DUE',
     label: 'Unpaid Invoices',
     visible: (canView) => canView('INVOICES'),
-    link: { to: '/invoices', label: 'Invoice Tracking', module: 'INVOICES' },
-    read: ({ kpis: { unpaidInvoices } }) => unpaidInvoices && { kind: 'unavailable', reason: unpaidInvoices.reason },
+    link: { to: '/finance/accounts', label: 'Accounts', module: 'ACCOUNTS' },
+    read: ({ kpis: { payments } }) =>
+      payments && { kind: 'value', value: formatCount(payments.unpaid), detail: `OMR ${formatMoney(payments.unpaidValue)} scheduled value`, hint: PAYMENT_HINT },
   },
   {
     id: 'paid',
     code: 'INV',
     label: 'Paid This Month',
     visible: (canView) => canView('INVOICES'),
-    link: { to: '/invoices', label: 'Invoice Tracking', module: 'INVOICES' },
-    read: ({ kpis: { paidThisMonth } }) => paidThisMonth && { kind: 'unavailable', reason: paidThisMonth.reason },
+    link: { to: '/finance/accounts', label: 'Accounts', module: 'ACCOUNTS' },
+    read: ({ kpis: { payments } }) =>
+      payments && { kind: 'value', value: formatCount(payments.paidThisMonth), detail: `OMR ${formatMoney(payments.paidThisMonthValue)} · reference status`, hint: PAYMENT_HINT },
   },
   {
     id: 'expiring',

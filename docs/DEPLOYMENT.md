@@ -128,10 +128,10 @@ repository, branch `develop`).
 | `JWT_SECRET` | Render, generated | Created once by Render. Changing it signs everyone out. |
 | `JWT_EXPIRES_IN` | `render.yaml` | `8h` |
 | `CORS_ORIGIN` | **Entered in the dashboard** | The Cloudflare Pages address, for example `https://stslv-amc.pages.dev`. Several addresses are separated by commas. No trailing slash. |
-| `APP_URL` | **Entered in the dashboard** | The same Cloudflare Pages address. Used in password reset links. |
-| `MAIL_TRANSPORT` | `render.yaml` | `none`: no email provider exists yet |
+| `APP_URL` | **Entered in the dashboard** | The same Cloudflare Pages address. |
+| `MAIL_TRANSPORT` | `render.yaml` | `none`: no email provider; password recovery does not use email |
 | `TRUST_PROXY` | `render.yaml` | `1`: see below |
-| `PASSWORD_RESET_EXPIRES_MINUTES`, `PUBLIC_AUTH_RATE_LIMIT`, `BCRYPT_ROUNDS` | optional | Defaults apply when unset |
+| `PUBLIC_AUTH_RATE_LIMIT`, `TEMPORARY_PASSWORD_RATE_LIMIT`, `BCRYPT_ROUNDS` | optional | Defaults apply when unset. `PASSWORD_RESET_EXPIRES_MINUTES` is no longer read and can be removed. |
 | `DB_SCHEMA` | leave unset | Used by the automated tests only |
 
 The Cloudflare address is not known until step 4. Enter a temporary value such
@@ -232,8 +232,9 @@ removes data.
 - Render's free plan has no shell, so the command-line scripts
   (`admin:create`, the historical import) cannot run there. Users are managed
   in the application by an administrator.
-- No email provider: "forgot password" links are created but not delivered.
-  An administrator resets passwords instead (see `AUTH_SIGNUP_AND_RECOVERY.md`).
+- Forgotten passwords: an Admin issues a temporary password in Users &
+  Access; no email is involved (see `AUTH_SIGNUP_AND_RECOVERY.md`, which also
+  describes recovering when no Admin can sign in).
 - The rate limit is kept in the API's memory: it resets whenever the service
   sleeps or redeploys.
 - Neon keeps only a short history on the free plan. The local dumps remain the

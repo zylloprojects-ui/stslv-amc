@@ -117,7 +117,7 @@ describe("GET /api/amc/reports/workload", () => {
       maintenanceFrequency: "MONTHLY",
       systemDescription: "CCTV",
     });
-    await api().post(`/api/amc/contracts/${cancelled}/status`).set(admin.headers).send({ status: "CANCELLED" });
+    await api().post(`/api/amc/contracts/${cancelled}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" });
   });
 
   it("counts visits per month from the current month, without cancelled contracts", async () => {

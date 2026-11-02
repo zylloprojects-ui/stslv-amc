@@ -1,4 +1,5 @@
 import { pool } from "../../config/database";
+import { canRead } from "../../shared/permissions";
 import { schemaHas } from "../../shared/schema-features";
 import type { AuthContext } from "../auth/access";
 import {
@@ -6,7 +7,7 @@ import {
   contractKpis,
   COUNTED_VISIT,
   expiring,
-  PAYMENT_UNAVAILABLE,
+  paymentFigures,
   type ExpiringRow,
   type OperationsKpis,
 } from "../dashboard/operations.service";
@@ -254,26 +255,29 @@ async function scheduleFigures(canAmounts: boolean): Promise<ScheduleFigures> {
 }
 
 export interface InvoiceFigures {
-  /** Payment is not recorded (invoices are Issued or Cancelled only): never derived from an invoice number or status. */
-  paid: typeof PAYMENT_UNAVAILABLE;
-  unpaid: typeof PAYMENT_UNAVAILABLE;
-  paidTotal: typeof PAYMENT_UNAVAILABLE;
-  /** What Invoice Tracking records today. */
-  module: { issued: number; cancelled: number; paymentTracked: false };
+  /** Reference status from the manual Invoice No., over the same services as Accounts. Not verified payment. */
+  paid: { count: number };
+  unpaid: { count: number; amount: string };
+  paidTotal: { amount: string };
+  /** What Invoice Tracking (Zoho) records today. */
+  module: { issued: number; cancelled: number };
 }
 
 async function invoiceFigures(): Promise<InvoiceFigures> {
-  const result = await pool.query<{ issued: number; cancelled: number }>(
-    `SELECT count(*) FILTER (WHERE status <> 'CANCELLED')::int AS issued,
-            count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled
-     FROM invoices`
-  );
+  const [figures, payments] = await Promise.all([
+    pool.query<{ issued: number; cancelled: number }>(
+      `SELECT count(*) FILTER (WHERE status <> 'CANCELLED')::int AS issued,
+              count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled
+       FROM invoices`
+    ),
+    paymentFigures(),
+  ]);
 
   return {
-    paid: PAYMENT_UNAVAILABLE,
-    unpaid: PAYMENT_UNAVAILABLE,
-    paidTotal: PAYMENT_UNAVAILABLE,
-    module: { issued: result.rows[0]?.issued ?? 0, cancelled: result.rows[0]?.cancelled ?? 0, paymentTracked: false },
+    paid: { count: payments.paid },
+    unpaid: { count: payments.unpaid, amount: payments.unpaidValue },
+    paidTotal: { amount: payments.paidValue },
+    module: { issued: figures.rows[0]?.issued ?? 0, cancelled: figures.rows[0]?.cancelled ?? 0 },
   };
 }
 
@@ -284,7 +288,7 @@ export interface AmcManagementSummary {
   contracts: NonNullable<OperationsKpis["contracts"]>;
   /** Group B. Requires AMC_SCHEDULE:VIEW or AMC_EXECUTION:VIEW; amounts need AMC_SCHEDULE:VIEW. */
   schedule: ScheduleFigures | null;
-  /** Group C. Requires INVOICES:VIEW. */
+  /** Group C. Requires INVOICES:VIEW or INVOICES:READ. */
   invoices: InvoiceFigures | null;
   expiry: ExpiryFigures & {
     /** Active contracts ending within 90 days or already past validity, soonest first (the dashboard's list), with their band. */
@@ -297,7 +301,8 @@ export interface AmcManagementSummary {
 export async function getAmcManagementSummary(auth: AuthContext): Promise<AmcManagementSummary> {
   const canVisits = canViewVisitCounts(auth);
   const canAmounts = auth.permissions.has("AMC_SCHEDULE:VIEW");
-  const canInvoices = auth.permissions.has("INVOICES:VIEW");
+  // Data only: View, or the data-only Read that opens no Finance page.
+  const canInvoices = canRead(auth.permissions, "INVOICES");
   const renewals = await schemaHas(["amc_contracts.renewed_from_id"]);
 
   const [clock, contracts, schedule, invoices, expiry, list, recent] = await Promise.all([

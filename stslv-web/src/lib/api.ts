@@ -51,10 +51,11 @@ export function setToken(token: string | null): void {
   }
 }
 
-// Called when the API rejects the session (expired, deactivated, password changed).
-let unauthorizedHandler: (() => void) | null = null
+// Called when the API rejects the session (expired, deactivated, password changed),
+// with the refusal, so the sign-in page can say why when that matters.
+let unauthorizedHandler: ((error: ApiError) => void) | null = null
 
-export function setUnauthorizedHandler(handler: (() => void) | null): void {
+export function setUnauthorizedHandler(handler: ((error: ApiError) => void) | null): void {
   unauthorizedHandler = handler
 }
 
@@ -62,6 +63,13 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 interface RawBody {
   data: Blob
   headers: Record<string, string>
+}
+
+// Called when the API refuses a request for lack of permission: the session's permissions may have changed.
+let forbiddenHandler: (() => void) | null = null
+
+export function setForbiddenHandler(handler: (() => void) | null): void {
+  forbiddenHandler = handler
 }
 
 async function request<T>(method: string, path: string, body?: unknown, raw?: RawBody): Promise<T> {
@@ -102,7 +110,10 @@ async function request<T>(method: string, path: string, body?: unknown, raw?: Ra
     )
 
     if (response.status === 401 && error.code !== 'INVALID_CREDENTIALS') {
-      unauthorizedHandler?.()
+      unauthorizedHandler?.(error)
+    }
+    if (response.status === 403) {
+      forbiddenHandler?.()
     }
 
     throw error
@@ -147,7 +158,10 @@ export async function download(path: string): Promise<DownloadedFile> {
     const error = new ApiError(response.status, payload?.error?.code ?? 'UNKNOWN_ERROR', payload?.error?.message ?? 'The file could not be produced. Please try again.')
 
     if (response.status === 401) {
-      unauthorizedHandler?.()
+      unauthorizedHandler?.(error)
+    }
+    if (response.status === 403) {
+      forbiddenHandler?.()
     }
 
     throw error
@@ -169,6 +183,11 @@ export function saveFile(file: DownloadedFile, fallbackName: string): void {
   link.click()
   link.remove()
   URL.revokeObjectURL(url)
+}
+
+/** The server refused because the user's role lacks the permission (not because something failed). */
+export function isForbidden(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 403
 }
 
 /** A message suitable for showing to the user, whatever was thrown. */

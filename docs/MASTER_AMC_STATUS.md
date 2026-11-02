@@ -1,5 +1,7 @@
 # Master AMC Status
 
+> **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
+
 Route: `/amc/master-status` (navigation: Operations → Master AMC Status).
 API: `GET /api/amc/master-status`, `GET /api/amc/master-status/options`,
 `GET /api/amc/master-status/export` (all read-only).
@@ -71,7 +73,7 @@ Derived on every request; never stored. The first rule that applies wins:
 
 ## Columns
 
-`#`, AMC Reference, Client, System, Frequency, Service, Scheduled Month, Visit Value,
+`#`, AMC Reference, Client, System, Frequency, Service, Scheduled Month, Value (Ex VAT),
 Service Status, Invoice No., Quote No., Sales Engineer, and a View link.
 
 * **AMC Reference** ("AMC-0007") is derived from the contract id, as on Service Status. It is
@@ -86,12 +88,14 @@ id (`stslev.master-amc-status.hidden-columns.<userId>`), so it applies in this b
 
 ## Filters
 
-Search, Client, Sales Engineer, Month, Year, Service Status and Row Colour. Filters change only
+Search, Client, Sales Engineer, Month, Year, Service Status, Invoice Status, Quotation Status and Row Colour. Filters change only
 when **Apply** is selected; **Reset** clears them. The rows, the six cards and the downloads all
 use the same applied filters (one SQL condition shared by all three), so they always agree.
 
 * **Search:** client name, invoice number, quotation number, or an AMC reference ("AMC-0007",
   "amc7" or "7" find contract 7). Case-insensitive.
+* **Invoice Status:** Invoice recorded / No invoice recorded (an active invoice covers the visit). Not a payment status.
+* **Quotation Status:** Quote recorded / No quote recorded (`amc_visits.quotation_no`).
 * **Month / Year:** of the scheduled date. Either may be used alone: a month alone means that month
   in every year.
 * Client, Sales Engineer and Year lists are taken from the contracts that have visits on the page
@@ -99,14 +103,16 @@ use the same applied filters (one SQL condition shared by all three), so they al
 * Unknown filter values are rejected with a validation error. Page size is 50 on the page (API
   maximum 200).
 
-## Visit Value
+## Value (Ex VAT)
 
 `amc_visits.visit_amount` as stored on each visit (the per-visit amount of the schedule).
 
-**VAT basis not confirmed.** Whether this amount includes or excludes VAT is an open client
-question (MAS-1). Until it is answered the page and the export call it "Visit Value" /
-"Total Visit Value" and make no VAT claim (not "Ex VAT", not "Inc VAT"). It is a scheduled
-amount, not revenue, not invoiced and not collected.
+OMR excluding VAT ([FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md), approved 2026-11-01). The page and
+the export call it "Value (Ex VAT)". It is a scheduled amount, not revenue, not invoiced and not
+collected.
+
+The KPI cards can be renamed and reordered per user in this browser, as on Accounts (`useKpiCustomization`,
+`stslev.master-amc-status.kpis.*`). A renamed card keeps its figure.
 
 ## Invoices and quotations
 
@@ -125,8 +131,8 @@ amount, not revenue, not invoiced and not collected.
 * Covers **every** visit matching the applied filters, on every page, in the page's order.
 * Contains only the columns shown on the page (`hidden=` takes the same column ids), plus
   AMC Reference and the Row Colour, which are always included.
-* Grouped by scheduled month, with a Total Visit Value row (an Excel `SUM` formula) unless Visit
-  Value is hidden, and notes giving the card figures, the colour rules, "an invoice number is not
+* Grouped by scheduled month, with a total value row (an Excel `SUM` formula) unless the value
+  column is hidden, and notes giving the card figures, the colour rules, "an invoice number is not
   a payment" and the number of rows without a value.
 * The filters are described at the top of the report. Client and sales engineer names are read
   from the database, never taken from the request.
@@ -159,7 +165,7 @@ Master AMC Status adds no migration of its own.
 
 Recorded in `docs/client-source/CLIENT_DATA_CONFIRMATION.md`:
 
-* **MAS-1:** is the per-visit amount entered including or excluding VAT?
+* **MAS-1:** answered 2026-11-01: excluding VAT.
 * **MAS-2:** the colour rules put the invoice before the quotation, so a completed visit with a
   quotation but no invoice is Yellow. Is that order intended?
 * **MAS-3:** the legacy screen shows a Green row with Quote "N/A". Here that row would be Blue.

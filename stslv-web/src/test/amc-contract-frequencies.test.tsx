@@ -41,7 +41,7 @@ async function fillRequired(dialog: HTMLElement) {
   await userEvent.type(within(dialog).getByLabelText(/System/), 'CCTV')
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-15')
   await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-01-14')
-  await userEvent.type(within(dialog).getByLabelText(/Contract value/), '4000')
+  await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '4000')
 }
 
 describe('frequency choices', () => {

@@ -302,13 +302,13 @@ describe("schedule generation", () => {
     expect(contract.schedule).toMatchObject({ visitCount: 4, amountMissingCount: 4, scheduledTotal: "0.000" });
   });
 
-  it("does not force contract value to equal the visit total", async () => {
-    // 1000 is not 4 x 405: the contract is accepted and the difference is reported, not corrected.
+  it("does not force contract value to equal the visit total, and never compares one with no billing basis", async () => {
+    // 1000 is not 4 x 405: the contract is accepted. Without a basis, an annual or whole-term value is unknown.
     const id = await activeContract(admin, hotelOne, { contractValue: "1000.000", systemDescription: "UNEVEN" });
     const contract = (await get(id)).body.data;
 
     expect(contract.contractValue).toBe("1000.000");
-    expect(contract.schedule).toMatchObject({ scheduledTotal: "1620.000", valueDifference: "-620.000" });
+    expect(contract.schedule).toMatchObject({ scheduledTotal: "1620.000", generatedTotal: "1620.000", expectedTermTotal: null, valueDifference: null });
   });
 
   it("generates the schedule when a draft is activated, and logs it", async () => {
@@ -626,6 +626,8 @@ describe("read contracts", () => {
     const response = await api().get("/api/amc/contracts").query({ search: "FIVE YEAR" }).set(admin.headers);
 
     expect(response.body.data.items[0].schedule).toEqual({
+      firstServiceDate: expect.any(String),
+      intervalMonths: 3,
       visitCount: 20,
       completedCount: 0,
       openCount: 20,
@@ -633,8 +635,54 @@ describe("read contracts", () => {
       cancelledCount: 0,
       amountMissingCount: 0,
       scheduledTotal: "8100.000",
-      valueDifference: "-6480.000",
+      generatedTotal: "8100.000",
+      annualAmount: null,
+      servicesPerCycle: 4,
+      perServiceAmount: null,
+      expectedTermTotal: null,
+      valueDifference: null,
     });
+  });
+
+  it("filters by system and by the years a validity period covers, alone and together", async () => {
+    const client = await createClient(admin, "Test Filter Hotel");
+    await createContract(admin, client, { systemDescription: "FILTER PUMP", validFrom: "2026-07-01", validTo: "2027-06-30" });
+    await createContract(admin, client, { systemDescription: "filter pump ", validFrom: "2029-01-01", validTo: "2029-12-31" });
+    await createContract(admin, client, { systemDescription: "FILTER LIFT", validFrom: "2027-07-01", validTo: "2028-06-30", maintenanceFrequency: "MONTHLY", defaultVisitAmount: "135.000" });
+    const list = async (query: Record<string, unknown>) => {
+      const response = await api().get("/api/amc/contracts").query({ clientId: client, pageSize: 100, ...query }).set(admin.headers);
+      expect(response.status).toBe(200);
+
+      return (response.body.data.items as { systemDescription: string; validFrom: string }[]).map((item) => `${item.systemDescription.trim()} ${item.validFrom.slice(0, 4)}`).sort();
+    };
+
+    expect(await list({})).toEqual(["FILTER LIFT 2027", "FILTER PUMP 2026", "filter pump 2029"]);
+    expect(await list({ system: "Filter Pump" })).toEqual(["FILTER PUMP 2026", "filter pump 2029"]);
+    // A period that starts in one year and ends in the next matches both years.
+    expect(await list({ year: 2026 })).toEqual(["FILTER PUMP 2026"]);
+    expect(await list({ year: 2027 })).toEqual(["FILTER LIFT 2027", "FILTER PUMP 2026"]);
+    expect(await list({ year: 2028 })).toEqual(["FILTER LIFT 2027"]);
+    expect(await list({ year: 2027, system: "FILTER PUMP" })).toEqual(["FILTER PUMP 2026"]);
+    expect(await list({ year: 2027, frequency: "MONTHLY", status: "DRAFT" })).toEqual(["FILTER LIFT 2027"]);
+    expect(await list({ year: 2030 })).toEqual([]);
+    expect(await list({ year: 2029, system: "FILTER LIFT" })).toEqual([]);
+    expect((await api().get("/api/amc/contracts").query({ year: 1999 }).set(admin.headers)).status).toBe(400);
+    expect((await api().get("/api/amc/contracts").query({ year: "abc" }).set(admin.headers)).status).toBe(400);
+  });
+
+  it("offers the filter values present on contracts", async () => {
+    const response = await api().get("/api/amc/contracts/filter-options").set(admin.headers);
+
+    expect(response.status).toBe(200);
+    const data = response.body.data;
+    expect(data.clients.map((client: { name: string }) => client.name)).toContain("Test Filter Hotel");
+    expect(data.systems.filter((system: string) => system.trim().toLowerCase() === "filter pump")).toHaveLength(1);
+    expect(data.years).toEqual(expect.arrayContaining([2026, 2027, 2028, 2029]));
+    expect(data.years).toEqual([...data.years].sort((a: number, b: number) => a - b));
+    expect(data.frequencies).toEqual(expect.arrayContaining([expect.objectContaining({ code: "MONTHLY" }), expect.objectContaining({ code: "QUARTERLY" })]));
+    expect(data.frequencies.every((item: { label: string }) => typeof item.label === "string" && item.label.length > 0)).toBe(true);
+    expect(Array.isArray(data.salesEngineers) || data.salesEngineers === null).toBe(true);
+    expect((await api().get("/api/amc/contracts/filter-options").set(procurement.headers)).status).toBe(403);
   });
 
   it("suggests the systems already in use, once each", async () => {
@@ -650,6 +698,7 @@ describe("read contracts", () => {
 describe("contract permissions", () => {
   it("requires a signed-in user", async () => {
     expect((await api().get("/api/amc/contracts")).status).toBe(401);
+    expect((await api().get("/api/amc/contracts/filter-options")).status).toBe(401);
     expect((await api().post("/api/amc/contracts").send(contractBody(hotelOne))).status).toBe(401);
   });
 
@@ -659,6 +708,7 @@ describe("contract permissions", () => {
 
     for (const session of [accountant, execution]) {
       expect((await api().get("/api/amc/contracts").set(session.headers)).status).toBe(200);
+      expect((await api().get("/api/amc/contracts/filter-options").set(session.headers)).status).toBe(200);
       expect((await get(id, session)).status).toBe(200);
       expect((await api().get(`/api/amc/contracts/${id}/schedule/preview`).set(session.headers)).status).toBe(200);
 
@@ -679,7 +729,7 @@ describe("contract permissions", () => {
   });
 
   it("gives a role without AMC access nothing", async () => {
-    for (const path of ["/api/amc/contracts", "/api/amc/contracts/systems", "/api/amc/visits", "/api/amc/execution/visits", "/api/amc/summary"]) {
+    for (const path of ["/api/amc/contracts", "/api/amc/contracts/systems", "/api/amc/contracts/filter-options", "/api/amc/visits", "/api/amc/execution/visits", "/api/amc/summary"]) {
       expect((await api().get(path).set(procurement.headers)).status, path).toBe(403);
     }
   });

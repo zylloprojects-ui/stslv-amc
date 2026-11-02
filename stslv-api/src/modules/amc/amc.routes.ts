@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
-import { authorize } from "../../middleware/authorize";
+import { authorize, authorizeOnAny } from "../../middleware/authorize";
 import { requireSchema } from "../../middleware/require-schema";
 import { forbidden } from "../../shared/errors";
 import { sendExport } from "../../shared/export/send";
@@ -10,9 +10,13 @@ import {
   contractHistorySchema,
   contractMastersSchema,
   createContractSchema,
+  createRenewalSchema,
   expiringContractsSchema,
   renewalHistorySchema,
   saveServiceStatusSchema,
+  exportContractsSchema,
+  regenerateScheduleSchema,
+  setVisitColorSchema,
   exportServiceStatusSchema,
   exportVisitsSchema,
   listContractsSchema,
@@ -31,7 +35,11 @@ import {
   changeContractStatus,
   createContract,
   generateSchedule,
+  previewRegeneration,
+  regenerateSchedule,
   getContract,
+  listContractClientOptions,
+  listContractFilterOptions,
   listContractHistory,
   listContracts,
   listSystems,
@@ -40,6 +48,9 @@ import {
 } from "./contracts.service";
 import { getContractMasters, setContractMasters } from "./contract-masters.service";
 import { getAmcManagementSummary } from "./management.service";
+import { buildContractsExport } from "./contracts.export";
+import { listScheduleGenerations } from "./schedule-generations.service";
+import { buildMonthlyScheduleExport, exportMonthlyScheduleSchema, getMonthlySchedule, monthlyScheduleSchema } from "./schedule-monthly.service";
 import { buildMasterStatusExport } from "./master-status.export";
 import { exportMasterStatusSchema, listMasterStatusSchema } from "./master-status.schemas";
 import { getMasterStatusOptions, listMasterStatus } from "./master-status.service";
@@ -50,7 +61,7 @@ import { getContractRenewals, listRenewalHistory } from "./renewals.service";
 import { getWorkload, listExpiringContracts } from "./reports.service";
 import { buildScheduleExport } from "./schedule.export";
 import { buildServiceStatusExport } from "./service-status.export";
-import { getServiceStatusOptions, listServiceStatus, saveServiceStatus } from "./service-status.service";
+import { getCalendarOptions, getServiceStatusOptions, listServiceStatus, saveServiceStatus } from "./service-status.service";
 import { canViewSummary, getAmcSummary } from "./summary.service";
 import {
   getExecutionVisit,
@@ -59,10 +70,13 @@ import {
   listExecutionVisits,
   listVisits,
   updateExecution,
+  setVisitColor,
   updateVisit,
 } from "./visits.service";
 
 // Mounted at /api/amc.
+import { setManualInvoice, setManualInvoiceSchema } from "./manual-invoice.service";
+
 export const amcRouter = Router();
 
 amcRouter.use(authenticate);
@@ -97,12 +111,12 @@ amcRouter.get("/reports/expiring", authorize("AMC_CONTRACTS", "VIEW"), async (re
 // Renewals (migration 0072).
 const renewalsReady = requireSchema(["amc_contracts.renewed_from_id"]);
 
-amcRouter.get("/reports/renewals", authorize("AMC_CONTRACTS", "VIEW"), renewalsReady, async (req, res) => {
+amcRouter.get("/reports/renewals", authorize("AMC_RENEWAL", "VIEW"), renewalsReady, async (req, res) => {
   res.json({ success: true, data: await listRenewalHistory(renewalHistorySchema.parse(req.query)) });
 });
 
 // Every renewal made, as an Excel workbook or a PDF.
-amcRouter.get("/reports/renewals/export", authorize("AMC_CONTRACTS", "VIEW"), authorize("AMC_CONTRACTS", "EXPORT"), renewalsReady, async (req, res) => {
+amcRouter.get("/reports/renewals/export", authorize("AMC_RENEWAL", "VIEW"), authorize("AMC_RENEWAL", "EXPORT"), renewalsReady, async (req, res) => {
   const query = exportRenewalHistorySchema.parse(req.query);
   const { report, recordExport } = await buildRenewalHistoryExport(requireAuth(req), query);
 
@@ -113,15 +127,16 @@ amcRouter.get("/reports/renewals/export", authorize("AMC_CONTRACTS", "VIEW"), au
 // Contracts due for renewal within the warning window, and those with a renewal,
 // with their derived renewal state. Renewing, approving and cancelling use the
 // contract routes below (POST /contracts/:id/renewals, POST /contracts/:id/status),
-// so their permissions and checks are the same wherever they are started.
+// so their permissions and checks are the same wherever they are started. The AMC
+// Renewal page and its renewal history are governed by AMC_RENEWAL (migration 0080).
 const renewalQueueReady = requireSchema(["amc_contracts.renewed_from_id", "system_types", "maintenance_frequencies"]);
 
-amcRouter.get("/renewals/queue", authorize("AMC_CONTRACTS", "VIEW"), renewalQueueReady, async (req, res) => {
+amcRouter.get("/renewals/queue", authorize("AMC_RENEWAL", "VIEW"), renewalQueueReady, async (req, res) => {
   res.json({ success: true, data: await listRenewalQueue(listRenewalQueueSchema.parse(req.query)) });
 });
 
 // Every row that matches the queue's filters, across all pages, with the page's visible columns.
-amcRouter.get("/renewals/queue/export", authorize("AMC_CONTRACTS", "VIEW"), authorize("AMC_CONTRACTS", "EXPORT"), renewalQueueReady, async (req, res) => {
+amcRouter.get("/renewals/queue/export", authorize("AMC_RENEWAL", "VIEW"), authorize("AMC_RENEWAL", "EXPORT"), renewalQueueReady, async (req, res) => {
   const query = exportRenewalQueueSchema.parse(req.query);
   const { report, recordExport } = await buildRenewalQueueExport(requireAuth(req), query);
 
@@ -137,8 +152,46 @@ amcRouter.get("/contracts", authorize("AMC_CONTRACTS", "VIEW"), async (req, res)
   res.json({ success: true, data: await listContracts(listContractsSchema.parse(req.query)) });
 });
 
+amcRouter.get("/contracts/export", authorize("AMC_CONTRACTS", "VIEW"), authorize("AMC_CONTRACTS", "EXPORT"), async (req, res) => {
+  const query = exportContractsSchema.parse(req.query);
+  const { report, recordExport } = await buildContractsExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
+});
+
+// Each update of a contract's schedule, oldest first. Read from the activity log, which keeps them all.
+amcRouter.get("/contracts/:id/schedule/generations", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await listScheduleGenerations(parseIdParam(req.params.id)) });
+});
+
 amcRouter.get("/contracts/systems", authorize("AMC_CONTRACTS", "VIEW"), async (_req, res) => {
   res.json({ success: true, data: await listSystems() });
+});
+
+// Contract figures only, for the register's status filters; no Dashboard permission needed.
+amcRouter.get("/contracts/status-summary", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
+  const { contracts } = await getAmcSummary(requireAuth(req), 30);
+
+  res.json({ success: true, data: { contracts } });
+});
+
+// Names of active clients, for the contract form: only id and name, for those who may save the form.
+// The Clients pages, client details and client list stay on their own permissions.
+amcRouter.get("/contracts/client-options", (req, _res, next) => {
+  const held = requireAuth(req).permissions;
+
+  if (!held.has("AMC_CONTRACTS:CREATE") && !held.has("AMC_CONTRACTS:EDIT") && !held.has("AMC_RENEWAL:CREATE")) {
+    throw forbidden();
+  }
+
+  next();
+}, async (_req, res) => {
+  res.json({ success: true, data: await listContractClientOptions() });
+});
+
+// The values present on contracts, for the register's filters. Declared before "/contracts/:id".
+amcRouter.get("/contracts/filter-options", authorize("AMC_CONTRACTS", "VIEW"), async (_req, res) => {
+  res.json({ success: true, data: await listContractFilterOptions() });
 });
 
 amcRouter.get("/contracts/:id", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
@@ -163,8 +216,10 @@ amcRouter.get("/contracts/:id/renewals", authorize("AMC_CONTRACTS", "VIEW"), ren
 });
 
 // A renewal is a new contract (same fields and checks as adding one), linked to this contract, which stays unchanged.
-amcRouter.post("/contracts/:id/renewals", authorize("AMC_CONTRACTS", "CREATE"), renewalsReady, async (req, res) => {
-  const renewal = await createContract(requireAuth(req), createContractSchema.parse(req.body), { renewedFromId: parseIdParam(req.params.id) });
+// Renewing is an AMC Renewal action (AMC_RENEWAL:CREATE), from the AMC Renewal page or the contract page.
+amcRouter.post("/contracts/:id/renewals", authorize("AMC_RENEWAL", "CREATE"), renewalsReady, async (req, res) => {
+  const { renewalNotes, ...input } = createRenewalSchema.parse(req.body);
+  const renewal = await createContract(requireAuth(req), input, { renewedFromId: parseIdParam(req.params.id), renewalNotes });
 
   res.status(201).json({ success: true, data: renewal });
 });
@@ -212,14 +267,29 @@ amcRouter.post("/contracts/:id/schedule/generate", authorize("AMC_CONTRACTS", "E
   res.json({ success: true, data: await generateSchedule(requireAuth(req), parseIdParam(req.params.id)) });
 });
 
+// The only routes that recalculate existing visit amounts.
+amcRouter.get("/contracts/:id/schedule/regenerate", authorize("AMC_CONTRACTS", "EDIT"), async (req, res) => {
+  res.json({ success: true, data: await previewRegeneration(parseIdParam(req.params.id)) });
+});
+
+amcRouter.post("/contracts/:id/schedule/regenerate", authorize("AMC_CONTRACTS", "EDIT"), async (req, res) => {
+  const { reason } = regenerateScheduleSchema.parse(req.body);
+
+  res.json({ success: true, data: await regenerateSchedule(requireAuth(req), parseIdParam(req.params.id), reason) });
+});
+
 // --- Schedule ----------------------------------------------------------------
-amcRouter.get("/visits", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+// The visit list and its export serve both the AMC Schedule and the Monthly Calendar,
+// so either page's permission opens them (migration 0080).
+const SCHEDULE_PAGES: Parameters<typeof authorizeOnAny>[0] = ["AMC_SCHEDULE", "MONTHLY_CALENDAR"];
+
+amcRouter.get("/visits", authorizeOnAny(SCHEDULE_PAGES, "VIEW"), async (req, res) => {
   res.json({ success: true, data: await listVisits(listVisitsSchema.parse(req.query)) });
 });
 
 // The schedule as an Excel workbook or a PDF, with the list's own filters. Exporting needs
 // the EXPORT permission on top of VIEW. Declared before /visits/:id, which would otherwise take it.
-amcRouter.get("/visits/export", authorize("AMC_SCHEDULE", "VIEW"), authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+amcRouter.get("/visits/export", authorizeOnAny(SCHEDULE_PAGES, "VIEW", "EXPORT"), async (req, res) => {
   const query = exportVisitsSchema.parse(req.query);
 
   const { report, recordExport } = await buildScheduleExport(requireAuth(req), query);
@@ -228,12 +298,32 @@ amcRouter.get("/visits/export", authorize("AMC_SCHEDULE", "VIEW"), authorize("AM
 });
 
 // The Monthly Calendar's year: counts and amounts per month, with the schedule's filters. Read-only.
-amcRouter.get("/visits/year-summary", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+amcRouter.get("/visits/monthly-consolidated", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getMonthlySchedule(monthlyScheduleSchema.parse(req.query)) });
+});
+
+amcRouter.get("/visits/monthly-consolidated/export", authorize("AMC_SCHEDULE", "VIEW"), authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+  const query = exportMonthlyScheduleSchema.parse(req.query);
+  const { report, recordExport } = await buildMonthlyScheduleExport(requireAuth(req), query);
+
+  await sendExport(res, report, query.format, recordExport);
+});
+
+amcRouter.get("/visits/year-summary", authorizeOnAny(SCHEDULE_PAGES, "VIEW"), async (req, res) => {
   res.json({ success: true, data: await getVisitYearSummary(visitYearSummarySchema.parse(req.query)) });
 });
 
-amcRouter.get("/visits/:id", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+amcRouter.get("/visits/:id", authorizeOnAny(SCHEDULE_PAGES, "VIEW"), async (req, res) => {
   res.json({ success: true, data: await getScheduleVisit(parseIdParam(req.params.id)) });
+});
+
+// The manual Invoice No. (entered = Paid, cleared = Unpaid). Needs the same permission as editing an invoice record.
+amcRouter.patch("/visits/:id/manual-invoice", authorize("INVOICES", "EDIT"), async (req, res) => {
+  res.json({ success: true, data: await setManualInvoice(requireAuth(req), parseIdParam(req.params.id), setManualInvoiceSchema.parse(req.body)) });
+});
+
+amcRouter.patch("/visits/:id/color", authorize("AMC_SCHEDULE", "EDIT"), async (req, res) => {
+  res.json({ success: true, data: await setVisitColor(requireAuth(req), parseIdParam(req.params.id), setVisitColorSchema.parse(req.body)) });
 });
 
 amcRouter.patch("/visits/:id", authorize("AMC_SCHEDULE", "EDIT"), async (req, res) => {
@@ -261,19 +351,25 @@ amcRouter.patch("/execution/visits/:id", authorize("AMC_EXECUTION", "EDIT"), asy
 
 // --- Service Status ------------------------------------------------------------
 // One row per scheduled visit, read from the same records as the schedule.
-// Viewing needs AMC_SCHEDULE:VIEW; saving changes the visit's execution, so it
-// needs AMC_EXECUTION:EDIT, and reopening completed work also needs
-// AMC_EXECUTION:APPROVE (checked by the execution rules).
-amcRouter.get("/service-status", authorize("AMC_SCHEDULE", "VIEW"), async (req, res) => {
+// Viewing needs SERVICE_STATUS:VIEW (migration 0080); saving changes the visit's
+// execution, so it needs AMC_EXECUTION:EDIT, and reopening completed work also
+// needs AMC_EXECUTION:APPROVE (checked by the execution rules).
+amcRouter.get("/service-status", authorize("SERVICE_STATUS", "VIEW"), async (req, res) => {
   res.json({ success: true, data: await listServiceStatus(listServiceStatusSchema.parse(req.query)) });
 });
 
-amcRouter.get("/service-status/options", authorize("AMC_SCHEDULE", "VIEW"), async (_req, res) => {
+// The filter lists (sales engineers, frequencies, years on visits), shared with the Monthly Calendar.
+amcRouter.get("/service-status/options", authorizeOnAny(["SERVICE_STATUS", "MONTHLY_CALENDAR", "AMC_SCHEDULE"], "VIEW"), async (_req, res) => {
   res.json({ success: true, data: await getServiceStatusOptions() });
 });
 
+// The Monthly Calendar's filter lists: from every visit it can show, cancelled visits included.
+amcRouter.get("/calendar/options", authorizeOnAny(["MONTHLY_CALENDAR", "AMC_SCHEDULE"], "VIEW"), async (_req, res) => {
+  res.json({ success: true, data: await getCalendarOptions() });
+});
+
 // Every row that matches the page's filters, across all pages.
-amcRouter.get("/service-status/export", authorize("AMC_SCHEDULE", "VIEW"), authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+amcRouter.get("/service-status/export", authorize("SERVICE_STATUS", "VIEW"), authorize("SERVICE_STATUS", "EXPORT"), async (req, res) => {
   const query = exportServiceStatusSchema.parse(req.query);
   const { report, recordExport } = await buildServiceStatusExport(requireAuth(req), query);
 
@@ -288,11 +384,10 @@ amcRouter.patch("/service-status/:id", authorize("AMC_EXECUTION", "EDIT"), async
 
 // --- Master AMC Status ---------------------------------------------------------
 // Read only: one row per scheduled visit with its invoice and quotation numbers.
-// It shows invoice numbers (Invoice Tracking) and quotation numbers (Services
-// Sales), so viewing needs VIEW on AMC_SCHEDULE, INVOICES and SERVICES_SALES:
-// no role sees through this page what its own grants hide. Needs migration 0078.
+// Its own module (0091): MASTER_AMC_STATUS:VIEW opens it, with everything it shows,
+// so granting it also grants sight of those numbers. Needs migration 0078.
 const masterStatusReady = requireSchema(["amc_visits.quotation_no"]);
-const masterStatusView = [authorize("AMC_SCHEDULE", "VIEW"), authorize("INVOICES", "VIEW"), authorize("SERVICES_SALES", "VIEW"), masterStatusReady];
+const masterStatusView = [authorize("MASTER_AMC_STATUS", "VIEW"), masterStatusReady];
 
 amcRouter.get("/master-status", ...masterStatusView, async (req, res) => {
   res.json({ success: true, data: await listMasterStatus(listMasterStatusSchema.parse(req.query)) });
@@ -303,7 +398,7 @@ amcRouter.get("/master-status/options", ...masterStatusView, async (_req, res) =
 });
 
 // Every row that matches the page's filters, across all pages, with the page's visible columns.
-amcRouter.get("/master-status/export", ...masterStatusView, authorize("AMC_SCHEDULE", "EXPORT"), async (req, res) => {
+amcRouter.get("/master-status/export", ...masterStatusView, authorize("MASTER_AMC_STATUS", "EXPORT"), async (req, res) => {
   const query = exportMasterStatusSchema.parse(req.query);
   const { report, recordExport } = await buildMasterStatusExport(requireAuth(req), query);
 

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
 import type { RenewalHistory, RenewalQueue, RenewalQueueItem } from '../pages/amcRenewal/renewalTypes'
 import { amcApi, makeContract } from './amc-helpers'
-import { ADMIN, fail, ok, renderApp } from './helpers'
+import { afterPageSplit, ADMIN, fail, ok, renderApp } from './helpers'
 
 // AMC Renewal. The API is mocked: every record here is invented, and each test
 // checks that the page shows what the API sent and calls the contract routes.
@@ -77,7 +77,7 @@ const VIEW_ONLY: SessionUser = {
   email: 'viewer@example.com',
   fullName: 'Vera Viewer',
   roles: [{ id: '5', code: 'VIEWER', name: 'Viewer' }],
-  permissions: ['DASHBOARD:VIEW', 'AMC_CONTRACTS:VIEW'],
+  permissions: afterPageSplit(['DASHBOARD:VIEW', 'AMC_CONTRACTS:VIEW']),
 }
 
 function renewalApi(user: SessionUser = ADMIN, queue: () => ReturnType<typeof ok> = () => ok(QUEUE)) {
@@ -87,7 +87,8 @@ function renewalApi(user: SessionUser = ADMIN, queue: () => ReturnType<typeof ok
       if (request.path === '/notifications') return ok({ items: [], unreadCount: 0 })
       if (request.path === '/amc/renewals/queue') return queue()
       if (request.path === '/amc/reports/renewals') return ok(HISTORY)
-      if (request.path === '/masters/sales-engineers/options' || request.path === '/masters/maintenance-frequencies/options') return ok([])
+      if (request.path === '/masters/sales-engineers/options') return ok([{ id: '7', name: 'Sara Sales', employeeNo: null }])
+      if (request.path === '/masters/maintenance-frequencies/options') return ok([])
       if (request.method === 'POST' && request.path === '/amc/contracts/41/renewals') return ok({ ...DRAFT_RENEWAL, id: '80', scheduleChange: null }, 201)
       return undefined
     },
@@ -153,6 +154,20 @@ describe('AMC Renewal page', () => {
     expect(within(await rowOf('AMC-0045')).getByRole('button', { name: 'Restart Renewal' })).toBeInTheDocument()
   })
 
+  it('asks for a reason before cancelling a renewal from the queue', async () => {
+    const api = renewalApi()
+    renderApp('/amc/renewal')
+
+    await userEvent.click(within(await rowOf('AMC-0043')).getByRole('button', { name: 'Cancel' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Cancel contract' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel contract' }))
+    expect(await within(dialog).findByText('Enter the reason for cancelling this contract.')).toBeInTheDocument()
+
+    await userEvent.type(within(dialog).getByLabelText(/Reason for cancelling/), 'Client declined')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel contract' }))
+    await waitFor(() => expect(api.requests.find((request) => request.method === 'POST' && request.path.endsWith('/status'))?.body).toMatchObject({ status: 'CANCELLED', reason: 'Client declined' }))
+  })
+
   it('shows no actions or downloads to a user who may only view contracts', async () => {
     renewalApi(VIEW_ONLY)
     renderApp('/amc/renewal')
@@ -173,10 +188,12 @@ describe('AMC Renewal page', () => {
 
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2026-11-06')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-11-05')
+    // Every renewal names an active sales engineer.
+    await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '7')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/41/renewals')).toHaveLength(1))
-    expect(api.find('POST', '/amc/contracts/41/renewals')[0]?.body).toMatchObject({ clientId: '10', validFrom: '2026-11-06', validTo: '2027-11-05', status: 'DRAFT' })
+    expect(api.find('POST', '/amc/contracts/41/renewals')[0]?.body).toMatchObject({ clientId: '10', validFrom: '2026-11-06', validTo: '2027-11-05', status: 'DRAFT', salesEngineerId: '7' })
     expect(await screen.findByText(/Renewal AMC-0080 created for AMC-0041/)).toBeInTheDocument()
   })
 

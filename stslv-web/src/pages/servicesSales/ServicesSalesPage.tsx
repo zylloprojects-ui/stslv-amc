@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
@@ -5,7 +6,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
@@ -14,6 +15,7 @@ import { Filter, Pager } from '../amc/components'
 import { CustomizeKpisDialog, HideColumnsDialog } from './ServicesSalesDialogs'
 import { COLUMN_IDS, COLUMN_LABELS, useHiddenColumns, useKpiLayout, type ColumnId, type KpiId } from './servicesSalesPreferences'
 import {
+  QUOTE_SUBMISSION_FILTERS,
   QUOTATION_MAX_LENGTH,
   SALES_STATUS_LABELS,
   SERVICE_STATUSES,
@@ -206,6 +208,7 @@ export function ServicesSalesPage() {
   const [month, setMonth] = useState('')
   const [year, setYear] = useState('')
   const [serviceStatus, setServiceStatus] = useState('')
+  const [quoteSubmission, setQuoteSubmission] = useState('')
   const [page, setPage] = useState(1)
 
   useEffect(() => {
@@ -221,7 +224,7 @@ export function ServicesSalesPage() {
   const canExport = auth.can('SERVICES_SALES', 'EXPORT')
 
   // One set of filters for the rows, the cards and the downloads.
-  const filters = { search, clientId, salesEngineerId, systemTypeId, frequency, month, year, serviceStatus }
+  const filters = { search, clientId, salesEngineerId, systemTypeId, frequency, month, year, serviceStatus, quoteSubmission }
   const options = useQuery({ queryKey: ['services-sales', 'options'], queryFn: () => api.get<ServicesSalesOptions>('/services-sales/options') })
   const sales = useQuery({
     queryKey: ['services-sales', 'list', { ...filters, page }],
@@ -244,10 +247,11 @@ export function ServicesSalesPage() {
     setMonth('')
     setYear('')
     setServiceStatus('')
+    setQuoteSubmission('')
     setPage(1)
   }
   // A save can change the cards and the visit's version, so the list and the other AMC pages read it again.
-  const refresh = () => Promise.all([queryClient.invalidateQueries({ queryKey: ['services-sales', 'list'] }), queryClient.invalidateQueries({ queryKey: ['amc'] })])
+  const refresh = () => refreshOperationalData(queryClient)
 
   const data = sales.data
   const shown = (id: ColumnId) => !hidden.has(id)
@@ -255,7 +259,7 @@ export function ServicesSalesPage() {
   return (
     <>
       <PageHeader
-        title="Services Sales"
+        title="Service Sales"
         description="Track completed services and manually record quotation numbers."
         actions={
           <div className="flex flex-wrap gap-2">
@@ -266,11 +270,11 @@ export function ServicesSalesPage() {
               Hide Columns{hidden.size > 0 ? ` (${hidden.size})` : ''}
             </Button>
             {canExport && (
-              // The download covers every service that matches the filters, on every page.
+              // The download covers every service that matches the filters, on every page, with the columns shown.
               <ExportButtons
-                what="Services Sales"
-                fileStem="services-sales"
-                path={(format) => `/services-sales/export${queryString({ ...filters, format })}`}
+                what="Service Sales"
+                fileStem="service-sales"
+                path={(format) => `/services-sales/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
                 onError={setExportError}
               />
             )}
@@ -284,7 +288,7 @@ export function ServicesSalesPage() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Services Sales figures">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Service Sales figures">
         {layout.order.map((id, index) => (
           <StatTile
             key={id}
@@ -334,7 +338,7 @@ export function ServicesSalesPage() {
                   type="search"
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="AMC reference, client, system or quote no."
+                  placeholder="AMC reference, client, system, report or quote no."
                   className={className}
                 />
               )}
@@ -343,6 +347,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={clientId} onChange={(event) => change(setClientId)(event.target.value)} className={className}>
                   <option value="">All clients</option>
+                  <OptionsNotice source={options} count={options.data?.clients.length ?? 0} empty="No clients with current AMC visits" />
                   {(options.data?.clients ?? []).map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -355,6 +360,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={(event) => change(setSalesEngineerId)(event.target.value)} className={className}>
                   <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -367,6 +373,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={systemTypeId} onChange={(event) => change(setSystemTypeId)(event.target.value)} className={className}>
                   <option value="">All systems</option>
+                  <OptionsNotice source={options} count={options.data?.systemTypes.length ?? 0} empty="No system types linked to current AMC visits" />
                   {(options.data?.systemTypes ?? []).map((type) => (
                     <option key={type.id} value={type.id}>
                       {type.name}
@@ -379,6 +386,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={frequency} onChange={(event) => change(setFrequency)(event.target.value)} className={className}>
                   <option value="">All frequencies</option>
+                  <OptionsNotice source={options} count={options.data?.frequencies.length ?? 0} empty="No frequencies on current AMC visits" />
                   {(options.data?.frequencies ?? []).map((item) => (
                     <option key={item.code} value={item.code}>
                       {item.label}
@@ -403,6 +411,7 @@ export function ServicesSalesPage() {
               {(id, className) => (
                 <select id={id} value={year} onChange={(event) => change(setYear)(event.target.value)} className={className}>
                   <option value="">All years</option>
+                  <OptionsNotice source={options} count={options.data?.years.length ?? 0} empty="No years with current AMC visits" />
                   {(options.data?.years ?? []).map((value) => (
                     <option key={value} value={String(value)}>
                       {value}
@@ -418,6 +427,18 @@ export function ServicesSalesPage() {
                   {SERVICE_STATUSES.map((value) => (
                     <option key={value} value={value}>
                       {SERVICE_STATUS_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
+            <Filter label="Quote">
+              {(id, className) => (
+                <select id={id} value={quoteSubmission} onChange={(event) => change(setQuoteSubmission)(event.target.value)} className={className}>
+                  <option value="">All</option>
+                  {QUOTE_SUBMISSION_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -464,7 +485,7 @@ export function ServicesSalesPage() {
           <>
             <div className={TABLE.wrapper}>
               <table className={TABLE.table}>
-                <caption className="sr-only">Services Sales</caption>
+                <caption className="sr-only">Service Sales</caption>
                 <thead>
                   <tr>
                     <th scope="col" className={TABLE.snHead}>
@@ -509,6 +530,11 @@ export function ServicesSalesPage() {
                         <td className={TABLE.td}>
                           <ServiceStatusPill item={item} />
                           {item.completedDate && <div className="mt-1 text-xs text-slate-500">{formatDate(item.completedDate)}</div>}
+                        </td>
+                      )}
+                      {shown('serviceReportNo') && (
+                        <td className={`${TABLE.td} whitespace-nowrap`}>
+                          {item.serviceReportNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.serviceReportNo}</span> : <span className="text-slate-400" title="No service report number recorded">—<span className="sr-only">No service report number recorded</span></span>}
                         </td>
                       )}
                       {shown('quotation') && (

@@ -43,6 +43,8 @@ export function useFrequencyOptions() {
       ? (query.data as MasterOption[]).map((item) => ({ code: item.code, name: item.name, isCustom: item.isCustom === true, ruleSummary: item.ruleSummary ?? null }))
       : BUILT_IN,
     loading: query.isPending,
+    // The master list could not be read, so only the built-in frequencies are offered.
+    failed: query.isError,
   }
 }
 

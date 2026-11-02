@@ -1,8 +1,8 @@
 import { QueryClient } from '@tanstack/react-query'
 import { render } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { vi } from 'vitest'
-import { AppProviders, AppRoutes } from '../App'
+import { appRouteObjects } from '../appRoutes'
 import { ACTIONS, MODULES, type Client, type SessionUser } from '../lib/types'
 
 export interface MockRequest {
@@ -60,11 +60,42 @@ export function mockApi(handler: (request: MockRequest) => MockReply | Promise<M
   }
 }
 
+/**
+ * The grants a role holds after migration 0081, given the grants it held before:
+ * each page module split from another receives that module's grants for the
+ * actions it uses, and USERS:EDIT brings USERS:APPROVE. Mirrors
+ * stslv-api/migrations/0081_seed_page_permissions.sql, so a fixture written for a
+ * role keeps meaning that role.
+ */
+const SPLIT: [string, string, string[]][] = [
+  ['AMC_RENEWAL', 'AMC_CONTRACTS', ['VIEW', 'CREATE', 'EXPORT']],
+  ['MONTHLY_CALENDAR', 'AMC_SCHEDULE', ['VIEW', 'EXPORT']],
+  ['SERVICE_STATUS', 'AMC_SCHEDULE', ['VIEW', 'EXPORT']],
+  ['SALES_ENGINEERS', 'SETTINGS', ['VIEW', 'CREATE', 'EDIT', 'EXPORT']],
+  ['SYSTEM_TYPES', 'SETTINGS', ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'EXPORT']],
+  ['MAINTENANCE_FREQUENCIES', 'SETTINGS', ['VIEW', 'CREATE', 'EDIT', 'EXPORT']],
+  ['DEPARTMENTS', 'SETTINGS', ['VIEW', 'CREATE', 'EDIT', 'EXPORT']],
+  ['USERS', 'USERS', []],
+]
+
+export function afterPageSplit(permissions: string[]): string[] {
+  const held = new Set(permissions)
+
+  for (const [target, source, actions] of SPLIT) {
+    for (const action of actions) {
+      if (held.has(`${source}:${action}`)) held.add(`${target}:${action}`)
+    }
+  }
+  if (held.has('USERS:EDIT')) held.add('USERS:APPROVE')
+
+  return [...held]
+}
+
 export const ADMIN: SessionUser = {
   id: '1',
   email: 'admin@example.com',
   fullName: 'Asha Admin',
-  roles: [{ id: '1', code: 'ADMIN', name: 'Admin' }],
+  roles: [{ id: '1', code: 'ADMIN', name: 'Super Admin' }],
   permissions: MODULES.flatMap((module) => ACTIONS.map((action) => `${module}:${action}`)),
 }
 
@@ -104,11 +135,9 @@ export function signIn() {
 export function renderApp(path: string) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-  return render(
-    <MemoryRouter initialEntries={[path]}>
-      <AppProviders client={client}>
-        <AppRoutes />
-      </AppProviders>
-    </MemoryRouter>,
-  )
+  // The app's data router, in memory, so unsaved-change guards block navigation as in the browser.
+  const router = createMemoryRouter(appRouteObjects(client), { initialEntries: [path] })
+
+  // The router and the query client are returned too, so a test can go Back or refresh data.
+  return Object.assign(render(<RouterProvider router={router} />), { router, queryClient: client })
 }

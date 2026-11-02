@@ -113,7 +113,7 @@ describe('protected routes', () => {
     expect(await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })).toBeInTheDocument()
     const header = screen.getByRole('banner')
     expect(within(header).getByText('Asha Admin')).toBeInTheDocument()
-    expect(within(header).getByText('Admin')).toBeInTheDocument()
+    expect(within(header).getByText('Super Admin')).toBeInTheDocument()
   })
 
   it('signs out, clears the session and returns to the login page', async () => {
@@ -181,9 +181,10 @@ describe('permission-based navigation', () => {
     expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center', 'Settings'])
     expect(await linksByGroup(nav)).toEqual({
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
-      'AMC Operations': ['AMC Management', 'AMC Contracts', 'AMC Renewal', 'AMC Schedule', 'Monthly Calendar', 'Service Status', 'Services Sales', 'Master AMC Status'],
-      Finance: ['Invoice Tracking', 'Accounts'],
-      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log'],
+      'AMC Operations': ['AMC Management', 'AMC Contracts', 'Master AMC Status', 'Service Status', 'AMC Renewal', 'Monthly Calendar', 'AMC Schedule'],
+      Finance: ['Invoice Tracking', 'Accounts', 'Service Sales'],
+      Reporting: ['Reports'],
+      Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log', 'Recycle Bin', 'Suggestions Review'],
     })
   })
 
@@ -235,13 +236,11 @@ describe('permission-based navigation', () => {
     expect(api.find('GET', '/users')).toHaveLength(0)
   })
 
-  it.each(['/reports', '/historical-data', '/expenses'])('shows Not Found for the removed page %s', async (path) => {
+  it.each(['/historical-data', '/expenses'])('shows Not Found for the removed page %s', async (path) => {
     session(ADMIN)
     renderApp(path)
 
     expect(await screen.findByRole('heading', { name: 'Page not found' })).toBeInTheDocument()
-    const nav = screen.getByRole('navigation', { name: 'Main' })
-    expect(within(nav).queryByRole('button', { name: 'Reporting' })).not.toBeInTheDocument()
   })
 })
 
@@ -421,7 +420,7 @@ describe('loader style', () => {
 })
 
 describe('suggestions popup', () => {
-  it('opens from the header, asks for enough detail, and says plainly that nothing is sent', async () => {
+  it('opens from the header and asks for a subject and enough detail before sending anything', async () => {
     const api = session(ADMIN)
     renderApp('/dashboard')
 
@@ -429,15 +428,14 @@ describe('suggestions popup', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Suggestions & Improvements' })
     expect(dialog).toHaveTextContent('propose an improvement for STSLEV AMC.')
 
+    const before = api.requests.length
     await userEvent.type(within(dialog).getByLabelText('Description'), 'short')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Submit Feedback' }))
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('at least 10 characters')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('short subject')
 
-    const before = api.requests.length
-    await userEvent.type(within(dialog).getByLabelText('Description'), ' but now long enough')
+    await userEvent.type(within(dialog).getByLabelText('Subject'), 'Slow export')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Submit Feedback' }))
-
-    expect(dialog).toHaveTextContent('Suggestions are not stored or sent yet.')
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('at least 10 characters')
     expect(api.requests).toHaveLength(before)
   })
 })

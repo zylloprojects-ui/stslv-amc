@@ -5,7 +5,8 @@ export interface AppAlert {
   severity: 'warning' | 'info'
   title: string
   message: string
-  link: string
+  /** Null when this user cannot open the page. */
+  link: string | null
   count: number
   isRead: boolean
   readAt: string | null

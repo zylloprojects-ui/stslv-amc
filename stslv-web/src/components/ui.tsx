@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
+import { useContext, createContext, useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type Ref, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { createPortal } from 'react-dom'
 import { useLocation } from 'react-router-dom'
 import { cx } from '../lib/format'
+import { isForbidden } from '../lib/api'
 import { useDialogBehavior, usePageTitle } from './hooks'
 import { BrandLoader } from './loaders'
 import { pageMetaFor } from './pageMeta'
@@ -160,6 +161,40 @@ export function SelectField({ label, error, hint, required, className, children,
   )
 }
 
+/** The value of the {@link OptionsNotice} entry. It can never be chosen, so no page ever receives it. */
+export const OPTIONS_NOTICE_VALUE = '__options-notice__'
+
+interface OptionsNoticeProps {
+  /** The query that supplies the list. */
+  source: { isPending: boolean; isError: boolean; error?: unknown }
+  /** How many real entries the list has. */
+  count: number
+  /** Why the list is empty, e.g. "No clients have visits yet". */
+  empty: string
+}
+
+/**
+ * A greyed-out entry for a list filled from the server, so an open list says why it has nothing to choose:
+ * still loading, could not be loaded, or nothing qualifies. Renders nothing once there are entries.
+ */
+export function OptionsNotice({ source, count, empty }: OptionsNoticeProps) {
+  const text = source.isPending
+    ? 'Loading…'
+    : source.isError
+      ? isForbidden(source.error)
+        ? 'Not available for your role'
+        : 'The list could not be loaded'
+      : count === 0
+        ? empty
+        : null
+
+  return text ? (
+    <option value={OPTIONS_NOTICE_VALUE} disabled>
+      {text}
+    </option>
+  ) : null
+}
+
 type BadgeTone = 'green' | 'slate' | 'blue' | 'amber'
 
 const BADGE_STYLES: Record<BadgeTone, string> = {
@@ -239,12 +274,28 @@ export function EmptyState({ title, description, action }: { title: string; desc
  * The heading of a page, as a banner: icon tile, title and subtitle, with optional actions on the right.
  * The icon and the default subtitle come from the current address. It also names the browser tab after the page.
  */
+/** True inside a page that already has its banner: a page shown there heads its panel instead of adding a second banner. */
+export const NestedPageContext = createContext(false)
+
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
   usePageTitle(title)
 
   const location = useLocation()
+  const nested = useContext(NestedPageContext)
   const meta = pageMetaFor(location.pathname)
   const subtitle = description ?? meta.description
+
+  if (nested) {
+    return (
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h2 className="text-xl font-bold tracking-tight text-[#0b3b66]">{title}</h2>
+          {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap gap-2 max-sm:w-full [&>*]:max-sm:flex-1">{actions}</div>}
+      </div>
+    )
+  }
 
   return (
     <div className="login-rise relative mb-6 overflow-hidden rounded-2xl app-banner shadow-lg shadow-sky-900/10">

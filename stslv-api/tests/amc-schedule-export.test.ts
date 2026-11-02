@@ -74,8 +74,8 @@ describe("who may export the schedule", () => {
 
     expect(response.status).toBe(403);
     expect(errorOf(response).code).toBe("FORBIDDEN");
-    // The seeded matrix gives EXPORT to no role but Admin.
-    const granted = await pool.query("SELECT 1 FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.action = 'EXPORT' AND r.code NOT IN ('ADMIN', 'PROCUREMENT')");
+    // The legacy roles hold no EXPORT (the six-role model of 0087 grants it to Admin and the Executives).
+    const granted = await pool.query("SELECT 1 FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE rp.action = 'EXPORT' AND r.code IN ('ACCOUNTANT', 'EXECUTION', 'INVOICING')");
     expect(granted.rowCount).toBe(0);
   });
 
@@ -128,7 +128,7 @@ describe("Excel export", () => {
     expect(totals.visitAmount).toBe("2370.000");
     expect(totalCell.value).toMatchObject({ formula: `SUMIFS(L7:L16,J7:J16,"<>Cancelled")`, result: 2370 });
     expect(rows.filter((row) => row[9] === "Cancelled")).toHaveLength(1);
-    expect(sheet.getRow(HEADER_ROW + 1 + total).getCell(11).value).toBe("Total amount (10 visits)");
+    expect(sheet.getRow(HEADER_ROW + 1 + total).getCell(11).value).toBe("Total value (10 visits)");
   });
 
   it("writes one visit with real dates, a numeric amount and the application's wording", async () => {
@@ -148,9 +148,9 @@ describe("Excel export", () => {
       // Overdue is measured against today, like the screen.
       expect.stringMatching(/^(Yes|No)$/),
       405,
+      null,
+      "Unpaid",
       "Not completed",
-      null,
-      null,
     ]);
     expect(sheet.getCell("A3").value).toBe("Period: 01 Jan 2027 to 31 Jan 2027   ·   Client: Test Hotel One");
     expect(sheet.getCell("A4").value).toMatch(/^Generated \d{2} \w{3} \d{4}, \d{2}:\d{2} Oman time by admin@example\.com/);

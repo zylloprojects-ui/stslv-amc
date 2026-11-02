@@ -6,6 +6,8 @@ export interface LoginRecord {
   /** Null when the email did not belong to an account. */
   user: { id: string; fullName: string; email: string } | null
   ip: string | null
+  /** The browser's description of itself: untrusted text. Blank on entries from before it was recorded. */
+  userAgent?: string | null
   reason: string | null
   createdAt: string
 }
@@ -28,6 +30,8 @@ export interface ActivityRecord {
   user: { id: string; fullName: string } | null
   changes: Record<string, { from: unknown; to: unknown }> | null
   reason: string | null
+  /** On the entries that recorded a network address. */
+  ip?: string | null
   createdAt: string
 }
 
@@ -41,13 +45,14 @@ export interface ActivityList {
 export interface ActivityOptions {
   modules: string[]
   entityTypes: string[]
-  users: { id: string; fullName: string }[]
+  users: { id: string; fullName: string; email: string }[]
 }
 
 export const FAILURE_REASON_LABELS: Record<string, string> = {
   unknown_account: 'No account with this email',
   wrong_password: 'Wrong password',
   inactive_account: 'Account inactive or awaiting approval',
+  temporary_password_expired: 'Temporary password expired',
 }
 
 const MODULE_LABELS: Record<string, string> = {
@@ -64,8 +69,13 @@ const MODULE_LABELS: Record<string, string> = {
   REPORTS: 'Reports',
   USERS: 'Users and roles',
   SETTINGS: 'Settings',
+  // Master lists, each under its own module (before, their changes were filed under Settings).
+  SALES_ENGINEERS: 'Sales engineers',
+  SYSTEM_TYPES: 'System types',
+  DEPARTMENTS: 'Departments',
+  MAINTENANCE_FREQUENCIES: 'Maintenance frequencies',
   HISTORICAL_DATA: 'Historical data',
-  SERVICES_SALES: 'Services sales',
+  SERVICES_SALES: 'Service Sales',
 }
 
 function sentence(text: string): string {
@@ -78,7 +88,15 @@ function sentence(text: string): string {
 export const moduleLabel = (code: string) => MODULE_LABELS[code] ?? sentence(code)
 
 /** "amc_contract.status_changed" -> "Amc contract status changed". */
-export const actionLabel = (action: string) => sentence(action)
+// A module's current name. The stored action keeps its original code, so audit history stays valid.
+const RENAMED_ACTIONS: Record<string, string> = { services_sales: 'service_sales', deletion_log: 'recycle_bin' }
+
+export const actionLabel = (action: string) => {
+  const dot = action.indexOf('.')
+  const name = RENAMED_ACTIONS[action.slice(0, dot)]
+
+  return sentence(name ? `${name}${action.slice(dot)}` : action)
+}
 
 /** "amc_contracts" -> "Amc contracts"; "contractValue" -> "Contract value". */
 export const fieldLabel = (name: string) => sentence(name)

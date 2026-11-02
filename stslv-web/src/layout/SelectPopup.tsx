@@ -145,6 +145,27 @@ export function SelectPopup() {
     }
   }, [open, close, choose, shown, active])
 
+  // The page may fill or change the list while it is open (its options arrive from the server after the click): show
+  // the entries the select has now, not the ones it had when it was pressed. A select that goes away or is disabled closes it.
+  const openSelect = open?.select
+  useEffect(() => {
+    if (!openSelect) {
+      return
+    }
+
+    const observer = new MutationObserver(() => {
+      if (!openSelect.isConnected || openSelect.disabled) {
+        close(false)
+        return
+      }
+
+      setOpen((current) => (current?.select === openSelect ? { ...current, choices: choicesOf(openSelect) } : current))
+    })
+
+    observer.observe(openSelect, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['disabled', 'value', 'label'] })
+    return () => observer.disconnect()
+  }, [openSelect, close])
+
   useEffect(() => {
     if (open && open.choices.length > SEARCH_FROM) {
       searchRef.current?.focus({ preventScroll: true })
@@ -198,7 +219,7 @@ export function SelectPopup() {
         </div>
       )}
       <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-1.5">
-        {shown.length === 0 && <li className="px-3 py-6 text-center text-sm text-slate-500">Nothing matches “{query}”</li>}
+        {shown.length === 0 && <li className="px-3 py-6 text-center text-sm text-slate-500">{query ? `Nothing matches “${query}”` : 'No entries'}</li>}
         {shown.map((choice, index) => {
           const selected = choice.value === select.value
           // The first entry of a filter ("All clients", "Any") is the way to clear it: set it apart from the rest.

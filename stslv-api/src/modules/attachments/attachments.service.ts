@@ -119,7 +119,12 @@ export interface Attachment {
   uploadedAt: string;
   /** How many versions the document has (current list only). */
   versionCount?: number;
+  /** The stored file checked against its recorded SHA-256 just now (the two list reads only). */
+  integrity?: IntegrityState;
 }
+
+/** VERIFIED: the file matches its checksum. FAILED: it does not. MISSING: no stored file. UNAVAILABLE: no storage to check on this server. */
+export type IntegrityState = "VERIFIED" | "FAILED" | "MISSING" | "UNAVAILABLE";
 
 const SELECT = `
   SELECT a.id, a.document_id, a.version, a.is_current, a.entity_type, a.entity_id, a.category, a.title, a.original_name,
@@ -180,6 +185,36 @@ async function findRow(db: Queryable, id: string): Promise<Row> {
   return row;
 }
 
+/** Reads the stored file and compares it with the checksum recorded at upload. Never throws: the answer is the state. */
+async function checkIntegrity(row: Row): Promise<IntegrityState> {
+  let files: FileStorage;
+
+  try {
+    files = storage();
+  } catch {
+    return "UNAVAILABLE";
+  }
+
+  try {
+    const data = await files.get(row.storage_key);
+
+    return createHash("sha256").update(data).digest("hex") === row.sha256 ? "VERIFIED" : "FAILED";
+  } catch {
+    return "MISSING";
+  }
+}
+
+/** One file at a time, so a record with many large files does not hold them all in memory together. */
+async function withIntegrity(rows: Row[]): Promise<Attachment[]> {
+  const checked: Attachment[] = [];
+
+  for (const row of rows) {
+    checked.push({ ...toAttachment(row), integrity: await checkIntegrity(row) });
+  }
+
+  return checked;
+}
+
 /** The current version of every document on a record, newest first. */
 export async function listAttachments(auth: AuthContext, entityType: EntityType, entityId: string): Promise<Attachment[]> {
   assertCan(auth, entityType, "VIEW");
@@ -190,7 +225,20 @@ export async function listAttachments(auth: AuthContext, entityType: EntityType,
     entityId,
   ]);
 
-  return result.rows.map(toAttachment);
+  return withIntegrity(result.rows);
+}
+
+/** Every version of every document on a record, newest first, with the upload rules the page states. */
+export async function listRecordVersions(auth: AuthContext, entityType: EntityType, entityId: string) {
+  assertCan(auth, entityType, "VIEW");
+  await assertRecordExists(pool, entityType, entityId);
+
+  const result = await pool.query<Row>(`${SELECT} WHERE a.entity_type = $1 AND a.entity_id = $2 ORDER BY a.uploaded_at DESC, a.id DESC`, [entityType, entityId]);
+
+  return {
+    items: await withIntegrity(result.rows),
+    limits: { maxMb: env.attachmentMaxMb, allowedTypes: ["PDF", "PNG", "JPEG"] },
+  };
 }
 
 /** Every version of the document an attachment belongs to, newest first. */

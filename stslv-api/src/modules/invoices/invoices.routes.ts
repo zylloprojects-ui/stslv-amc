@@ -1,7 +1,9 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
+import { forbidden } from "../../shared/errors";
 import { sendExport } from "../../shared/export/send";
+import { canRead } from "../../shared/permissions";
 import { parseIdParam } from "../../shared/validation";
 import { buildInvoicesExport, buildPendingInvoicesExport } from "./invoices.export";
 import {
@@ -28,7 +30,21 @@ export const invoicesRouter = Router();
 
 invoicesRouter.use(authenticate);
 
-invoicesRouter.get("/", authorize("INVOICES", "VIEW"), async (req, res) => {
+// Invoice Tracking's list needs View. Data-only INVOICES:READ answers only the invoices of one
+// AMC contract or visit, which the contract and visit details of AMC pages show.
+const invoiceListAccess: RequestHandler = (req, _res, next) => {
+  const { permissions } = requireAuth(req);
+  const scoped = typeof req.query.amcContractId === "string" || typeof req.query.amcVisitId === "string";
+
+  if (permissions.has("INVOICES:VIEW") || (scoped && canRead(permissions, "INVOICES"))) {
+    next();
+    return;
+  }
+
+  throw forbidden();
+};
+
+invoicesRouter.get("/", invoiceListAccess, async (req, res) => {
   res.json({ success: true, data: await listInvoices(listInvoicesSchema.parse(req.query)) });
 });
 

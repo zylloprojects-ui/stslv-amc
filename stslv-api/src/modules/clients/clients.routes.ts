@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
-import { authorize } from "../../middleware/authorize";
+import { authorize, authorizeRead } from "../../middleware/authorize";
 import { parseIdParam } from "../../shared/validation";
 import { z } from "zod";
 import { pagingSchema } from "../../shared/money";
@@ -14,7 +14,9 @@ export const clientsRouter = Router();
 
 clientsRouter.use(authenticate);
 
-clientsRouter.get("/", authorize("CLIENTS", "VIEW"), async (req, res) => {
+// The list also feeds the client pickers and filters of AMC pages, so data-only CLIENTS:READ is
+// enough here. Everything else about a client (details, Client 360, history, export) needs View.
+clientsRouter.get("/", authorizeRead("CLIENTS"), async (req, res) => {
   res.json({ success: true, data: await listClients(listClientsSchema.parse(req.query)) });
 });
 

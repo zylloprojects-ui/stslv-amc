@@ -12,7 +12,7 @@ const DRAFT = makeContract({
   status: 'DRAFT',
   contractValue: '9000.000',
   finalCredit: '8000.000',
-  schedule: { visitCount: 0, completedCount: 0, openCount: 0, historicalCount: 0, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '0.000', valueDifference: '9000.000' },
+  schedule: { visitCount: 0, completedCount: 0, openCount: 0, historicalCount: 0, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '0.000', annualAmount: null, servicesPerCycle: null, perServiceAmount: null, expectedTermTotal: null, generatedTotal: '0.000', valueDifference: null },
 })
 
 /** Waits for a contract's own page and returns queries scoped to its main content. */
@@ -67,7 +67,7 @@ describe('contract list', () => {
     renderApp('/amc/contracts')
     await screen.findByRole('table', { name: 'AMC contracts' })
 
-    await userEvent.selectOptions(screen.getByLabelText('Status'), 'DRAFT')
+    await userEvent.selectOptions(screen.getByLabelText('Contract status'), 'DRAFT')
     await waitFor(() => expect(screen.queryByText('Test Hotel One', { selector: 'td' })).not.toBeInTheDocument())
     expect(api.find('GET', '/amc/contracts').at(-1)?.query.get('status')).toBe('DRAFT')
 
@@ -79,6 +79,86 @@ describe('contract list', () => {
     const last = api.find('GET', '/amc/contracts').at(-1)?.query
     expect(last?.get('clientId')).toBe('11')
     expect(last?.get('frequency')).toBe('QUARTERLY')
+  })
+
+  it('offers an "All" first option on every dropdown, filled from the filter options', async () => {
+    amcApi(ADMIN, { contracts: [FIRE, DRAFT] })
+    renderApp('/amc/contracts')
+    await screen.findByRole('table', { name: 'AMC contracts' })
+
+    const expected: [string, string, string[]][] = [
+      ['Client', 'All clients', ['Test Hotel One', 'Test Hotel Two']],
+      ['System', 'All systems', ['FIRE', 'CCTV']],
+      ['Year', 'All years', ['2027']],
+      ['Sales engineer', 'All sales engineers', ['Test Sales Engineer']],
+      ['Frequency', 'All frequencies', ['Quarterly']],
+      ['Contract status', 'All contract statuses', ['Draft', 'Active', 'Expired', 'Cancelled']],
+    ]
+
+    for (const [label, all, values] of expected) {
+      const select = (await screen.findByLabelText(label)) as HTMLSelectElement
+      await waitFor(() => expect(select.options.length).toBeGreaterThan(1))
+      const options = [...select.options].map((option) => option.text)
+
+      expect(options[0], label).toBe(all)
+      expect(select.value, label).toBe(label === 'Contract status' ? 'all' : '')
+      expect(options.slice(1).sort(), label).toEqual([...values].sort())
+    }
+  })
+
+  it('combines system, year and sales engineer filters, and "All" removes each one', async () => {
+    const api = amcApi(ADMIN, { contracts: [FIRE, DRAFT] })
+    renderApp('/amc/contracts')
+    await screen.findByRole('table', { name: 'AMC contracts' })
+    const lastQuery = () => api.find('GET', '/amc/contracts').at(-1)?.query
+
+    await userEvent.selectOptions(await screen.findByLabelText('Year'), '2027')
+    await waitFor(() => expect(lastQuery()?.get('year')).toBe('2027'))
+    expect(lastQuery()?.get('system')).toBeNull()
+
+    await userEvent.selectOptions(screen.getByLabelText('System'), 'CCTV')
+    await userEvent.selectOptions(screen.getByLabelText('Sales engineer'), '5')
+    await waitFor(() => expect(lastQuery()?.get('salesEngineerId')).toBe('5'))
+    expect(lastQuery()?.get('year')).toBe('2027')
+    expect(lastQuery()?.get('system')).toBe('CCTV')
+    expect(lastQuery()?.get('page')).toBe('1')
+
+    await userEvent.selectOptions(screen.getByLabelText('Year'), '')
+    await waitFor(() => expect(lastQuery()?.get('year')).toBeNull())
+    expect(lastQuery()?.get('system')).toBe('CCTV')
+    expect(lastQuery()?.get('salesEngineerId')).toBe('5')
+  })
+
+  it('resets every filter to "All" and clears the search', async () => {
+    const api = amcApi(ADMIN, { contracts: [FIRE, DRAFT] })
+    renderApp('/amc/contracts')
+    await screen.findByRole('table', { name: 'AMC contracts' })
+    const reset = screen.getByRole('button', { name: 'Reset filters' })
+    expect(reset).toBeDisabled()
+
+    await userEvent.selectOptions(await screen.findByLabelText('Client'), '11')
+    await userEvent.selectOptions(screen.getByLabelText('System'), 'CCTV')
+    await userEvent.selectOptions(screen.getByLabelText('Year'), '2027')
+    await userEvent.selectOptions(screen.getByLabelText('Sales engineer'), '5')
+    await userEvent.selectOptions(screen.getByLabelText('Frequency'), 'QUARTERLY')
+    await userEvent.selectOptions(screen.getByLabelText('Contract status'), 'ACTIVE')
+    await userEvent.type(screen.getByLabelText('Search'), 'nothing matches')
+    expect(await screen.findByText('No contracts match your filters')).toBeInTheDocument()
+
+    await userEvent.click(reset)
+
+    for (const label of ['Client', 'System', 'Year', 'Sales engineer', 'Frequency']) {
+      expect((screen.getByLabelText(label) as HTMLSelectElement).value, label).toBe('')
+    }
+    expect((screen.getByLabelText('Contract status') as HTMLSelectElement).value).toBe('all')
+    expect(screen.getByLabelText('Search')).toHaveValue('')
+    expect(await screen.findByRole('table', { name: 'AMC contracts' })).toBeInTheDocument()
+    const last = api.find('GET', '/amc/contracts').at(-1)?.query
+    for (const key of ['clientId', 'system', 'year', 'salesEngineerId', 'frequency', 'search']) {
+      expect(last?.get(key), key).toBeNull()
+    }
+    expect(last?.get('status')).toBe('all')
+    expect(reset).toBeDisabled()
   })
 
   it('shows an error with a retry when the list cannot be loaded', async () => {
@@ -104,7 +184,7 @@ describe('add contract', () => {
     renderApp('/amc/contracts')
     const dialog = await openAddForm()
 
-    await userEvent.type(within(dialog).getByLabelText(/Contract value/), '1620.1234')
+    await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '1620.1234')
     await userEvent.type(within(dialog).getByLabelText('Final credit'), '-5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
@@ -140,7 +220,7 @@ describe('add contract', () => {
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'HALF_YEARLY')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-03-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-02-29')
-    await userEvent.type(within(dialog).getByLabelText(/Contract value/), '9000')
+    await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '9000')
     await userEvent.type(within(dialog).getByLabelText('Default visit amount'), '4500.000')
     await userEvent.type(within(dialog).getByLabelText('Final credit'), '8000.5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
@@ -148,6 +228,7 @@ describe('add contract', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('POST', '/amc/contracts')[0]?.body).toEqual({
       clientId: '11',
+      billingBasis: null,
       systemDescription: 'Automation',
       responsibleEngineer: 'Second Engineer',
       validFrom: '2027-03-01',
@@ -194,7 +275,7 @@ describe('add contract', () => {
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'MONTHLY')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
-    await userEvent.type(within(dialog).getByLabelText(/Contract value/), '100')
+    await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '100')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     expect(await within(dialog).findByText('An inactive client cannot be selected. Reactivate the client first.')).toBeInTheDocument()
@@ -221,7 +302,7 @@ describe('contract details', () => {
     expect(commercial.getByText('1,620.000')).toBeInTheDocument()
     expect(commercial.getByText('1,500.000')).toBeInTheDocument()
     expect(commercial.getByText('1,215.000')).toBeInTheDocument()
-    expect(page.getByText(/do not add up to the contract value/)).toBeInTheDocument()
+    expect(page.getByText(/differ from the/)).toBeInTheDocument()
 
     const table = await page.findByRole('table', { name: 'Visits of this contract' })
     const rows = within(table).getAllByRole('row').slice(1)
@@ -241,7 +322,7 @@ describe('edit contract', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Edit Test Hotel One FIRE' }))
     const dialog = await screen.findByRole('dialog', { name: 'Edit AMC Contract' })
-    const value = await within(dialog).findByLabelText(/Contract value/)
+    const value = await within(dialog).findByLabelText(/AMC Value \/ Year/)
 
     expect(value).toHaveValue('1620.000')
     expect(within(dialog).getByLabelText(/Client/)).toHaveValue('10')
@@ -395,10 +476,16 @@ describe('contract status', () => {
     expect(checkbox).not.toBeChecked()
 
     await userEvent.click(checkbox)
+    // The reason is required: nothing is sent until it is entered.
+    await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel contract' }))
+    expect(await within(confirm).findByText('Enter the reason for cancelling this contract.')).toBeInTheDocument()
+    expect(api.find('POST', '/amc/contracts/100/status')).toHaveLength(0)
+
+    await userEvent.type(within(confirm).getByLabelText(/Reason for cancelling/), '  Client closed the site ')
     await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel contract' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/status')).toHaveLength(1))
-    expect(api.find('POST', '/amc/contracts/100/status')[0]?.body).toEqual({ status: 'CANCELLED', cancelOpenVisits: true })
+    expect(api.find('POST', '/amc/contracts/100/status')[0]?.body).toEqual({ status: 'CANCELLED', cancelOpenVisits: true, reason: 'Client closed the site' })
     expect(await screen.findByRole('status')).toHaveTextContent('is now Cancelled. 3 visit(s) cancelled.')
   })
 

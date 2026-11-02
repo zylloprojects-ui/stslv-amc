@@ -7,6 +7,9 @@ export interface AuthValue {
   user: SessionUser | null
   login: (email: string, password: string) => Promise<void>
   logout: () => void
+  /** Why the API ended the last session, when the user must be told (an expired temporary password). */
+  signOutNotice: string | null
+  clearSignOutNotice: () => void
   /** Replaces the stored token, for example after a password change. */
   replaceToken: (token: string) => void
   retry: () => void
@@ -15,6 +18,11 @@ export interface AuthValue {
    * controls: the API checks every request again and is the real protection.
    */
   can: (module: Module, action: Action) => boolean
+  /**
+   * Data-only read: View of the module, or its Read grant. Only for another section's page that
+   * shows this module's data (a client picker, invoice numbers); the module's own pages need View.
+   */
+  canRead: (module: Module) => boolean
 }
 
 export const AuthContext = createContext<AuthValue | null>(null)

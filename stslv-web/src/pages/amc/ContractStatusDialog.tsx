@@ -1,6 +1,7 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
-import { Alert, Button, Modal } from '../../components/ui'
+import { Alert, Button, Modal, TextAreaField } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { CONTRACT_STATUS_LABELS, type Contract, type ContractStatus, type SavedContract } from './types'
 
@@ -23,19 +24,29 @@ export function ContractStatusDialog({ contract, status, onClose, onChanged }: C
   const queryClient = useQueryClient()
   const checkboxId = useId()
   const [cancelOpenVisits, setCancelOpenVisits] = useState(false)
+  const [reason, setReason] = useState('')
+  const [reasonError, setReasonError] = useState<string | null>(null)
+  const needsReason = status === 'CANCELLED'
   const ending = status === 'EXPIRED' || status === 'CANCELLED'
   const label = `${contract.client.name} – ${contract.systemDescription}`
 
   const change = useMutation({
-    mutationFn: () => api.post<SavedContract>(`/amc/contracts/${contract.id}/status`, { status, ...(ending ? { cancelOpenVisits } : {}) }),
+    mutationFn: () => api.post<SavedContract>(`/amc/contracts/${contract.id}/status`, { status, ...(ending ? { cancelOpenVisits } : {}), ...(needsReason ? { reason: reason.trim() } : {}) }),
     onSuccess: async (saved) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['amc'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await refreshOperationalData(queryClient)
       onChanged(saved)
     },
   })
+
+  const confirm = () => {
+    if (needsReason && reason.trim() === '') {
+      setReasonError('Enter the reason for cancelling this contract.')
+      return
+    }
+
+    setReasonError(null)
+    change.mutate()
+  }
 
   return (
     <Modal
@@ -46,7 +57,7 @@ export function ContractStatusDialog({ contract, status, onClose, onChanged }: C
           <Button variant="secondary" onClick={onClose} disabled={change.isPending}>
             Back
           </Button>
-          <Button variant={status === 'CANCELLED' ? 'danger' : 'primary'} onClick={() => change.mutate()} loading={change.isPending}>
+          <Button variant={status === 'CANCELLED' ? 'danger' : 'primary'} onClick={confirm} loading={change.isPending}>
             {TITLES[status]}
           </Button>
         </>
@@ -79,6 +90,18 @@ export function ContractStatusDialog({ contract, status, onClose, onChanged }: C
               <label htmlFor={checkboxId}>Also cancel the scheduled and postponed visits of this contract</label>
             </div>
           </>
+        )}
+        {needsReason && (
+          <TextAreaField
+            label="Reason for cancelling"
+            required
+            rows={2}
+            maxLength={500}
+            hint="Kept in the contract's history."
+            value={reason}
+            error={reasonError ?? undefined}
+            onChange={(event) => setReason(event.target.value)}
+          />
         )}
         {change.isError && <Alert>{errorMessage(change.error)}</Alert>}
       </div>

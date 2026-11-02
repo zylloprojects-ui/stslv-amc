@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Alert, Button, Modal, TextAreaField, TextField } from '../../components/ui'
@@ -50,10 +51,7 @@ export function ExecutionVisitModal({ visit, mode, canReopen, onClose, onSaved }
         ...(needsReason ? { statusReason } : {}),
       }),
     onSuccess: async (saved) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['amc'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await refreshOperationalData(queryClient)
       onSaved(saved)
     },
     onError: (error) => {

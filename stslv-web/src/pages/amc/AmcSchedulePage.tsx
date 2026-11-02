@@ -1,17 +1,20 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
-import { Alert, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { initialsOf } from '../../lib/format'
 import type { DashboardSummary } from '../dashboard/metrics'
 import { fetchClients, queryString } from './amcApi'
+import { amcReference } from './calendar/calendarTypes'
 import { currentMonth, formatDate, formatMoney, monthLabel, monthRange, shiftMonth } from './amcFormat'
-import { EligibilityPill, Filter, Pager, PlannedDate, VisitStatusPill } from './components'
+import { EligibilityPill, Filter, Pager, PlannedDate, RestrictedFilter, VisitStatusPill } from './components'
 import {
+  COLOR_PRIORITY_RULE,
   INVOICE_ELIGIBILITIES,
   INVOICE_ELIGIBILITY_LABELS,
   VISIT_STATUSES,
@@ -22,8 +25,38 @@ import {
 } from './types'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
+import { ConsolidatedSchedule } from './ConsolidatedSchedule'
+import { ManualInvoiceField, PAID_STATUS_NOTE } from './ManualInvoiceField'
+import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
+import { ServiceColor } from './ServiceColor'
 import { VisitActionsDialog } from './VisitActionsDialog'
 import { VisitDetailsModal, VisitEditModal } from './VisitModals'
+
+type ScheduleColumn = 'period' | 'assigned'
+const SCHEDULE_COLUMN_OPTIONS: ColumnOption<ScheduleColumn>[] = [
+  { key: 'period', label: 'Period' },
+  { key: 'assigned', label: 'Assigned to' },
+]
+// Remembered in this browser only. Storage may be blocked; the choice then lasts for this visit.
+const SCHEDULE_COLUMNS_KEY = 'stslev.amc-schedule.hidden-columns'
+
+function readHiddenColumns(): ReadonlySet<ScheduleColumn> {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(SCHEDULE_COLUMNS_KEY) ?? '[]')
+
+    return new Set(Array.isArray(saved) ? (saved.filter((key) => key === 'period' || key === 'assigned') as ScheduleColumn[]) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveHiddenColumns(hidden: Set<ScheduleColumn>) {
+  try {
+    localStorage.setItem(SCHEDULE_COLUMNS_KEY, JSON.stringify([...hidden]))
+  } catch {
+    // The choice lasts for this visit.
+  }
+}
 
 const PAGE_SIZE = 50
 
@@ -35,7 +68,8 @@ const statIcon = (path: ReactNode) => (
 
 /** The visit figures from the dashboard summary, as a strip above the schedule. Hidden when the figures are not available to this user. */
 function ScheduleStats({ month }: { month: string }) {
-  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
+  const auth = useAuth()
+  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary'), enabled: auth.can('DASHBOARD', 'VIEW') })
   const visits = summary.data?.amc?.visits
   const invoicing = summary.data?.amc?.invoicing
 
@@ -101,16 +135,27 @@ type Dialog = { kind: 'none' } | { kind: 'view'; visitId: string } | { kind: 'ed
 export function AmcSchedulePage() {
   const auth = useAuth()
 
-  // An empty month means "all dates".
-  const [month, setMonth] = useState(currentMonth)
+  // ?contractId= narrows the schedule to one contract, as the contract page links to it.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const askedContract = searchParams.get('contractId') ?? ''
+  const contractId = /^\d+$/.test(askedContract) ? askedContract : ''
+  // An empty month means "all dates". One contract's schedule starts with all its dates.
+  const [month, setMonth] = useState(() => (contractId ? '' : currentMonth()))
   const [clientId, setClientId] = useState('')
   const [status, setStatus] = useState('')
+  const [hiddenColumns, setHiddenColumns] = useState<ReadonlySet<ScheduleColumn>>(readHiddenColumns)
+  const changeHiddenColumns = (next: Set<ScheduleColumn>) => {
+    setHiddenColumns(next)
+    saveHiddenColumns(next)
+  }
   const [system, setSystem] = useState('')
   const [invoiceEligibility, setInvoiceEligibility] = useState('')
+  const [paymentStatus, setPaymentStatus] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [page, setPage] = useState(1)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
+  const [view, setView] = useState<'visits' | 'consolidated'>('visits')
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
 
@@ -123,7 +168,8 @@ export function AmcSchedulePage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const canViewClients = auth.can('CLIENTS', 'VIEW')
+  // The client filter needs the client list only: data-only read is enough (it opens no Clients page).
+  const canViewClients = auth.canRead('CLIENTS')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const canEdit = auth.can('AMC_SCHEDULE', 'EDIT')
   // Start, complete, postpone or cancel: the execution permissions, checked again by the API.
@@ -136,10 +182,10 @@ export function AmcSchedulePage() {
 
   const range = month ? monthRange(month) : { from: undefined, to: undefined }
   const visits = useQuery({
-    queryKey: ['amc', 'visits', 'list', { month, clientId, status, system, invoiceEligibility, search, page }],
+    queryKey: ['amc', 'visits', 'list', { month, clientId, contractId, status, system, invoiceEligibility, paymentStatus, search, page }],
     queryFn: () =>
       api.get<VisitList>(
-        `/amc/visits${queryString({ from: range.from, to: range.to, clientId, status, system, invoiceEligibility, search, page, pageSize: PAGE_SIZE })}`,
+        `/amc/visits${queryString({ from: range.from, to: range.to, clientId, contractId, status, system, invoiceEligibility, paymentStatus, search, page, pageSize: PAGE_SIZE })}`,
       ),
     placeholderData: keepPreviousData,
   })
@@ -163,7 +209,7 @@ export function AmcSchedulePage() {
             <ExportButtons
               what="AMC schedule"
               fileStem="amc-schedule"
-              path={(format) => `/amc/visits/export${queryString({ format, from: range.from, to: range.to, clientId, status, system, invoiceEligibility, search })}`}
+              path={(format) => `/amc/visits/export${queryString({ format, from: range.from, to: range.to, clientId, contractId, status, system, invoiceEligibility, paymentStatus, search })}`}
               onError={setExportError}
             />
           ) : undefined
@@ -184,7 +230,23 @@ export function AmcSchedulePage() {
 
       <ScheduleStats month={month} />
 
-      <Card>
+      <div className="mb-3 flex gap-2" role="group" aria-label="Schedule view">
+        {(['visits', 'consolidated'] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={view === value}
+            onClick={() => setView(value)}
+            className={view === value ? 'rounded-lg bg-[#0b3b66] px-3.5 py-1.5 text-sm font-semibold text-white' : 'rounded-lg border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-semibold text-[#0b3b66]'}
+          >
+            {value === 'visits' ? 'All Visits' : 'Monthly by AMC'}
+          </button>
+        ))}
+      </div>
+
+      {view === 'consolidated' && <ConsolidatedSchedule />}
+
+      {view === 'visits' && <Card>
         <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
           <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-4 sm:px-5">
             <div className="flex flex-wrap items-center gap-2.5">
@@ -266,12 +328,31 @@ export function AmcSchedulePage() {
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {canViewClients && (
+            {contractId && (
+              <p className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
+                <span>
+                  Showing contract <strong className="font-mono">{amcReference(contractId)}</strong> only.
+                </span>
+                <button
+                  type="button"
+                  className="font-semibold text-[#1479BD] hover:underline"
+                  onClick={() => {
+                    setSearchParams({})
+                    setPage(1)
+                  }}
+                >
+                  Show all contracts
+                </button>
+              </p>
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {canViewClients ? (
                 <Filter label="Client">
                   {(id, className) => (
                     <select id={id} value={clientId} onChange={(event) => change(setClientId)(event.target.value)} className={className}>
                       <option value="">All clients</option>
+                      <OptionsNotice source={clients} count={clients.data?.length ?? 0} empty="No clients yet" />
                       {(clients.data ?? []).map((client) => (
                         <option key={client.id} value={client.id}>
                           {client.name}
@@ -280,6 +361,8 @@ export function AmcSchedulePage() {
                     </select>
                   )}
                 </Filter>
+              ) : (
+                <RestrictedFilter label="Client" reason="Not available for your role (needs the client list)" />
               )}
               <Filter label="Status">
                 {(id, className) => (
@@ -293,11 +376,12 @@ export function AmcSchedulePage() {
                   </select>
                 )}
               </Filter>
-              {canViewContracts && (
+              {canViewContracts ? (
                 <Filter label="System">
                   {(id, className) => (
                     <select id={id} value={system} onChange={(event) => change(setSystem)(event.target.value)} className={className}>
                       <option value="">All systems</option>
+                      <OptionsNotice source={systems} count={systems.data?.length ?? 0} empty="No systems on AMC contracts yet" />
                       {(systems.data ?? []).map((value) => (
                         <option key={value} value={value}>
                           {value}
@@ -306,6 +390,8 @@ export function AmcSchedulePage() {
                     </select>
                   )}
                 </Filter>
+              ) : (
+                <RestrictedFilter label="System" reason="Not available for your role (needs AMC Contracts)" />
               )}
               <Filter label="Invoicing">
                 {(id, className) => (
@@ -319,10 +405,24 @@ export function AmcSchedulePage() {
                   </select>
                 )}
               </Filter>
+              <Filter label="Paid / Unpaid">
+                {(id, className) => (
+                  <select id={id} value={paymentStatus} onChange={(event) => change(setPaymentStatus)(event.target.value)} className={className}>
+                    <option value="">Paid and Unpaid</option>
+                    <option value="PAID">Paid</option>
+                    <option value="UNPAID">Unpaid</option>
+                  </select>
+                )}
+              </Filter>
             </div>
           </div>
         </div>
 
+        <div className="space-y-1 border-b border-slate-200 px-5 py-2 text-xs text-slate-600">
+          <p className="font-medium text-slate-800">Enter the manual Invoice No. and press OK to mark a service Paid; clear it to return it to Unpaid. No invoice is generated.</p>
+          <p>{PAID_STATUS_NOTE}</p>
+          <p>Color priority: {COLOR_PRIORITY_RULE}</p>
+        </div>
         {visits.isPending && <Spinner label="Loading schedule" />}
 
         {visits.isError && (
@@ -345,6 +445,9 @@ export function AmcSchedulePage() {
 
         {data && data.items.length > 0 && (
           <>
+            <div className="flex justify-end px-4 pt-3">
+              <ColumnsMenu options={SCHEDULE_COLUMN_OPTIONS} hidden={hiddenColumns} onChange={changeHiddenColumns} />
+            </div>
             <div className={TABLE.wrapper}>
               <table className={TABLE.table}>
                 <caption className="sr-only">AMC schedule{month ? ` for ${monthLabel(month)}` : ''}</caption>
@@ -357,14 +460,21 @@ export function AmcSchedulePage() {
                       Scheduled
                     </th>
                     <th scope="col" className={TABLE.th}>
+                      AMC Reference
+                    </th>
+                    <th scope="col" className={TABLE.th}>
                       Client and system
                     </th>
-                    <th scope="col" className={TABLE.th}>
-                      Period
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Assigned to
-                    </th>
+                    {!hiddenColumns.has('period') && (
+                      <th scope="col" className={TABLE.th}>
+                        Period
+                      </th>
+                    )}
+                    {!hiddenColumns.has('assigned') && (
+                      <th scope="col" className={TABLE.th}>
+                        Assigned to
+                      </th>
+                    )}
                     <th scope="col" className={TABLE.th}>
                       Status
                     </th>
@@ -372,7 +482,7 @@ export function AmcSchedulePage() {
                       Amount
                     </th>
                     <th scope="col" className={TABLE.th}>
-                      Invoicing
+                      Invoicing / Color
                     </th>
                     <th scope="col" className={`${TABLE.th} text-right`}>
                       Actions
@@ -387,6 +497,15 @@ export function AmcSchedulePage() {
                         <PlannedDate visit={visit} format={formatDate} />
                         {visit.isRescheduled && <div className="text-xs text-slate-500">was {formatDate(visit.originalScheduledDate)}</div>}
                       </td>
+                      <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
+                        {canViewContracts ? (
+                          <Link to={`/amc/contracts/${visit.contract.id}`} className="hover:underline">
+                            {amcReference(visit.contract.id)}
+                          </Link>
+                        ) : (
+                          amcReference(visit.contract.id)
+                        )}
+                      </td>
                       <td className={`${TABLE.td} min-w-40 font-semibold text-slate-900`}>
                         {visit.client.name}
                         <div className="mt-1">
@@ -395,10 +514,13 @@ export function AmcSchedulePage() {
                           </span>
                         </div>
                       </td>
+                      {!hiddenColumns.has('period') && (
                       <td className={`${TABLE.td} whitespace-nowrap`}>
                         <span className="text-slate-500">{visitNumberLabel(visit)} · </span>
                         {formatDate(visit.periodStart)} – {formatDate(visit.periodEnd)}
                       </td>
+                      )}
+                      {!hiddenColumns.has('assigned') && (
                       <td className={TABLE.td}>
                         {visit.assignedTo ? (
                           <span className="flex items-center gap-2">
@@ -411,12 +533,19 @@ export function AmcSchedulePage() {
                           <span className="text-slate-400">—</span>
                         )}
                       </td>
+                      )}
                       <td className={TABLE.td}>
                         <VisitStatusPill status={visit.status} overdue={visit.isOverdue} />
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{formatMoney(visit.visitAmount)}</td>
                       <td className={TABLE.td}>
                         <EligibilityPill eligibility={visit.invoiceEligibility} />
+                        <div className="mt-1">
+                          <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} label={label(visit)} />
+                        </div>
+                        <div className="mt-1">
+                          <ServiceColor visit={visit} canEdit={canEdit} />
+                        </div>
                       </td>
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                         <ActionGroup>
@@ -439,7 +568,7 @@ export function AmcSchedulePage() {
             </Pager>
           </>
         )}
-      </Card>
+      </Card>}
 
       {dialog.kind === 'view' && (
         <VisitDetailsModal visitId={dialog.visitId} canEdit={canEdit} onEdit={(visit) => setDialog({ kind: 'edit', visit })} onClose={closeDialog} />

@@ -7,10 +7,10 @@ import { SERVICE_STATUSES } from "./amc.constants";
  * The row colour of Master AMC Status, derived on read and never stored.
  * The first rule that applies wins:
  *   RED     the service is not completed (Service Status "Not Completed" or "Waiting for Renewal").
- *   YELLOW  completed, no active (not cancelled) invoice covers it.
- *   BLUE    completed and invoiced, no quotation number recorded.
- *   GREEN   completed, invoiced and with a quotation number.
- * An invoice number is not a payment: GREEN says nothing about money received.
+ *   YELLOW  completed and Unpaid: no manual Invoice No.
+ *   BLUE    completed and Paid, no quotation number recorded.
+ *   GREEN   completed, Paid and with a quotation number.
+ * Paid is a reference status: GREEN does not verify that money was received.
  */
 export const ROW_COLOURS = ["RED", "YELLOW", "BLUE", "GREEN"] as const;
 export type RowColour = (typeof ROW_COLOURS)[number];
@@ -30,6 +30,11 @@ export const MASTER_STATUS_HIDEABLE_COLUMNS = [
 ] as const;
 export type MasterStatusColumn = (typeof MASTER_STATUS_HIDEABLE_COLUMNS)[number];
 
+/** Whether an active invoice, or a quotation number, is recorded on the visit. Neither says anything about payment. */
+export const RECORDED_FILTERS = ["RECORDED", "NOT_RECORDED"] as const;
+
+export const MASTER_STATUS_SORTS = ["scheduledDate", "reference", "client", "visitValue"] as const;
+
 const page = z.coerce.number().int().min(1).default(1);
 const MONTH_MESSAGE = "Month must be a number from 1 to 12.";
 const YEAR_MESSAGE = "Year must be between 2000 and 2100.";
@@ -43,7 +48,11 @@ export const listMasterStatusSchema = z.object({
   month: z.coerce.number({ error: MONTH_MESSAGE }).int().min(1, MONTH_MESSAGE).max(12, MONTH_MESSAGE).optional(),
   year: z.coerce.number({ error: YEAR_MESSAGE }).int().min(2000, YEAR_MESSAGE).max(2100, YEAR_MESSAGE).optional(),
   serviceStatus: z.enum(SERVICE_STATUSES, { error: "Select a service status." }).optional(),
+  invoiceStatus: z.enum(RECORDED_FILTERS, { error: "Select Invoice recorded or No invoice recorded." }).optional(),
+  quotationStatus: z.enum(RECORDED_FILTERS, { error: "Select Quote recorded or No quote recorded." }).optional(),
   colour: z.enum(ROW_COLOURS, { error: "Select Red, Yellow, Blue or Green." }).optional(),
+  sort: z.enum(MASTER_STATUS_SORTS, { error: "Select a column to sort by." }).default("scheduledDate"),
+  direction: z.enum(["asc", "desc"], { error: "Select ascending or descending." }).default("asc"),
   page,
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
@@ -53,7 +62,7 @@ export const listMasterStatusSchema = z.object({
  * the user has hidden on the page ("client,salesEngineer"), so the file shows
  * what the table shows.
  */
-export const exportMasterStatusSchema = listMasterStatusSchema.omit({ page: true, pageSize: true }).extend({
+export const exportMasterStatusSchema = listMasterStatusSchema.omit({ page: true, pageSize: true, sort: true, direction: true }).extend({
   format: exportFormatSchema,
   hidden: z
     .string()

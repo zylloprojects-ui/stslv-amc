@@ -7,7 +7,7 @@ import { AppProviders } from '../App'
 import type { SessionUser } from '../lib/types'
 import { ServicesSalesPage } from '../pages/servicesSales/ServicesSalesPage'
 import type { ServicesSalesItem } from '../pages/servicesSales/servicesSalesTypes'
-import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
 // Most tests render the page on its own; the routing tests go through App.tsx and the menu.
 
@@ -36,6 +36,7 @@ function makeItem(overrides: Partial<ServicesSalesItem> = {}): ServicesSalesItem
     serviceStatus: 'COMPLETED',
     salesStatus: 'QUOTE_PENDING',
     completedDate: '2026-10-05',
+    serviceReportNo: null,
     salesEngineer: { id: '4', name: 'Esha Engineer' },
     quotationNo: null,
     quotationUpdatedAt: null,
@@ -102,7 +103,7 @@ function renderPage() {
   )
 }
 
-const figures = () => within(screen.getByRole('group', { name: 'Services Sales figures' }))
+const figures = () => within(screen.getByRole('group', { name: 'Service Sales figures' }))
 const rowOf = (reference: string) => screen.getByText(reference).closest('tr') as HTMLElement
 
 beforeEach(() => signIn())
@@ -117,7 +118,7 @@ describe('Services Sales page', () => {
     const api = salesApi(EDITOR, [PENDING, QUOTED, OPEN])
     renderPage()
 
-    expect(await screen.findByRole('heading', { name: 'Services Sales' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Service Sales' })).toBeInTheDocument()
     expect(screen.getByText('Track completed services and manually record quotation numbers.')).toBeInTheDocument()
     await screen.findByText('AMC-0007')
 
@@ -197,7 +198,7 @@ describe('Services Sales page', () => {
     expect(screen.queryByRole('textbox', { name: /Quote No\./ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Save/ })).not.toBeInTheDocument()
     expect(within(rowOf('AMC-0008')).getByText('QT-55')).toBeInTheDocument()
-    expect(screen.queryByRole('group', { name: 'Export Services Sales' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('group', { name: 'Export Service Sales' })).not.toBeInTheDocument()
   })
 
   it('sends every filter together, to the list and the download, and resets them', async () => {
@@ -224,10 +225,10 @@ describe('Services Sales page', () => {
     await waitFor(() => expect(Object.fromEntries(api.find('GET', '/services-sales').at(-1)?.query ?? [])).toEqual({ ...expected, page: '1', pageSize: '50' }))
     await waitFor(() => expect(figures().getByText('Total Services').closest('div')).toHaveTextContent('2'))
 
-    await userEvent.click(screen.getByRole('button', { name: 'Export Services Sales to Excel' }))
-    await waitFor(() => expect(saved).toEqual(['services-sales.xlsx']))
+    await userEvent.click(screen.getByRole('button', { name: 'Export Service Sales to Excel' }))
+    await waitFor(() => expect(saved).toEqual(['service-sales.xlsx']))
     expect(Object.fromEntries(api.find('GET', '/services-sales/export')[0]?.query ?? [])).toEqual({ ...expected, format: 'xlsx' })
-    await userEvent.click(screen.getByRole('button', { name: 'Export Services Sales to PDF' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Export Service Sales to PDF' }))
     await waitFor(() => expect(api.find('GET', '/services-sales/export')[1]?.query.get('format')).toBe('pdf'))
 
     await userEvent.click(screen.getAllByRole('button', { name: 'Reset Filters' })[0] as HTMLElement)
@@ -291,14 +292,24 @@ describe('Services Sales page', () => {
     expect(cardLabels()).toEqual(['Total Services', 'Not Completed', 'Completed / Quote Pending', 'Quoted'])
   })
 
-  it('is routed at /amc/services-sales and listed once in the menu, beside Service Status', async () => {
+  it('is named Service Sales, routed at /amc/service-sales, and listed once in the menu', async () => {
     salesApi(EDITOR, [PENDING])
     renderApp('/amc/services-sales')
 
-    expect(await screen.findByRole('heading', { name: 'Services Sales' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Service Sales' })).toBeInTheDocument()
+    expect(screen.queryByText('Services Sales')).not.toBeInTheDocument()
     const menu = within(screen.getByRole('navigation', { name: 'Main' }))
-    expect(menu.getAllByRole('link', { name: 'Services Sales' })).toHaveLength(1)
-    expect(menu.getByRole('link', { name: 'Services Sales' })).toHaveAttribute('href', '/amc/services-sales')
+    expect(menu.getAllByRole('link', { name: 'Service Sales' })).toHaveLength(1)
+    expect(menu.getByRole('link', { name: 'Service Sales' })).toHaveAttribute('href', '/amc/service-sales')
+  })
+
+  it.each(['/amc/quotations', '/amc/services-sales'])('redirects the former address %s to /amc/service-sales, keeping its query', async (oldAddress) => {
+    salesApi(EDITOR, [PENDING])
+    const { router } = renderApp(`${oldAddress}?search=AMC-0007`)
+
+    expect(await screen.findByRole('heading', { name: 'Service Sales' })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/amc/service-sales')
+    expect(router.state.location.search).toBe('?search=AMC-0007')
   })
 
   it('is in the menu for an Admin', async () => {
@@ -307,18 +318,21 @@ describe('Services Sales page', () => {
     renderApp('/amc/services-sales')
 
     expect(await screen.findByRole('textbox', { name: 'Quote No. for AMC-0007 H1' })).toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Services Sales' })).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Service Sales' })).toBeInTheDocument()
   })
 
   it('stays hidden and closed for a user without SERVICES_SALES, who still has Service Status', async () => {
-    // Procurement holds no SERVICES_SALES grant (migration 0079); Service Status needs AMC_SCHEDULE:VIEW.
-    const user: SessionUser = { ...EDITOR, id: '9', roles: [{ id: '3', code: 'PROCUREMENT', name: 'Procurement' }], permissions: ['AMC_SCHEDULE:VIEW'] }
+    // Procurement holds no SERVICES_SALES grant (migration 0079); Service Status needs SERVICE_STATUS:VIEW (from AMC_SCHEDULE:VIEW, 0081).
+    const user: SessionUser = { ...EDITOR, id: '9', roles: [{ id: '3', code: 'PROCUREMENT', name: 'Procurement' }], permissions: afterPageSplit(['AMC_SCHEDULE:VIEW']) }
     const api = salesApi(user, [PENDING])
     renderApp('/amc/services-sales')
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Services Sales' })).not.toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: 'Service Status' })).toBeInTheDocument()
+    const nav = within(screen.getByRole('navigation', { name: 'Main' }))
+    expect(nav.queryByRole('link', { name: 'Service Sales' })).not.toBeInTheDocument()
+    // Service Sales is under Finance, which this user does not see, so AMC Operations opens on request.
+    await userEvent.click(nav.getByRole('button', { name: 'AMC Operations' }))
+    expect(await nav.findByRole('link', { name: 'Service Status' })).toBeInTheDocument()
     expect(api.find('GET', '/services-sales')).toHaveLength(0)
   })
 
@@ -334,5 +348,41 @@ describe('Services Sales page', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: 'Alpha Towers' })).toBeInTheDocument())
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
     expect(await screen.findByText('No services found')).toBeInTheDocument()
+  })
+})
+
+describe('Service Report No. and the Quote filter', () => {
+  it('shows the read-only column between Service Status and Quote No.', async () => {
+    salesApi(EDITOR, [makeItem({ serviceReportNo: 'SR-77' })])
+    renderPage()
+
+    expect(await screen.findByText('SR-77')).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: /Service Report/ })).not.toBeInTheDocument()
+    const headers = screen.getAllByRole('columnheader').map((header) => header.textContent)
+    expect(headers.indexOf('Service Report No.')).toBe(headers.indexOf('Service Status') + 1)
+    expect(headers.indexOf('Quote No.')).toBe(headers.indexOf('Service Report No.') + 1)
+  })
+
+  it('sends the Quote filter and the hidden columns to the list and the download', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const api = salesApi(EDITOR, [PENDING], (request) => (request.path === '/services-sales/export' ? ok(null) : undefined))
+    renderPage()
+
+    await screen.findByText('AMC-0007')
+    expect(within(screen.getByLabelText('Quote')).getAllByRole('option').map((option) => option.textContent)).toEqual(['All', 'Quote Submitted', 'Not Submitted'])
+    await userEvent.selectOptions(screen.getByLabelText('Quote'), 'NOT_SUBMITTED')
+    await waitFor(() => expect(api.find('GET', '/services-sales').at(-1)?.query.get('quoteSubmission')).toBe('NOT_SUBMITTED'))
+
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Service Report No.' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: /Apply|Save/ }))
+    expect(screen.queryByRole('columnheader', { name: 'Service Report No.' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export Service Sales to Excel' }))
+    await waitFor(() => expect(api.find('GET', '/services-sales/export').length).toBe(1))
+    const query = api.find('GET', '/services-sales/export')[0]?.query
+    expect(query?.get('hidden')).toBe('serviceReportNo')
+    expect(query?.get('quoteSubmission')).toBe('NOT_SUBMITTED')
   })
 })

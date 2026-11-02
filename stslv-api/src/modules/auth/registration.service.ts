@@ -1,5 +1,4 @@
 import { pool } from "../../config/database";
-import { env } from "../../config/env";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction } from "../../shared/db";
 import { isUniqueViolation } from "../../shared/errors";
@@ -120,7 +119,7 @@ async function recordDuplicateRegistration(email: string): Promise<void> {
       "Someone asked for a new STSLEV AMC account using this email address.",
       "",
       "An account with this address already exists, so nothing was changed.",
-      `If you have forgotten your password, choose a new one here: ${env.appUrl}/forgot-password`,
+      "If you have forgotten your password, ask your system administrator for a temporary password.",
       "If this was not you, you can ignore this message.",
       "",
       "Smart Technical Service LLC",

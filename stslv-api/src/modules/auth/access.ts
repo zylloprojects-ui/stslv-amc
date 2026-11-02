@@ -12,6 +12,8 @@ export interface AuthContext {
   roles: RoleSummary[];
   /** Union of the permissions of the user's active roles. */
   permissions: ReadonlySet<PermissionKey>;
+  /** Signed in with a temporary password: only the change-password screen is open to them. */
+  mustChangePassword: boolean;
 }
 
 /** Active roles assigned to a user. */
@@ -50,5 +52,6 @@ export function toSessionUser(auth: AuthContext) {
     fullName: auth.user.fullName,
     roles: auth.roles,
     permissions: [...auth.permissions].sort(),
+    credentialChangeRequired: auth.mustChangePassword,
   };
 }

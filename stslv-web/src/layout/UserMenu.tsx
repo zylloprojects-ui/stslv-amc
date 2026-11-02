@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { initialsOf } from '../lib/format'
+import { signOutSafely } from '../lib/leaveGuard'
 
 function MenuIcon({ children }: { children: React.ReactNode }) {
   return (
@@ -96,8 +97,16 @@ export function UserMenu() {
               </MenuIcon>
               My Profile
             </Link>
+            {auth.can('SUGGESTIONS', 'VIEW') && (
+            <Link to="/suggestions" onClick={() => setOpen(false)} className={ITEM}>
+              <MenuIcon>
+                <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3Z" strokeLinecap="round" strokeLinejoin="round" />
+              </MenuIcon>
+              My Suggestions
+            </Link>
+            )}
             {auth.can('DASHBOARD', 'VIEW') && (
-              <Link to="/dashboard" onClick={() => setOpen(false)} className={ITEM}>
+              <Link to="/" onClick={() => setOpen(false)} className={ITEM}>
                 <MenuIcon>
                   <rect x="3.5" y="3.5" width="7" height="7" rx="1.8" />
                   <rect x="13.5" y="3.5" width="7" height="7" rx="1.8" />
@@ -119,7 +128,7 @@ export function UserMenu() {
           </div>
 
           <div className="border-t border-slate-200 py-1">
-            <button type="button" onClick={auth.logout} className={`${ITEM} font-medium !text-red-600 hover:!bg-red-50`}>
+            <button type="button" onClick={() => void signOutSafely(auth.logout)} className={`${ITEM} font-medium !text-red-600 hover:!bg-red-50`}>
               <svg viewBox="0 0 24 24" className="h-[18px] w-[18px] shrink-0" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
                 <path d="M9 4.5H6.5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2H9M15 8l4 4-4 4M19 12H9" strokeLinecap="round" strokeLinejoin="round" />
               </svg>

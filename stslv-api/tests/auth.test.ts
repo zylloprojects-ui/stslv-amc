@@ -24,7 +24,7 @@ describe("POST /api/auth/login", () => {
       id: adminId,
       email: "admin@example.com",
       fullName: "Admin User",
-      roles: [{ code: "ADMIN", name: "Admin" }],
+      roles: [{ code: "ADMIN", name: "Super Admin" }],
     });
     expect(response.body.data.user.permissions).toContain("CLIENTS:CREATE");
   });

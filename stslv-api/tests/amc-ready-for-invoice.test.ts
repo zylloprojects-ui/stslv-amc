@@ -151,6 +151,8 @@ describe("how eligibility is held", () => {
       "SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'amc_visits'"
     );
 
-    expect(columns.rows.map((row) => row.column_name).filter((name) => name.includes("invoice") || name.includes("eligib"))).toEqual([]);
+    // The manual Invoice No. (0100) is a separate reference status, which eligibility never reads.
+    const stored = columns.rows.map((row) => row.column_name).filter((name) => !name.startsWith("manual_invoice_"));
+    expect(stored.filter((name) => name.includes("invoice") || name.includes("eligib"))).toEqual([]);
   });
 });

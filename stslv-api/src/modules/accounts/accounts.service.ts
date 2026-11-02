@@ -1,18 +1,20 @@
 import { pool } from "../../config/database";
 import { escapeLike } from "../../shared/validation";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "../amc/amc.constants";
+import type { PaymentStatus } from "../amc/manual-invoice.service";
+import { getMasterStatusOptions } from "../amc/master-status.service";
 import { amcReference, IN_SCOPE, serviceStatusSql } from "../amc/service-status.service";
 import type { AccountsColour, ListAccountsQuery } from "./accounts.schemas";
 
-// Accounts: a read-only billing reconciliation with one row per scheduled
-// maintenance visit (amc_visits), never one per contract. It reads the same
-// visit records as Service Status, Master AMC Status and the AMC Schedule, the
-// service report number entered on Service Status (0077), and the invoices
-// recorded in Invoice Tracking (0060). Nothing here writes, and no status is
-// stored: everything is derived on each request.
+// Accounts: a billing reconciliation with one row per scheduled maintenance visit
+// (amc_visits), never one per contract. It reads the same visit records as Service
+// Status, Master AMC Status and the AMC Schedule, the service report number entered
+// on Service Status (0077), the manual Invoice No. of the visit (0100) and the Zoho
+// invoices recorded in Invoice Tracking (0060). This module writes nothing: the
+// manual Invoice No. is saved through its own route on the AMC visit.
 //
-// Payment is not tracked anywhere in STSLV AMC (invoices are ISSUED or
-// CANCELLED only), so no row is ever called paid or unpaid.
+// Paid / Unpaid is the approved reference status: a manual Invoice No. entered =
+// Paid, cleared = Unpaid. It does not verify that money was received.
 //
 // The routes require migration 0077 (service report number). Every database
 // that has it also has 0060, 0070, 0072, 0075 and 0076, all of which are read.
@@ -20,10 +22,10 @@ import type { AccountsColour, ListAccountsQuery } from "./accounts.schemas";
 /** Service Status's own rule, so a visit shows the same status on both pages. */
 const SERVICE_STATUS_SQL = serviceStatusSql({ renewals: true });
 
-/** See ACCOUNTS_COLOURS. Only an active invoice counts; a cancelled one is ignored, as in Invoice Tracking. */
+/** See ACCOUNTS_COLOURS. The manual Invoice No. decides; a Zoho record in Invoice Tracking does not. */
 const COLOUR_SQL = `CASE
     WHEN v.status <> 'COMPLETED' THEN 'RED'
-    WHEN inv.numbers IS NULL THEN 'BLUE'
+    WHEN v.manual_invoice_no IS NULL THEN 'BLUE'
     ELSE 'GREEN'
   END`;
 
@@ -50,7 +52,8 @@ const SELECT = `
          c.maintenance_frequency, mf.label AS frequency_label,
          v.sequence_no, v.cycle_no, v.service_code,
          v.scheduled_date::text AS scheduled_date, v.status, v.completed_date::text AS completed_date,
-         v.visit_amount::text AS visit_amount, v.service_report_no,
+         v.visit_amount::text AS visit_amount, v.service_report_no, v.updated_at,
+         v.manual_invoice_no, v.manual_invoice_at,
          se.id AS sales_engineer_id, se.name AS sales_engineer_name,
          COALESCE(inv.numbers, '{}') AS invoice_numbers,
          ${SERVICE_STATUS_SQL} AS service_status,
@@ -75,6 +78,9 @@ interface AccountsRow {
   completed_date: string | null;
   visit_amount: string | null;
   service_report_no: string | null;
+  updated_at: Date;
+  manual_invoice_no: string | null;
+  manual_invoice_at: Date | null;
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
   invoice_numbers: string[];
@@ -96,14 +102,18 @@ export interface AccountsItem {
   visitStatus: VisitStatus;
   serviceStatus: ServiceStatus;
   completedDate: string | null;
-  /** amc_visits.visit_amount as a decimal string; null when no amount is set. Whether it includes VAT is not confirmed (MAS-1). */
+  /** amc_visits.visit_amount as a decimal string, OMR excluding VAT; null when no amount is set. */
   visitValue: string | null;
   /** amc_visits.service_report_no as entered on Service Status; null when none. */
   serviceReportNo: string | null;
-  /** Every active invoice that covers the visit, oldest first. Empty when none. */
+  /** The manual Invoice No. of the visit: the source of the reference Paid / Unpaid status. */
+  manualInvoiceNo: string | null;
+  paymentStatus: PaymentStatus;
+  paidAt: string | null;
+  /** For the optimistic check when the manual Invoice No. is saved. */
+  updatedAt: string;
+  /** Every active Zoho invoice in Invoice Tracking that covers the visit, oldest first. Empty when none. Does not decide Paid / Unpaid. */
   invoiceNumbers: string[];
-  /** Payment is not recorded in STSLV AMC, so it is always NOT_AVAILABLE. Never derived from the invoice number. */
-  paymentStatus: "NOT_AVAILABLE";
   salesEngineer: { id: string; name: string } | null;
   colour: AccountsColour;
 }
@@ -124,7 +134,10 @@ function toItem(row: AccountsRow): AccountsItem {
     visitValue: row.visit_amount,
     serviceReportNo: row.service_report_no,
     invoiceNumbers: row.invoice_numbers,
-    paymentStatus: "NOT_AVAILABLE",
+    manualInvoiceNo: row.manual_invoice_no,
+    paymentStatus: row.manual_invoice_no ? "PAID" : "UNPAID",
+    paidAt: row.manual_invoice_at?.toISOString() ?? null,
+    updatedAt: row.updated_at.toISOString(),
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
     colour: row.colour,
   };
@@ -146,6 +159,7 @@ function filterSql(query: AccountsFilters) {
 
   if (query.clientId) conditions.push(`c.client_id = ${add(query.clientId)}`);
   if (query.salesEngineerId) conditions.push(`c.sales_engineer_id = ${add(query.salesEngineerId)}`);
+  if (query.contractId) conditions.push(`c.id = ${add(query.contractId)}`);
   if (query.year) {
     // A date range, so the scheduled-date index can be used.
     const start = `make_date(${add(query.year)}::int, ${add(query.month ?? 1)}::int, 1)`;
@@ -155,11 +169,11 @@ function filterSql(query: AccountsFilters) {
   }
   if (query.serviceStatus === "COMPLETED") conditions.push("v.status = 'COMPLETED'");
   if (query.serviceStatus === "NOT_COMPLETED") conditions.push("v.status <> 'COMPLETED'");
-  if (query.invoiceStatus === "RECORDED") conditions.push("inv.numbers IS NOT NULL");
-  if (query.invoiceStatus === "NOT_RECORDED") conditions.push("inv.numbers IS NULL");
+  if (query.invoiceStatus === "RECORDED") conditions.push("v.manual_invoice_no IS NOT NULL");
+  if (query.invoiceStatus === "NOT_RECORDED") conditions.push("v.manual_invoice_no IS NULL");
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
-    const matches = [`cl.name ILIKE ${p}`, `v.service_report_no ILIKE ${p}`, `EXISTS (SELECT 1 FROM unnest(inv.numbers) AS n (number) WHERE n.number ILIKE ${p})`];
+    const matches = [`cl.name ILIKE ${p}`, `v.service_report_no ILIKE ${p}`, `v.manual_invoice_no ILIKE ${p}`, `EXISTS (SELECT 1 FROM unnest(inv.numbers) AS n (number) WHERE n.number ILIKE ${p})`];
     const reference = REFERENCE_PATTERN.exec(query.search);
 
     if (reference) matches.push(`c.id = ${add(reference[1])}::bigint`);
@@ -175,7 +189,7 @@ export interface AccountsKpis {
   rows: number;
   completed: number;
   notCompleted: number;
-  /** Rows with at least one active invoice recorded. */
+  /** Rows with a manual Invoice No.: the Paid rows. */
   invoiceFilled: number;
   /** Sum of visit_amount over the selected rows, as a decimal string. Rows without an amount add nothing. */
   totalValue: string;
@@ -201,7 +215,7 @@ async function kpis(where: string, params: unknown[]): Promise<AccountsKpis> {
   }>(
     `SELECT count(*)::int AS rows,
             count(*) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
-            count(*) FILTER (WHERE inv.numbers IS NOT NULL)::int AS invoice_filled,
+            count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS invoice_filled,
             COALESCE(sum(v.visit_amount), 0)::numeric(16,3)::text AS total_value,
             count(*) FILTER (WHERE v.visit_amount IS NULL)::int AS value_missing,
             count(*) FILTER (WHERE (${COLOUR_SQL}) = 'RED')::int AS red,
@@ -257,5 +271,20 @@ export async function listAllAccounts(filters: AccountsFilters, checkSize: (coun
   return { items: rows.rows.map(toItem), kpis: figures };
 }
 
-/** The filter lists are those of Master AMC Status: the same visits, so the same clients, engineers and years. */
-export { getMasterStatusOptions as getAccountsOptions } from "../amc/master-status.service";
+/** The filter lists are those of Master AMC Status (the same visits, so the same clients, engineers and years), plus the contracts with visits on the page. */
+export async function getAccountsOptions() {
+  const [shared, contracts] = await Promise.all([
+    getMasterStatusOptions(),
+    pool.query<{ id: string; client_name: string; system_description: string }>(
+      `SELECT c.id, cl.name AS client_name, c.system_description
+       FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
+       WHERE EXISTS (SELECT 1 FROM amc_visits v WHERE v.amc_contract_id = c.id AND ${IN_SCOPE})
+       ORDER BY c.id`
+    ),
+  ]);
+
+  return {
+    ...shared,
+    contracts: contracts.rows.map((row) => ({ id: row.id, reference: amcReference(row.id), client: row.client_name, system: row.system_description })),
+  };
+}

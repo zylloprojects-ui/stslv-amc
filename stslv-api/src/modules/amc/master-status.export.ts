@@ -1,4 +1,5 @@
 import { pool } from "../../config/database";
+import { PAID_STATUS_NOTE } from "./manual-invoice.service";
 import { logActivity } from "../../shared/activity-log";
 import { assertExportSize, displayMoney, displayMonth, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
@@ -18,9 +19,9 @@ export const SERVICE_STATUS_LABELS: Record<ServiceStatus, string> = {
 
 export const ROW_COLOUR_LABELS: Record<RowColour, string> = {
   RED: "Red · Not completed",
-  YELLOW: "Yellow · Invoice pending",
+  YELLOW: "Yellow · Invoice pending (Unpaid)",
   BLUE: "Blue · Quote pending",
-  GREEN: "Green · Invoiced and quoted",
+  GREEN: "Green · Paid and quoted",
 };
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -34,7 +35,7 @@ const COLUMNS: (ReportColumn & { hideable?: MasterStatusColumn })[] = [
   { key: "frequency", header: "Frequency", kind: "text", width: 13, hideable: "frequency" },
   { key: "service", header: "Service", kind: "text", width: 12, hideable: "service" },
   { key: "scheduledMonth", header: "Scheduled Month", kind: "text", width: 15, hideable: "scheduledMonth" },
-  { key: "visitValue", header: "Visit Value", kind: "money", width: 14, hideable: "visitValue" },
+  { key: "visitValue", header: "Value (Ex VAT)", kind: "money", width: 14, hideable: "visitValue" },
   { key: "serviceStatus", header: "Service Status", kind: "text", width: 18, hideable: "serviceStatus" },
   { key: "invoiceNo", header: "Invoice No.", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   { key: "quotationNo", header: "Quote No.", kind: "identifier", width: 15, hideable: "quotationNo" },
@@ -65,7 +66,7 @@ function toRow(item: MasterStatusItem, index: number): ReportRow {
     scheduledDate: item.scheduledDate,
     visitValue: item.visitValue,
     serviceStatus: SERVICE_STATUS_LABELS[item.serviceStatus],
-    invoiceNo: item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(", ") : null,
+    invoiceNo: item.manualInvoiceNo,
     quotationNo: item.quotationNo,
     salesEngineer: item.salesEngineer?.name ?? null,
     colour: ROW_COLOUR_LABELS[item.colour],
@@ -83,6 +84,8 @@ async function describeFilters(query: ExportMasterStatusQuery): Promise<ReportDe
   if (query.month) filters.push({ label: "Month", value: MONTH_NAMES[query.month - 1] ?? String(query.month) });
   if (query.year) filters.push({ label: "Year", value: String(query.year) });
   if (query.serviceStatus) filters.push({ label: "Service status", value: SERVICE_STATUS_LABELS[query.serviceStatus] });
+  if (query.invoiceStatus) filters.push({ label: "Invoice status", value: query.invoiceStatus === "RECORDED" ? "Paid" : "Unpaid" });
+  if (query.quotationStatus) filters.push({ label: "Quotation status", value: query.quotationStatus === "RECORDED" ? "Quote recorded" : "No quote recorded" });
   if (query.colour) filters.push({ label: "Row colour", value: ROW_COLOUR_LABELS[query.colour] });
   if (query.search) filters.push({ label: "Search", value: query.search });
 
@@ -98,9 +101,9 @@ export async function buildMasterStatusExport(
   const { items, kpis } = await listAllMasterStatus(filters, (count) => assertExportSize(format, count));
   const columns = masterStatusColumns(hidden);
   const notes = [
-    `Total services ${kpis.total} · Green ${kpis.green} · Blue ${kpis.blue} · Yellow ${kpis.yellow} · Red ${kpis.red} · Total visit value ${displayMoney(kpis.totalValue)}.`,
+    `Total services ${kpis.total} · Green ${kpis.green} · Blue ${kpis.blue} · Yellow ${kpis.yellow} · Red ${kpis.red} · Total value (Ex VAT) ${displayMoney(kpis.totalValue)}.`,
     "Red: not completed. Yellow: completed, no invoice recorded. Blue: completed and invoiced, no quotation number. Green: completed, invoiced and quoted.",
-    "An invoice number shows that an invoice was recorded, not that it was paid. Cancelled invoices are not counted.",
+    PAID_STATUS_NOTE,
   ];
 
   if (kpis.valueMissing > 0) {
@@ -125,7 +128,7 @@ export async function buildMasterStatusExport(
           ? {}
           : {
               totals: {
-                label: `Total visit value (${kpis.total} ${kpis.total === 1 ? "service" : "services"})`,
+                label: `Total value, Ex VAT (${kpis.total} ${kpis.total === 1 ? "service" : "services"})`,
                 values: { visitValue: kpis.totalValue },
                 excelFormulas: { visitValue: (range) => `SUM(${range("visitValue")})` },
               },

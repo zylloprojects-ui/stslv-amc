@@ -6,6 +6,8 @@ import { accountsRouter } from "./modules/accounts/accounts.routes";
 import { amcRouter } from "./modules/amc/amc.routes";
 import { attachmentsRouter } from "./modules/attachments/attachments.routes";
 import { auditRouter } from "./modules/audit/audit.routes";
+import { reportsRouter } from "./modules/reports/reports.routes";
+import { securityRouter } from "./modules/security/security.routes";
 import { authRouter } from "./modules/auth/auth.routes";
 import { clientsRouter } from "./modules/clients/clients.routes";
 import { dashboardRouter } from "./modules/dashboard/dashboard.routes";
@@ -22,6 +24,7 @@ import { procurementRouter } from "./modules/procurement/procurement.routes";
 import { projectsRouter } from "./modules/projects/projects.routes";
 import { rolesRouter } from "./modules/roles/roles.routes";
 import { servicesSalesRouter } from "./modules/services-sales/services-sales.routes";
+import { suggestionsRouter } from "./modules/suggestions/suggestions.routes";
 import { usersRouter } from "./modules/users/users.routes";
 import { errorHandler, notFoundHandler } from "./shared/errors";
 
@@ -34,6 +37,13 @@ export function createApp() {
   const app = express();
 
   app.disable("x-powered-by");
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    if (process.env.NODE_ENV === "production") res.setHeader("Strict-Transport-Security", "max-age=31536000");
+    next();
+  });
   // Behind a hosting platform's proxy the caller's address arrives in X-Forwarded-For.
   // Only the configured number of proxies is trusted (TRUST_PROXY in .env), so a
   // caller cannot pick its own address and slip past the rate limit.
@@ -89,6 +99,8 @@ export function createApp() {
   app.use("/api/historical-data", historicalDataRouter);
   app.use("/api/holidays", holidaysRouter);
   app.use("/api/audit", auditRouter);
+  app.use("/api/security", securityRouter);
+  app.use("/api/reports", reportsRouter);
   // System type export, linked contracts and delete; anything else falls through to the shared master-list routes.
   app.use("/api/masters/system-types", systemTypesRouter);
   // Department list (description search, name order) and export; anything else falls through to the shared master-list routes.
@@ -98,6 +110,8 @@ export function createApp() {
   app.use("/api/masters", mastersRouter);
   app.use("/api/attachments", attachmentsRouter);
   app.use("/api/notifications", notificationsRouter);
+  // Suggestions & feedback (migration 0085): every user's own submissions; review for Admin.
+  app.use("/api/suggestions", suggestionsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

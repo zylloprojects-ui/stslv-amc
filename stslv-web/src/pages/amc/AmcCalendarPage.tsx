@@ -1,9 +1,10 @@
+import { ContractLink } from '../../components/ContractLink'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { LoadError } from '../../components/records'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { api } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { fetchClients, queryString } from './amcApi'
@@ -11,7 +12,7 @@ import { currentMonth, formatDate, monthLabel, monthRange, shiftMonth, todayIso 
 import { BILLING_STATUSES, BILLING_STATUS_LABELS, type CalendarFilters, type CalendarOptions } from './calendar/calendarTypes'
 import { RenewalWarnings } from './calendar/RenewalWarnings'
 import { YearView } from './calendar/YearView'
-import { Filter, VisitStatusPill } from './components'
+import { Filter, RestrictedFilter, VisitStatusPill } from './components'
 import { VisitDetailsModal, VisitEditModal } from './VisitModals'
 import { OPERATIONAL_VISIT_STATUSES, VISIT_STATUS_LABELS, type ScheduleVisit, type VisitList, type VisitStatus } from './types'
 
@@ -81,7 +82,7 @@ function VisitChip({ visit, onOpen }: { visit: ScheduleVisit; onOpen: (id: strin
     <button
       type="button"
       onClick={() => onOpen(visit.id)}
-      aria-label={`${visitLabel(visit)}, visit ${visit.sequenceNo}, ${VISIT_STATUS_LABELS[visit.status]}${visit.isOverdue ? ', overdue' : ''}`}
+      aria-label={`${visitLabel(visit)}, visit ${visit.sequenceNo}, ${VISIT_STATUS_LABELS[visit.status]}${visit.isOverdue ? ', overdue' : ''}, ${visit.invoiceEligibility === 'INVOICED' ? 'invoice recorded' : 'no invoice recorded'}`}
       className={cx(
         'block w-full truncate rounded-md border-l-[3px] px-1.5 py-1 text-left text-[11px] font-semibold shadow-sm ring-1 ring-inset transition-transform hover:-translate-y-px hover:shadow-md hover:ring-2 hover:ring-[#1479BD] focus-visible:outline-2 focus-visible:outline-[#1479BD]',
         CHIP[visit.status],
@@ -89,6 +90,7 @@ function VisitChip({ visit, onOpen }: { visit: ScheduleVisit; onOpen: (id: strin
       )}
     >
       {visit.isOverdue && <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500 align-middle" aria-hidden="true" />}
+      <span className={cx('mr-1 inline-block h-2 w-2 rounded-sm align-middle', visit.manualInvoiceNo ? 'bg-emerald-600' : 'bg-[#1479BD]')} aria-hidden="true" />
       {visitLabel(visit)}
     </button>
   )
@@ -119,6 +121,7 @@ export function AmcCalendarPage() {
   const [frequency, setFrequency] = useState('')
   const [status, setStatus] = useState('')
   const [billingStatus, setBillingStatus] = useState('')
+  const [paymentStatus, setPaymentStatus] = useState('')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
@@ -130,13 +133,14 @@ export function AmcCalendarPage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const canViewClients = auth.can('CLIENTS', 'VIEW')
+  // The client filter needs the client list only: data-only read is enough (it opens no Clients page).
+  const canViewClients = auth.canRead('CLIENTS')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const canEdit = auth.can('AMC_SCHEDULE', 'EDIT')
-  const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
+  const canExport = auth.can('MONTHLY_CALENDAR', 'EXPORT')
   const clients = useQuery({ queryKey: ['clients', 'all'], queryFn: () => fetchClients('all'), enabled: canViewClients })
-  // Sales engineers, frequencies and years present on scheduled visits; open to every schedule viewer.
-  const options = useQuery({ queryKey: ['amc', 'service-status', 'options'], queryFn: () => api.get<CalendarOptions>('/amc/service-status/options') })
+  // Sales engineers, frequencies and years of the visits the calendar can show, cancelled ones included.
+  const options = useQuery({ queryKey: ['amc', 'calendar', 'options'], queryFn: () => api.get<CalendarOptions>('/amc/calendar/options') })
   const systems = useQuery({ queryKey: ['amc', 'systems'], queryFn: () => api.get<string[]>('/amc/contracts/systems'), enabled: canViewContracts })
 
   const filters: CalendarFilters = {
@@ -147,8 +151,9 @@ export function AmcCalendarPage() {
     frequency,
     status: status || CALENDAR_STATUSES.join(','),
     billingStatus,
+    paymentStatus,
   }
-  const filtered = Boolean(search || clientId || salesEngineerId || system || frequency || status || billingStatus)
+  const filtered = Boolean(search || clientId || salesEngineerId || system || frequency || status || billingStatus || paymentStatus)
 
   const range = monthRange(month)
   const visits = useQuery({
@@ -289,11 +294,12 @@ export function AmcCalendarPage() {
               <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Client, system or engineer" className={className} />
             )}
           </Filter>
-          {canViewClients && (
+          {canViewClients ? (
             <Filter label="Client">
               {(id, className) => (
                 <select id={id} value={clientId} onChange={(event) => setClientId(event.target.value)} className={className}>
                   <option value="">All clients</option>
+                  <OptionsNotice source={clients} count={clients.data?.length ?? 0} empty="No clients yet" />
                   {(clients.data ?? []).map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -302,13 +308,16 @@ export function AmcCalendarPage() {
                 </select>
               )}
             </Filter>
+          ) : (
+            <RestrictedFilter label="Client" reason="Not available for your role (needs the client list)" />
           )}
-          {options.data?.salesEngineers && (
+          {options.data?.salesEngineers !== null && (
             <Filter label="Sales engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={(event) => setSalesEngineerId(event.target.value)} className={className}>
                   <option value="">All sales engineers</option>
-                  {options.data.salesEngineers?.map((engineer) => (
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers linked to AMC visits" />
+                  {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
                     </option>
@@ -317,11 +326,12 @@ export function AmcCalendarPage() {
               )}
             </Filter>
           )}
-          {canViewContracts && (
+          {canViewContracts ? (
             <Filter label="System">
               {(id, className) => (
                 <select id={id} value={system} onChange={(event) => setSystem(event.target.value)} className={className}>
                   <option value="">All systems</option>
+                  <OptionsNotice source={systems} count={systems.data?.length ?? 0} empty="No systems on AMC contracts yet" />
                   {(systems.data ?? []).map((value) => (
                     <option key={value} value={value}>
                       {value}
@@ -330,21 +340,22 @@ export function AmcCalendarPage() {
                 </select>
               )}
             </Filter>
+          ) : (
+            <RestrictedFilter label="System" reason="Not available for your role (needs AMC Contracts)" />
           )}
-          {options.data && (
-            <Filter label="Frequency">
-              {(id, className) => (
-                <select id={id} value={frequency} onChange={(event) => setFrequency(event.target.value)} className={className}>
-                  <option value="">All frequencies</option>
-                  {options.data.frequencies.map((item) => (
-                    <option key={item.code} value={item.code}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </Filter>
-          )}
+          <Filter label="Frequency">
+            {(id, className) => (
+              <select id={id} value={frequency} onChange={(event) => setFrequency(event.target.value)} className={className}>
+                <option value="">All frequencies</option>
+                <OptionsNotice source={options} count={options.data?.frequencies.length ?? 0} empty="No frequencies on AMC visits" />
+                {(options.data?.frequencies ?? []).map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
           <Filter label="Visit status">
             {(id, className) => (
               <select id={id} value={status} onChange={(event) => setStatus(event.target.value)} className={className}>
@@ -357,7 +368,16 @@ export function AmcCalendarPage() {
               </select>
             )}
           </Filter>
-          <Filter label="Billing status">
+          <Filter label="Paid / Unpaid">
+            {(id, className) => (
+              <select id={id} value={paymentStatus} onChange={(event) => setPaymentStatus(event.target.value)} className={className}>
+                <option value="">All</option>
+                <option value="PAID">Paid</option>
+                <option value="UNPAID">Unpaid</option>
+              </select>
+            )}
+          </Filter>
+          <Filter label="Billing status (Zoho)">
             {(id, className) => (
               <select id={id} value={billingStatus} onChange={(event) => setBillingStatus(event.target.value)} className={className}>
                 <option value="">All</option>
@@ -383,6 +403,14 @@ export function AmcCalendarPage() {
             setSelectedDay(null)
           }}
         />
+      )}
+
+      {view === 'month' && (
+        <ul aria-label="Calendar colours" className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600">
+          <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-600" aria-hidden="true" />Square: Paid (Invoice No. entered)</li>
+          <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[#1479BD]" aria-hidden="true" />Square: Unpaid (no Invoice No.)</li>
+          <li>Card colour: service status</li>
+        </ul>
       )}
 
       {view === 'month' && (
@@ -537,9 +565,9 @@ function DayList({ visits, onOpen }: { visits: ScheduleVisit[]; onOpen: (id: str
             </button>
             <p className="text-xs text-slate-500">
               Engineer: {visit.assignedTo ?? '—'} ·{' '}
-              <Link to={`/amc/contracts/${visit.contract.id}`} className="text-blue-700 hover:underline">
+              <ContractLink id={visit.contract.id} className="text-blue-700 hover:underline" hideWithoutAccess>
                 Open contract
-              </Link>
+              </ContractLink>
             </p>
           </div>
           <VisitStatusPill status={visit.status} overdue={visit.isOverdue} />

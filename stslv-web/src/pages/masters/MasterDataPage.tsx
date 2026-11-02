@@ -6,6 +6,7 @@ import { TABLE } from '../../components/table'
 import { Alert, Badge, Button, Card, EmptyState, Modal, PageHeader, SelectField, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
+import type { Module } from '../../lib/types'
 import { queryString } from '../amc/amcApi'
 import { Filter } from '../amc/components'
 import { isFeatureUnavailable, type Department, type MaintenanceFrequency, type MasterList, type SalesEngineer, type SystemType } from './masterTypes'
@@ -20,6 +21,14 @@ export type Tab = 'sales-engineers' | 'system-types' | 'departments' | 'maintena
 
 // Sales engineers have their own pages; this page serves the other lists, one route each.
 export type ListTab = Exclude<Tab, 'sales-engineers'>
+
+/** The permission module that governs each list (migration 0080). */
+const TAB_MODULE: Record<Tab, Module> = {
+  'sales-engineers': 'SALES_ENGINEERS',
+  'system-types': 'SYSTEM_TYPES',
+  departments: 'DEPARTMENTS',
+  'maintenance-frequencies': 'MAINTENANCE_FREQUENCIES',
+}
 
 interface TabSpec {
   key: Tab
@@ -361,8 +370,8 @@ export function MasterListPage({ tab }: { tab: ListTab }) {
   }, [searchInput])
 
   const spec = ALL_TABS.find((item) => item.key === tab) as TabSpec
-  const canCreate = spec.canAdd && auth.can('SETTINGS', 'CREATE')
-  const canEdit = auth.can('SETTINGS', 'EDIT')
+  const canCreate = spec.canAdd && auth.can(TAB_MODULE[tab], 'CREATE')
+  const canEdit = auth.can(TAB_MODULE[tab], 'EDIT')
   const list = useQuery({
     queryKey: ['masters', tab, { search, status, page }],
     queryFn: () => api.get<MasterList<AnyRecord>>(`/masters/${tab}${queryString({ search, status, page, pageSize: PAGE_SIZE })}`),

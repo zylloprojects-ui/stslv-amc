@@ -7,7 +7,7 @@ import { AppProviders } from '../App'
 import type { SessionUser } from '../lib/types'
 import { MasterStatusPage } from '../pages/masterStatus/MasterStatusPage'
 import type { MasterStatusItem } from '../pages/masterStatus/masterStatusTypes'
-import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
 // Most tests render the page on its own; the routing tests go through App.tsx and the menu.
 
@@ -16,9 +16,9 @@ const VIEWER: SessionUser = {
   email: 'invoicing@example.com',
   fullName: 'Ines Invoicing',
   roles: [{ id: '5', code: 'INVOICING', name: 'Invoicing' }],
-  permissions: ['AMC_SCHEDULE:VIEW', 'INVOICES:VIEW', 'SERVICES_SALES:VIEW', 'AMC_CONTRACTS:VIEW'],
+  permissions: afterPageSplit(['MASTER_AMC_STATUS:VIEW', 'AMC_CONTRACTS:VIEW']),
 }
-const EXPORTER: SessionUser = { ...VIEWER, id: '8', permissions: [...VIEWER.permissions, 'AMC_SCHEDULE:EXPORT'] }
+const EXPORTER: SessionUser = { ...VIEWER, id: '8', permissions: [...VIEWER.permissions, 'MASTER_AMC_STATUS:EXPORT'] }
 
 function makeItem(overrides: Partial<MasterStatusItem> = {}): MasterStatusItem {
   return {
@@ -35,6 +35,8 @@ function makeItem(overrides: Partial<MasterStatusItem> = {}): MasterStatusItem {
     completedDate: null,
     visitValue: '405.000',
     invoiceNumbers: [],
+    manualInvoiceNo: null,
+    paymentStatus: 'UNPAID',
     quotationNo: null,
     salesEngineer: { id: '4', name: 'Esha Engineer' },
     colour: 'RED',
@@ -138,7 +140,7 @@ describe('Master AMC Status page', () => {
     await screen.findByText('AMC-0007')
     expect(api.find('GET', '/amc/master-status')[0]?.query.has('month')).toBe(false)
 
-    expect(headers()).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Visit Value', 'Service Status', 'Invoice No.', 'Quote No.', 'Sales Engineer', 'Details'])
+    expect(headers()).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Value (Ex VAT)', 'Service Status', 'Invoice No.', 'Quote No.', 'Sales Engineer', 'Details'])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'YELLOW')
     expect(rowOf('AMC-0009')).toHaveAttribute('data-colour', 'BLUE')
@@ -156,8 +158,8 @@ describe('Master AMC Status page', () => {
       expect(card('Red Rows')).toHaveTextContent('2')
     })
     // 405 + 405 + 1234.5 + 405; the row without a value adds nothing and is reported.
-    expect(card('Total Visit Value')).toHaveTextContent('2,449.500')
-    expect(card('Total Visit Value')).toHaveTextContent('1 service has no value set')
+    expect(card('Total Value (Ex VAT)')).toHaveTextContent('2,449.500')
+    expect(card('Total Value (Ex VAT)')).toHaveTextContent('1 service has no value set')
   })
 
   it('shows every invoice of a visit, and a dash for a missing invoice, quotation or value', async () => {
@@ -165,11 +167,11 @@ describe('Master AMC Status page', () => {
     renderPage()
 
     await screen.findByText('AMC-0009')
-    expect(within(rowOf('AMC-0009')).getByText('INV-1')).toBeInTheDocument()
-    expect(within(rowOf('AMC-0009')).getByText('INV-2')).toBeInTheDocument()
+    expect(within(rowOf('AMC-0009')).getByText(/INV-1/)).toBeInTheDocument()
+    expect(within(rowOf('AMC-0009')).getByText(/INV-2/)).toBeInTheDocument()
     expect(within(rowOf('AMC-0010')).getByText('QT-55')).toBeInTheDocument()
     expect(within(rowOf('AMC-0010')).getByText('1,234.500')).toBeInTheDocument()
-    expect(within(rowOf('AMC-0008')).getByText('No invoice recorded')).toBeInTheDocument()
+    expect(within(rowOf('AMC-0008')).getByText('Unpaid')).toBeInTheDocument()
     expect(within(rowOf('AMC-0008')).getByText('No quotation number recorded')).toBeInTheDocument()
     expect(within(rowOf('AMC-0008')).getByText('No visit value set')).toBeInTheDocument()
     // "N/A" is never shown as if it were a quotation number.
@@ -189,12 +191,14 @@ describe('Master AMC Status page', () => {
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
+    await userEvent.selectOptions(screen.getByLabelText('Paid / Unpaid'), 'RECORDED')
+    await userEvent.selectOptions(screen.getByLabelText('Quotation Status'), 'NOT_RECORDED')
     await userEvent.selectOptions(screen.getByLabelText('Row Colour'), 'GREEN')
     // Nothing is requested until Apply.
     expect(api.find('GET', '/amc/master-status')).toHaveLength(before)
 
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    const expected = { search: 'inv-3', clientId: '10', salesEngineerId: '4', month: '10', year: '2026', serviceStatus: 'COMPLETED', colour: 'GREEN', page: '1', pageSize: '50' }
+    const expected = { search: 'inv-3', clientId: '10', salesEngineerId: '4', month: '10', year: '2026', serviceStatus: 'COMPLETED', invoiceStatus: 'RECORDED', quotationStatus: 'NOT_RECORDED', colour: 'GREEN', page: '1', pageSize: '50' }
     await waitFor(() => expect(Object.fromEntries(api.find('GET', '/amc/master-status').at(-1)?.query ?? [])).toEqual(expected))
     await waitFor(() => expect(screen.queryByText('AMC-0007')).not.toBeInTheDocument())
     expect(screen.getByText('AMC-0010')).toBeInTheDocument()
@@ -203,7 +207,7 @@ describe('Master AMC Status page', () => {
       expect(card('Red Rows')).toHaveTextContent(/^Red Rows0/)
       // The counts animate for 800 ms; a busy full run needs more than the default wait.
     }, { timeout: 5000 })
-    expect(card('Total Visit Value')).toHaveTextContent('1,234.500')
+    expect(card('Total Value (Ex VAT)')).toHaveTextContent('1,234.500')
 
     await userEvent.click(screen.getByRole('button', { name: 'Reset' }))
     await waitFor(() => expect(Object.fromEntries(api.find('GET', '/amc/master-status').at(-1)?.query ?? [])).toEqual({ page: '1', pageSize: '50' }))
@@ -219,26 +223,26 @@ describe('Master AMC Status page', () => {
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Visit Value' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Value (Ex VAT)' }))
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
-    expect(headers()).not.toContain('Visit Value')
+    expect(headers()).not.toContain('Value (Ex VAT)')
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
-    expect(within(rowOf('AMC-0010')).getByRole('link', { name: 'View contract AMC-0010' })).toBeInTheDocument()
+    expect(within(rowOf('AMC-0010')).getByRole('button', { name: /Details of AMC-0010/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide Columns · 8 of 10 shown' })).toBeInTheDocument()
 
     // Remembered for this user.
     view.unmount()
     renderPage()
     await screen.findByText('AMC-0010')
-    expect(headers()).not.toContain('Visit Value')
+    expect(headers()).not.toContain('Value (Ex VAT)')
 
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset to Default' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
-    expect(headers()).toContain('Visit Value')
+    expect(headers()).toContain('Value (Ex VAT)')
     expect(headers()).toContain('Sales Engineer')
   })
 
@@ -278,7 +282,8 @@ describe('Master AMC Status page', () => {
     statusApi(VIEWER, [BLUE])
     renderPage()
 
-    const link = await screen.findByRole('link', { name: 'View contract AMC-0009' })
+    await userEvent.click(await screen.findByRole('button', { name: /Details of AMC-0009/ }))
+    const link = await screen.findByRole('link', { name: 'Open contract' })
     expect(link).toHaveAttribute('href', '/amc/contracts/9')
     await userEvent.click(link)
     expect(await screen.findByRole('heading', { name: 'Contract detail stand-in' })).toBeInTheDocument()
@@ -318,9 +323,8 @@ describe('Master AMC Status routing and permissions', () => {
     expect(menu.getByRole('link', { name: 'Master AMC Status' })).toHaveAttribute('href', '/amc/master-status')
   })
 
-  it('stays hidden and closed for a user who may not view invoices, who still has Service Status', async () => {
-    // Execution holds AMC_SCHEDULE and SERVICES_SALES view but not INVOICES.
-    const user: SessionUser = { ...VIEWER, id: '9', roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }], permissions: ['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW'] }
+  it('stays hidden and closed without its own permission, whatever else the user holds, who still has Service Status', async () => {
+    const user: SessionUser = { ...VIEWER, id: '9', roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }], permissions: afterPageSplit(['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'INVOICES:VIEW']) }
     const api = statusApi(user, [RED])
     renderApp('/amc/master-status')
 
@@ -331,11 +335,38 @@ describe('Master AMC Status routing and permissions', () => {
     expect(api.find('GET', '/amc/master-status')).toHaveLength(0)
   })
 
-  it('shows no View link to a user who may not open contracts', async () => {
-    statusApi({ ...VIEWER, permissions: ['AMC_SCHEDULE:VIEW', 'INVOICES:VIEW', 'SERVICES_SALES:VIEW'] }, [RED])
+  it('shows Details but no contract link to a user who may not open contracts', async () => {
+    statusApi({ ...VIEWER, permissions: ['MASTER_AMC_STATUS:VIEW'] }, [RED])
     renderPage()
     await screen.findByText('AMC-0007')
     expect(within(rowOf('AMC-0007')).queryByRole('link')).not.toBeInTheDocument()
-    expect(within(rowOf('AMC-0007')).getByText('No access')).toBeInTheDocument()
+    await userEvent.click(within(rowOf('AMC-0007')).getByRole('button', { name: /Details of AMC-0007/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Open contract' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Master AMC Status KPI cards', () => {
+  const order = () => [...document.querySelectorAll('[data-kpi]')].map((card) => card.getAttribute('data-kpi'))
+
+  it('renames and reorders for this user, keeps the figure, and resets', async () => {
+    statusApi(VIEWER, [RED, GREEN])
+    renderPage()
+    await screen.findByText('AMC-0007')
+    expect(order()).toEqual(['total', 'GREEN', 'BLUE', 'YELLOW', 'RED', 'value'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Customize KPI cards' }))
+    await userEvent.type(screen.getByLabelText('Display name for Total Services'), 'All Work')
+    const renamed = document.querySelector('[data-kpi="total"]') as HTMLElement
+    expect(within(renamed).getByText('All Work')).toBeInTheDocument()
+    expect(renamed).toHaveAttribute('title', 'Standard name: Total Services')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Move Total Value (Ex VAT) earlier' }))
+    expect(order()).toEqual(['total', 'GREEN', 'BLUE', 'YELLOW', 'value', 'RED'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Names' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Order' }))
+    expect(order()).toEqual(['total', 'GREEN', 'BLUE', 'YELLOW', 'RED', 'value'])
+    expect(within(document.querySelector('[data-kpi="total"]') as HTMLElement).getByText('Total Services')).toBeInTheDocument()
   })
 })

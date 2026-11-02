@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+import { NAVIGATION, navItemVisible } from '../layout/navigation'
 import { usePageTitle } from '../components/hooks'
 import { BrandLoader, Button, FullPageMessage } from '../components/ui'
 import type { Action, Module } from '../lib/types'
@@ -38,7 +39,23 @@ export function ProtectedRoute() {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
   }
 
+  // Signed in with a temporary password: nothing else until a new password is chosen.
+  // The API refuses such a session everywhere else as well.
+  if (auth.user?.credentialChangeRequired) {
+    return <Navigate to={CHANGE_PASSWORD_PATH} replace />
+  }
+
   return <Outlet />
+}
+
+export const CHANGE_PASSWORD_PATH = '/change-password'
+
+/** The start page: the first page in the navigation this user may open. With none, /dashboard explains Access denied. */
+export function LandingRedirect() {
+  const auth = useAuth()
+  const first = NAVIGATION.flatMap((section) => section.items).find((item) => navItemVisible(item, auth.can, isAdmin(auth.user), auth.canRead))
+
+  return <Navigate to={first?.path ?? '/dashboard'} replace />
 }
 
 /** Shows its children only to users holding the permission; otherwise an access-denied message. */
@@ -46,6 +63,17 @@ export function RequirePermission({ module, action = 'VIEW', children }: { modul
   const auth = useAuth()
 
   if (!auth.can(module, action)) {
+    return <AccessDenied />
+  }
+
+  return <>{children}</>
+}
+
+/** For a page that shows another module's data: View or data-only Read of that module. The API checks the same. */
+export function RequireDataRead({ module, children }: { module: Module; children: ReactNode }) {
+  const auth = useAuth()
+
+  if (!auth.canRead(module)) {
     return <AccessDenied />
   }
 
@@ -63,7 +91,7 @@ export function RequireAnyPermission({ modules, children }: { modules: Module[];
   return <>{children}</>
 }
 
-/** For pages reserved to the built-in Admin role. The API enforces the same rule. */
+/** For pages reserved to administrators (Super Admin and Admin). The API enforces the same rule. */
 export function RequireAdmin({ children }: { children: ReactNode }) {
   const auth = useAuth()
 

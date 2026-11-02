@@ -91,7 +91,7 @@ export function HeaderSearch() {
   // Only pages the signed-in user may view are offered; the API still enforces access.
   const destinations = useMemo<Destination[]>(() => {
     const pages = NAVIGATION.flatMap((section) => {
-      const items = section.items.filter((item) => navItemVisible(item, auth.can, isAdmin(auth.user))).map((item) => ({ label: item.label, path: item.path, group: section.title ?? 'General' }))
+      const items = section.items.filter((item) => navItemVisible(item, auth.can, isAdmin(auth.user), auth.canRead)).map((item) => ({ label: item.label, path: item.path, group: section.title ?? 'General' }))
       // A group's landing page is offered when any of its pages is.
       const landing = section.path && section.title && items.length > 0 ? [{ label: section.title, path: section.path, group: section.title }] : []
 

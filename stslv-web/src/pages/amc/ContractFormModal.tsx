@@ -1,15 +1,18 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../components/ui'
-import { api, ApiError, errorMessage } from '../../lib/api'
-import { fetchClients, queryString } from './amcApi'
-import { formatDate, MONEY_PATTERN } from './amcFormat'
+import { api, ApiError, errorMessage, isForbidden } from '../../lib/api'
+import { queryString } from './amcApi'
+import { contractEndDate, formatDate, MONEY_PATTERN } from './amcFormat'
 import { SelectField } from './components'
 import { MONTH_NAMES, useFrequencyOptions } from './frequencyOptions'
 import { frequencyLabel, type Contract, type SavedContract, type SchedulePreview } from './types'
+
+const DURATION_YEARS = [1, 2, 3, 4, 5, 6]
 
 // Mirrors the API's rules so most problems are caught before a request is sent.
 // The API validates again and remains the authority.
@@ -29,11 +32,14 @@ const contractSchema = z
     maintenanceFrequency: z.string().min(1, 'Select a maintenance frequency.'),
     // Months (1 = January) of a custom frequency; checked against the chosen frequency on submit.
     customMonths: z.array(z.number()),
-    contractValue: z.string().trim().min(1, 'Contract value is required.').regex(MONEY_PATTERN, MONEY_MESSAGE),
+    contractValue: z.string().trim().min(1, 'AMC Value / Year is required.').regex(MONEY_PATTERN, MONEY_MESSAGE),
     defaultVisitAmount: optionalMoney,
     finalCredit: optionalMoney,
+    billingBasis: z.enum(['', 'CONTRACT_VALUE', 'FINAL_CREDIT', 'CUSTOM']),
+    customBillingValue: optionalMoney,
     description: z.string().trim().max(2000, 'Description must be at most 2000 characters.'),
     notes: z.string().trim().max(2000, 'Notes must be at most 2000 characters.'),
+    renewalNotes: z.string().trim().max(1000, 'Renewal notes must be at most 1000 characters.'),
     status: z.enum(['DRAFT', 'ACTIVE']),
   })
   .refine((value) => !value.validFrom || !value.validTo || value.validTo >= value.validFrom, {
@@ -56,8 +62,11 @@ const FIELDS = [
   'contractValue',
   'defaultVisitAmount',
   'finalCredit',
+  'billingBasis',
+  'customBillingValue',
   'description',
   'notes',
+  'renewalNotes',
   'status',
 ] as const
 
@@ -87,7 +96,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   // Set when an active contract's terms change: the user confirms the effect on its schedule first.
   const [review, setReview] = useState<{ values: ContractForm; preview: SchedulePreview } | null>(null)
 
-  const clients = useQuery({ queryKey: ['clients', 'selectable'], queryFn: () => fetchClients('active') })
+  // Names only, on the permission to save this form; opens none of the Clients pages (the API checks the same).
+  const clients = useQuery({ queryKey: ['amc', 'contracts', 'client-options'], queryFn: () => api.get<{ id: string; code?: string; name: string }[]>('/amc/contracts/client-options') })
   const systems = useQuery({ queryKey: ['amc', 'systems'], queryFn: () => api.get<string[]>('/amc/contracts/systems') })
 
   const {
@@ -111,8 +121,11 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       contractValue: start?.contractValue ?? '',
       defaultVisitAmount: start?.defaultVisitAmount ?? '',
       finalCredit: start?.finalCredit ?? '',
+      billingBasis: start?.billingBasis ?? '',
+      customBillingValue: start?.customBillingValue ?? '',
       description: start?.description ?? '',
       notes: contract?.notes ?? '',
+      renewalNotes: '',
       // A renewal starts as a draft, so nothing is scheduled until it is activated.
       status: renewalOf || draftOnly ? 'DRAFT' : 'ACTIVE',
     },
@@ -124,19 +137,31 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     queryFn: () => api.get<{ id: string; name: string; employeeNo: string | null }[]>('/masters/sales-engineers/options'),
     retry: false,
   })
+  // The link of the contract being edited, or of the contract being renewed.
   const currentLinks = useQuery({
-    queryKey: ['amc', 'contracts', 'masters', contract?.id],
-    queryFn: () => api.get<{ salesEngineer: { id: string; name: string; isActive: boolean } | null }>(`/amc/contracts/${contract?.id}/masters`),
-    enabled: Boolean(contract) && engineers.isSuccess,
+    queryKey: ['amc', 'contracts', 'masters', start?.id],
+    queryFn: () => api.get<{ salesEngineer: { id: string; name: string; isActive: boolean } | null }>(`/amc/contracts/${start?.id}/masters`),
+    enabled: Boolean(start) && engineers.isSuccess,
     retry: false,
   })
-  const currentEngineer = currentLinks.data?.salesEngineer ?? null
+  const currentEngineer = contract ? (currentLinks.data?.salesEngineer ?? null) : null
   const currentEngineerId = currentEngineer?.id ?? ''
+  // A renewal starts with the renewed contract's engineer, like the other copied details, while that engineer is active.
+  const renewedEngineer = renewalOf ? (currentLinks.data?.salesEngineer ?? null) : null
+  const initialEngineerId = renewedEngineer?.isActive ? renewedEngineer.id : currentEngineerId
   const [chosenEngineerId, setChosenEngineerId] = useState<string | null>(null)
-  const engineerId = chosenEngineerId ?? currentEngineerId
-  const engineerPicker = engineers.isSuccess && (!contract || currentLinks.isSuccess)
+  const engineerId = chosenEngineerId ?? initialEngineerId
+  const engineerPicker = engineers.isSuccess && (!start || currentLinks.isSuccess)
+  // Every renewal names an active sales engineer, chosen by the user ("Not linked" is not offered). When the renewed
+  // contract's engineer is no longer active, that earlier assignment is shown but cannot be chosen.
+  const engineerRequired = Boolean(renewalOf)
+  const previousInactive = renewedEngineer !== null && !renewedEngineer.isActive ? renewedEngineer : null
+  // A renewal cannot be saved without the engineer list: say so instead of failing on save.
+  const engineerListUnavailable = engineerRequired && (engineers.isError || currentLinks.isError)
+  const [engineerError, setEngineerError] = useState<string | null>(null)
   const chooseEngineer = (id: string) => {
     setChosenEngineerId(id)
+    setEngineerError(null)
     const engineer = engineers.data?.find((item) => item.id === id)
     // Fills the typed engineer only when it is empty; a typed name is never overwritten.
     if (engineer && !getValues('responsibleEngineer').trim()) {
@@ -157,11 +182,19 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     setValue('customMonths', next, { shouldValidate: false })
   }
 
+  const [durationYears, setDurationYears] = useState('')
+  const chooseDuration = (value: string) => {
+    setDurationYears(value)
+    const from = getValues('validFrom')
+
+    if (value && from) setValue('validTo', contractEndDate(from, Number(value)), { shouldValidate: true })
+  }
+
   const save = useMutation({
     mutationFn: (values: ContractForm) => {
-      const { status, customMonths, ...rest } = values
+      const { status, customMonths, billingBasis, customBillingValue, renewalNotes, ...rest } = values
       // Months are sent only for a custom frequency; for a fixed one the API clears them.
-      const fields = isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest
+      const fields = { ...(isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest), billingBasis: billingBasis === '' ? null : billingBasis, ...(billingBasis === 'CUSTOM' ? { customBillingValue } : {}) }
 
       // The Sales Engineer master link is sent only when the picker is offered and its value changed.
       const link = engineerPicker && engineerId !== currentEngineerId ? { salesEngineerId: engineerId || null } : {}
@@ -169,14 +202,11 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       return contract
         ? api.patch<SavedContract>(`/amc/contracts/${contract.id}`, { ...fields, ...link })
         : renewalOf
-          ? api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, { ...fields, status, ...link })
+          ? api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, { ...fields, status, ...link, ...(renewalNotes ? { renewalNotes } : {}) })
           : api.post<SavedContract>('/amc/contracts', { ...fields, status, ...link })
     },
     onSuccess: async (saved) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['amc'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await refreshOperationalData(queryClient)
       onSaved(saved)
     },
     onError: (error) => {
@@ -184,7 +214,10 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
 
       if (error instanceof ApiError) {
         for (const detail of error.details) {
-          if ((FIELDS as readonly string[]).includes(detail.field)) {
+          if (detail.field === 'salesEngineerId' && engineerPicker) {
+            setEngineerError(detail.message)
+            shownOnField = true
+          } else if ((FIELDS as readonly string[]).includes(detail.field)) {
             setError(detail.field as (typeof FIELDS)[number], { message: detail.message })
             shownOnField = true
           }
@@ -221,6 +254,15 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const onSubmit = handleSubmit((values) => {
     setFailure(null)
 
+    if (engineerRequired && engineerPicker && !engineerId) {
+      setEngineerError(
+        previousInactive
+          ? `Select an active sales engineer. ${previousInactive.name}, the previous engineer, is no longer active.`
+          : 'Select an active sales engineer for the renewal.',
+      )
+      return
+    }
+
     if (isCustom(values.maintenanceFrequency) && (values.customMonths.length === 0 || values.customMonths.length > 11)) {
       setError('customMonths', {
         message: values.customMonths.length === 0 ? 'Select the months in which visits take place.' : 'Select at most 11 months. For a visit every month, choose the monthly frequency.',
@@ -246,9 +288,11 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const busy = save.isPending || preview.isPending
   const termsLocked = contract !== null && contract.status !== 'DRAFT' && contract.status !== 'ACTIVE'
   const options = clients.data ?? []
-  // The contract's own client stays selectable even if it has since been deactivated.
-  const currentMissing = contract !== null && !options.some((client) => client.id === contract.client.id)
+  // The contract's own client stays shown even if it has since been deactivated. Editing keeps it; a renewal cannot be
+  // saved for it (the API refuses an inactive client), so the field says why instead of showing an empty choice.
+  const currentMissing = start !== null && !options.some((client) => client.id === start.client.id)
   const newStatus = useWatch({ control, name: 'status' })
+  const chosenBasis = useWatch({ control, name: 'billingBasis' })
 
   const plan = review?.preview ?? null
 
@@ -272,7 +316,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             <Button variant="secondary" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" form="amc-contract-form" loading={busy} disabled={clients.isPending}>
+            <Button type="submit" form="amc-contract-form" loading={busy} disabled={clients.isPending || (engineerRequired && !engineerPicker)}>
               {contract ? 'Save changes' : renewalOf ? 'Create renewal' : 'Add contract'}
             </Button>
           </>
@@ -322,7 +366,9 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               error={errors.clientId?.message}
               hint={
                 renewalOf
-                  ? 'A renewal is for the same client as the contract it renews.'
+                  ? currentMissing
+                    ? 'This client is inactive. Reactivate it in Clients before renewing the contract.'
+                    : 'A renewal is for the same client as the contract it renews.'
                   : options.length === 0
                     ? 'No active clients. Add the client in Clients first.'
                     : undefined
@@ -330,10 +376,11 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               {...register('clientId')}
             >
               <option value="">Select a client…</option>
-              {currentMissing && contract && <option value={contract.client.id}>{contract.client.name} (inactive)</option>}
+              {currentMissing && start && <option value={start.client.id}>{start.client.name} (inactive)</option>}
               {options.map((client) => (
                 <option key={client.id} value={client.id}>
                   {client.name}
+                  {client.code ? ` (${client.code})` : ''}
                 </option>
               ))}
             </SelectField>
@@ -354,14 +401,37 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
 
           <div className="grid gap-4 sm:grid-cols-2">
             <TextField label="Responsible engineer" error={errors.responsibleEngineer?.message} {...register('responsibleEngineer')} />
+            {engineerListUnavailable && (
+              <Alert>
+                {isForbidden(engineers.error) || isForbidden(currentLinks.error)
+                  ? 'A renewal needs a sales engineer, but your role cannot read the sales engineer list. Ask an administrator to renew this contract or to grant access.'
+                  : 'The sales engineer list could not be loaded, and a renewal needs one. Close this form and try again.'}
+              </Alert>
+            )}
             {engineerPicker && (
               <SelectField
                 label="Sales engineer (master list)"
-                hint="Links the contract to the engineer's master record. The typed name above stays as entered."
+                required={engineerRequired}
+                error={engineerError ?? undefined}
+                hint={
+                  previousInactive
+                    ? `Previously assigned: ${previousInactive.name} (inactive). Select an active sales engineer for the renewal.`
+                    : engineerRequired
+                      ? renewedEngineer
+                        ? 'Kept from the contract being renewed. A renewal needs an active sales engineer; you can choose another.'
+                        : 'A renewal needs an active sales engineer.'
+                      : "Links the contract to the engineer's master record. The typed name above stays as entered."
+                }
                 value={engineerId}
                 onChange={(event) => chooseEngineer(event.target.value)}
               >
-                <option value="">Not linked</option>
+                {engineerRequired ? (
+                  <option value="" disabled>
+                    Select a sales engineer…
+                  </option>
+                ) : (
+                  <option value="">Not linked</option>
+                )}
                 {currentEngineer && !currentEngineer.isActive && <option value={currentEngineer.id}>{currentEngineer.name} (inactive)</option>}
                 {(engineers.data ?? []).map((engineer) => (
                   <option key={engineer.id} value={engineer.id}>
@@ -376,7 +446,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               required
               disabled={termsLocked}
               error={errors.maintenanceFrequency?.message}
-              hint="Only active frequencies are offered."
+              hint={frequencies.failed ? 'The frequency list could not be loaded, so only the built-in frequencies are offered.' : 'Only active frequencies are offered.'}
               {...register('maintenanceFrequency')}
             >
               <option value="">Select a frequency…</option>
@@ -420,8 +490,29 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             </fieldset>
           )}
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            <TextField label="Valid from" type="date" required disabled={termsLocked} error={errors.validFrom?.message} {...register('validFrom')} />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <TextField
+              label="Valid from"
+              type="date"
+              required
+              disabled={termsLocked}
+              error={errors.validFrom?.message}
+              {...register('validFrom', { onChange: () => chooseDuration(durationYears) })}
+            />
+            <SelectField
+              label="Contract duration"
+              hint="Fills Valid to. You can still change it."
+              disabled={termsLocked}
+              value={durationYears}
+              onChange={(event) => chooseDuration(event.target.value)}
+            >
+              <option value="">Enter dates</option>
+              {DURATION_YEARS.map((years) => (
+                <option key={years} value={years}>
+                  {years} {years === 1 ? 'year' : 'years'}
+                </option>
+              ))}
+            </SelectField>
             <TextField label="Valid to" type="date" required disabled={termsLocked} error={errors.validTo?.message} {...register('validTo')} />
           </div>
           {termsLocked && (
@@ -431,25 +522,34 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
           )}
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <TextField label="Contract value" required inputMode="decimal" error={errors.contractValue?.message} {...register('contractValue')} />
+            <TextField label="AMC Value / Year" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.contractValue?.message} {...register('contractValue')} />
             <TextField
               label="Default visit amount"
               inputMode="decimal"
-              hint="Starting amount for each generated visit. Each visit can be changed afterwards."
+              hint={chosenBasis ? 'Not used while a billing basis is selected: visit amounts are calculated from the basis.' : 'Amount for each generated visit when no billing basis is selected. Each visit can be changed afterwards.'}
               error={errors.defaultVisitAmount?.message}
               {...register('defaultVisitAmount')}
             />
             <TextField
               label="Final credit"
               inputMode="decimal"
-              hint="Recorded as entered. Not used in any calculation."
+              hint="Annual amount. Used for visit amounts only when it is the selected billing basis."
               error={errors.finalCredit?.message}
               {...register('finalCredit')}
             />
           </div>
 
+          <SelectField label="Billing basis" hint="An annual amount, divided across each year's services. New visits use it; existing visits change only through Regenerate on the contract page." error={errors.billingBasis?.message} {...register('billingBasis')}>
+            <option value="">Not set</option>
+            <option value="CONTRACT_VALUE">AMC Value / Year</option>
+            <option value="FINAL_CREDIT">Final Credit Value</option>
+            <option value="CUSTOM">Custom Billing Value</option>
+          </SelectField>
+          {chosenBasis === 'CUSTOM' && <TextField label="Custom Billing Value" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.customBillingValue?.message} {...register('customBillingValue')} />}
+
           <TextAreaField label="Description" rows={2} error={errors.description?.message} {...register('description')} />
           <TextAreaField label="Notes" rows={2} error={errors.notes?.message} {...register('notes')} />
+          {renewalOf && <TextAreaField label="Renewal notes" rows={2} hint="Optional. Kept in the new contract's history." error={errors.renewalNotes?.message} {...register('renewalNotes')} />}
 
           {!contract && draftOnly && (
             <p className="rounded-lg bg-sky-50 px-3 py-2 text-sm text-slate-700">

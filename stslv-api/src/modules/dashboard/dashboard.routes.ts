@@ -6,7 +6,7 @@ import { authorize } from "../../middleware/authorize";
 import { forbidden } from "../../shared/errors";
 import { getDashboardSummary } from "./dashboard.service";
 import { canViewVisitCounts, getCalendarMonth, getOperationsDashboard } from "./operations.service";
-import { getReadiness } from "./readiness.service";
+import { getReadiness, transportOf } from "./readiness.service";
 
 export const dashboardRouter = Router();
 
@@ -38,6 +38,6 @@ dashboardRouter.get("/calendar", authorize("DASHBOARD", "VIEW"), async (req, res
 });
 
 // Configuration and database posture: built-in Admin role only, like the Audit Log.
-dashboardRouter.get("/readiness", authorize("DASHBOARD", "VIEW"), adminOnly, async (_req, res) => {
-  res.json({ success: true, data: await getReadiness() });
+dashboardRouter.get("/readiness", authorize("DASHBOARD", "VIEW"), adminOnly, async (req, res) => {
+  res.json({ success: true, data: await getReadiness(transportOf(req)) });
 });

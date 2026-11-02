@@ -155,8 +155,8 @@ describe('roles', () => {
     expect(screen.getByRole('dialog', { name: 'Delete role' })).toBeInTheDocument()
   })
 
-  it('shows the buttons only to people who hold the matching permission', async () => {
-    roleListApi({ ...ADMIN, permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW'] })
+  it('shows the buttons only to Super Admin, not to Admin with every user permission', async () => {
+    roleListApi({ ...ADMIN, roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW', 'USERS:CREATE', 'USERS:EDIT'] })
     await open()
 
     expect(screen.queryByRole('button', { name: 'Add role' })).not.toBeInTheDocument()

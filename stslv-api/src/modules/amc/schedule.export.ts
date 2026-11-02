@@ -12,6 +12,7 @@ import { schemaHas } from "../../shared/schema-features";
 import type { AuthContext } from "../auth/access";
 import type { BillingStatus, InvoiceEligibility, VisitStatus } from "./amc.constants";
 import type { ExportVisitsQuery } from "./amc.schemas";
+import { PAID_STATUS_NOTE } from "./manual-invoice.service";
 import { listAllVisits, type ScheduleVisit } from "./visits.service";
 
 // The AMC Schedule as a report: the visits the schedule screen lists for the
@@ -69,8 +70,10 @@ export const SCHEDULE_COLUMNS: ReportColumn[] = [
   // The PDF says "Scheduled (overdue)"; the workbook keeps the status clean and has its own Overdue column to filter on.
   { key: "status", header: "Status", kind: "text", width: 17, pdfKey: "statusWithOverdue" },
   { key: "overdue", header: "Overdue", kind: "text", width: 10, excelOnly: true },
-  { key: "visitAmount", header: "Amount", kind: "money", width: 14 },
-  { key: "invoicing", header: "Invoicing", kind: "text", width: 19 },
+  { key: "visitAmount", header: "Value (Ex VAT)", kind: "money", width: 14 },
+  { key: "manualInvoiceNo", header: "Invoice No.", kind: "identifier", width: 16 },
+  { key: "paidStatus", header: "Paid / Unpaid", kind: "text", width: 11 },
+  { key: "invoicing", header: "Invoicing (Zoho)", kind: "text", width: 19 },
   { key: "completedDate", header: "Completed date", kind: "date", width: 14 },
   { key: "notes", header: "Notes", kind: "text", width: 44, wrap: true, excelOnly: true },
 ];
@@ -92,6 +95,8 @@ function toRow(visit: ScheduleVisit, index: number): ReportRow {
     statusWithOverdue: visit.isOverdue ? `${status} (overdue)` : status,
     overdue: visit.isOverdue ? "Yes" : "No",
     visitAmount: visit.visitAmount,
+    manualInvoiceNo: visit.manualInvoiceNo,
+    paidStatus: visit.paymentStatus === "PAID" ? "Paid" : "Unpaid",
     invoicing: INVOICE_ELIGIBILITY_LABELS[visit.invoiceEligibility],
     completedDate: visit.completedDate,
     notes: visit.notes,
@@ -127,6 +132,9 @@ async function describeFilters(query: ExportVisitsQuery): Promise<ReportDefiniti
   if (query.invoiceEligibility) {
     filters.push({ label: "Invoicing", value: INVOICE_ELIGIBILITY_LABELS[query.invoiceEligibility] });
   }
+  if (query.paymentStatus) {
+    filters.push({ label: "Paid / Unpaid", value: query.paymentStatus === "PAID" ? "Paid" : "Unpaid" });
+  }
   if (query.salesEngineerId) {
     // listAllVisits has already refused this filter on a database without the link (migration 0070).
     const engineer = await pool.query<{ name: string }>("SELECT name FROM sales_engineers WHERE id = $1", [query.salesEngineerId]);
@@ -156,7 +164,7 @@ export async function buildScheduleExport(
 ): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
   const { format, ...filters } = query;
   const { items, total, totals } = await listAllVisits(filters, (count) => assertExportSize(format, count));
-  const notes = ["Total amount excludes cancelled visits."];
+  const notes = ["Total value excludes cancelled visits. Values are in OMR, excluding VAT.", PAID_STATUS_NOTE];
 
   if (totals.amountMissingCount > 0) {
     notes.push(`${totals.amountMissingCount} ${totals.amountMissingCount === 1 ? "visit has" : "visits have"} no amount.`);
@@ -177,7 +185,7 @@ export async function buildScheduleExport(
         rows: items.map(toRow),
         groupBy: (row) => displayMonth(String(row.scheduledDate)),
         totals: {
-          label: `Total amount (${total} ${total === 1 ? "visit" : "visits"})`,
+          label: `Total value (${total} ${total === 1 ? "visit" : "visits"})`,
           values: { visitAmount: totals.visitAmount },
           excelFormulas: {
             // The schedule's rule: cancelled visits are not counted.

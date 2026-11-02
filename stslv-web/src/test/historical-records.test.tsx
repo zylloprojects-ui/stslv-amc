@@ -90,7 +90,7 @@ describe('imported contract', () => {
           systemDescription: 'CCTV',
           status: 'DRAFT',
           scheduleCutoverDate: '2026-10-01',
-          schedule: { visitCount: 1, completedCount: 0, openCount: 0, historicalCount: 1, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '775.000', valueDifference: '845.000' },
+          schedule: { visitCount: 1, completedCount: 0, openCount: 0, historicalCount: 1, cancelledCount: 0, amountMissingCount: 0, scheduledTotal: '775.000', annualAmount: null, servicesPerCycle: null, perServiceAmount: null, expectedTermTotal: null, generatedTotal: '0.000', valueDifference: null },
         }),
       ],
       visits: [HISTORICAL_VISIT],

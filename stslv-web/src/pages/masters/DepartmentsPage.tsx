@@ -151,9 +151,9 @@ export function DepartmentsPage() {
     toggle.reset()
   }
 
-  const canCreate = auth.can('SETTINGS', 'CREATE')
-  const canEdit = auth.can('SETTINGS', 'EDIT')
-  const canExport = auth.can('SETTINGS', 'EXPORT')
+  const canCreate = auth.can('DEPARTMENTS', 'CREATE')
+  const canEdit = auth.can('DEPARTMENTS', 'EDIT')
+  const canExport = auth.can('DEPARTMENTS', 'EXPORT')
   const closeDialog = () => setDialog({ kind: 'none' })
 
   const unavailable = list.isError && isFeatureUnavailable(list.error)

@@ -93,7 +93,7 @@ describe("source traceability", () => {
     const staged = await pool.query("SELECT raw_values ->> 'INVOICE NUMBER' AS invoice FROM legacy_import_rows WHERE project_id = $1", [projectId]);
     const columns = await pool.query<{ column_name: string }>(
       `SELECT column_name FROM information_schema.columns
-       WHERE table_schema = current_schema() AND table_name IN ('projects', 'amc_visits') AND column_name ILIKE '%invoice%'`
+       WHERE table_schema = current_schema() AND table_name IN ('projects', 'amc_visits') AND column_name ILIKE '%invoice%' AND column_name NOT LIKE 'manual\\_invoice\\_%'`
     );
 
     expect(staged.rows[0].invoice).toBe("9001, 9002");

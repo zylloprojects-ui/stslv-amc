@@ -1,16 +1,44 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { ExportButtons } from '../../components/ExportButtons'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
+import { Pager } from '../../components/records'
 import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, PageHeader, Spinner, StatusBadge, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
 import type { RolesResponse, User } from '../../lib/types'
 import { RolesPanel } from './RolesPanel'
-import { CreateUserModal, EditRolesModal, ResetPasswordModal } from './UserDialogs'
+import { isAdmin, isPrivilegedRole, isSuperAdmin } from '../../auth/roles'
+import { CreateUserModal, EditRolesModal, EditUserModal, TemporaryPasswordModal } from './UserDialogs'
+import { queryString } from '../amc/amcApi'
+import { Filter } from '../amc/components'
+import { useHiddenColumns } from '../admin/useHiddenColumns'
+import { ColumnsMenu } from '../clients/ColumnsMenu'
+import { UnsavedChangesGuard } from '../../lib/unsavedChanges'
 
 type Tab = 'users' | 'roles'
+
+const PAGE_SIZE = 25
+
+interface UserPage {
+  items: User[]
+  total: number
+  /** Requests waiting for a decision, whatever the filters. */
+  pendingTotal: number
+  page: number
+  pageSize: number
+}
+
+// The name and the actions always show, so every row stays identified and usable.
+const COLUMN_IDS = ['email', 'role', 'status', 'lastSignIn'] as const
+const COLUMNS: { key: (typeof COLUMN_IDS)[number]; label: string }[] = [
+  { key: 'email', label: 'Email' },
+  { key: 'role', label: 'Role' },
+  { key: 'status', label: 'Status' },
+  { key: 'lastSignIn', label: 'Last sign-in' },
+]
 
 /** Requested from the Sign up page and still waiting for an administrator. */
 const isPending = (user: User) => user.approvalStatus === 'PENDING'
@@ -22,15 +50,32 @@ const toggleLabel = (user: User) => (user.isActive ? 'Deactivate' : isPending(us
 
 /** An approval must give access, so a pending request needs a role first. The API enforces the same rule. */
 const needsRoleToApprove = (user: User) => isPending(user) && user.roles.length === 0
+/** Several roles, assigned before the one-role rule: an administrator chooses one before approving. */
+const hasSeveralRoles = (user: User) => user.roles.length > 1
+const ONE_ROLE_TO_APPROVE = 'This user has more than one role. Choose one role before approving.'
 
 const ROLE_REQUIRED_TO_APPROVE = 'Assign a role before approving this user.'
+
+const PRIVILEGED_ACCOUNT_ONLY = 'Only Super Admin can manage Super Admin and Admin accounts.'
+
+/** Why an administrator cannot issue a temporary password to this user, if they cannot. The API enforces the same. */
+function temporaryPasswordBlock(user: User, isSelf: boolean): string | undefined {
+  if (isSelf) return 'You cannot issue a temporary password for your own account. Change your password under My account.'
+  if (!user.isActive) return 'Only an active account can be issued a temporary password.'
+  return undefined
+}
+
+/** Shown while a temporary password is outstanding: not yet replaced by the user's own. After the time it no longer signs in. */
+function TemporaryPasswordBadge({ expiresAt }: { expiresAt: string }) {
+  return <Badge tone="amber">Temporary password · expires {formatDateTime(expiresAt)}</Badge>
+}
 
 type Dialog =
   | { kind: 'none' }
   | { kind: 'create' }
+  | { kind: 'edit'; user: User }
   | { kind: 'roles'; user: User }
-  | { kind: 'confirm-password'; user: User }
-  | { kind: 'password'; user: User }
+  | { kind: 'temporary-password'; user: User }
   | { kind: 'toggle'; user: User }
   | { kind: 'reject'; user: User }
 
@@ -40,8 +85,32 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
   const [tab, setTab] = useState<Tab>(initialTab)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
+  // Unsaved permission changes on the Roles & Permissions tab, and the tab asked for meanwhile.
+  const [rolesDirty, setRolesDirty] = useState(false)
+  const [pendingTab, setPendingTab] = useState<Tab | null>(null)
 
-  const users = useQuery({ queryKey: ['users'], queryFn: () => api.get<User[]>('/users') })
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [hidden, setHidden] = useHiddenColumns('users', auth.user?.id ?? '', COLUMN_IDS)
+  const show = (key: (typeof COLUMN_IDS)[number]) => !hidden.has(key)
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim())
+      setPage(1)
+    }, 300)
+
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
+  const users = useQuery({
+    queryKey: ['users', 'page', { search, status, page }],
+    queryFn: () => api.get<UserPage>(`/users${queryString({ search, status, page, pageSize: PAGE_SIZE })}`),
+    placeholderData: keepPreviousData,
+  })
   const roles = useQuery({ queryKey: ['roles'], queryFn: () => api.get<RolesResponse>('/roles') })
 
   const toggle = useMutation({
@@ -75,8 +144,15 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
 
   const canCreate = auth.can('USERS', 'CREATE')
   const canEdit = auth.can('USERS', 'EDIT')
+  // Approving and rejecting sign-up requests (USERS:APPROVE); the API checks the same.
+  const canApprove = auth.can('USERS', 'APPROVE')
+  // Issuing temporary passwords is reserved to Super Admin and Admin, on top of user editing.
+  const canIssueTemporaryPassword = canEdit && isAdmin(auth.user)
+  // Super Admin and Admin accounts are managed by Super Admin only; the API enforces the same.
+  const lockedForMe = (user: User) => !isSuperAdmin(auth.user) && user.roles.some((role) => isPrivilegedRole(role.code))
   const roleList = roles.data?.roles ?? []
-  const pendingCount = users.data?.filter(isPending).length ?? 0
+  const pendingCount = users.data?.pendingTotal ?? 0
+  const filtered = search !== '' || status !== ''
 
   const tabButton = (value: Tab, label: string) => (
     <button
@@ -86,6 +162,11 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
       aria-selected={tab === value}
       aria-controls="users-tabpanel"
       onClick={() => {
+        if (value === tab) return
+        if (tab === 'roles' && rolesDirty) {
+          setPendingTab(value)
+          return
+        }
         setTab(value)
         setNotice(null)
       }}
@@ -104,11 +185,16 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
         title={initialTab === 'roles' ? 'Roles & Permissions' : 'Users & Access'}
         description="Who can sign in, and what each role is allowed to do."
         actions={
-          canCreate &&
-          tab === 'users' && (
-            <Button onClick={() => setDialog({ kind: 'create' })} disabled={!roles.data}>
-              Create User
-            </Button>
+          tab === 'users' &&
+          (canCreate || isAdmin(auth.user)) && (
+            <div className="flex flex-wrap items-center gap-2.5">
+              {isAdmin(auth.user) && <ExportButtons what="Users" fileStem="users" path={(format) => `/users/export${queryString({ search, status, format })}`} onError={setExportError} />}
+              {canCreate && (
+                <Button onClick={() => setDialog({ kind: 'create' })} disabled={!roles.data}>
+                  Create User
+                </Button>
+              )}
+            </div>
           )
         }
       />
@@ -117,6 +203,12 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
         {tabButton('users', 'Users')}
         {tabButton('roles', 'Roles & Permissions')}
       </div>
+
+      {exportError && tab === 'users' && (
+        <div className="mb-4">
+          <Alert onDismiss={() => setExportError(null)}>{exportError}</Alert>
+        </div>
+      )}
 
       {notice && (
         <div className="mb-4">
@@ -131,20 +223,48 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
           <div className="mb-4">
             <Alert tone="info">
               {pendingCount === 1 ? '1 sign-up request is' : `${pendingCount} sign-up requests are`} waiting for approval. A pending account cannot
-              sign in.{canEdit && ' Assign a role, then approve it.'}
+              sign in.{canApprove && (canEdit ? ' Assign a role, then approve it.' : ' Approve it once it has a role.')}
             </Alert>
           </div>
         )}
         {tab === 'users' && (
           <Card>
+            <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-3">
+              <Filter label="Search">
+                {(id, className) => <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Name, email or role" className={className} />}
+              </Filter>
+              <Filter label="Status">
+                {(id, className) => (
+                  <select
+                    id={id}
+                    value={status}
+                    onChange={(event) => {
+                      setStatus(event.target.value)
+                      setPage(1)
+                    }}
+                    className={className}
+                  >
+                    <option value="">All statuses</option>
+                    <option value="ACTIVE">Active</option>
+                    <option value="INACTIVE">Inactive</option>
+                    <option value="PENDING">Pending</option>
+                    <option value="REJECTED">Rejected</option>
+                  </select>
+                )}
+              </Filter>
+              <div className="flex items-center justify-end sm:col-span-2 lg:col-span-1">
+                <ColumnsMenu options={COLUMNS} hidden={hidden} onChange={setHidden} />
+              </div>
+            </div>
             {users.isPending && <Spinner label="Loading users" />}
             {users.isError && (
               <div className="p-4">
                 <Alert>{errorMessage(users.error)}</Alert>
               </div>
             )}
-            {users.data && users.data.length === 0 && <EmptyState title="No users yet" />}
-            {users.data && users.data.length > 0 && (
+            {users.data && users.data.items.length === 0 && <EmptyState title={filtered ? 'No users match your filters' : 'No users yet'} description={filtered ? 'Try a different search or status.' : undefined} />}
+            {users.data && users.data.items.length > 0 && (
+              <>
               <TableScroll label="Users">
                 <table className={TABLE.table}>
                   <caption className="sr-only">Users</caption>
@@ -156,19 +276,12 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                       <th scope="col" className={TABLE.th}>
                         Name
                       </th>
-                      <th scope="col" className={TABLE.th}>
-                        Email
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Roles
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Status
-                      </th>
-                      <th scope="col" className={TABLE.th}>
-                        Last sign-in
-                      </th>
-                      {canEdit && (
+                      {COLUMNS.filter((column) => show(column.key)).map((column) => (
+                        <th key={column.key} scope="col" className={TABLE.th}>
+                          {column.label}
+                        </th>
+                      ))}
+                      {(canEdit || canApprove) && (
                         <th scope="col" className={cx(TABLE.th, 'text-right')}>
                           Actions
                         </th>
@@ -176,28 +289,30 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {users.data.map((user, index) => {
+                    {users.data.items.map((user, index) => {
                       const isSelf = user.id === auth.user?.id
+                      const locked = lockedForMe(user)
 
                       return (
                         <tr key={user.id} className={TABLE.row}>
-                          <td className={TABLE.sn}>{0 + index + 1}</td>
+                          <td className={TABLE.sn}>{(users.data.page - 1) * users.data.pageSize + index + 1}</td>
                           <td className={cx(TABLE.td, TABLE.text, 'font-medium text-slate-900')}>
                             {user.fullName}
                             {isSelf && <span className="ml-2 text-xs font-normal text-slate-500">(you)</span>}
                           </td>
-                          <td className={cx(TABLE.td, TABLE.unbroken)}>{user.email}</td>
-                          <td className={TABLE.td}>
+                          {show('email') && <td className={cx(TABLE.td, TABLE.unbroken)}>{user.email}</td>}
+                          {show('role') && <td className={TABLE.td}>
                             <div className="flex flex-wrap gap-1">
                               {user.roles.length === 0 && <span className="text-slate-500">No role</span>}
+                              {hasSeveralRoles(user) && <Badge tone="amber">Several roles: choose one</Badge>}
                               {user.roles.map((role) => (
                                 <Badge key={role.id} tone="blue">
                                   {role.name}
                                 </Badge>
                               ))}
                             </div>
-                          </td>
-                          <td className={TABLE.td}>
+                          </td>}
+                          {show('status') && <td className={TABLE.td}>
                             {isPending(user) ? (
                               <Badge tone="amber">Pending approval</Badge>
                             ) : isRejected(user) ? (
@@ -205,34 +320,80 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                             ) : (
                               <StatusBadge active={user.isActive} />
                             )}
-                          </td>
-                          <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>
-                          {canEdit && (
+                            {user.temporaryCredentialExpiresAt && (
+                              <div className="mt-1">
+                                <TemporaryPasswordBadge expiresAt={user.temporaryCredentialExpiresAt} />
+                              </div>
+                            )}
+                          </td>}
+                          {show('lastSignIn') && <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>}
+                          {(canEdit || canApprove) && (
                             <td className={cx(TABLE.td, 'whitespace-nowrap text-right')}>
                               {isRejected(user) ? (
                                 <span className="text-xs text-slate-500">No actions</span>
                               ) : (
                               <ActionGroup>
-                                <ActionButton
-                                  label={`Change roles of ${user.fullName}`}
-                                  icon="roles"
-                                  disabled={isSelf || !roles.data}
-                                  hint={isSelf ? 'You cannot change your own roles.' : undefined}
-                                  onClick={() => setDialog({ kind: 'roles', user })}
-                                />
-                                <ActionButton label={`Reset password of ${user.fullName}`} icon="key" onClick={() => setDialog({ kind: 'confirm-password', user })} />
+                                {canEdit && (
+                                  <ActionButton
+                                    label={`Edit ${user.fullName}`}
+                                    icon="edit"
+                                    disabled={locked}
+                                    hint={locked ? PRIVILEGED_ACCOUNT_ONLY : undefined}
+                                    onClick={() => setDialog({ kind: 'edit', user })}
+                                  />
+                                )}
+                                {canEdit && (
+                                  <ActionButton
+                                    label={`Change role of ${user.fullName}`}
+                                    icon="roles"
+                                    disabled={isSelf || locked || !roles.data}
+                                    hint={isSelf ? 'You cannot change your own role.' : locked ? PRIVILEGED_ACCOUNT_ONLY : undefined}
+                                    onClick={() => setDialog({ kind: 'roles', user })}
+                                  />
+                                )}
+                                {canIssueTemporaryPassword && (
+                                  <ActionButton
+                                    label={`Generate temporary password for ${user.fullName}`}
+                                    icon="key"
+                                    disabled={locked || temporaryPasswordBlock(user, isSelf) !== undefined}
+                                    hint={locked ? PRIVILEGED_ACCOUNT_ONLY : temporaryPasswordBlock(user, isSelf)}
+                                    onClick={() => setDialog({ kind: 'temporary-password', user })}
+                                  />
+                                )}
+                                {(isPending(user) ? canApprove : canEdit) && (
                                 <ActionButton
                                   danger={user.isActive && !isSelf}
                                   label={`${toggleLabel(user)} ${user.fullName}`}
                                   icon={user.isActive ? 'deactivate' : isPending(user) ? 'approve' : 'reactivate'}
-                                  disabled={isSelf || needsRoleToApprove(user)}
-                                  hint={isSelf ? 'You cannot deactivate your own account.' : needsRoleToApprove(user) ? ROLE_REQUIRED_TO_APPROVE : undefined}
+                                  disabled={isSelf || locked || needsRoleToApprove(user) || (isPending(user) && hasSeveralRoles(user))}
+                                  hint={
+                                    isSelf
+                                      ? 'You cannot deactivate your own account.'
+                                      : locked
+                                        ? PRIVILEGED_ACCOUNT_ONLY
+                                        : needsRoleToApprove(user)
+                                        ? ROLE_REQUIRED_TO_APPROVE
+                                        : isPending(user) && hasSeveralRoles(user)
+                                          ? ONE_ROLE_TO_APPROVE
+                                          : undefined
+                                  }
                                   onClick={() => setDialog({ kind: 'toggle', user })}
                                 />
-                                {isPending(user) && <ActionButton danger label={`Reject ${user.fullName}`} icon="reject" onClick={() => setDialog({ kind: 'reject', user })} />}
+                                )}
+                                {isPending(user) && canApprove && (
+                                  <ActionButton
+                                    danger
+                                    label={`Reject ${user.fullName}`}
+                                    icon="reject"
+                                    disabled={locked}
+                                    hint={locked ? PRIVILEGED_ACCOUNT_ONLY : undefined}
+                                    onClick={() => setDialog({ kind: 'reject', user })}
+                                  />
+                                )}
                               </ActionGroup>
                               )}
-                              {needsRoleToApprove(user) && <p className="mt-1 text-xs text-amber-800">{ROLE_REQUIRED_TO_APPROVE}</p>}
+                              {needsRoleToApprove(user) && canApprove && <p className="mt-1 text-xs text-amber-800">{ROLE_REQUIRED_TO_APPROVE}</p>}
+                              {isPending(user) && hasSeveralRoles(user) && canApprove && <p className="mt-1 text-xs text-amber-800">{ONE_ROLE_TO_APPROVE}</p>}
                             </td>
                           )}
                         </tr>
@@ -241,6 +402,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                   </tbody>
                 </table>
               </TableScroll>
+              <Pager page={users.data.page} pageSize={users.data.pageSize} total={users.data.total} shown={users.data.items.length} onPage={setPage} />
+              </>
             )}
           </Card>
         )}
@@ -249,10 +412,32 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
           <>
             {roles.isPending && <Spinner label="Loading roles" />}
             {roles.isError && <Alert>{errorMessage(roles.error)}</Alert>}
-            {roles.data && <RolesPanel catalogue={roles.data} canEdit={canEdit} />}
+            {roles.data && <RolesPanel catalogue={roles.data} canEdit={canEdit} onDirtyChange={setRolesDirty} />}
           </>
         )}
       </div>
+
+      {/* Any other way out (sidebar, search, Back/Forward, sign-out, reload) asks first too. */}
+      <UnsavedChangesGuard
+        when={tab === 'roles' && rolesDirty}
+        message="The role permissions have changes that are not saved. Discard them and leave Roles & Permissions?"
+      />
+
+      {pendingTab && (
+        <ConfirmDialog
+          title="Discard unsaved changes?"
+          message="The role permissions have changes that are not saved. Discard them and leave Roles & Permissions?"
+          confirmLabel="Discard changes"
+          danger
+          onConfirm={() => {
+            setRolesDirty(false)
+            setTab(pendingTab)
+            setPendingTab(null)
+            setNotice(null)
+          }}
+          onCancel={() => setPendingTab(null)}
+        />
+      )}
 
       {dialog.kind === 'create' && (
         <CreateUserModal
@@ -260,6 +445,17 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
           onClose={closeDialog}
           onSaved={(user) => {
             setNotice(`${user.fullName} was created.`)
+            setDialog({ kind: 'none' })
+          }}
+        />
+      )}
+
+      {dialog.kind === 'edit' && (
+        <EditUserModal
+          user={dialog.user}
+          onClose={closeDialog}
+          onSaved={(user) => {
+            setNotice(`${user.fullName} was updated.`)
             setDialog({ kind: 'none' })
           }}
         />
@@ -277,35 +473,13 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
         />
       )}
 
-      {dialog.kind === 'confirm-password' && (
-        <ConfirmDialog
-          title="Reset Password?"
-          message={
-            <>
-              <p>Are you sure you want to reset the password for this user?</p>
-              <p className="mt-3">
-                <strong>{dialog.user.fullName}</strong>
-                <span className="block break-all">{dialog.user.email}</span>
-              </p>
-              <p className="mt-3">Nothing changes until you set the new password in the next step.</p>
-            </>
-          }
-          confirmLabel="Yes, Reset Password"
-          onConfirm={() => setDialog({ kind: 'password', user: dialog.user })}
-          onCancel={closeDialog}
-        />
-      )}
-
-      {dialog.kind === 'password' && (
-        <ResetPasswordModal
+      {dialog.kind === 'temporary-password' && (
+        <TemporaryPasswordModal
           user={dialog.user}
           onClose={closeDialog}
-          onSaved={() => {
-            setNotice(
-              `Password reset successfully for ${dialog.user.fullName}. They have been signed out and must sign in again using the new password.`,
-            )
-            setDialog({ kind: 'none' })
-          }}
+          onIssued={() =>
+            setNotice(`A temporary password was issued for ${dialog.user.fullName}. They have been signed out and must change it at sign-in.`)
+          }
         />
       )}
 

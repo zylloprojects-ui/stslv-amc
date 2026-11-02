@@ -2,11 +2,12 @@ import { useState, type ReactNode } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { cx } from '../lib/format'
+import { signOutSafely } from '../lib/leaveGuard'
 import type { Theme } from '../lib/preferences'
 import { isAdmin } from '../auth/roles'
 import { NAVIGATION, navItemVisible } from './navigation'
 
-type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Master Data Center' | 'AMC Operations' | 'Finance' | 'Administration' | 'settings' | 'logout'
+type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Master Data Center' | 'AMC Operations' | 'Finance' | 'Reporting' | 'Administration' | 'settings' | 'logout'
 
 const NAV_ICONS: Record<IconKey, ReactNode> = {
   close: <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />,
@@ -47,6 +48,11 @@ const NAV_ICONS: Record<IconKey, ReactNode> = {
     <>
       <rect x="3.5" y="7" width="17" height="12.5" rx="2.5" />
       <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3.5 12.5h17" strokeLinecap="round" />
+    </>
+  ),
+  Reporting: (
+    <>
+      <path d="M4 20V10M10 20V4M16 20v-7M21 20H3" strokeLinecap="round" strokeLinejoin="round" />
     </>
   ),
   Finance: (
@@ -143,7 +149,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
   const settingsAllowed = auth.can('SETTINGS', 'VIEW')
   const sections = NAVIGATION.map((section) => ({
     ...section,
-    items: section.items.filter((item) => item.path !== '/settings' && navItemVisible(item, auth.can, isAdmin(auth.user))),
+    items: section.items.filter((item) => item.path !== '/settings' && !item.settingsArea && navItemVisible(item, auth.can, isAdmin(auth.user), auth.canRead)),
   })).filter((section) => section.items.length > 0)
 
   const topLevel = (...extra: (string | false)[]) => cx(TOP_LEVEL, collapsed && 'justify-center px-0', ...extra)
@@ -296,7 +302,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
             {label('Settings')}
           </NavLink>
         )}
-        <button type="button" onClick={auth.logout} title={collapsed ? 'Sign Out' : undefined} className={topLevel(TOP_IDLE)}>
+        <button type="button" onClick={() => void signOutSafely(auth.logout)} title={collapsed ? 'Sign Out' : undefined} className={topLevel(TOP_IDLE)}>
           <NavIcon name="logout" />
           {label('Sign Out')}
         </button>

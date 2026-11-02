@@ -419,3 +419,70 @@ describe('service status visit actions and figure scope', () => {
     expect(screen.getByLabelText('Scheduled year')).toHaveValue(YEAR)
   })
 })
+
+describe('service status filter lists', () => {
+  const EMPTY: ServiceStatusOptions = { clients: [], salesEngineers: [], systemTypes: [], frequencies: [], years: [], reportNumberAvailable: true }
+  const entries = (label: string) => [...(screen.getByLabelText(label) as HTMLSelectElement).options].map((option) => ({ text: option.textContent, disabled: option.disabled }))
+
+  it('says why a list is empty when no contract has current visits, and keeps every filter', async () => {
+    serviceApi(ADMIN, { items: [], override: (request) => (request.path === '/amc/service-status/options' ? ok(EMPTY) : undefined) })
+    renderApp('/amc/service-status')
+
+    await waitFor(() => expect(entries('Client')).toEqual([
+      { text: 'All clients', disabled: false },
+      { text: 'No clients with current AMC visits', disabled: true },
+    ]))
+    expect(entries('Sales Engineer')).toEqual([
+      { text: 'All engineers', disabled: false },
+      { text: 'No sales engineers linked to current AMC visits', disabled: true },
+    ])
+    expect(entries('System')[1]).toEqual({ text: 'No system types linked to current AMC visits', disabled: true })
+    expect(entries('Maintenance Frequency')[1]).toEqual({ text: 'No frequencies on current AMC visits', disabled: true })
+    // "All" stays chosen: the notice can never be picked.
+    expect(screen.getByLabelText('Client')).toHaveValue('')
+  })
+
+  it('keeps the filters on screen and says so when the lists cannot be loaded', async () => {
+    serviceApi(ADMIN, { override: (request) => (request.path === '/amc/service-status/options' ? fail(500, 'INTERNAL', 'Database unavailable.') : undefined) })
+    renderApp('/amc/service-status')
+
+    await waitFor(() => expect(entries('Sales Engineer')[1]).toEqual({ text: 'The list could not be loaded', disabled: true }))
+    expect(entries('Client')[1]).toEqual({ text: 'The list could not be loaded', disabled: true })
+    expect(screen.getByLabelText('System')).toBeInTheDocument()
+  })
+
+  it('offers every option the server returns, with no notice', async () => {
+    serviceApi(ADMIN)
+    renderApp('/amc/service-status')
+
+    await waitFor(() => expect(entries('Client').map((entry) => entry.text)).toEqual(['All clients', 'Test Hotel One', 'Test Hotel Two']))
+    expect(entries('Sales Engineer').map((entry) => entry.text)).toEqual(['All engineers', 'Sara Sales'])
+    expect(entries('Maintenance Frequency').map((entry) => entry.text)).toEqual(['All frequencies', 'Monthly', 'Quarterly'])
+  })
+
+  it('hides the master-list filters only when the server says they are unavailable', async () => {
+    serviceApi(ADMIN, { override: (request) => (request.path === '/amc/service-status/options' ? ok({ ...OPTIONS, salesEngineers: null, systemTypes: null }) : undefined) })
+    renderApp('/amc/service-status')
+
+    await waitFor(() => expect(entries('Client')).toHaveLength(3))
+    expect(screen.queryByLabelText('Sales Engineer')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('System')).not.toBeInTheDocument()
+  })
+})
+
+describe('service status download', () => {
+  it('sends the hidden columns', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const api = serviceApi(ADMIN, { override: (request) => (request.path === '/amc/service-status/export' ? ok(null) : undefined) })
+    renderApp('/amc/service-status')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Sales Engineer' }))
+    await userEvent.keyboard('{Escape}')
+    await userEvent.click(screen.getByRole('button', { name: 'Export service status to Excel' }))
+    await waitFor(() => expect(api.find('GET', '/amc/service-status/export').length).toBe(1))
+    expect(api.find('GET', '/amc/service-status/export')[0]?.query.get('hidden')).toBe('engineer')
+  })
+})

@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
@@ -6,7 +7,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { queryString } from './amcApi'
@@ -360,7 +361,7 @@ export function ServiceStatusPage() {
   const canReopen = auth.can('AMC_EXECUTION', 'APPROVE')
   // Visit actions read the visit from the execution API, so they also need its view permission.
   const canAct = canSave && auth.can('AMC_EXECUTION', 'VIEW')
-  const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
+  const canExport = auth.can('SERVICE_STATUS', 'EXPORT')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
 
   const options = useQuery({ queryKey: ['amc', 'service-status', 'options'], queryFn: () => api.get<ServiceStatusOptions>('/amc/service-status/options') })
@@ -387,8 +388,7 @@ export function ServiceStatusPage() {
     queryClient.setQueriesData<ServiceStatusList>({ queryKey: ['amc', 'service-status', 'list'] }, (current) =>
       current ? { ...current, items: current.items.map((item) => (item.id === saved.id ? saved : item)) } : current,
     )
-    void queryClient.invalidateQueries({ queryKey: ['amc'] })
-    void queryClient.invalidateQueries({ queryKey: ['dashboard'] })
+    void refreshOperationalData(queryClient)
   }
 
   const data = list.data
@@ -405,11 +405,11 @@ export function ServiceStatusPage() {
         description="Every scheduled AMC service, one row per visit: completion and service report number."
         actions={
           canExport ? (
-            // Covers every service that matches the filters below, on every page.
+            // Covers every service that matches the filters below, on every page, with the columns shown.
             <ExportButtons
               what="service status"
               fileStem="service-status"
-              path={(format) => `/amc/service-status/export${queryString({ format, ...params })}`}
+              path={(format) => `/amc/service-status/export${queryString({ format, ...params, hidden: [...hidden].join(',') })}`}
               onError={setExportError}
             />
           ) : undefined
@@ -488,6 +488,7 @@ export function ServiceStatusPage() {
               {(id, className) => (
                 <select id={id} value={filters.clientId} onChange={(event) => change('clientId')(event.target.value)} className={className}>
                   <option value="">All clients</option>
+                  <OptionsNotice source={options} count={opts?.clients.length ?? 0} empty="No clients with current AMC visits" />
                   {(opts?.clients ?? []).map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -496,12 +497,13 @@ export function ServiceStatusPage() {
                 </select>
               )}
             </Filter>
-            {opts?.salesEngineers && (
+            {opts?.salesEngineers !== null && (
               <Filter label="Sales Engineer">
                 {(id, className) => (
                   <select id={id} value={filters.salesEngineerId} onChange={(event) => change('salesEngineerId')(event.target.value)} className={className}>
                     <option value="">All engineers</option>
-                    {opts.salesEngineers?.map((engineer) => (
+                    <OptionsNotice source={options} count={opts?.salesEngineers?.length ?? 0} empty="No sales engineers linked to current AMC visits" />
+                    {(opts?.salesEngineers ?? []).map((engineer) => (
                       <option key={engineer.id} value={engineer.id}>
                         {engineer.name}
                       </option>
@@ -510,12 +512,13 @@ export function ServiceStatusPage() {
                 )}
               </Filter>
             )}
-            {opts?.systemTypes && (
+            {opts?.systemTypes !== null && (
               <Filter label="System">
                 {(id, className) => (
                   <select id={id} value={filters.systemTypeId} onChange={(event) => change('systemTypeId')(event.target.value)} className={className}>
                     <option value="">All systems</option>
-                    {opts.systemTypes?.map((type) => (
+                    <OptionsNotice source={options} count={opts?.systemTypes?.length ?? 0} empty="No system types linked to current AMC visits" />
+                    {(opts?.systemTypes ?? []).map((type) => (
                       <option key={type.id} value={type.id}>
                         {type.name}
                       </option>
@@ -528,6 +531,7 @@ export function ServiceStatusPage() {
               {(id, className) => (
                 <select id={id} value={filters.frequency} onChange={(event) => change('frequency')(event.target.value)} className={className}>
                   <option value="">All frequencies</option>
+                  <OptionsNotice source={options} count={opts?.frequencies.length ?? 0} empty="No frequencies on current AMC visits" />
                   {(opts?.frequencies ?? []).map((frequency) => (
                     <option key={frequency.code} value={frequency.code}>
                       {frequency.label}

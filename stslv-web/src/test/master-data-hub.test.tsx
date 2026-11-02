@@ -4,12 +4,12 @@ import { describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
 import type { MaintenanceFrequencyRule } from '../pages/masters/maintenanceFrequencyTypes'
 import type { Department, MasterSummary, SystemType } from '../pages/masters/masterTypes'
-import { ACCOUNTANT, ADMIN, fail, makeClient, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, ACCOUNTANT, ADMIN, fail, makeClient, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
 // Master Data Center hub, its navigation and the three list pages it adds
 // (System Types, Maintenance Frequencies, Departments). Every record is invented.
 
-const SETTINGS_VIEWER: SessionUser = { ...ADMIN, id: '9', roles: [{ id: '9', code: 'CUSTOM', name: 'Custom' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW'] }
+const SETTINGS_VIEWER: SessionUser = { ...ADMIN, id: '9', roles: [{ id: '9', code: 'CUSTOM', name: 'Custom' }], permissions: afterPageSplit(['DASHBOARD:VIEW', 'SETTINGS:VIEW']) }
 const NO_MASTERS: SessionUser = { ...ADMIN, id: '8', roles: [{ id: '8', code: 'CUSTOM', name: 'Custom' }], permissions: ['DASHBOARD:VIEW'] }
 
 const stamp = { createdAt: '2026-10-20T08:00:00.000Z', updatedAt: '2026-10-20T08:00:00.000Z' }

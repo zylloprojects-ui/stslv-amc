@@ -1,6 +1,7 @@
 import { pool } from "../../config/database";
 import { CONTRACT_STATUSES, type ContractStatus, type VisitStatus } from "../amc/amc.constants";
 import { getWorkload, type WorkloadMonth } from "../amc/reports.service";
+import { IN_SCOPE } from "../amc/service-status.service";
 import type { AuthContext } from "../auth/access";
 import { schemaHas } from "../../shared/schema-features";
 
@@ -23,15 +24,26 @@ export const CHART_MONTHS = 6;
 const LIST_LIMIT = 10;
 
 /**
- * Payment is not recorded anywhere in STSLV AMC: an invoice is ISSUED or
- * CANCELLED (migration 0060), with no paid date or paid amount. Payment
- * figures are therefore reported as unavailable, never derived from an
- * invoice number or an invoice status.
+ * Paid and Unpaid are the approved reference status, from the manual Invoice No.
+ * of each service (migration 0100): over the same services as Accounts, so the two
+ * always agree. They do not verify that money was received.
  */
-export const PAYMENT_UNAVAILABLE = {
-  available: false as const,
-  reason: "Payment is not recorded in STSLV AMC. Invoices are tracked as Issued or Cancelled only, with no paid date or paid amount.",
-};
+export interface PaymentFigures {
+  paid: number;
+  paidValue: string;
+  unpaid: number;
+  unpaidValue: string;
+  /** Services whose Invoice No. was entered this calendar month, and their value. */
+  paidThisMonth: number;
+  paidThisMonthValue: string;
+}
+
+export interface PaymentTrendMonth {
+  /** "YYYY-MM". */
+  month: string;
+  count: number;
+  value: string;
+}
 
 export interface OperationsKpis {
   /** Requires AMC_CONTRACTS:VIEW. */
@@ -39,9 +51,9 @@ export interface OperationsKpis {
     active: number;
     /** Active contracts whose validity has already ended (still marked Active by a user). */
     activePastValidity: number;
-    /** Sum of contract_value over active contracts. Not annualised. */
+    /** Sum of contract_value (AMC Value / Year) over active contracts, as entered. Legacy values are not reinterpreted. */
     activeValue: string;
-    /** Sum of final_credit, as entered, over active contracts. Meaning unconfirmed (Q1). */
+    /** Sum of final_credit, as entered, over active contracts. An annual Billing Basis option. */
     finalCreditTotal: string;
     /** Active contracts that have a final credit figure. */
     finalCreditRecorded: number;
@@ -58,9 +70,8 @@ export interface OperationsKpis {
     completedThisMonth: number;
     openThisMonth: number;
   } | null;
-  /** Requires INVOICES:VIEW. Always unavailable today (see PAYMENT_UNAVAILABLE). */
-  unpaidInvoices: typeof PAYMENT_UNAVAILABLE | null;
-  paidThisMonth: typeof PAYMENT_UNAVAILABLE | null;
+  /** Requires INVOICES:VIEW. Reference status, see PaymentFigures. */
+  payments: PaymentFigures | null;
 }
 
 export interface PortfolioStatus {
@@ -105,8 +116,8 @@ export interface OperationsDashboard {
   workload: { months: WorkloadMonth[] } | null;
   /** Requires AMC_SCHEDULE:VIEW or AMC_EXECUTION:VIEW. */
   schedule: { today: ScheduleItem[]; todayTotal: number; upcoming: ScheduleItem[]; upcomingTotal: number; upcomingDays: number } | null;
-  /** Requires INVOICES:VIEW. */
-  payments: typeof PAYMENT_UNAVAILABLE | null;
+  /** Requires INVOICES:VIEW. Value of the services marked Paid per month, by when the Invoice No. was entered. */
+  paymentTrend: { months: PaymentTrendMonth[] } | null;
 }
 
 export const canViewVisitCounts = (auth: AuthContext) =>
@@ -235,6 +246,48 @@ export const COUNTED_VISIT = `v.status NOT IN ('CANCELLED', 'HISTORICAL')
 
 const UPCOMING_DAYS = 7;
 
+export async function paymentFigures(): Promise<PaymentFigures> {
+  const paidThisMonth = "v.manual_invoice_no IS NOT NULL AND date_trunc('month', v.manual_invoice_at) = date_trunc('month', now())";
+  const result = await pool.query<{ paid: number; paid_value: string; unpaid: number; unpaid_value: string; month_count: number; month_value: string }>(
+    `SELECT count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS paid,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS paid_value,
+            count(*) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS unpaid,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS unpaid_value,
+            count(*) FILTER (WHERE ${paidThisMonth})::int AS month_count,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${paidThisMonth}), 0)::numeric(16,3)::text AS month_value
+     FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
+     WHERE ${IN_SCOPE}`
+  );
+  const row = result.rows[0];
+
+  return {
+    paid: row?.paid ?? 0,
+    paidValue: row?.paid_value ?? "0.000",
+    unpaid: row?.unpaid ?? 0,
+    unpaidValue: row?.unpaid_value ?? "0.000",
+    paidThisMonth: row?.month_count ?? 0,
+    paidThisMonthValue: row?.month_value ?? "0.000",
+  };
+}
+
+/** The last CHART_MONTHS months, oldest first, with zeros where nothing was marked Paid. */
+async function paymentTrend(): Promise<PaymentTrendMonth[]> {
+  const result = await pool.query<PaymentTrendMonth>(
+    `SELECT to_char(m.month, 'YYYY-MM') AS month, count(s.id)::int AS count, COALESCE(sum(s.visit_amount), 0)::numeric(16,3)::text AS value
+     FROM generate_series(date_trunc('month', now()) - make_interval(months => $1::int - 1), date_trunc('month', now()), interval '1 month') AS m (month)
+     LEFT JOIN (
+       SELECT v.id, v.visit_amount, v.manual_invoice_at
+       FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
+       WHERE ${IN_SCOPE} AND v.manual_invoice_no IS NOT NULL
+     ) s ON date_trunc('month', s.manual_invoice_at) = m.month
+     GROUP BY m.month
+     ORDER BY m.month`,
+    [CHART_MONTHS]
+  );
+
+  return result.rows;
+}
+
 async function schedule(): Promise<NonNullable<OperationsDashboard["schedule"]>> {
   const select = `
     SELECT v.id, v.amc_contract_id, cl.id AS client_id, cl.name AS client_name, c.system_description,
@@ -297,13 +350,15 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
   const canInvoices = auth.permissions.has("INVOICES:VIEW");
   const renewals = canContracts ? await schemaHas(["amc_contracts.renewed_from_id"]) : false;
 
-  const [clock, contracts, statusBreakdown, expiringList, workload, todayWork] = await Promise.all([
+  const [clock, contracts, statusBreakdown, expiringList, workload, todayWork, payments, trend] = await Promise.all([
     pool.query<{ today: string; time_zone: string }>("SELECT current_date::text AS today, current_setting('TimeZone') AS time_zone"),
     canContracts ? contractKpis(renewals) : null,
     canContracts ? portfolio() : null,
     canContracts ? expiring(renewals) : null,
     canVisits ? getWorkload({ months: CHART_MONTHS }) : null,
     canVisits ? schedule() : null,
+    canInvoices ? paymentFigures() : null,
+    canInvoices ? paymentTrend() : null,
   ]);
   const thisMonth = workload?.months[0];
 
@@ -313,14 +368,13 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
     kpis: {
       contracts,
       services: thisMonth ? { thisMonth: thisMonth.planned, completedThisMonth: thisMonth.completed, openThisMonth: thisMonth.open } : null,
-      unpaidInvoices: canInvoices ? PAYMENT_UNAVAILABLE : null,
-      paidThisMonth: canInvoices ? PAYMENT_UNAVAILABLE : null,
+      payments,
     },
     portfolio: statusBreakdown,
     expiring: expiringList,
     workload,
     schedule: todayWork,
-    payments: canInvoices ? PAYMENT_UNAVAILABLE : null,
+    paymentTrend: trend ? { months: trend } : null,
   };
 }
 

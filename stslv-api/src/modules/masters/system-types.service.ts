@@ -102,7 +102,7 @@ export async function deleteSystemType(auth: AuthContext, id: string): Promise<v
       await logActivity(db, {
         userId: auth.user.id,
         action: "system_type.deleted",
-        module: "SETTINGS",
+        module: SYSTEM_TYPES.module,
         entityType: SYSTEM_TYPES.entityType,
         entityId: id,
         description: `System type "${type.name}" deleted.`,
@@ -191,7 +191,7 @@ export async function buildSystemTypesExport(auth: AuthContext, query: ExportSys
     logActivity(pool, {
       userId: auth.user.id,
       action: "system_types.exported",
-      module: "SETTINGS",
+      module: SYSTEM_TYPES.module,
       entityType: SYSTEM_TYPES.entityType,
       entityId: null,
       description: `Exported the system type list as ${format === "xlsx" ? "Excel" : "PDF"} (${total} ${total === 1 ? "system type" : "system types"}).`,

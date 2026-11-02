@@ -1,15 +1,19 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { ExportButtons } from '../../components/ExportButtons'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
-import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { initialsOf } from '../../lib/format'
 import type { Paged } from '../../lib/types'
 import { ClientAvatar } from '../clients/clientAvatar'
+import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import type { DashboardSummary } from '../dashboard/metrics'
-import { fetchClients, queryString } from './amcApi'
+import { queryString } from './amcApi'
+import { amcReference } from './calendar/calendarTypes'
 import { formatDate, formatMoney } from './amcFormat'
 import { ContractStatusPill, Filter, Pager, Pill } from './components'
 import { ContractFormModal } from './ContractFormModal'
@@ -17,7 +21,6 @@ import { StatTile } from '../../components/StatTile'
 import {
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
-  FREQUENCY_LABELS,
   frequencyLabel,
   type Contract,
   type ContractStatus,
@@ -25,6 +28,57 @@ import {
 } from './types'
 
 const PAGE_SIZE = 25
+
+/** The columns a user may hide; the same ids the export accepts. # , Client and Actions always stay. */
+type ColumnKey = 'reference' | 'system' | 'engineer' | 'validity' | 'frequency' | 'contractValue' | 'finalCredit' | 'visits' | 'status'
+
+const COLUMN_OPTIONS: ColumnOption<ColumnKey>[] = [
+  { key: 'reference', label: 'AMC Reference' },
+  { key: 'system', label: 'System' },
+  { key: 'engineer', label: 'Engineer' },
+  { key: 'validity', label: 'Validity' },
+  { key: 'frequency', label: 'Frequency' },
+  { key: 'contractValue', label: 'Contract value' },
+  { key: 'finalCredit', label: 'Credit' },
+  { key: 'visits', label: 'Visits' },
+  { key: 'status', label: 'Status' },
+]
+
+// The hidden columns, remembered in this browser only. Storage may be blocked; the choice then lasts for this visit.
+const COLUMNS_KEY = 'stslev.amc-contracts.hidden-columns'
+
+function readHiddenColumns(): Set<ColumnKey> {
+  try {
+    const stored = JSON.parse(localStorage.getItem(COLUMNS_KEY) ?? '[]') as unknown
+    const known = new Set<string>(COLUMN_OPTIONS.map((option) => option.key))
+
+    return new Set(Array.isArray(stored) ? stored.filter((key): key is ColumnKey => typeof key === 'string' && known.has(key)) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveHiddenColumns(hidden: Set<ColumnKey>) {
+  try {
+    localStorage.setItem(COLUMNS_KEY, JSON.stringify([...hidden]))
+  } catch {
+    // Nothing to do: the choice lasts for this visit.
+  }
+}
+
+/** Totals are PostgreSQL's sums over every contract the filters select, not only this page. */
+type ContractList = Paged<Contract> & { totals?: { contractValue: string; finalCredit: string } }
+
+/** GET /amc/contracts/filter-options: the values present on contracts. */
+interface ContractFilterOptions {
+  clients: { id: string; name: string }[]
+  systems: string[]
+  /** Null on a database without the Sales Engineer link: the filter is then not offered. */
+  salesEngineers: { id: string; name: string }[] | null
+  frequencies: { code: string; label: string }[]
+  /** Every calendar year a contract's validity period covers. */
+  years: number[]
+}
 
 interface TileSpec {
   key: ContractStatus | 'all'
@@ -39,8 +93,11 @@ interface TileSpec {
 
 /** The contract figures from the dashboard summary, as clickable tiles that filter the register. Hidden when the figures are not available. */
 function StatusTiles({ selected, onSelect }: { selected: ContractStatus | 'all'; onSelect: (value: ContractStatus | 'all') => void }) {
-  const summary = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => api.get<DashboardSummary>('/dashboard/summary') })
-  const figures = summary.data?.amc?.contracts
+  const summary = useQuery({
+    queryKey: ['amc', 'contracts', 'status-summary'],
+    queryFn: () => api.get<{ contracts: NonNullable<DashboardSummary['amc']>['contracts'] }>('/amc/contracts/status-summary'),
+  })
+  const figures = summary.data?.contracts
 
   if (!figures) {
     return null
@@ -156,9 +213,14 @@ export function AmcContractsPage() {
   const [status, setStatus] = useState<ContractStatus | 'all'>('all')
   const [clientId, setClientId] = useState('')
   const [frequency, setFrequency] = useState('')
+  const [system, setSystem] = useState('')
+  const [year, setYear] = useState('')
+  const [salesEngineerId, setSalesEngineerId] = useState('')
   const [page, setPage] = useState(1)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
+  const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
+  const show = (key: ColumnKey) => !hiddenColumns.has(key)
 
   // Wait for a pause in typing before searching.
   useEffect(() => {
@@ -170,31 +232,73 @@ export function AmcContractsPage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const canViewClients = auth.can('CLIENTS', 'VIEW')
-  const clients = useQuery({ queryKey: ['clients', 'all'], queryFn: () => fetchClients('all'), enabled: canViewClients })
+  // Clients, systems, sales engineers, frequencies and years present on contracts.
+  const options = useQuery({ queryKey: ['amc', 'contracts', 'filter-options'], queryFn: () => api.get<ContractFilterOptions>('/amc/contracts/filter-options') })
 
   const contracts = useQuery({
-    queryKey: ['amc', 'contracts', 'list', { search, status, clientId, frequency, page }],
+    queryKey: ['amc', 'contracts', 'list', { search, status, clientId, system, year, salesEngineerId, frequency, page }],
     queryFn: () =>
-      api.get<Paged<Contract>>(`/amc/contracts${queryString({ search, status, clientId, frequency, page, pageSize: PAGE_SIZE })}`),
+      api.get<ContractList>(
+        `/amc/contracts${queryString({ search, status, clientId, system, year, salesEngineerId, frequency, page, pageSize: PAGE_SIZE })}`,
+      ),
     placeholderData: keepPreviousData,
   })
 
   const canCreate = auth.can('AMC_CONTRACTS', 'CREATE')
+  const canExport = auth.can('AMC_CONTRACTS', 'EXPORT')
+  const [exportError, setExportError] = useState<string | null>(null)
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
 
   const data = contracts.data
-  const filtered = search !== '' || status !== 'all' || clientId !== '' || frequency !== ''
+  const filtered = search !== '' || status !== 'all' || clientId !== '' || system !== '' || year !== '' || salesEngineerId !== '' || frequency !== ''
+  // A changed filter starts again from the first page.
+  const choose = (set: (value: string) => void) => (event: ChangeEvent<HTMLSelectElement>) => {
+    set(event.target.value)
+    setPage(1)
+  }
+  const resetFilters = () => {
+    setSearchInput('')
+    setSearch('')
+    setStatus('all')
+    setClientId('')
+    setSystem('')
+    setYear('')
+    setSalesEngineerId('')
+    setFrequency('')
+    setPage(1)
+  }
   const closeDialog = () => setDialog({ kind: 'none' })
   const label = (contract: Contract) => `${contract.client.name} ${contract.systemDescription}`
+  // The Filtered Total row: the label spans every column before the first amount.
+  const leadingColumns = 2 + (['reference', 'system', 'engineer', 'validity', 'frequency'] as const).filter(show).length
+  const trailingColumns = 1 + (show('visits') ? 1 : 0) + (canEdit ? 1 : 0) + (show('status') ? 1 : 0)
 
   return (
     <>
       <PageHeader
         title="AMC Contracts"
         description="Maintenance contracts. An active contract generates its visit schedule from its validity period and frequency."
-        actions={canCreate && <Button onClick={() => setDialog({ kind: 'create' })}>Add Contract</Button>}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            {canExport && (
+              // The download covers every contract that matches the filters, on every page.
+              <ExportButtons
+                what="AMC Contracts"
+                fileStem="amc-contracts"
+                path={(format) => `/amc/contracts/export${queryString({ search, status, clientId, system, year, salesEngineerId, frequency, format, hidden: [...hiddenColumns].join(',') })}`}
+                onError={setExportError}
+              />
+            )}
+            {canCreate && <Button onClick={() => setDialog({ kind: 'create' })}>Add Contract</Button>}
+          </div>
+        }
       />
+
+      {exportError && (
+        <div className="mb-4">
+          <Alert onDismiss={() => setExportError(null)}>{exportError}</Alert>
+        </div>
+      )}
 
       {notice && (
         <div className="mb-4">
@@ -244,29 +348,74 @@ export function AmcContractsPage() {
               />
             )}
           </Filter>
-          {canViewClients && (
-            <Filter label="Client">
+          <Filter label="Client">
+            {(id, className) => (
+              <select id={id} value={clientId} onChange={choose(setClientId)} className={className}>
+                <option value="">All clients</option>
+                <OptionsNotice source={options} count={options.data?.clients.length ?? 0} empty="No clients have AMC contracts yet" />
+                {(options.data?.clients ?? []).map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          <Filter label="System">
+            {(id, className) => (
+              <select id={id} value={system} onChange={choose(setSystem)} className={className}>
+                <option value="">All systems</option>
+                <OptionsNotice source={options} count={options.data?.systems.length ?? 0} empty="No systems on AMC contracts yet" />
+                {(options.data?.systems ?? []).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          <Filter label="Year">
+            {(id, className) => (
+              <select id={id} value={year} onChange={choose(setYear)} title="Contracts whose validity period covers any day of the year" className={className}>
+                <option value="">All years</option>
+                <OptionsNotice source={options} count={options.data?.years.length ?? 0} empty="No contract years yet" />
+                {(options.data?.years ?? []).map((value) => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          {options.data?.salesEngineers !== null && (
+            <Filter label="Sales engineer">
               {(id, className) => (
-                <select
-                  id={id}
-                  value={clientId}
-                  onChange={(event) => {
-                    setClientId(event.target.value)
-                    setPage(1)
-                  }}
-                  className={className}
-                >
-                  <option value="">All clients</option>
-                  {(clients.data ?? []).map((client) => (
-                    <option key={client.id} value={client.id}>
-                      {client.name}
+                <select id={id} value={salesEngineerId} onChange={choose(setSalesEngineerId)} className={className}>
+                  <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers linked to AMC contracts" />
+                  {(options.data?.salesEngineers ?? []).map((engineer) => (
+                    <option key={engineer.id} value={engineer.id}>
+                      {engineer.name}
                     </option>
                   ))}
                 </select>
               )}
             </Filter>
           )}
-          <Filter label="Status">
+          <Filter label="Frequency">
+            {(id, className) => (
+              <select id={id} value={frequency} onChange={choose(setFrequency)} className={className}>
+                <option value="">All frequencies</option>
+                <OptionsNotice source={options} count={options.data?.frequencies.length ?? 0} empty="No frequencies on AMC contracts yet" />
+                {(options.data?.frequencies ?? []).map((item) => (
+                  <option key={item.code} value={item.code}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
+          <Filter label="Contract status">
             {(id, className) => (
               <select
                 id={id}
@@ -277,7 +426,7 @@ export function AmcContractsPage() {
                 }}
                 className={className}
               >
-                <option value="all">All statuses</option>
+                <option value="all">All contract statuses</option>
                 {CONTRACT_STATUSES.map((value) => (
                   <option key={value} value={value}>
                     {CONTRACT_STATUS_LABELS[value]}
@@ -286,26 +435,19 @@ export function AmcContractsPage() {
               </select>
             )}
           </Filter>
-          <Filter label="Frequency">
-            {(id, className) => (
-              <select
-                id={id}
-                value={frequency}
-                onChange={(event) => {
-                  setFrequency(event.target.value)
-                  setPage(1)
-                }}
-                className={className}
-              >
-                <option value="">All frequencies</option>
-                {Object.keys(FREQUENCY_LABELS).map((value) => (
-                  <option key={value} value={value}>
-                    {frequencyLabel(value)}
-                  </option>
-                ))}
-              </select>
-            )}
-          </Filter>
+          <div className="flex items-end gap-2">
+            <Button variant="secondary" onClick={resetFilters} disabled={!filtered} className="flex-1 rounded-xl">
+              Reset filters
+            </Button>
+            <ColumnsMenu
+              options={COLUMN_OPTIONS}
+              hidden={hiddenColumns}
+              onChange={(next) => {
+                setHiddenColumns(next)
+                saveHiddenColumns(next)
+              }}
+            />
+          </div>
           </div>
         </div>
 
@@ -342,30 +484,59 @@ export function AmcContractsPage() {
                     <th scope="col" className={TABLE.snHead}>
                       #
                     </th>
+                    {show('reference') && (
+                      <th scope="col" className={TABLE.th}>
+                        AMC Reference
+                      </th>
+                    )}
                     <th scope="col" className={TABLE.th}>
                       Client
                     </th>
-                    <th scope="col" className={TABLE.th}>
-                      System
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Engineer
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Validity
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Frequency
-                    </th>
-                    <th scope="col" className={`${TABLE.th} text-right`}>
-                      Contract value
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Visits
-                    </th>
-                    <th scope="col" className={TABLE.th}>
-                      Status
-                    </th>
+                    {show('system') && (
+                      <th scope="col" className={TABLE.th}>
+                        System
+                      </th>
+                    )}
+                    {show('engineer') && (
+                      <th scope="col" className={TABLE.th}>
+                        Engineer
+                      </th>
+                    )}
+                    {show('validity') && (
+                      <th scope="col" className={TABLE.th}>
+                        Validity
+                      </th>
+                    )}
+                    {show('frequency') && (
+                      <th scope="col" className={TABLE.th}>
+                        Frequency
+                      </th>
+                    )}
+                    {show('contractValue') && (
+                      <th scope="col" className={`${TABLE.th} text-right`}>
+                        Contract value
+                      </th>
+                    )}
+                    {show('finalCredit') && (
+                      <th scope="col" className={`${TABLE.th} text-right`}>
+                        Credit
+                      </th>
+                    )}
+                    {show('visits') && (
+                      <th scope="col" className={TABLE.th}>
+                        Visits
+                      </th>
+                    )}
+                    {canEdit && (
+                      <th scope="col" className={TABLE.th}>
+                        Contract
+                      </th>
+                    )}
+                    {show('status') && (
+                      <th scope="col" className={TABLE.th}>
+                        Status
+                      </th>
+                    )}
                     <th scope="col" className={`${TABLE.th} text-right`}>
                       Actions
                     </th>
@@ -375,18 +546,25 @@ export function AmcContractsPage() {
                   {data.items.map((contract, index) => (
                     <tr key={contract.id} className={`${TABLE.row} transition-shadow even:bg-slate-50/60 hover:bg-sky-50 hover:shadow-[inset_5px_0_0_#1479BD] [&>td]:py-4`} style={{ boxShadow: `inset 3px 0 0 ${STATUS_EDGE[contract.status] ?? '#94a3b8'}` }}>
                       <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
+                      {show('reference') && (
+                        <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
+                          <Link to={`/amc/contracts/${contract.id}`} className="hover:underline">
+                            {amcReference(contract.id)}
+                          </Link>
+                        </td>
+                      )}
                       <td className={`${TABLE.td} min-w-48`}>
                         <div className="flex items-center gap-3">
                           <ClientAvatar name={contract.client.name} className="h-11 w-11 text-sm shadow-md ring-2 ring-white" />
                           <span className="min-w-0 break-words text-sm font-bold leading-snug text-[#0b3b66]">{contract.client.name}</span>
                         </div>
                       </td>
-                      <td className={TABLE.td}>
+                      {show('system') && <td className={TABLE.td}>
                         <span className="inline-block rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold tracking-wide text-slate-700 ring-1 ring-inset ring-slate-200">
                           {contract.systemDescription}
                         </span>
-                      </td>
-                      <td className={TABLE.td}>
+                      </td>}
+                      {show('engineer') && <td className={TABLE.td}>
                         {contract.responsibleEngineer ? (
                           <span className="flex items-center gap-2">
                             <span
@@ -400,8 +578,8 @@ export function AmcContractsPage() {
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
-                      </td>
-                      <td className={`${TABLE.td} whitespace-nowrap`}>
+                      </td>}
+                      {show('validity') && <td className={`${TABLE.td} whitespace-nowrap`}>
                         <span className="block font-medium text-slate-800">
                           {formatDate(contract.validFrom)} – {formatDate(contract.validTo)}
                         </span>
@@ -416,22 +594,23 @@ export function AmcContractsPage() {
                         {validityNote(contract) && (
                           <span className={`mt-0.5 block text-xs ${validityNote(contract)?.ended ? 'text-amber-700' : 'text-slate-500'}`}>{validityNote(contract)?.text}</span>
                         )}
-                      </td>
-                      <td className={TABLE.td}>
+                      </td>}
+                      {show('frequency') && <td className={TABLE.td}>
                         <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-sky-50 px-2 py-1 text-xs font-medium text-[#0b3b66] ring-1 ring-inset ring-sky-100">
                           <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-[#1479BD]" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                             <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8.5M20 4v4.5h-4.5M20 12a8 8 0 0 1-13.7 5.6L4 15.5M4 20v-4.5h4.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                           {frequencyLabel(contract.maintenanceFrequency)}
                         </span>
-                      </td>
-                      <td className={`${TABLE.td} whitespace-nowrap text-right`}>
+                      </td>}
+                      {show('contractValue') && <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                         <span className="block text-base font-extrabold tabular-nums text-[#0b3b66]">{formatMoney(contract.contractValue)}</span>
                         {contract.defaultVisitAmount && (
                           <span className="mt-0.5 block text-xs tabular-nums text-slate-500">{formatMoney(contract.defaultVisitAmount)} per visit</span>
                         )}
-                      </td>
-                      <td className={`${TABLE.td} whitespace-nowrap`}>
+                      </td>}
+                      {show('finalCredit') && <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{formatMoney(contract.finalCredit)}</td>}
+                      {show('visits') && <td className={`${TABLE.td} whitespace-nowrap`}>
                         {contract.schedule.visitCount === 0 ? (
                           '—'
                         ) : (
@@ -448,13 +627,20 @@ export function AmcContractsPage() {
                             <span className="text-xs">{`${contract.schedule.completedCount} of ${contract.schedule.visitCount} completed`}</span>
                           </span>
                         )}
-                      </td>
-                      <td className={TABLE.td}>
+                      </td>}
+                      {canEdit && (
+                        <td className={`${TABLE.td} whitespace-nowrap`}>
+                          <Link to={`/amc/contracts/${contract.id}?tab=documents`} aria-label={`Upload Contract for ${label(contract)}`} className="text-sm font-semibold text-[#1479BD] hover:underline">
+                            Upload Contract
+                          </Link>
+                        </td>
+                      )}
+                      {show('status') && <td className={TABLE.td}>
                         <span className="inline-flex flex-wrap items-center gap-1">
                           <ContractStatusPill status={contract.status} />
                           {contract.isPastValidity && contract.status === 'ACTIVE' && <Pill tone="amber">Validity ended</Pill>}
                         </span>
-                      </td>
+                      </td>}
                       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                         <ActionGroup>
                           <ActionLink to={`/amc/contracts/${contract.id}`} label={`View ${label(contract)}`} icon="view" />
@@ -464,6 +650,18 @@ export function AmcContractsPage() {
                     </tr>
                   ))}
                 </tbody>
+                {data.totals && (show('contractValue') || show('finalCredit')) && (
+                  <tfoot>
+                    <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
+                      <th scope="row" colSpan={leadingColumns} className={`${TABLE.td} text-right`}>
+                        Filtered Total ({data.total} {data.total === 1 ? 'contract' : 'contracts'})
+                      </th>
+                      {show('contractValue') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.totals.contractValue)}</td>}
+                      {show('finalCredit') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.totals.finalCredit)}</td>}
+                      <td colSpan={trailingColumns} className={TABLE.td} />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
             <Pager page={data.page} pageSize={data.pageSize} total={data.total} shown={data.items.length} onPage={setPage} />

@@ -68,3 +68,11 @@ export function monthLabel(month: string): string {
 
   return `${MONTH_NAMES[index - 1]} ${year}`
 }
+
+/** The last day of a contract of this many years: the day before the same date that many years later. */
+export function contractEndDate(validFrom: string, years: number): string {
+  const [year, month, day] = validFrom.split('-').map(Number) as [number, number, number]
+  const end = new Date(Date.UTC(year + years, month - 1, day - 1))
+
+  return end.toISOString().slice(0, 10)
+}

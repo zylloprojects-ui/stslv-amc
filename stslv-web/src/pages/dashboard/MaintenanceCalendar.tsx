@@ -1,5 +1,7 @@
+import { ContractLink } from '../../components/ContractLink'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
+import { useAuth } from '../../auth/context'
 import { Link } from 'react-router-dom'
 import { LoadError } from '../../components/records'
 import { Button, Spinner } from '../../components/ui'
@@ -7,6 +9,7 @@ import { api } from '../../lib/api'
 import { cx, formatCount } from '../../lib/format'
 import type { Invoice } from '../../lib/invoiceTypes'
 import { queryString } from '../amc/amcApi'
+import { amcReference } from '../amc/calendar/calendarTypes'
 import { formatDate, formatMoney, monthLabel, shiftMonth } from '../amc/amcFormat'
 import { VisitStatusPill } from '../amc/components'
 import {
@@ -70,6 +73,8 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
   const [day, setDay] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const open = canSchedule ? setSelected : null
+  // The Monthly Calendar has its own permission (MONTHLY_CALENDAR).
+  const canOpenCalendar = useAuth().can('MONTHLY_CALENDAR', 'VIEW')
 
   const calendar = useQuery({
     queryKey: ['dashboard', 'calendar', month],
@@ -94,7 +99,7 @@ export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, 
         <Button variant="secondary" size="sm" aria-expanded={expanded} aria-controls="dashboard-mini-calendar" onClick={() => onToggle(!expanded)}>
           {expanded ? 'Hide calendar ▴' : 'Show calendar ▾'}
         </Button>
-        {canSchedule && (
+        {canOpenCalendar && (
           <Link to="/amc/calendar" className="rounded-lg bg-sky-50 px-3 py-1.5 text-sm font-semibold text-[#0b3b66] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
             Open full calendar →
           </Link>
@@ -331,10 +336,9 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
               <p className="mt-0.5 break-words text-sm text-slate-600">{data.contract.systemDescription}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <VisitStatusPill status={data.status} overdue={data.isOverdue} />
-                {/* STSLV AMC has no contract number yet; the record number identifies the contract. */}
-                <Link to={`/amc/contracts/${data.contract.id}`} className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#1479BD] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
-                  Contract record {data.contract.id}
-                </Link>
+                <ContractLink id={data.contract.id} className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#1479BD] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
+                  {amcReference(data.contract.id)}
+                </ContractLink>
               </div>
             </div>
           </div>
@@ -347,7 +351,8 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
               <span className="text-base font-bold tabular-nums text-[#0b3b66]">{data.visitAmount === null ? 'Not set' : formatMoney(data.visitAmount)}</span>
             </Field>
             <Field label="Invoice status">{INVOICE_ELIGIBILITY_LABELS[data.invoiceEligibility]}</Field>
-            <Field label="Invoice no.">
+            <Field label="Invoice No.">{data.manualInvoiceNo ?? 'None entered'}</Field>
+            <Field label="Zoho invoices">
               {!canInvoices
                 ? 'Needs Invoice Tracking access'
                 : invoices.isPending
@@ -359,7 +364,7 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
                       : 'None recorded'}
             </Field>
             <Field label="Payment status" wide>
-              Not tracked in STSLV AMC
+              {data.manualInvoiceNo ? `Paid · Invoice No. ${data.manualInvoiceNo} (reference status, not verified payment)` : 'Unpaid'}
             </Field>
           </dl>
         </div>

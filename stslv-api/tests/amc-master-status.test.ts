@@ -73,6 +73,13 @@ async function insertEngineer(name: string): Promise<string> {
   return result.rows[0]?.id as string;
 }
 
+/** Enters the manual Invoice No. of a visit: the source of Paid / Unpaid. */
+async function setManualNo(visitId: string, invoiceNo: string | null) {
+  const updatedAt = (await api().get(`/api/amc/visits/${visitId}`).set(admin.headers)).body.data.updatedAt;
+  const saved = await api().patch(`/api/amc/visits/${visitId}/manual-invoice`).set(admin.headers).send({ invoiceNo, expectedUpdatedAt: updatedAt });
+  expect(saved.status).toBe(200);
+}
+
 const byId = (items: Item[]) => new Map(items.map((item) => [item.id, item]));
 
 describe("Master AMC Status", () => {
@@ -147,16 +154,16 @@ describe("Master AMC Status", () => {
     it("classifies Red, Yellow, Blue and Green in priority order, and the cards add up to the rows", async () => {
       const [red, yellow, blue, green] = await visitsOf(fx.alphaContract);
       for (const visit of [yellow, blue, green]) await complete(visit!.id);
-      const blueInvoice = await invoice(fx.alphaId, [[blue!.id, "405.000"]]);
-      const greenInvoice = await invoice(fx.alphaId, [[green!.id, "405.000"]]);
+      await setManualNo(blue!.id, "M-BLUE");
+      await setManualNo(green!.id, "M-GREEN");
       await quote(green!.id, "QT-100");
 
       const response = await list({ clientId: fx.alphaId });
       const rows = byId(response.body.data.items);
-      expect(rows.get(red!.id)).toMatchObject({ colour: "RED", invoiceNumbers: [], quotationNo: null });
-      expect(rows.get(yellow!.id)).toMatchObject({ colour: "YELLOW", serviceStatus: "COMPLETED", invoiceNumbers: [] });
-      expect(rows.get(blue!.id)).toMatchObject({ colour: "BLUE", invoiceNumbers: [blueInvoice.invoiceNumber], quotationNo: null });
-      expect(rows.get(green!.id)).toMatchObject({ colour: "GREEN", invoiceNumbers: [greenInvoice.invoiceNumber], quotationNo: "QT-100" });
+      expect(rows.get(red!.id)).toMatchObject({ colour: "RED", paymentStatus: "UNPAID", quotationNo: null });
+      expect(rows.get(yellow!.id)).toMatchObject({ colour: "YELLOW", serviceStatus: "COMPLETED", paymentStatus: "UNPAID" });
+      expect(rows.get(blue!.id)).toMatchObject({ colour: "BLUE", manualInvoiceNo: "M-BLUE", paymentStatus: "PAID", quotationNo: null });
+      expect(rows.get(green!.id)).toMatchObject({ colour: "GREEN", manualInvoiceNo: "M-GREEN", paymentStatus: "PAID", quotationNo: "QT-100" });
       expect(response.body.data.kpis).toMatchObject({ total: 4, green: 1, blue: 1, yellow: 1, red: 1 });
     });
 
@@ -177,7 +184,7 @@ describe("Master AMC Status", () => {
       expect(response.body.data.kpis).toMatchObject({ total: 4, red: 4 });
     });
 
-    it("ignores a cancelled invoice, and lists every active invoice of a visit", async () => {
+    it("lists only active Zoho invoices of a visit, and they do not decide the colour", async () => {
       const [first, second] = await visitsOf(fx.alphaContract);
       await complete(first!.id);
       await complete(second!.id);
@@ -189,7 +196,7 @@ describe("Master AMC Status", () => {
       const rows = byId((await list({ clientId: fx.alphaId })).body.data.items);
       expect(rows.get(first!.id)).toMatchObject({ colour: "YELLOW", invoiceNumbers: [] });
       expect(rows.get(second!.id)?.invoiceNumbers.sort()).toEqual([partOne.invoiceNumber, partTwo.invoiceNumber].sort());
-      expect(rows.get(second!.id)?.colour).toBe("BLUE");
+      expect(rows.get(second!.id)?.colour).toBe("YELLOW");
     });
   });
 
@@ -215,6 +222,7 @@ describe("Master AMC Status", () => {
       await complete(alpha[0]!.id);
       await complete(alpha[1]!.id);
       const inv = await invoice(fx.alphaId, [[alpha[1]!.id, "405.000"]], "ZB-7781");
+      await setManualNo(alpha[1]!.id, "ZB-MANUAL");
       await quote(alpha[0]!.id, "QT-55");
 
       // Each filter on its own.
@@ -225,6 +233,17 @@ describe("Master AMC Status", () => {
       expect((await list({ serviceStatus: "WAITING_FOR_RENEWAL" })).body.data.total).toBe(4);
       expect((await list({ colour: "BLUE" })).body.data.items.map((item: Item) => item.id)).toEqual([alpha[1]!.id]);
       expect((await list({ colour: "YELLOW" })).body.data.items.map((item: Item) => item.id)).toEqual([alpha[0]!.id]);
+
+      // Invoice and quotation status, alone, together, with the cards and against bad values.
+      const ids = async (query: Record<string, string>) => (await list(query)).body.data.items.map((item: Item) => item.id);
+      expect(await ids({ clientId: fx.alphaId, invoiceStatus: "RECORDED" })).toEqual([alpha[1]!.id]);
+      expect((await list({ clientId: fx.alphaId, invoiceStatus: "NOT_RECORDED" })).body.data.total).toBe(3);
+      expect(await ids({ clientId: fx.alphaId, quotationStatus: "RECORDED" })).toEqual([alpha[0]!.id]);
+      expect((await list({ clientId: fx.alphaId, quotationStatus: "NOT_RECORDED" })).body.data.total).toBe(3);
+      expect(await ids({ clientId: fx.alphaId, invoiceStatus: "RECORDED", quotationStatus: "RECORDED" })).toEqual([]);
+      expect((await list({ clientId: fx.alphaId, invoiceStatus: "RECORDED", quotationStatus: "NOT_RECORDED" })).body.data.kpis).toMatchObject({ total: 1, blue: 1, totalValue: "405.000" });
+      expect((await list({ invoiceStatus: "PAID" })).status).toBe(400);
+      expect((await list({ quotationStatus: "SENT" })).status).toBe(400);
 
       // Search: invoice number, quotation number, AMC reference and client.
       expect((await list({ search: "zb-77" })).body.data.items.map((item: Item) => item.invoiceNumbers)).toEqual([[inv.invoiceNumber]]);
@@ -292,7 +311,7 @@ describe("Master AMC Status", () => {
     it("exports every matching visit with the colour, invoice and quotation, and only the visible columns", async () => {
       const alpha = await visitsOf(fx.alphaContract);
       await complete(alpha[0]!.id);
-      await invoice(fx.alphaId, [[alpha[0]!.id, "405.000"]], "INV-9");
+      await setManualNo(alpha[0]!.id, "INV-9");
       await quote(alpha[0]!.id, "=QT-1");
 
       const response = await exportFile({ format: "xlsx", clientId: fx.alphaId, hidden: "system,salesEngineer" });
@@ -302,7 +321,7 @@ describe("Master AMC Status", () => {
       await workbook.xlsx.load(response.body as unknown as ExcelJS.Buffer);
       const sheet = workbook.getWorksheet("Master AMC Status") as ExcelJS.Worksheet;
       const header = (sheet.getRow(6).values as unknown[]).slice(1);
-      expect(header).toEqual(["#", "AMC Reference", "Client", "Frequency", "Service", "Scheduled Month", "Visit Value", "Service Status", "Invoice No.", "Quote No.", "Row Colour"]);
+      expect(header).toEqual(["#", "AMC Reference", "Client", "Frequency", "Service", "Scheduled Month", "Value (Ex VAT)", "Service Status", "Invoice No.", "Quote No.", "Row Colour"]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
       expect(rows.map((row) => row[2])).toEqual(["Alpha Towers", "Alpha Towers", "Alpha Towers", "Alpha Towers"]);
       expect(rows[0]?.[7]).toBe("Completed");
@@ -310,7 +329,7 @@ describe("Master AMC Status", () => {
       // A formula-like number is written as text, never run.
       expect(rows[0]?.[9]).not.toBe("=QT-1");
       expect(String(rows[0]?.[9])).toContain("QT-1");
-      expect(rows[0]?.[10]).toBe("Green · Invoiced and quoted");
+      expect(rows[0]?.[10]).toBe("Green · Paid and quoted");
       expect(rows[1]?.[10]).toBe("Red · Not completed");
 
       const audit = await pool.query<{ metadata: { rowCount: number; hidden: string[] } }>(

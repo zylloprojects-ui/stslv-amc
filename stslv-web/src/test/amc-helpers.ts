@@ -1,7 +1,7 @@
 import type { Invoice } from '../lib/invoiceTypes'
 import type { Contract, ContractHistoryEntry, ExecutionVisit, SchedulePreview, ScheduleVisit } from '../pages/amc/types'
 import type { SessionUser } from '../lib/types'
-import { fail, makeClient, mockApi, ok, signIn, type MockReply, type MockRequest } from './helpers'
+import { afterPageSplit, fail, makeClient, mockApi, ok, signIn, type MockReply, type MockRequest } from './helpers'
 
 /** The seeded Execution role: sees contracts and the schedule, updates execution only. */
 export const EXECUTION: SessionUser = {
@@ -9,7 +9,7 @@ export const EXECUTION: SessionUser = {
   email: 'execution@example.com',
   fullName: 'Esa Execution',
   roles: [{ id: '4', code: 'EXECUTION', name: 'Execution' }],
-  permissions: ['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW', 'AMC_EXECUTION:EDIT'],
+  permissions: afterPageSplit(['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW', 'AMC_EXECUTION:EDIT']),
 }
 
 /** A role that can only look. */
@@ -18,7 +18,7 @@ export const VIEWER: SessionUser = {
   email: 'viewer@example.com',
   fullName: 'Vera Viewer',
   roles: [{ id: '5', code: 'INVOICING', name: 'Invoicing' }],
-  permissions: ['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW'],
+  permissions: afterPageSplit(['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW']),
 }
 
 export const CLIENTS = [makeClient({ id: '10', name: 'Test Hotel One' }), makeClient({ id: '11', name: 'Test Hotel Two' })]
@@ -50,7 +50,12 @@ export function makeContract(overrides: Partial<Contract> = {}): Contract {
       cancelledCount: 0,
       amountMissingCount: 0,
       scheduledTotal: '1620.000',
-      valueDifference: '0.000',
+      annualAmount: null,
+      servicesPerCycle: 4,
+      perServiceAmount: null,
+      expectedTermTotal: null,
+      generatedTotal: '1620.000',
+      valueDifference: null,
     },
     ...overrides,
   }
@@ -59,6 +64,9 @@ export function makeContract(overrides: Partial<Contract> = {}): Contract {
 export function makeVisit(overrides: Partial<ScheduleVisit> = {}): ScheduleVisit {
   return {
     id: '500',
+    manualInvoiceNo: null,
+    paymentStatus: 'UNPAID',
+    paidAt: null,
     contract: { id: '100', status: 'ACTIVE', systemDescription: 'FIRE', maintenanceFrequency: 'QUARTERLY' },
     client: { id: '10', name: 'Test Hotel One' },
     sequenceNo: 1,
@@ -127,7 +135,23 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
     // Documents attached to a record: none unless a test says otherwise.
     if (method === 'GET' && path === '/attachments') return ok([])
     if (method === 'GET' && path === '/clients') return ok({ items: CLIENTS, total: CLIENTS.length, page: 1, pageSize: 100 })
+    if (method === 'GET' && path === '/amc/contracts/client-options') return ok(CLIENTS.filter((client) => client.isActive).map(({ id, name }) => ({ id, name })))
     if (method === 'GET' && path === '/amc/contracts/systems') return ok([...new Set(contracts.map((contract) => contract.systemDescription))])
+    if (method === 'GET' && path === '/amc/contracts/filter-options') {
+      const years = contracts.flatMap((contract) => {
+        const from = Number(contract.validFrom.slice(0, 4))
+
+        return Array.from({ length: Number(contract.validTo.slice(0, 4)) - from + 1 }, (_, index) => from + index)
+      })
+
+      return ok({
+        clients: [...new Map(contracts.map((contract) => [contract.client.id, { id: contract.client.id, name: contract.client.name }])).values()],
+        systems: [...new Set(contracts.map((contract) => contract.systemDescription))],
+        salesEngineers: [{ id: '5', name: 'Test Sales Engineer' }],
+        frequencies: [...new Set(contracts.map((contract) => contract.maintenanceFrequency))].map((code) => ({ code, label: code === 'QUARTERLY' ? 'Quarterly' : code })),
+        years: [...new Set(years)].sort((x, y) => x - y),
+      })
+    }
 
     // --- Contracts ---
     if (method === 'GET' && path === '/amc/contracts') {

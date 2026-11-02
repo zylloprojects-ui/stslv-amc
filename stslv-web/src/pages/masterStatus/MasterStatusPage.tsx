@@ -6,16 +6,20 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, Modal, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
+import { PaymentBadge } from '../amc/ManualInvoiceField'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
 import { Filter, Pager } from '../amc/components'
+import { displayName, KPI_NAME_MAX, useKpiCustomization } from '../amcManagement/managementPreferences'
 import './masterStatus.css'
-import { COLUMN_IDS, COLUMN_LABELS, useHiddenColumns, type ColumnId } from './masterStatusPreferences'
+import { COLUMN_IDS, COLUMN_LABELS, MASTER_STATUS_PREFIX, useHiddenColumns, type ColumnId } from './masterStatusPreferences'
 import {
+  INVOICE_STATUS_FILTERS,
+  QUOTATION_STATUS_FILTERS,
   ROW_COLOURS,
   ROW_COLOUR_LABELS,
   SERVICE_STATUSES,
@@ -52,21 +56,29 @@ const COLOUR_CARDS: { colour: RowColour; label: string; figure: (kpis: MasterSta
   { colour: 'RED', label: 'Red Rows', figure: (kpis) => kpis.red },
 ]
 
+/** The six cards in standard order, each with the name it carries unless the user gives it another. */
+const KPI_LABELS: Record<string, string> = {
+  total: 'Total Services',
+  ...Object.fromEntries(COLOUR_CARDS.map((card) => [card.colour, card.label])),
+  value: 'Total Value (Ex VAT)',
+}
+const KPI_DEFAULTS = Object.keys(KPI_LABELS)
+
 /** The card for the money total: an amount, so it is shown as stored rather than counted up. */
-function ValueTile({ kpis }: { kpis: MasterStatusKpis | undefined }) {
+function ValueTile({ name, kpis, position }: { name: string; kpis: MasterStatusKpis | undefined; position: number }) {
   const edge = '#0b3b66'
 
   return (
     <div
       className="contract-tile login-rise relative flex w-full items-center gap-3.5 overflow-hidden rounded-xl border bg-white py-4 pl-5 pr-4 shadow-sm"
-      style={{ animationDelay: '350ms', borderColor: `${edge}40`, backgroundImage: `linear-gradient(135deg, ${edge}12, transparent 60%)` }}
+      style={{ animationDelay: `${position * 70}ms`, borderColor: `${edge}40`, backgroundImage: `linear-gradient(135deg, ${edge}12, transparent 60%)` }}
     >
       <span className="absolute inset-y-0 left-0 w-1.5" style={{ backgroundColor: edge }} aria-hidden="true" />
       <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#0b3b66] to-[#1479BD] text-white shadow-md">
         {icon(<><rect x="3" y="6" width="18" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6.5 9.5v5M17.5 9.5v5" strokeLinecap="round" /></>)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-sm font-semibold text-slate-600">Total Visit Value</span>
+        <span className="block text-sm font-semibold text-slate-600">{name}</span>
         <span className="mt-0.5 block truncate text-2xl font-bold leading-tight tabular-nums tracking-tight text-[#0b3b66]">{kpis ? formatMoney(kpis.totalValue) : '—'}</span>
         <span className={cx('mt-1.5 block text-xs font-medium', kpis && kpis.valueMissing > 0 ? 'text-amber-700' : 'text-slate-500')}>
           {!kpis
@@ -77,6 +89,103 @@ function ValueTile({ kpis }: { kpis: MasterStatusKpis | undefined }) {
         </span>
       </span>
     </div>
+  )
+}
+
+/** The KPI cards. The user may rename and reorder them; both are remembered per user in this browser, and a renamed card keeps its figure. */
+function KpiCards({ userId, kpis }: { userId: string; kpis: MasterStatusKpis | undefined }) {
+  const [customizing, setCustomizing] = useState(false)
+  const prefs = useKpiCustomization(userId, 'kpis', KPI_DEFAULTS, MASTER_STATUS_PREFIX)
+
+  const move = (index: number, by: -1 | 1) => {
+    const a = prefs.order[index]
+    const b = prefs.order[index + by]
+
+    if (!a || !b) return
+    prefs.setOrder(prefs.order.map((id) => (id === a ? b : id === b ? a : id)))
+  }
+
+  const tile = (id: string, name: string, position: number) => {
+    if (id === 'value') return <ValueTile name={name} kpis={kpis} position={position} />
+
+    const card = COLOUR_CARDS.find((entry) => entry.colour === id)
+
+    return card ? (
+      <StatTile
+        label={name}
+        count={kpis ? card.figure(kpis) : 0}
+        hint={kpis ? ROW_COLOUR_LABELS[card.colour].split(' · ')[1] : 'Loading…'}
+        icon={icon(<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none" />)}
+        tone={COLOUR_TONE[card.colour].tile}
+        edge={COLOUR_TONE[card.colour].edge}
+        position={position}
+      />
+    ) : (
+      <StatTile
+        label={name}
+        count={kpis?.total ?? 0}
+        hint={kpis ? undefined : 'Loading…'}
+        icon={icon(<><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" strokeLinecap="round" /></>)}
+        tone="from-[#0b3b66] to-[#1479BD]"
+        edge="#0b3b66"
+        position={position}
+      />
+    )
+  }
+
+  return (
+    <section aria-label="KPI cards" className="mb-4">
+      <div className="mb-2 flex flex-wrap justify-end gap-2">
+        <Button variant="secondary" size="sm" aria-pressed={customizing} aria-label="Customize KPI cards" onClick={() => setCustomizing(!customizing)}>
+          {customizing ? 'Done' : 'Customize'}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={prefs.resetNames} disabled={!prefs.namesChanged}>
+          Reset KPI Names
+        </Button>
+        <Button variant="secondary" size="sm" onClick={prefs.resetOrder} disabled={!prefs.orderChanged}>
+          Reset KPI Order
+        </Button>
+      </div>
+      {customizing && (
+        <p className="mb-2 text-xs text-slate-600">Rename a card or move it with the arrow buttons. A renamed card still shows the same figure. Names and order are remembered in this browser for your account.</p>
+      )}
+      <div className="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" role="group" aria-label="Master AMC Status figures">
+        {prefs.order.map((id, index) => {
+          const standard = KPI_LABELS[id] ?? id
+          const name = displayName(prefs.names, id, standard)
+
+          return (
+            <div key={id} data-kpi={id} title={name !== standard ? `Standard name: ${standard}` : undefined} className="flex flex-col [&>.contract-tile]:flex-1 [&>.contract-tile]:items-start">
+              {tile(id, name, index)}
+              {customizing && (
+                <div className="mt-2 space-y-1.5">
+                  <label htmlFor={`master-kpi-${id}`} className="block text-xs font-medium text-slate-700">
+                    Display name for {standard}
+                  </label>
+                  <input
+                    id={`master-kpi-${id}`}
+                    type="text"
+                    value={prefs.names[id] ?? ''}
+                    placeholder={standard}
+                    maxLength={KPI_NAME_MAX}
+                    onChange={(event) => prefs.rename(id, event.target.value)}
+                    className="block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-500"
+                  />
+                  <span className="flex justify-end gap-1">
+                    <button type="button" className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-40" onClick={() => move(index, -1)} disabled={index === 0} aria-label={`Move ${name} earlier`}>
+                      ←
+                    </button>
+                    <button type="button" className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-40" onClick={() => move(index, 1)} disabled={index === prefs.order.length - 1} aria-label={`Move ${name} later`}>
+                      →
+                    </button>
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -152,10 +261,78 @@ interface Filters {
   month: string
   year: string
   serviceStatus: string
+  invoiceStatus: string
+  quotationStatus: string
   colour: string
 }
 
-const NO_FILTERS: Filters = { search: '', clientId: '', salesEngineerId: '', month: '', year: '', serviceStatus: '', colour: '' }
+type SortColumn = 'scheduledDate' | 'reference' | 'client' | 'visitValue'
+interface Sort {
+  column: SortColumn
+  direction: 'asc' | 'desc'
+}
+const SORTABLE: Partial<Record<ColumnId, SortColumn>> = { client: 'client', scheduledMonth: 'scheduledDate', visitValue: 'visitValue' }
+
+function SortHeader({ label, column, sort, onSort, right }: { label: string; column: SortColumn; sort: Sort; onSort: (column: SortColumn) => void; right?: boolean }) {
+  const active = sort.column === column
+
+  return (
+    <th scope="col" aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={cx(TABLE.th, right && 'text-right')}>
+      <button type="button" onClick={() => onSort(column)} className="inline-flex items-center gap-1 font-semibold uppercase hover:text-[#1479BD]">
+        {label}
+        {active && !(column === 'scheduledDate' && sort.direction === 'asc') && <span aria-hidden="true">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
+      </button>
+    </th>
+  )
+}
+
+function DetailsDialog({ item, canViewContract, onClose }: { item: MasterStatusItem; canViewContract: boolean; onClose: () => void }) {
+  const rows: [string, ReactNode][] = [
+    ['Client', item.client.name],
+    ['System', item.system.typeName ?? item.system.description],
+    ['Frequency', item.frequency.label],
+    ['Service', serviceCodeLabel(item.service)],
+    ['Due date', formatDate(item.scheduledDate)],
+    ['Value (Ex VAT)', item.visitValue === null ? '—' : formatMoney(item.visitValue)],
+    ['Service Status', SERVICE_STATUS_LABELS[item.serviceStatus]],
+    ['Completed on', item.completedDate ? formatDate(item.completedDate) : '—'],
+    ['Invoice No.', item.manualInvoiceNo ?? 'Not entered'],
+    ['Paid / Unpaid', item.manualInvoiceNo ? 'Paid (reference status)' : 'Unpaid'],
+    ['Zoho invoices', item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(', ') : 'None recorded'],
+    ['Quote No.', item.quotationNo ?? 'Not recorded'],
+    ['Sales Engineer', item.salesEngineer?.name ?? '—'],
+  ]
+
+  return (
+    <Modal
+      title={`${item.reference} · ${serviceCodeLabel(item.service)}`}
+      onClose={onClose}
+      footer={
+        <>
+          {canViewContract && (
+            <Link to={`/amc/contracts/${item.contract.id}`} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-[#0b3b66] hover:border-[#1479BD]">
+              Open contract
+            </Link>
+          )}
+          <Button variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </>
+      }
+    >
+      <dl className="divide-y divide-slate-100 text-sm">
+        {rows.map(([label, value]) => (
+          <div key={label} className="flex justify-between gap-4 py-2">
+            <dt className="text-slate-600">{label}</dt>
+            <dd className="text-right font-medium text-slate-900">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </Modal>
+  )
+}
+
+const NO_FILTERS: Filters = { search: '', clientId: '', salesEngineerId: '', month: '', year: '', serviceStatus: '', invoiceStatus: '', quotationStatus: '', colour: '' }
 
 export function MasterStatusPage() {
   const auth = useAuth()
@@ -168,14 +345,22 @@ export function MasterStatusPage() {
   const [draft, setDraft] = useState<Filters>(NO_FILTERS)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [page, setPage] = useState(1)
+  const [sort, setSort] = useState<Sort>({ column: 'scheduledDate', direction: 'asc' })
+  const chooseSort = (column: SortColumn) => {
+    setSort(sort.column === column ? { column, direction: sort.direction === 'asc' ? 'desc' : 'asc' } : { column, direction: 'asc' })
+    setPage(1)
+  }
 
-  const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
+  const canExport = auth.can('MASTER_AMC_STATUS', 'EXPORT')
   const canViewContract = auth.can('AMC_CONTRACTS', 'VIEW')
 
   const options = useQuery({ queryKey: ['amc', 'master-status', 'options'], queryFn: () => api.get<MasterStatusOptions>('/amc/master-status/options') })
   const status = useQuery({
-    queryKey: ['amc', 'master-status', 'list', { ...filters, page }],
-    queryFn: () => api.get<MasterStatusList>(`/amc/master-status${queryString({ ...filters, page, pageSize: PAGE_SIZE })}`),
+    queryKey: ['amc', 'master-status', 'list', { ...filters, page, sort }],
+    queryFn: () =>
+      api.get<MasterStatusList>(
+        `/amc/master-status${queryString({ ...filters, ...(sort.column === 'scheduledDate' && sort.direction === 'asc' ? {} : { sort: sort.column, direction: sort.direction }), page, pageSize: PAGE_SIZE })}`,
+      ),
     placeholderData: keepPreviousData,
   })
 
@@ -226,30 +411,8 @@ export function MasterStatusPage() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" role="group" aria-label="Master AMC Status figures">
-        <StatTile
-          label="Total Services"
-          count={data?.kpis.total ?? 0}
-          hint={data ? undefined : 'Loading…'}
-          icon={icon(<><rect x="3.5" y="5" width="17" height="15" rx="2.5" /><path d="M3.5 10h17M8 3v4M16 3v4" strokeLinecap="round" /></>)}
-          tone="from-[#0b3b66] to-[#1479BD]"
-          edge="#0b3b66"
-          position={0}
-        />
-        {COLOUR_CARDS.map((card, index) => (
-          <StatTile
-            key={card.colour}
-            label={card.label}
-            count={data ? card.figure(data.kpis) : 0}
-            hint={data ? ROW_COLOUR_LABELS[card.colour].split(' · ')[1] : 'Loading…'}
-            icon={icon(<circle cx="12" cy="12" r="6" fill="currentColor" stroke="none" />)}
-            tone={COLOUR_TONE[card.colour].tile}
-            edge={COLOUR_TONE[card.colour].edge}
-            position={index + 1}
-          />
-        ))}
-        <ValueTile kpis={data?.kpis} />
-      </div>
+      {/* Keyed by user: the saved names and order are read when the cards mount, so a change of user reads them again. */}
+      <KpiCards key={userId} userId={userId} kpis={data?.kpis} />
       <div className="-mt-3 mb-4">
         <KpiScopeNote cards={`${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} rows={`the same ${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} />
       </div>
@@ -278,6 +441,7 @@ export function MasterStatusPage() {
               {(id, className) => (
                 <select id={id} value={draft.clientId} onChange={(event) => set('clientId')(event.target.value)} className={className}>
                   <option value="">All clients</option>
+                  <OptionsNotice source={options} count={options.data?.clients.length ?? 0} empty="No clients with current AMC visits" />
                   {(options.data?.clients ?? []).map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.name}
@@ -290,6 +454,7 @@ export function MasterStatusPage() {
               {(id, className) => (
                 <select id={id} value={draft.salesEngineerId} onChange={(event) => set('salesEngineerId')(event.target.value)} className={className}>
                   <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -314,6 +479,7 @@ export function MasterStatusPage() {
               {(id, className) => (
                 <select id={id} value={draft.year} onChange={(event) => set('year')(event.target.value)} className={className}>
                   <option value="">All years</option>
+                  <OptionsNotice source={options} count={options.data?.years.length ?? 0} empty="No years with current AMC visits" />
                   {(options.data?.years ?? []).map((value) => (
                     <option key={value} value={String(value)}>
                       {value}
@@ -329,6 +495,30 @@ export function MasterStatusPage() {
                   {SERVICE_STATUSES.map((value) => (
                     <option key={value} value={value}>
                       {SERVICE_STATUS_LABELS[value]}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
+            <Filter label="Paid / Unpaid">
+              {(id, className) => (
+                <select id={id} value={draft.invoiceStatus} onChange={(event) => set('invoiceStatus')(event.target.value)} className={className}>
+                  <option value="">All</option>
+                  {INVOICE_STATUS_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </Filter>
+            <Filter label="Quotation Status">
+              {(id, className) => (
+                <select id={id} value={draft.quotationStatus} onChange={(event) => set('quotationStatus')(event.target.value)} className={className}>
+                  <option value="">All quotation statuses</option>
+                  {QUOTATION_STATUS_FILTERS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
                     </option>
                   ))}
                 </select>
@@ -391,16 +581,18 @@ export function MasterStatusPage() {
                     <th scope="col" className={TABLE.snHead}>
                       #
                     </th>
+                    <SortHeader label="AMC Reference" column="reference" sort={sort} onSort={chooseSort} />
+                    {visible.map((id) =>
+                      id in SORTABLE ? (
+                        <SortHeader key={id} label={COLUMN_LABELS[id]} column={SORTABLE[id] as SortColumn} sort={sort} onSort={chooseSort} right={id === 'visitValue'} />
+                      ) : (
+                        <th key={id} scope="col" className={cx(TABLE.th, id === 'visitValue' && 'text-right')}>
+                          {COLUMN_LABELS[id]}
+                        </th>
+                      ),
+                    )}
                     <th scope="col" className={TABLE.th}>
-                      AMC Reference
-                    </th>
-                    {visible.map((id) => (
-                      <th key={id} scope="col" className={cx(TABLE.th, id === 'visitValue' && 'text-right')}>
-                        {COLUMN_LABELS[id]}
-                      </th>
-                    ))}
-                    <th scope="col" className={TABLE.th}>
-                      <span className="sr-only">Details</span>
+                      Details
                     </th>
                   </tr>
                 </thead>
@@ -432,6 +624,7 @@ export function MasterStatusPage() {
 
 function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem; number: number; shown: (id: ColumnId) => boolean; canViewContract: boolean }) {
   const tone = COLOUR_TONE[item.colour]
+  const [details, setDetails] = useState(false)
 
   return (
     <tr className={cx(TABLE.row, 'ms-row')} data-colour={item.colour}>
@@ -476,17 +669,11 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
       )}
       {shown('invoiceNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
-          {item.invoiceNumbers.length === 0 ? (
-            <Missing title="No invoice recorded" />
-          ) : (
-            <ul>
-              {item.invoiceNumbers.map((number) => (
-                <li key={number} className="font-mono text-sm font-semibold text-slate-900">
-                  {number}
-                </li>
-              ))}
-            </ul>
-          )}
+          <span className="inline-flex flex-wrap items-center gap-2">
+            {item.manualInvoiceNo && <span className="font-mono text-sm font-semibold text-slate-900">{item.manualInvoiceNo}</span>}
+            <PaymentBadge invoiceNo={item.manualInvoiceNo} />
+          </span>
+          {item.invoiceNumbers.length > 0 && <div className="mt-1 text-xs text-slate-500">Zoho: {item.invoiceNumbers.join(', ')}</div>}
         </td>
       )}
       {shown('quotationNo') && (
@@ -496,19 +683,15 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-        {canViewContract ? (
-          <Link
-            to={`/amc/contracts/${item.contract.id}`}
-            aria-label={`View contract ${item.reference}`}
-            className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-semibold text-[#0b3b66] shadow-sm hover:border-[#1479BD] hover:text-[#1479BD]"
-          >
-            View
-          </Link>
-        ) : (
-          <span className="text-xs text-slate-400" title="Viewing contracts needs the AMC Contracts permission">
-            No access
-          </span>
-        )}
+        <button
+          type="button"
+          onClick={() => setDetails(true)}
+          aria-label={`Details of ${item.reference} ${serviceCodeLabel(item.service)}`}
+          className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-semibold text-[#0b3b66] shadow-sm hover:border-[#1479BD] hover:text-[#1479BD]"
+        >
+          Details
+        </button>
+        {details && <DetailsDialog item={item} canViewContract={canViewContract} onClose={() => setDetails(false)} />}
       </td>
     </tr>
   )

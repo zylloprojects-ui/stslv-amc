@@ -13,9 +13,22 @@ export const MODULES = [
   'SETTINGS',
   'HISTORICAL_DATA',
   'SERVICES_SALES',
+  // Migration 0080: pages that used to share another module's permissions.
+  'AMC_RENEWAL',
+  'MONTHLY_CALENDAR',
+  'SERVICE_STATUS',
+  'SALES_ENGINEERS',
+  'SYSTEM_TYPES',
+  'MAINTENANCE_FREQUENCIES',
+  'DEPARTMENTS',
+  'MASTER_AMC_STATUS',
+  'ACCOUNTS',
+  'SUGGESTIONS',
+  'SUGGESTIONS_REVIEW',
 ] as const
 
-export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE', 'EXPORT'] as const
+// READ: data-only read (API migration 0089): the module's data inside another section's page, without its pages.
+export const ACTIONS = ['VIEW', 'CREATE', 'EDIT', 'DELETE', 'APPROVE', 'EXPORT', 'READ'] as const
 
 export type Module = (typeof MODULES)[number]
 export type Action = (typeof ACTIONS)[number]
@@ -34,7 +47,18 @@ export const MODULE_LABELS: Record<Module, string> = {
   USERS: 'Users & Access',
   SETTINGS: 'Settings',
   HISTORICAL_DATA: 'Historical Data',
-  SERVICES_SALES: 'Services Sales',
+  SERVICES_SALES: 'Service Sales',
+  AMC_RENEWAL: 'AMC Renewal',
+  MONTHLY_CALENDAR: 'Monthly Calendar',
+  SERVICE_STATUS: 'Service Status',
+  SALES_ENGINEERS: 'Sales Engineers',
+  SYSTEM_TYPES: 'System Types',
+  MAINTENANCE_FREQUENCIES: 'Maintenance Frequencies',
+  DEPARTMENTS: 'Departments',
+  MASTER_AMC_STATUS: 'Master AMC Status',
+  ACCOUNTS: 'Accounts',
+  SUGGESTIONS: 'My Suggestions',
+  SUGGESTIONS_REVIEW: 'Suggestions Review',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -44,6 +68,7 @@ export const ACTION_LABELS: Record<Action, string> = {
   DELETE: 'Delete',
   APPROVE: 'Approve',
   EXPORT: 'Export',
+  READ: 'Data read',
 }
 
 export interface RoleSummary {
@@ -59,6 +84,8 @@ export interface SessionUser {
   roles: RoleSummary[]
   /** "MODULE:ACTION" strings, for example "CLIENTS:EDIT". */
   permissions: string[]
+  /** Signed in with a temporary password: must choose a new password before anything else. */
+  credentialChangeRequired?: boolean
 }
 
 export interface Client {
@@ -135,6 +162,8 @@ export interface User {
   approvalStatus: 'PENDING' | 'APPROVED' | 'REJECTED'
   lastLoginAt: string | null
   createdAt: string
+  /** Set while a temporary password is outstanding: when it stops working. */
+  temporaryCredentialExpiresAt?: string | null
   roles: RoleSummary[]
 }
 
@@ -151,11 +180,59 @@ export interface Role {
   isActive: boolean
   userCount: number
   permissions: Permission[]
+  /** Whether the signed-in user may change this role's permissions (never Super Admin's; Admin's only by Super Admin). */
   permissionsEditable: boolean
+  /** Why the permissions cannot be changed, when that comes from the role itself. Absent from an older API. */
+  lockedReason?: string | null
+  /** The "MODULE:ACTION" permissions this role may be given, or null when it may be given any grantable one. Absent from an older API. */
+  scope?: string[] | null
+  /** Whether the signed-in user may give this role to someone. Absent from an older API. */
+  assignable?: boolean
+  /** Fingerprint of the saved permission set; a save sends it back and is refused (409) if the set changed meanwhile. */
+  permissionsVersion?: string
+  /** Defined by the migrations: never deleted. */
+  builtIn?: boolean
 }
 
 export interface RolesResponse {
   roles: Role[]
   modules: Module[]
   actions: Action[]
+  /** What each module governs and which of its actions are used (API: shared/permission-catalog.ts). Absent from an older API. */
+  catalog?: PermissionSection[]
+  fixedAccess?: { superAdminOnly?: CatalogPage[]; adminOnly: CatalogPage[]; everyone: CatalogPage[] }
+}
+
+export interface CatalogPage {
+  label: string
+  path: string
+  /** Further modules the user must also be able to view. */
+  alsoRequires?: Module[]
+}
+
+export interface PermissionCatalogEntry {
+  module: Module
+  label: string
+  description: string
+  pages: CatalogPage[]
+  /** The actions the application checks for this module, with what each allows. Only these can be granted. */
+  actions: Partial<Record<Action, string>>
+}
+
+export interface PermissionSection {
+  title: string
+  /** Pages removed from the application: existing grants are shown and may be removed; nothing new can be granted. */
+  retired?: true
+  modules: PermissionCatalogEntry[]
+}
+
+/** The catalog to draw permissions from. An older API sends none: every module and action is then offered, as before. */
+export function permissionSections(response: RolesResponse): PermissionSection[] {
+  if (response.catalog) {
+    return response.catalog
+  }
+
+  const everyAction = Object.fromEntries(response.actions.map((action) => [action, ACTION_LABELS[action]])) as Partial<Record<Action, string>>
+
+  return [{ title: 'Permissions', modules: response.modules.map((module) => ({ module, label: MODULE_LABELS[module], description: '', pages: [], actions: everyAction })) }]
 }

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { expiryBand } from "../src/modules/amc/management.service";
-import { activeContract, contractBody, createClient, createContract, today } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, renewalEngineer, today } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { executeVisit, invoiceBody, postInvoice } from "./invoices-helpers";
 import { resetProjectData } from "./projects-helpers";
@@ -52,7 +52,7 @@ const renew = async (id: string) => {
   const response = await api()
     .post(`/api/amc/contracts/${id}/renewals`)
     .set(admin.headers)
-    .send(contractBody(clientId, { validFrom: addDays(now, 120), validTo: addDays(now, 480), status: "DRAFT", systemDescription: "RENEWAL" }));
+    .send(contractBody(clientId, { validFrom: addDays(now, 120), validTo: addDays(now, 480), status: "DRAFT", systemDescription: "RENEWAL", salesEngineerId: await renewalEngineer() }));
 
   expect(response.status).toBe(201);
   return response.body.data.id as string;
@@ -84,7 +84,7 @@ describe("expiryBand", () => {
 });
 
 describe("empty database", () => {
-  it("returns zeros, empty lists and payment as unavailable", async () => {
+  it("returns zeros and empty lists", async () => {
     const response = await summary();
 
     expect(response.status).toBe(200);
@@ -97,10 +97,10 @@ describe("empty database", () => {
       currentScheduledValue: { amount: "0.000", visits: 0, amountMissing: 0 },
       engine: { activeContracts: 0, withoutSchedule: 0 },
     });
-    expect(data.invoices.paid.available).toBe(false);
-    expect(data.invoices.unpaid.available).toBe(false);
-    expect(data.invoices.paidTotal.available).toBe(false);
-    expect(data.invoices.module).toEqual({ issued: 0, cancelled: 0, paymentTracked: false });
+    expect(data.invoices.paid).toEqual({ count: 0 });
+    expect(data.invoices.unpaid).toEqual({ count: 0, amount: "0.000" });
+    expect(data.invoices.paidTotal).toEqual({ amount: "0.000" });
+    expect(data.invoices.module).toEqual({ issued: 0, cancelled: 0 });
     expect(data.expiry.bands.map((band: { days: number; fromDays: number; count: number }) => [band.days, band.fromDays, band.count])).toEqual([
       [90, 61, 0],
       [60, 46, 0],
@@ -252,13 +252,13 @@ describe("with contracts, renewals, visits and invoices", () => {
     expect(schedule.engine).toEqual({ activeContracts: active.count, withoutSchedule: 1 });
   });
 
-  it("reports invoice counts but never a payment figure", async () => {
+  it("reports Zoho invoice counts apart from Paid, which only a manual Invoice No. makes", async () => {
     const { invoices } = (await summary()).body.data;
 
-    expect(invoices.module).toEqual({ issued: 1, cancelled: 0, paymentTracked: false });
-    for (const figure of [invoices.paid, invoices.unpaid, invoices.paidTotal]) {
-      expect(figure).toEqual({ available: false, reason: expect.stringContaining("Payment is not recorded") });
-    }
+    expect(invoices.module).toEqual({ issued: 1, cancelled: 0 });
+    // A Zoho invoice is recorded here, but nothing is Paid until a manual Invoice No. is entered.
+    expect(invoices.paid).toEqual({ count: 0 });
+    expect(invoices.paidTotal).toEqual({ amount: "0.000" });
   });
 
   it("lists the latest contracts, newest first", async () => {

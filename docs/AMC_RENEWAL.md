@@ -34,7 +34,7 @@ is always created as a Draft and approval activates it (the API and the contract
 
 | Action | Available in | Call | Permission |
 |---|---|---|---|
-| Start / Restart Renewal | Due, Cancelled | `POST /api/amc/contracts/:id/renewals` (status DRAFT) | AMC_CONTRACTS:CREATE |
+| Start / Restart Renewal | Due, Cancelled | `POST /api/amc/contracts/:id/renewals` (status DRAFT, with `salesEngineerId`) | AMC_RENEWAL:CREATE |
 | Approve | Under Client Approval | `POST /api/amc/contracts/:renewalId/status` ACTIVE (generates the renewal's schedule) | AMC_CONTRACTS:EDIT |
 | Cancel | Under Client Approval | `POST /api/amc/contracts/:renewalId/status` CANCELLED | AMC_CONTRACTS:EDIT + DELETE |
 
@@ -43,6 +43,26 @@ All existing routes, so validation, transactions, locking and audit entries are 
 
 Fix included: reactivating a cancelled renewal while its source already has another open renewal now returns
 409 with a clear message (previously the unique index raised an unhandled 500). The source row is locked first.
+
+## Sales Engineer on every renewal (approved 2026-10-29)
+
+Every AMC renewal must name an **active Sales Engineer** from the Sales Engineers master list. This applies
+whether the renewal starts on this page or on the contract page, and even when the contract being renewed had
+no engineer. A new contract that is not a renewal is unchanged: its engineer stays optional.
+
+| Contract being renewed | Renewal form | Saving |
+|---|---|---|
+| Has an active engineer | That engineer is preselected; the user may choose another active engineer. | Saved with the chosen engineer. |
+| Has an inactive engineer | Shows "Previously assigned: <name> (inactive)". Nothing is preselected and the inactive engineer is not offered. | Blocked until an active engineer is chosen. |
+| Has no engineer | "A renewal needs an active sales engineer." | Blocked until an active engineer is chosen. |
+
+- "Not linked" is not offered on a renewal. The engineer is never replaced by someone the user did not choose.
+- The rule is enforced in the API, whatever the screen sends: `POST /api/amc/contracts/:id/renewals` without an
+  active `salesEngineerId` returns 400 with the error on field `salesEngineerId`, and nothing is created
+  (`assertRenewalEngineerChosen` and the active check in `applyContractMasters`).
+- A role that may renew but cannot read the Sales Engineers list sees an explanation and cannot save. The six
+  standard roles were checked: Super Admin, Admin and AMC Operations Executive can renew and can read the list.
+- Before go-live, at least one active Sales Engineer must exist, otherwise no contract can be renewed.
 
 ## API (new, read-only)
 

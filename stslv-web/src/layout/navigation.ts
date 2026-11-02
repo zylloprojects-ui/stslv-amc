@@ -7,15 +7,29 @@ export interface NavItem {
   module: Module
   /** The module is in the navigation but its page is not built yet: it opens a placeholder. */
   pending?: true
-  /** Shown only to the built-in Admin role, whatever else the user is granted. */
+  /** Shown only to administrators (Super Admin and Admin), whatever else the user is granted. */
   adminOnly?: true
   /** Further modules the user must also hold VIEW on, for a page that shows data of several modules. */
   alsoRequires?: Module[]
+  /** Modules whose data the page shows: View or data-only Read is enough, and their own pages are not opened. */
+  alsoReads?: Module[]
+  /** Opened from Settings, not the sidebar. Still offered by the page search and checked like any other item. */
+  settingsArea?: true
 }
 
 /** Whether a navigation item is offered to the user. A convenience only: the API enforces every permission. */
-export function navItemVisible(item: NavItem, can: (module: Module, action: 'VIEW') => boolean, isAdmin: boolean): boolean {
-  return can(item.module, 'VIEW') && (item.alsoRequires ?? []).every((module) => can(module, 'VIEW')) && (!item.adminOnly || isAdmin)
+export function navItemVisible(
+  item: NavItem,
+  can: (module: Module, action: 'VIEW') => boolean,
+  isAdmin: boolean,
+  canRead: (module: Module) => boolean = (module) => can(module, 'VIEW'),
+): boolean {
+  return (
+    can(item.module, 'VIEW') &&
+    (item.alsoRequires ?? []).every((module) => can(module, 'VIEW')) &&
+    (item.alsoReads ?? []).every(canRead) &&
+    (!item.adminOnly || isAdmin)
+  )
 }
 
 export interface NavSection {
@@ -33,10 +47,10 @@ export const NAVIGATION: NavSection[] = [
     path: '/master-data',
     items: [
       { label: 'Clients', path: '/clients', module: 'CLIENTS' },
-      { label: 'Sales Engineers', path: '/master-data/sales-engineers', module: 'SETTINGS' },
-      { label: 'System Types', path: '/master-data/system-types', module: 'SETTINGS' },
-      { label: 'Maintenance Frequencies', path: '/master-data/maintenance-frequencies', module: 'SETTINGS' },
-      { label: 'Departments', path: '/master-data/departments', module: 'SETTINGS' },
+      { label: 'Sales Engineers', path: '/master-data/sales-engineers', module: 'SALES_ENGINEERS' },
+      { label: 'System Types', path: '/master-data/system-types', module: 'SYSTEM_TYPES' },
+      { label: 'Maintenance Frequencies', path: '/master-data/maintenance-frequencies', module: 'MAINTENANCE_FREQUENCIES' },
+      { label: 'Departments', path: '/master-data/departments', module: 'DEPARTMENTS' },
     ],
   },
   {
@@ -44,23 +58,22 @@ export const NAVIGATION: NavSection[] = [
     items: [
       { label: 'AMC Management', path: '/amc/management', module: 'AMC_CONTRACTS' },
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },
-      { label: 'AMC Renewal', path: '/amc/renewal', module: 'AMC_CONTRACTS' },
+      { label: 'Master AMC Status', path: '/amc/master-status', module: 'MASTER_AMC_STATUS' },
+      { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },
+      { label: 'AMC Renewal', path: '/amc/renewal', module: 'AMC_RENEWAL' },
+      { label: 'Monthly Calendar', path: '/amc/calendar', module: 'MONTHLY_CALENDAR' },
       { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
-      { label: 'Monthly Calendar', path: '/amc/calendar', module: 'AMC_SCHEDULE' },
-      { label: 'Service Status', path: '/amc/service-status', module: 'AMC_SCHEDULE' },
-      { label: 'Services Sales', path: '/amc/services-sales', module: 'SERVICES_SALES' },
-      // Shows invoice and quotation numbers, so it needs view on those modules too (the API checks the same three).
-      { label: 'Master AMC Status', path: '/amc/master-status', module: 'AMC_SCHEDULE', alsoRequires: ['INVOICES', 'SERVICES_SALES'] },
     ],
   },
   {
     title: 'Finance',
     items: [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
-      // Shows visit data next to invoice numbers, so it also needs view on the schedule (the API checks both).
-      { label: 'Accounts', path: '/finance/accounts', module: 'INVOICES', alsoRequires: ['AMC_SCHEDULE'] },
+      { label: 'Accounts', path: '/finance/accounts', module: 'ACCOUNTS' },
+      { label: 'Service Sales', path: '/amc/service-sales', module: 'SERVICES_SALES' },
     ],
   },
+  { title: 'Reporting', items: [{ label: 'Reports', path: '/reports', module: 'REPORTS' }] },
   {
     title: 'Administration',
     items: [
@@ -68,7 +81,11 @@ export const NAVIGATION: NavSection[] = [
       { label: 'Roles & Permissions', path: '/admin/roles', module: 'USERS' },
       { label: 'Login History', path: '/admin/login-history', module: 'USERS' },
       { label: 'Audit Log', path: '/admin/audit-log', module: 'USERS', adminOnly: true },
+      { label: 'Recycle Bin', path: '/admin/deletion-log', module: 'USERS', adminOnly: true },
+      { label: 'Suggestions Review', path: '/admin/suggestions', module: 'SUGGESTIONS_REVIEW' },
       { label: 'Settings', path: '/settings', module: 'SETTINGS' },
+      { label: 'Security Center', path: '/settings/security', module: 'USERS', adminOnly: true, settingsArea: true },
+      { label: 'Backup & Restore', path: '/settings/backups', module: 'USERS', adminOnly: true, settingsArea: true },
     ],
   },
 ]

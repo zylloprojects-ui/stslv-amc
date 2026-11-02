@@ -34,7 +34,8 @@ import type {
 // - a status change never touches a contract or a visit.
 
 const ENTITY_TYPE = "maintenance_frequencies";
-const MODULE = "SETTINGS";
+// Its own permission module (migration 0080), so the Audit Log files its changes there.
+const MODULE = "MAINTENANCE_FREQUENCIES";
 
 export interface FrequencyItem {
   id: string;

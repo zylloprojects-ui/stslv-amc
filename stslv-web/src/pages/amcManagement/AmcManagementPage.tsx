@@ -206,7 +206,7 @@ function ExpiryRenewal({ expiry }: { expiry: AmcManagementSummary['expiry'] }) {
           )}
         >
           <span
-            className={cx('flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl font-bold text-white shadow-lg ring-4', renewalWarning.count > 0 ? 'bg-amber-500 ring-amber-200' : 'bg-emerald-500 ring-emerald-200')}
+            className={cx('flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-2xl font-bold text-white shadow-lg ring-4', renewalWarning.count > 0 ? 'bg-amber-700 ring-amber-200' : 'bg-emerald-500 ring-emerald-200')}
             aria-hidden="true"
           >
             {renewalWarning.count > 0 ? '!' : '✓'}
@@ -329,6 +329,7 @@ interface ActionSpec {
 const ACTIONS: ActionSpec[] = [
   { label: 'Schedule Engine', to: '/amc/schedule', icon: 'calendar', module: 'AMC_SCHEDULE' },
   { label: 'Invoices', to: '/invoices', icon: 'invoice', module: 'INVOICES' },
+  { label: 'Reports', to: '/reports', icon: 'chart', module: 'REPORTS' },
 ]
 
 export function AmcManagementPage() {
@@ -359,12 +360,6 @@ export function AmcManagementPage() {
               <Icon name="shield" className="h-4 w-4" />
               Alerts
             </Link>
-            {/* No Reports page exists yet: shown as unavailable, never as a working link. */}
-            <span className={cx(ACTION, 'cursor-not-allowed opacity-60')} aria-disabled="true" title="A Reports page has not been built yet. Exports are available on AMC Schedule, Service Status and Invoice Tracking.">
-              <Icon name="chart" className="h-4 w-4" />
-              Reports
-              <span className="text-xs">(not built yet)</span>
-            </span>
             {canCreate && (
               <Button onClick={() => setCreating(true)}>
                 + New AMC

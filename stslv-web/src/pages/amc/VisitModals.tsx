@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -27,7 +28,7 @@ function VisitInvoices({ visitId }: { visitId: string }) {
   const query = useQuery({
     queryKey: ['invoices', 'visit', visitId],
     queryFn: () => api.get<PagedInvoices>(`/invoices?amcVisitId=${visitId}&status=ISSUED&pageSize=100`),
-    enabled: auth.can('INVOICES', 'VIEW'),
+    enabled: auth.canRead('INVOICES'),
   })
 
   if (!query.data || query.data.items.length === 0) {
@@ -175,10 +176,7 @@ export function VisitEditModal({ visit, onClose, onSaved }: VisitEditModalProps)
       return api.patch<ScheduleVisit>(`/amc/visits/${visit.id}`, dateLocked ? rest : { ...rest, scheduledDate })
     },
     onSuccess: async (saved) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['amc'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await refreshOperationalData(queryClient)
       onSaved(saved)
     },
     onError: (error) => {

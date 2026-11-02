@@ -1,3 +1,4 @@
+import { useAuth } from '../../auth/context'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Money } from '../../components/records'
 import { TABLE } from '../../components/table'
@@ -21,6 +22,8 @@ export function InvoiceStatusBadge({ status }: { status: Invoice['status'] }) {
 }
 
 export function InvoicesTable({ items, showClient, canEdit, onDialog, startAt = 0 }: InvoicesTableProps) {
+  // One invoice's details need View; data-only Read shows the numbers in this list only.
+  const canOpen = useAuth().can('INVOICES', 'VIEW')
   return (
     <div className={TABLE.wrapper}>
       <table className={TABLE.table}>
@@ -101,7 +104,7 @@ export function InvoicesTable({ items, showClient, canEdit, onDialog, startAt = 
                 </td>
                 <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                   <ActionGroup>
-                    <ActionButton label={`View invoice ${invoice.invoiceNumber}`} icon="view" onClick={() => onDialog({ kind: 'view', invoiceId: invoice.id })} />
+                    {canOpen && <ActionButton label={`View invoice ${invoice.invoiceNumber}`} icon="view" onClick={() => onDialog({ kind: 'view', invoiceId: invoice.id })} />}
                     {canEdit && !cancelled && (
                       <>
                         <ActionButton label={`Edit invoice ${invoice.invoiceNumber}`} icon="edit" onClick={() => onDialog({ kind: 'edit', invoice })} />

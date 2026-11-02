@@ -3,7 +3,8 @@ import { useCallback, useState } from 'react'
 // Master AMC Status columns hidden by this user, remembered in this browser.
 // Only how the page looks changes; a blocked browser store gives the default layout.
 
-const PREFIX = 'stslev.master-amc-status'
+export const MASTER_STATUS_PREFIX = 'stslev.master-amc-status'
+const PREFIX = MASTER_STATUS_PREFIX
 
 /** The columns a user may hide, in table order. The same ids the export accepts. */
 export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'scheduledMonth', 'visitValue', 'serviceStatus', 'invoiceNo', 'quotationNo', 'salesEngineer'] as const
@@ -15,7 +16,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   frequency: 'Frequency',
   service: 'Service',
   scheduledMonth: 'Scheduled Month',
-  visitValue: 'Visit Value',
+  visitValue: 'Value (Ex VAT)',
   serviceStatus: 'Service Status',
   invoiceNo: 'Invoice No.',
   quotationNo: 'Quote No.',

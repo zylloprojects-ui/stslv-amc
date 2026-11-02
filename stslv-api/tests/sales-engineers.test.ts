@@ -291,9 +291,11 @@ describe("Engineer 360", () => {
   });
 
   it("leaves out each section the viewer's role cannot see", async () => {
-    // Procurement may not read engineers at all until given Settings view.
+    // Procurement may not read engineers at all until given Sales Engineers view (migration 0080; Settings view no longer opens it).
     expect((await api().get(`/api/masters/sales-engineers/${engineer}/summary`).set(procurement.headers)).status).toBe(403);
     await grant("PROCUREMENT", [["SETTINGS", "VIEW"]]);
+    expect((await api().get(`/api/masters/sales-engineers/${engineer}/summary`).set(procurement.headers)).status).toBe(403);
+    await grant("PROCUREMENT", [["SALES_ENGINEERS", "VIEW"]]);
 
     const summary = (await api().get(`/api/masters/sales-engineers/${engineer}/summary`).set(procurement.headers)).body.data;
     expect(summary).toMatchObject({ contracts: null, visits: null, upcoming: null });

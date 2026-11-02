@@ -1,7 +1,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
+import { loadMigrationFiles } from "../src/db/migrate";
 import { ACTIONS, MODULES } from "../src/shared/permissions";
-import { api, closePool, insertUser, PASSWORD, resetData, roleId, signedIn } from "./helpers";
+import { api, closePool, insertUser, loginToken, PASSWORD, permissionsVersion, resetData, roleId, signedIn, withoutOneRoleConstraint } from "./helpers";
 
 type Session = Awaited<ReturnType<typeof signedIn>>;
 
@@ -76,12 +77,14 @@ describe("permission enforcement on client routes", () => {
     expect((await api().get("/api/clients").set(accountant.headers)).status).toBe(403);
   });
 
-  it("combines the permissions of several roles", async () => {
-    const both = await signedIn("both@example.com", ["PROCUREMENT", "INVOICING"]);
-    const me = await api().get("/api/auth/me").set(both.headers);
+  it("combines the permissions of several roles, on a database before migration 0082", async () => {
+    await withoutOneRoleConstraint(async () => {
+      const both = await signedIn("both@example.com", ["PROCUREMENT", "INVOICING"]);
+      const me = await api().get("/api/auth/me").set(both.headers);
 
-    expect(me.body.data.user.permissions).toEqual(expect.arrayContaining(["PROCUREMENT:CREATE", "INVOICES:CREATE"]));
-    expect(me.body.data.user.permissions).not.toContain("EXPENSES:CREATE");
+      expect(me.body.data.user.permissions).toEqual(expect.arrayContaining(["PROCUREMENT:CREATE", "INVOICES:CREATE"]));
+      expect(me.body.data.user.permissions).not.toContain("EXPENSES:CREATE");    });
+
   });
 });
 
@@ -93,9 +96,9 @@ describe("user administration is restricted", () => {
       await api().patch(`/api/users/${admin.id}`).set(accountant.headers).send({ fullName: "Hacked" }),
       await api().post(`/api/users/${admin.id}/deactivate`).set(accountant.headers),
       await api().put(`/api/users/${accountant.id}/roles`).set(accountant.headers).send({ roleIds: [await roleId("ADMIN")] }),
-      await api().post(`/api/users/${admin.id}/reset-password`).set(accountant.headers).send({ password: PASSWORD }),
+      await api().post(`/api/users/${admin.id}/temporary-password`).set(accountant.headers).send({ identityVerified: true }),
       await api().get("/api/roles").set(accountant.headers),
-      await api().put(`/api/roles/${await roleId("ACCOUNTANT")}/permissions`).set(accountant.headers).send({ permissions: [] }),
+      await api().put(`/api/roles/${await roleId("ACCOUNTANT")}/permissions`).set(accountant.headers).send({ expectedVersion: await permissionsVersion(await roleId("ACCOUNTANT")), permissions: [] }),
     ];
 
     for (const response of attempts) {
@@ -117,6 +120,11 @@ describe("role permissions are data", () => {
       "PROCUREMENT",
       "EXECUTION",
       "INVOICING",
+      "ADMINISTRATOR",
+      "FINANCE_EXECUTIVE",
+      "MASTER_DATA_EXECUTIVE",
+      "AMC_OPERATIONS_EXECUTIVE",
+      "VIEWER",
     ]);
 
     const adminRole = response.body.data.roles[0];
@@ -133,6 +141,7 @@ describe("role permissions are data", () => {
       .put(`/api/roles/${id}/permissions`)
       .set(admin.headers)
       .send({
+        expectedVersion: await permissionsVersion(id),
         permissions: [
           { module: "CLIENTS", action: "VIEW" },
           { module: "CLIENTS", action: "CREATE" },
@@ -160,7 +169,7 @@ describe("role permissions are data", () => {
     const response = await api()
       .put(`/api/roles/${await roleId("ADMIN")}/permissions`)
       .set(admin.headers)
-      .send({ permissions: [] });
+      .send({ expectedVersion: await permissionsVersion(await roleId("ADMIN")), permissions: [] });
 
     expect(response.status).toBe(403);
     expect((await api().get("/api/users").set(admin.headers)).status).toBe(200);
@@ -170,9 +179,60 @@ describe("role permissions are data", () => {
     const response = await api()
       .put(`/api/roles/${await roleId("ACCOUNTANT")}/permissions`)
       .set(admin.headers)
-      .send({ permissions: [{ module: "PAYROLL", action: "VIEW" }] });
+      .send({ expectedVersion: await permissionsVersion(await roleId("ACCOUNTANT")), permissions: [{ module: "PAYROLL", action: "VIEW" }] });
 
     expect(response.status).toBe(400);
+  });
+
+  it("describes every module's pages and used actions, retired modules last", async () => {
+    const { catalog, fixedAccess } = (await api().get("/api/roles").set(admin.headers)).body.data;
+    const modules = catalog.flatMap((section: { modules: { module: string }[] }) => section.modules.map((entry) => entry.module));
+
+    expect([...modules].sort()).toEqual([...MODULES].sort());
+    expect(catalog.at(-1)).toMatchObject({ retired: true });
+    expect(catalog.at(-1).modules.map((entry: { module: string }) => entry.module)).toEqual(["PROJECTS", "PROCUREMENT", "EXPENSES", "HISTORICAL_DATA"]);
+    expect(fixedAccess.adminOnly.map((page: { label: string }) => page.label)).toContain("Audit Log");
+  });
+
+  it("does not grant an action the application does not use, or a retired module", async () => {
+    const id = await roleId("ACCOUNTANT");
+
+    for (const permission of [
+      { module: "DASHBOARD", action: "CREATE" },
+      { module: "INVOICES", action: "APPROVE" },
+      { module: "SETTINGS", action: "EXPORT" },
+      { module: "PROJECTS", action: "CREATE" },
+      { module: "REPORTS", action: "EXPORT" },
+    ]) {
+      const response = await api().put(`/api/roles/${id}/permissions`).set(admin.headers).send({ expectedVersion: await permissionsVersion(id), permissions: [permission] });
+
+      expect(response.status, `${permission.module}:${permission.action}`).toBe(400);
+    }
+
+    expect((await pool.query("SELECT 1 FROM role_permissions WHERE role_id = $1 AND module IN ('PROJECTS', 'REPORTS') AND action IN ('CREATE', 'EXPORT')", [id])).rowCount).toBe(0);
+  });
+
+  it("keeps a role's existing grants on retired modules when other permissions change, and lets them be removed", async () => {
+    const id = await roleId("ACCOUNTANT");
+    const current = (await api().get("/api/roles").set(admin.headers)).body.data.roles.find((role: { code: string }) => role.code === "ACCOUNTANT").permissions;
+
+    expect(current).toEqual(expect.arrayContaining([{ module: "EXPENSES", action: "CREATE" }, { module: "REPORTS", action: "VIEW" }]));
+
+    const added = await api()
+      .put(`/api/roles/${id}/permissions`)
+      .set(admin.headers)
+      .send({ expectedVersion: await permissionsVersion(id), permissions: [...current, { module: "CLIENTS", action: "EXPORT" }] });
+
+    expect(added.status).toBe(200);
+    expect(added.body.data.permissions).toEqual(expect.arrayContaining([...current, { module: "CLIENTS", action: "EXPORT" }]));
+
+    const removed = await api()
+      .put(`/api/roles/${id}/permissions`)
+      .set(admin.headers)
+      .send({ expectedVersion: await permissionsVersion(id), permissions: current.filter((permission: { module: string }) => permission.module !== "REPORTS") });
+
+    expect(removed.status).toBe(200);
+    expect(removed.body.data.permissions).not.toContainEqual({ module: "REPORTS", action: "VIEW" });
   });
 });
 
@@ -207,7 +267,7 @@ describe("privilege escalation is blocked", () => {
     const promotePeer = await api()
       .put(`/api/users/${peer}/roles`)
       .set(accountant.headers)
-      .send({ roleIds: [await roleId("ACCOUNTANT"), await roleId("ADMIN")] });
+      .send({ roleIds: [await roleId("ADMIN")] });
     const promoteSelf = await api()
       .put(`/api/users/${accountant.id}/roles`)
       .set(accountant.headers)
@@ -219,10 +279,10 @@ describe("privilege escalation is blocked", () => {
 
   it("cannot manage a user who holds more permissions than they do", async () => {
     const attempts = [
-      await api().post(`/api/users/${admin.id}/reset-password`).set(accountant.headers).send({ password: "Taken-Over-Password-1" }),
+      await api().post(`/api/users/${admin.id}/temporary-password`).set(accountant.headers).send({ identityVerified: true }),
       await api().post(`/api/users/${admin.id}/deactivate`).set(accountant.headers),
       await api().patch(`/api/users/${admin.id}`).set(accountant.headers).send({ fullName: "Renamed" }),
-      await api().put(`/api/users/${admin.id}/roles`).set(accountant.headers).send({ roleIds: [] }),
+      await api().put(`/api/users/${admin.id}/roles`).set(accountant.headers).send({ roleIds: [await roleId("ACCOUNTANT")] }),
     ];
 
     for (const response of attempts) {
@@ -242,28 +302,29 @@ describe("privilege escalation is blocked", () => {
     const addBeyond = await api()
       .put(`/api/roles/${id}/permissions`)
       .set(accountant.headers)
-      .send({ permissions: [...current, { module: "SETTINGS", action: "EDIT" }] });
+      .send({ expectedVersion: await permissionsVersion(id), permissions: [...current, { module: "SETTINGS", action: "EDIT" }] });
     const revokeBeyond = await api()
       .put(`/api/roles/${await roleId("PROCUREMENT")}/permissions`)
       .set(accountant.headers)
-      .send({ permissions: [] });
+      .send({ expectedVersion: await permissionsVersion(await roleId("PROCUREMENT")), permissions: [] });
 
     expect(addBeyond.status).toBe(403);
     expect(revokeBeyond.status).toBe(403);
-    expect((await pool.query("SELECT 1 FROM role_permissions WHERE module = 'SETTINGS' AND action = 'EDIT'")).rowCount).toBe(1);
+    expect((await pool.query("SELECT 1 FROM role_permissions WHERE role_id = $1 AND module = 'SETTINGS' AND action = 'EDIT'", [id])).rowCount).toBe(0);
+    expect((await pool.query("SELECT 1 FROM role_permissions WHERE role_id = $1", [await roleId("PROCUREMENT")])).rowCount).toBeGreaterThan(0);
   });
 });
 
 describe("the system always keeps an active Admin", () => {
   it("does not let an Admin deactivate themselves or change their own roles", async () => {
     const deactivate = await api().post(`/api/users/${admin.id}/deactivate`).set(admin.headers);
-    const roles = await api().put(`/api/users/${admin.id}/roles`).set(admin.headers).send({ roleIds: [] });
+    const roles = await api().put(`/api/users/${admin.id}/roles`).set(admin.headers).send({ roleIds: [await roleId("ACCOUNTANT")] });
 
     expect(deactivate.status).toBe(409);
     expect(roles.status).toBe(409);
   });
 
-  it("does not let the only active Admin be deactivated or lose the Admin role", async () => {
+  it("lets only another Super Admin deactivate a Super Admin or take the role away", async () => {
     // A custom role with every permission but not the ADMIN code.
     await pool.query("INSERT INTO roles (code, name) VALUES ('SUPERVISOR', 'Supervisor')");
     await pool.query(
@@ -274,13 +335,82 @@ describe("the system always keeps an active Admin", () => {
     const supervisor = await signedIn("supervisor@example.com", ["SUPERVISOR"]);
 
     const deactivate = await api().post(`/api/users/${admin.id}/deactivate`).set(supervisor.headers);
-    const removeRole = await api().put(`/api/users/${admin.id}/roles`).set(supervisor.headers).send({ roleIds: [] });
+    const removeRole = await api().put(`/api/users/${admin.id}/roles`).set(supervisor.headers).send({ roleIds: [await roleId("SUPERVISOR")] });
 
-    expect(deactivate.status).toBe(409);
-    expect(removeRole.status).toBe(409);
+    // Holding every permission is not enough: Super Admin accounts are managed by Super Admin only.
+    expect(deactivate.status).toBe(403);
+    expect(removeRole.status).toBe(403);
+    expect(deactivate.body.error.message).toBe("Only Super Admin can manage Super Admin and Admin accounts.");
 
-    // With a second active Admin it is allowed.
+    // Another active Super Admin may.
     await insertUser({ email: "second-admin@example.com", roles: ["ADMIN"] });
-    expect((await api().post(`/api/users/${admin.id}/deactivate`).set(supervisor.headers)).status).toBe(200);
+    const second = { Authorization: `Bearer ${await loginToken("second-admin@example.com")}` };
+    expect((await api().post(`/api/users/${admin.id}/deactivate`).set(second)).status).toBe(200);
+  });
+});
+
+describe("migration 0081 keeps every role's access", () => {
+  const grantsOf = async (code: string) =>
+    (
+      await pool.query<{ key: string }>(
+        "SELECT rp.module || ':' || rp.action AS key FROM role_permissions rp JOIN roles r ON r.id = rp.role_id WHERE r.code = $1 ORDER BY 1",
+        [code]
+      )
+    ).rows.map((row) => row.key).sort();
+
+  // The approved matrix (docs/ROLES_PERMISSIONS.md): the grants seeded before 0081, plus the copies onto the new modules.
+  const EXPECTED: Record<string, string[]> = {
+    ACCOUNTANT: [
+      "AMC_CONTRACTS:VIEW", "AMC_RENEWAL:VIEW", "AMC_SCHEDULE:VIEW", "CLIENTS:VIEW", "DASHBOARD:VIEW",
+      "EXPENSES:CREATE", "EXPENSES:EDIT", "EXPENSES:VIEW", "INVOICES:VIEW", "MONTHLY_CALENDAR:VIEW",
+      "PROCUREMENT:VIEW", "PROJECTS:VIEW", "REPORTS:VIEW", "SERVICE_STATUS:VIEW", "SERVICES_SALES:VIEW",
+    ],
+    PROCUREMENT: ["CLIENTS:VIEW", "DASHBOARD:VIEW", "EXPENSES:VIEW", "PROCUREMENT:CREATE", "PROCUREMENT:EDIT", "PROCUREMENT:VIEW", "PROJECTS:VIEW"],
+    EXECUTION: [
+      "AMC_CONTRACTS:VIEW", "AMC_EXECUTION:EDIT", "AMC_EXECUTION:VIEW", "AMC_RENEWAL:VIEW", "AMC_SCHEDULE:VIEW", "CLIENTS:VIEW",
+      "DASHBOARD:VIEW", "MONTHLY_CALENDAR:VIEW", "PROCUREMENT:VIEW", "PROJECTS:VIEW", "SERVICE_STATUS:VIEW", "SERVICES_SALES:VIEW",
+    ],
+    INVOICING: [
+      "AMC_CONTRACTS:VIEW", "AMC_RENEWAL:VIEW", "AMC_SCHEDULE:VIEW", "CLIENTS:VIEW", "DASHBOARD:VIEW", "INVOICES:CREATE", "INVOICES:EDIT",
+      "INVOICES:VIEW", "MONTHLY_CALENDAR:VIEW", "PROJECTS:VIEW", "REPORTS:VIEW", "SERVICE_STATUS:VIEW", "SERVICES_SALES:EDIT", "SERVICES_SALES:VIEW",
+    ],
+  };
+
+  it("gives the seeded roles exactly the approved matrix, and Admin everything", async () => {
+    for (const [code, expected] of Object.entries(EXPECTED)) {
+      // Migration 0092 adds the modules split off later; cross-module-permissions.test.ts covers those.
+      const later = ["MASTER_AMC_STATUS:", "ACCOUNTS:", "SUGGESTIONS:", "SUGGESTIONS_REVIEW:"];
+      const grants = (await grantsOf(code)).filter((key) => !later.some((prefix) => key.startsWith(prefix)));
+      expect(grants, code).toEqual([...expected].sort());
+    }
+    expect(await grantsOf("ADMIN")).toHaveLength(MODULES.length * ACTIONS.length);
+  });
+
+  it("copies only the actions each new module uses, from the module it is split from, and adds USERS:APPROVE to USERS:EDIT", async () => {
+    await pool.query("INSERT INTO roles (code, name) VALUES ('CUSTOM', 'Custom')");
+    await grant("CUSTOM", [
+      ["AMC_CONTRACTS", "VIEW"], ["AMC_CONTRACTS", "CREATE"], ["AMC_CONTRACTS", "DELETE"],
+      ["AMC_SCHEDULE", "VIEW"], ["AMC_SCHEDULE", "EDIT"],
+      ["SETTINGS", "VIEW"], ["SETTINGS", "DELETE"],
+      ["USERS", "VIEW"], ["USERS", "EDIT"],
+    ]);
+    const before = await grantsOf("CUSTOM");
+    const seed = loadMigrationFiles().find((migration) => migration.name === "seed_page_permissions")?.sql as string;
+
+    await pool.query(seed);
+    await pool.query(seed); // Repeatable: a second run changes nothing.
+
+    const after = await grantsOf("CUSTOM");
+
+    expect(after.filter((key) => !before.includes(key))).toEqual([
+      "AMC_RENEWAL:CREATE", "AMC_RENEWAL:VIEW",
+      "DEPARTMENTS:VIEW", "MAINTENANCE_FREQUENCIES:VIEW",
+      "MONTHLY_CALENDAR:VIEW", "SALES_ENGINEERS:VIEW",
+      "SERVICE_STATUS:VIEW",
+      "SYSTEM_TYPES:DELETE", "SYSTEM_TYPES:VIEW",
+      "USERS:APPROVE",
+    ]);
+    // Nothing is removed.
+    expect(after).toEqual(expect.arrayContaining(before));
   });
 });

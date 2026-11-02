@@ -1,3 +1,4 @@
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { DetailRow, Money, OrDash } from '../../components/records'
@@ -175,12 +176,7 @@ function CancelInvoiceDialog({ invoice, onClose, onCancelled }: CancelInvoiceDia
   const cancel = useMutation({
     mutationFn: () => api.post<Invoice>(`/invoices/${invoice.id}/cancel`, { reason: reason.trim() }),
     onSuccess: async (cancelled) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['invoices'] }),
-        queryClient.invalidateQueries({ queryKey: ['projects'] }),
-        queryClient.invalidateQueries({ queryKey: ['amc'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-      ])
+      await refreshOperationalData(queryClient)
       onCancelled(cancelled)
     },
   })

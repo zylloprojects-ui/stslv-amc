@@ -1060,6 +1060,7 @@ input[type="datetime-local"] {
   --tw-gradient-via: #3a1a22;
 }
 .dark .bg-slate-50\/60,
+.dark .bg-sky-50\/70,
 .dark .bg-sky-50\/60,
 .dark .bg-sky-50\/50 {
   background-color: #14304f;
@@ -1150,4 +1151,106 @@ input[type="datetime-local"] {
 }
 .dark .hover\:border-slate-300:hover {
   border-color: #3a5a7e;
+}
+
+/* Dark theme: status colours must keep a light text on a dark tint, and tinted rows and panels stay dark. */
+.dark .text-rose-800,
+.dark .text-red-900 {
+  color: #ff9a9a;
+}
+.dark .bg-rose-50 {
+  background-color: #3a1a22;
+}
+.dark .border-rose-200,
+.dark .border-red-300 {
+  border-color: #6b2a35;
+}
+.dark .ring-red-300 {
+  --tw-ring-color: #6b2a35;
+}
+.dark .bg-yellow-100 {
+  background-color: #3a2e12;
+}
+.dark .ring-yellow-300 {
+  --tw-ring-color: #6b5320;
+}
+.dark .bg-violet-50 {
+  background-color: #2a2148;
+}
+.dark .text-violet-900 {
+  color: #cfc0fa;
+}
+.dark .ring-violet-200 {
+  --tw-ring-color: #4b3d7a;
+}
+/* Suggestions Review: the Under Review tile and the selected tab. */
+.dark .text-violet-800 {
+  color: #d6c8ff;
+}
+.dark .text-\[\#0f62a3\] {
+  color: #7cc0f0;
+}
+/* Row numbers in tables, including tinted rows. */
+.dark .table-scroll td.text-slate-400 {
+  color: #cbd5e1;
+}
+/* Tinted table rows (Quotations, AMC Schedule): a faint wash over the dark table. */
+.dark .bg-rose-50\/50,
+.dark .bg-rose-50\/60 {
+  background-color: rgba(225, 29, 72, 0.12);
+}
+.dark .bg-emerald-50\/50 {
+  background-color: rgba(16, 185, 129, 0.12);
+}
+/* Monthly Calendar filter panel and the empty calendar cells. */
+.dark .bg-slate-50\/50 {
+  background-color: #14304f;
+}
+.dark .bg-slate-100\/50 {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+/* Opaque: the Month view grid colours its gaps through this cell, so a see-through tint would show that colour. */
+.dark .bg-slate-100\/70 {
+  background-color: #0e1c30;
+}
+/* AMC Management expiry cards. */
+.dark .from-red-100 {
+  --tw-gradient-from: #3a1a22;
+  --tw-gradient-to: #112238;
+}
+.dark .from-emerald-100 {
+  --tw-gradient-from: #12332b;
+  --tw-gradient-to: #112238;
+}
+.dark .from-emerald-50 {
+  --tw-gradient-from: #12332b;
+}
+.dark .text-emerald-700\/80 {
+  color: #8fdc9a;
+}
+/* AMC Management panel headers and the Monthly Calendar month cards. */
+.dark .from-sky-50\/80 {
+  --tw-gradient-from: #14304f;
+}
+.dark .from-slate-200 {
+  --tw-gradient-from: #2b4a6b;
+}
+.dark .to-slate-100 {
+  --tw-gradient-to: #1f3a58;
+}
+/* The rules above recolour every side, so the coloured top edge of the expiry bands is set again here. */
+.dark .border-t-sky-400 {
+  border-top-color: #38bdf8;
+}
+.dark .border-t-sky-500 {
+  border-top-color: #0ea5e9;
+}
+.dark .border-t-amber-400 {
+  border-top-color: #fbbf24;
+}
+.dark .border-t-amber-500 {
+  border-top-color: #f59e0b;
+}
+.dark .border-t-red-500 {
+  border-top-color: #ef4444;
 }

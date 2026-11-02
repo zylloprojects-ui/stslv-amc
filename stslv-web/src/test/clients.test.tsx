@@ -373,7 +373,7 @@ describe('Client 360', () => {
 
     expect(await figures.findByText('6,480.000')).toBeInTheDocument()
     expect(figures.getByText('All contracts except cancelled: 6,980.000')).toBeInTheDocument()
-    expect(figures.getByText('Payments are not recorded in STSLV AMC.')).toBeInTheDocument()
+    expect(figures.getByText('Paid and Unpaid are shown per service on Accounts.')).toBeInTheDocument()
     expect(figures.getByText('Next on 15 Feb 2030')).toBeInTheDocument()
     expect(screen.getByText('CL-00010', { selector: 'span' })).toBeInTheDocument()
 

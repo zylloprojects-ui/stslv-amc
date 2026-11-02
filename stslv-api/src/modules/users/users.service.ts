@@ -1,12 +1,15 @@
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
+import { escapeLike } from "../../shared/validation";
 import { conflict, forbidden, isUniqueViolation, notFound, validationError } from "../../shared/errors";
-import { ADMIN_ROLE_CODE, type PermissionKey } from "../../shared/permissions";
+import { ADMIN_ROLE_CODE, holdsPermission, type PermissionKey } from "../../shared/permissions";
+import { hasAdminAccess, isPrivilegedRole, isSuperAdmin } from "../../shared/role-model";
 import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth/access";
 import { hashPassword } from "../auth/password";
 import { revokeResetTokens } from "../auth/password-reset.service";
-import type { CreateUserInput } from "./users.schemas";
+import { generateTemporaryPassword, TEMPORARY_PASSWORD_MINUTES } from "../auth/temporary-password";
+import { ONE_ROLE_MESSAGE, type CreateUserInput, type UserFilters } from "./users.schemas";
 
 /**
  * PENDING: requested from the Sign up page and not yet decided by an administrator.
@@ -22,6 +25,7 @@ interface UserRow {
   approval_status: ApprovalStatus;
   last_login_at: Date | null;
   created_at: Date;
+  temporary_password_expires_at: Date | null;
   roles: RoleSummary[];
 }
 
@@ -33,12 +37,15 @@ export interface User {
   approvalStatus: ApprovalStatus;
   lastLoginAt: string | null;
   createdAt: string;
+  /** Set while a temporary password is outstanding: when it stops working. */
+  temporaryCredentialExpiresAt: string | null;
   roles: RoleSummary[];
 }
 
 // password_hash is deliberately never selected here.
 const USER_SELECT = `
   SELECT u.id, u.email, u.full_name, u.is_active, u.approval_status, u.last_login_at, u.created_at,
+         u.temporary_password_expires_at,
          COALESCE(
            json_agg(json_build_object('id', r.id::text, 'code', r.code, 'name', r.name) ORDER BY r.name)
              FILTER (WHERE r.id IS NOT NULL),
@@ -57,6 +64,7 @@ function toUser(row: UserRow): User {
     approvalStatus: row.approval_status,
     lastLoginAt: row.last_login_at ? row.last_login_at.toISOString() : null,
     createdAt: row.created_at.toISOString(),
+    temporaryCredentialExpiresAt: row.temporary_password_expires_at ? row.temporary_password_expires_at.toISOString() : null,
     roles: row.roles,
   };
 }
@@ -65,6 +73,51 @@ export async function listUsers(): Promise<User[]> {
   const result = await pool.query<UserRow>(`${USER_SELECT} GROUP BY u.id ORDER BY lower(u.full_name), u.id`);
 
   return result.rows.map(toUser);
+}
+
+function userFilter(filters: UserFilters) {
+  const params: unknown[] = [];
+  const conditions: string[] = [];
+
+  if (filters.search) {
+    params.push(`%${escapeLike(filters.search)}%`);
+    const p = `$${params.length}`;
+    conditions.push(
+      `(f.full_name ILIKE ${p} OR f.email ILIKE ${p} OR EXISTS (SELECT 1 FROM user_roles fur JOIN roles fr ON fr.id = fur.role_id WHERE fur.user_id = f.id AND fr.name ILIKE ${p}))`
+    );
+  }
+  // The same four states the Users table shows: a pending or rejected account is also inactive, but is shown as what it is.
+  if (filters.status === "ACTIVE") conditions.push("f.is_active");
+  if (filters.status === "INACTIVE") conditions.push("NOT f.is_active AND f.approval_status = 'APPROVED'");
+  if (filters.status === "PENDING") conditions.push("f.approval_status = 'PENDING'");
+  if (filters.status === "REJECTED") conditions.push("f.approval_status = 'REJECTED'");
+
+  return { params, where: conditions.length > 0 ? conditions.join(" AND ") : "true" };
+}
+
+/** One page of the Users table. pendingTotal ignores the filters: requests waiting for a decision are always announced. */
+export async function listUsersPage(query: UserFilters & { page: number; pageSize: number }) {
+  const { params, where } = userFilter(query);
+  const [total, pending, rows] = await Promise.all([
+    pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM users f WHERE ${where}`, params),
+    pool.query<{ count: number }>("SELECT count(*)::int AS count FROM users WHERE approval_status = 'PENDING'"),
+    pool.query<UserRow>(
+      `${USER_SELECT} WHERE u.id IN (SELECT f.id FROM users f WHERE ${where})
+       GROUP BY u.id ORDER BY lower(u.full_name), u.id
+       LIMIT ${query.pageSize} OFFSET ${(query.page - 1) * query.pageSize}`,
+      params
+    ),
+  ]);
+
+  return { items: rows.rows.map(toUser), total: total.rows[0]?.count ?? 0, pendingTotal: pending.rows[0]?.count ?? 0, page: query.page, pageSize: query.pageSize };
+}
+
+/** Every user matching the filters, for the export. */
+export async function listUsersMatching(filters: UserFilters): Promise<User[]> {
+  const { params, where } = userFilter(filters);
+  const rows = await pool.query<UserRow>(`${USER_SELECT} WHERE u.id IN (SELECT f.id FROM users f WHERE ${where}) GROUP BY u.id ORDER BY lower(u.full_name), u.id`, params);
+
+  return rows.rows.map(toUser);
 }
 
 async function findUser(db: Queryable, id: string): Promise<User> {
@@ -87,8 +140,8 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
     return;
   }
 
-  const roles = await db.query<{ id: string; name: string; is_active: boolean }>(
-    "SELECT id, name, is_active FROM roles WHERE id = ANY($1::bigint[])",
+  const roles = await db.query<{ id: string; code: string; name: string; is_active: boolean }>(
+    "SELECT id, code, name, is_active FROM roles WHERE id = ANY($1::bigint[])",
     [roleIds]
   );
 
@@ -96,6 +149,12 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
     throw validationError("One or more selected roles do not exist.", [
       { field: "roleIds", message: "One or more selected roles do not exist." },
     ]);
+  }
+
+  const privileged = roles.rows.find((role) => isPrivilegedRole(role.code));
+
+  if (privileged && !isSuperAdmin(auth.roles)) {
+    throw forbidden(`Only Super Admin can assign the ${privileged.name} role.`);
   }
 
   const inactive = roles.rows.find((role) => !role.is_active);
@@ -113,7 +172,7 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
      WHERE rp.role_id = ANY($1::bigint[])`,
     [roleIds]
   );
-  const beyond = permissions.rows.find((row) => !auth.permissions.has(row.key));
+  const beyond = permissions.rows.find((row) => !holdsPermission(auth.permissions, row.key));
 
   if (beyond) {
     throw forbidden(`You cannot assign the role "${beyond.name}" because it grants permissions you do not hold.`);
@@ -125,16 +184,28 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
  * roles of) someone whose permissions do not exceed their own.
  */
 async function assertCanManageUser(auth: AuthContext, db: Queryable, targetUserId: string): Promise<void> {
+  // Super Admin and Admin accounts are managed by Super Admin only, whatever permissions Admin is given.
+  if (!isSuperAdmin(auth.roles)) {
+    const held = await db.query<{ code: string }>(
+      "SELECT r.code FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = $1",
+      [targetUserId]
+    );
+
+    if (held.rows.some((row) => isPrivilegedRole(row.code))) {
+      throw forbidden(PRIVILEGED_ACCOUNT_ONLY);
+    }
+  }
+
   const targetPermissions = await loadUserPermissions(db, targetUserId);
 
   for (const key of targetPermissions) {
-    if (!auth.permissions.has(key)) {
+    if (!holdsPermission(auth.permissions, key)) {
       throw forbidden("You cannot manage a user who holds permissions you do not hold.");
     }
   }
 }
 
-/** Active users, other than the given one, who hold the active Admin role. */
+/** Active users, other than the given one, who hold the active Super Admin role (code ADMIN). */
 async function countOtherActiveAdmins(db: Queryable, excludingUserId: string): Promise<number> {
   const result = await db.query<{ count: number }>(
     `SELECT count(DISTINCT u.id)::int AS count
@@ -155,19 +226,39 @@ async function lockUser(db: Queryable, id: string): Promise<void> {
 
 const isAdmin = (user: User) => user.roles.some((role) => role.code === ADMIN_ROLE_CODE);
 
-const ROLE_REQUIRED_TO_APPROVE = "Assign a role before approving this user.";
+const PRIVILEGED_ACCOUNT_ONLY = "Only Super Admin can manage Super Admin and Admin accounts.";
 
-/** Whether the user holds at least one active role. An inactive role grants nothing, so it does not count. */
-async function hasActiveRole(db: Queryable, userId: string): Promise<boolean> {
-  const result = await db.query(
-    "SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = $1 AND r.is_active LIMIT 1",
+const ROLE_REQUIRED_TO_APPROVE = "Assign a role before approving this user.";
+const ONE_ROLE_TO_APPROVE = "This user has more than one role. Choose one role before approving.";
+
+/**
+ * Why the user cannot be approved yet, or null: an approval gives exactly one active role
+ * (one role per user, approved 2026-10-29). An inactive role grants nothing, so it does not count.
+ * An account given several roles before the rule is not changed here; an administrator chooses one.
+ */
+async function approvalRoleProblem(db: Queryable, userId: string): Promise<string | null> {
+  const result = await db.query<{ total: number; active: number }>(
+    `SELECT count(*)::int AS total, count(*) FILTER (WHERE r.is_active)::int AS active
+     FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = $1`,
     [userId]
   );
+  const { total, active } = result.rows[0] ?? { total: 0, active: 0 };
 
-  return (result.rowCount ?? 0) > 0;
+  if (total > 1) return ONE_ROLE_TO_APPROVE;
+  if (active === 0) return ROLE_REQUIRED_TO_APPROVE;
+
+  return null;
+}
+
+/** One role per user: the routes' schema checks it, and so does every service that assigns roles. */
+function assertOneRole(roleIds: string[]): void {
+  if (roleIds.length !== 1) {
+    throw validationError(ONE_ROLE_MESSAGE, [{ field: "roleIds", message: ONE_ROLE_MESSAGE }]);
+  }
 }
 
 export async function createUser(auth: AuthContext, input: CreateUserInput): Promise<User> {
+  assertOneRole(input.roleIds);
   const passwordHash = await hashPassword(input.password);
 
   try {
@@ -238,6 +329,13 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
     await lockUser(client, id);
     const before = await findUser(client, id);
 
+    // Approving a sign-up request needs USERS:APPROVE; activating or deactivating an account needs USERS:EDIT.
+    const required: PermissionKey = isActive && before.approvalStatus === "PENDING" ? "USERS:APPROVE" : "USERS:EDIT";
+
+    if (!auth.permissions.has(required)) {
+      throw forbidden();
+    }
+
     if (!isActive && id === auth.user.id) {
       throw conflict("You cannot deactivate your own account.");
     }
@@ -252,15 +350,17 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
     }
 
     if (!isActive && isAdmin(before) && (await countOtherActiveAdmins(client, id)) === 0) {
-      throw conflict("This is the only active Admin. Assign the Admin role to another active user first.");
+      throw conflict("This is the only active Super Admin. Assign the Super Admin role to another active user first.");
     }
 
     // Activating an account requested from the Sign up page is its approval.
     const approving = isActive && before.approvalStatus === "PENDING";
 
-    // An approval must give access: at least one active role is assigned first.
-    if (approving && !(await hasActiveRole(client, id))) {
-      throw conflict(ROLE_REQUIRED_TO_APPROVE, [{ field: "roleIds", message: ROLE_REQUIRED_TO_APPROVE }]);
+    // An approval must give access through exactly one active role, assigned first.
+    const roleProblem = approving ? await approvalRoleProblem(client, id) : null;
+
+    if (roleProblem) {
+      throw conflict(roleProblem, [{ field: "roleIds", message: roleProblem }]);
     }
 
     await client.query(
@@ -331,13 +431,19 @@ export function rejectRegistration(auth: AuthContext, id: string): Promise<User>
   });
 }
 
+/**
+ * Gives the user exactly one role (roleIds holds one id; the schema checks it), replacing
+ * whatever they held before, in one transaction under the user's row lock.
+ */
 export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): Promise<User> {
+  assertOneRole(roleIds);
+
   return withTransaction(async (client) => {
     await lockUser(client, id);
     const before = await findUser(client, id);
 
     if (id === auth.user.id) {
-      throw conflict("You cannot change your own roles. Ask another administrator.");
+      throw conflict("You cannot change your own role. Ask another administrator.");
     }
     if (before.approvalStatus === "REJECTED") {
       throw conflict("This registration was rejected and cannot be given a role.");
@@ -360,7 +466,7 @@ export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): 
       removed.some((role) => role.code === ADMIN_ROLE_CODE) &&
       (await countOtherActiveAdmins(client, id)) === 0
     ) {
-      throw conflict("This is the only active Admin. Assign the Admin role to another active user first.");
+      throw conflict("This is the only active Super Admin. Assign the Super Admin role to another active user first.");
     }
 
     await client.query("DELETE FROM user_roles WHERE user_id = $1 AND role_id = ANY($2::bigint[])", [
@@ -377,7 +483,7 @@ export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): 
       module: "USERS",
       entityType: "users",
       entityId: id,
-      description: `Roles changed for user "${before.fullName}".`,
+      description: `Role of user "${before.fullName}" changed to ${updated.roles.map((role) => role.name).join(", ") || "none"}.`,
       metadata: {
         added: updated.roles.filter((role) => added.includes(role.id)).map((role) => role.code),
         removed: removed.map((role) => role.code),
@@ -388,26 +494,67 @@ export function setUserRoles(auth: AuthContext, id: string, roleIds: string[]): 
   });
 }
 
-export async function resetUserPassword(auth: AuthContext, id: string, password: string): Promise<void> {
-  const passwordHash = await hashPassword(password);
+export interface IssuedTemporaryPassword {
+  /** Shown to the administrator once. Never stored, logged or returned again. */
+  temporaryPassword: string;
+  expiresAt: string;
+}
 
-  await withTransaction(async (client) => {
+/**
+ * Replaces a user's password with a random temporary one that must be changed at
+ * the next sign-in, within TEMPORARY_PASSWORD_MINUTES. Only Super Admin or Admin may do this (Admin not for Super Admin or Admin accounts),
+ * never for their own account, and only for an active account. The user is signed
+ * out everywhere, and an earlier temporary password stops working.
+ */
+export async function issueTemporaryPassword(auth: AuthContext, id: string): Promise<IssuedTemporaryPassword> {
+  // On top of USERS:EDIT (checked by the route): a role granted user editing does not get this.
+  if (!hasAdminAccess(auth.roles)) {
+    throw forbidden("Only an administrator can issue a temporary password.");
+  }
+  if (id === auth.user.id) {
+    throw conflict("You cannot issue a temporary password for your own account. Change your password under My account.");
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const passwordHash = await hashPassword(temporaryPassword);
+
+  return withTransaction(async (client) => {
+    await lockUser(client, id);
     const target = await findUser(client, id);
     await assertCanManageUser(auth, client, id);
 
-    // Moving password_changed_at signs the user out of every existing session.
-    await client.query("UPDATE users SET password_hash = $1, password_changed_at = now() WHERE id = $2", [
-      passwordHash,
-      id,
-    ]);
+    if (!target.isActive) {
+      throw conflict(
+        target.approvalStatus === "APPROVED"
+          ? "This account is deactivated. Activate it before issuing a temporary password."
+          : "This account has not been approved. Approve it before issuing a temporary password."
+      );
+    }
+
+    // Moving password_changed_at signs the user out of every existing session; the
+    // new hash replaces the old password and any earlier temporary password.
+    const updated = await client.query<{ expires_at: Date }>(
+      `UPDATE users
+       SET password_hash = $1, must_change_password = true,
+           temporary_password_expires_at = now() + make_interval(mins => $2), password_changed_at = now()
+       WHERE id = $3
+       RETURNING temporary_password_expires_at AS expires_at`,
+      [passwordHash, TEMPORARY_PASSWORD_MINUTES, id]
+    );
+    const expiresAt = (updated.rows[0] as { expires_at: Date }).expires_at.toISOString();
+
     await revokeResetTokens(client, id);
     await logActivity(client, {
       userId: auth.user.id,
-      action: "user.password_reset",
+      action: "user.temporary_password_issued",
       module: "USERS",
       entityType: "users",
       entityId: id,
-      description: `Password reset for user "${target.fullName}".`,
+      description: `Temporary password issued for user "${target.fullName}" (${target.email}).`,
+      // Who, for whom and when are the entry itself; the password is never recorded.
+      metadata: { identityVerified: true, expiresAt },
     });
+
+    return { temporaryPassword, expiresAt };
   });
 }

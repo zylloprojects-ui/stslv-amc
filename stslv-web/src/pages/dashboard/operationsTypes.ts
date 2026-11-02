@@ -3,10 +3,20 @@ import type { ContractStatus, VisitStatus } from '../amc/types'
 // What GET /api/dashboard/operations returns. A section the user may not see is
 // null. Amounts are decimal strings with three decimals; dates are YYYY-MM-DD.
 
-/** Payment is not recorded in STSLV AMC, so payment figures always come back like this. */
-export interface Unavailable {
-  available: false
-  reason: string
+/** Reference status from the manual Invoice No. of each service; it does not verify that money was received. */
+export interface PaymentFigures {
+  paid: number
+  paidValue: string
+  unpaid: number
+  unpaidValue: string
+  paidThisMonth: number
+  paidThisMonthValue: string
+}
+
+export interface PaymentTrendMonth {
+  month: string
+  count: number
+  value: string
 }
 
 export interface WorkloadMonth {
@@ -52,14 +62,14 @@ export interface OperationsDashboard {
       expiringSoonWithRenewal: number | null
     } | null
     services: { thisMonth: number; completedThisMonth: number; openThisMonth: number } | null
-    unpaidInvoices: Unavailable | null
-    paidThisMonth: Unavailable | null
+    /** Reference status from the manual Invoice No., over the same services as Accounts. */
+    payments: PaymentFigures | null
   }
   portfolio: { total: number; statuses: { status: ContractStatus; count: number; percent: string | null }[] } | null
   expiring: { days: number; total: number; pastValidity: number; items: ExpiringRow[]; renewalsInstalled: boolean } | null
   workload: { months: WorkloadMonth[] } | null
   schedule: { today: ScheduleItem[]; todayTotal: number; upcoming: ScheduleItem[]; upcomingTotal: number; upcomingDays: number } | null
-  payments: Unavailable | null
+  paymentTrend: { months: PaymentTrendMonth[] } | null
 }
 
 export interface CalendarDay {
