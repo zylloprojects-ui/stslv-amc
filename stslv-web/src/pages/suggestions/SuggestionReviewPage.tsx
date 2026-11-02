@@ -8,6 +8,7 @@ import { api, ApiError } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
 import { Filter } from '../amc/components'
+import { IconTile, type IconName } from '../dashboard/icons'
 import { SuggestionStatusBadge } from './SuggestionStatusBadge'
 import {
   CATEGORIES,
@@ -23,13 +24,13 @@ import {
 
 const PAGE_SIZE = 25
 
-const COUNT_TILES: { status: SuggestionStatus; tone: string }[] = [
-  { status: 'SUBMITTED', tone: 'border-sky-300 text-sky-800' },
-  { status: 'REOPENED', tone: 'border-rose-300 text-rose-800' },
-  { status: 'UNDER_REVIEW', tone: 'border-violet-300 text-violet-800' },
-  { status: 'IN_PROGRESS', tone: 'border-amber-300 text-amber-800' },
-  { status: 'RESOLVED', tone: 'border-green-300 text-green-800' },
-  { status: 'CLOSED', tone: 'border-slate-300 text-slate-700' },
+const COUNT_TILES: { status: SuggestionStatus; icon: IconName; from: string; to: string; text: string; tint: string }[] = [
+  { status: 'SUBMITTED', icon: 'invoice', from: '#0284C7', to: '#38BDF8', text: 'text-sky-800', tint: 'bg-sky-50' },
+  { status: 'REOPENED', icon: 'execution', from: '#E11D48', to: '#FB7185', text: 'text-rose-800', tint: 'bg-rose-100' },
+  { status: 'UNDER_REVIEW', icon: 'shield', from: '#7C3AED', to: '#A78BFA', text: 'text-violet-800', tint: 'bg-sky-50' },
+  { status: 'IN_PROGRESS', icon: 'pulse', from: '#EA580C', to: '#FBBF24', text: 'text-amber-800', tint: 'bg-amber-50' },
+  { status: 'RESOLVED', icon: 'contract', from: '#059669', to: '#34D399', text: 'text-green-800', tint: 'bg-emerald-50' },
+  { status: 'CLOSED', icon: 'settings', from: '#64748B', to: '#94A3B8', text: 'text-slate-700', tint: 'bg-slate-100' },
 ]
 
 /** Every suggestion, for reviewers (the Admin role): filter, open, respond, change status. */
@@ -84,23 +85,30 @@ export function SuggestionReviewPage() {
       <PageHeader title="Suggestions Review" description="Suggestions, feedback and issues from every user. Open ones first; nothing is ever deleted." />
 
       {data && (
-        <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" aria-label="Suggestions by status">
-          {COUNT_TILES.map((tile) => (
-            <button
-              key={tile.status}
-              type="button"
-              onClick={() => showStatus(tile.status)}
-              aria-pressed={status === tile.status}
-              className={cx(
-                'surface rounded-xl border-l-4 px-4 py-3 text-left transition-shadow hover:shadow-md',
-                tile.tone,
-                status === tile.status && 'ring-2 ring-[#1479BD]',
-              )}
-            >
-              <span className="block text-xs font-semibold uppercase tracking-wider">{STATUS_LABELS[tile.status]}</span>
-              <span className="mt-1 block text-2xl font-bold tabular-nums text-slate-900">{data.counts[tile.status]}</span>
-            </button>
-          ))}
+        <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-3 2xl:grid-cols-6" aria-label="Suggestions by status">
+          {COUNT_TILES.map((tile) => {
+            const active = status === tile.status
+
+            return (
+              <button
+                key={tile.status}
+                type="button"
+                onClick={() => showStatus(tile.status)}
+                aria-pressed={active}
+                className={cx(
+                  'group relative flex min-w-0 items-center gap-3 overflow-hidden rounded-2xl border-[1.5px] px-3.5 py-3 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1479BD]',
+                  active ? `border-[#1479BD] ring-2 ring-[#1479BD]/25 ${tile.tint}` : 'border-slate-200 bg-white hover:border-[#1479BD]/60',
+                )}
+              >
+                <span className="absolute inset-x-0 top-0 h-1" style={{ backgroundImage: `linear-gradient(90deg, ${tile.from}, ${tile.to})` }} aria-hidden="true" />
+                <IconTile icon={tile.icon} from={tile.from} to={tile.to} className="h-10 w-10 shrink-0 rounded-xl" />
+                <span className="min-w-0 flex-1">
+                  <span className={cx('block truncate text-[10px] font-bold uppercase tracking-[0.12em]', tile.text)}>{STATUS_LABELS[tile.status]}</span>
+                  <span className="block text-2xl font-extrabold leading-tight tabular-nums text-slate-900">{data.counts[tile.status]}</span>
+                </span>
+              </button>
+            )
+          })}
         </div>
       )}
 
