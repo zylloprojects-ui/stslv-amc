@@ -252,10 +252,23 @@ describe('Backup & Restore', () => {
     renderApp('/admin/backups')
 
     expect(await screen.findByRole('heading', { name: 'Not provided by this application' })).toBeInTheDocument()
-    expect(screen.getByText(/Automatic backups: no backup runs on a schedule/)).toBeInTheDocument()
-    expect(screen.getByText(/Retention: no backup is removed/)).toBeInTheDocument()
-    expect(screen.getByText(/Restore from this screen/)).toBeInTheDocument()
+    // Each gap is stated with its own explanation, in the same item: title and meaning are never separated.
+    const gaps = within(screen.getByRole('list', { name: 'Not provided' })).getAllByRole('listitem')
+    expect(gaps).toHaveLength(3)
+    const gap = (index: number, title: string, text: string) => {
+      expect(within(gaps[index] as HTMLElement).getByText(`${title}:`)).toBeInTheDocument()
+      expect(within(gaps[index] as HTMLElement).getByText(text)).toBeInTheDocument()
+    }
+    gap(0, 'Automatic backups', 'no backup runs on a schedule.')
+    gap(1, 'Retention', 'no backup is removed or expired automatically, and no retention period applies.')
+    gap(2, 'Restore from this screen', 'no page or button restores a database.')
     expect(screen.getByText(/await approval/)).toBeInTheDocument()
+    // The status figures: no schedule is offered, and only Super Admin runs and downloads backups.
+    const figure = (label: string) => screen.getAllByText(label).find((element) => element.tagName === 'DT')?.nextElementSibling
+    expect(figure('Automatic backups')).toHaveTextContent('Not provided. Awaiting approval.')
+    expect(figure('Manual backups')).toHaveTextContent('Available')
+    expect(figure('Backup tool')).toHaveTextContent('pg_dump 17.11')
+    expect(figure('Who can run and download')).toHaveTextContent('Super Admin only')
     expect(screen.getByText(SHA)).toBeInTheDocument()
     expect(screen.getByText(/recalculates the file's SHA-256/)).toBeInTheDocument()
     expect(screen.getAllByRole('button', { name: /delete|schedule|retention|restore/i }).map((button) => button.textContent)).toEqual(['Backup & Restore']) // Only the Settings item: no such action.

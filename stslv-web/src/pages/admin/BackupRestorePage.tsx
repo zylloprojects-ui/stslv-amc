@@ -144,7 +144,7 @@ export function BackupRestorePage() {
             <SectionHead icon="execution" from="#EA580C" to="#FBBF24">Not provided by this application</SectionHead>
             <div className="px-5 py-4 text-sm text-slate-700">
               <p>These are not provided, and await approval:</p>
-              <ul className="mt-3 grid gap-3 md:grid-cols-3">
+              <ul className="mt-3 grid gap-3 md:grid-cols-3" aria-label="Not provided">
                 {[
                   ['Automatic backups', 'no backup runs on a schedule.'],
                   ['Retention', 'no backup is removed or expired automatically, and no retention period applies.'],

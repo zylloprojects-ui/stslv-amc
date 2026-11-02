@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { ACTIONS, MODULES, type PermissionSection, type Role, type SessionUser, type User } from '../lib/types'
+import { ACTIONS, MODULES, type PermissionSection, type Role, type RolesResponse, type SessionUser, type User } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
 /** The Users page asks for one page of the list; other pages ask for the whole list. */
@@ -74,7 +74,9 @@ const USERS = [
   user('30', 'Fay Finance', [{ id: '7', code: 'FINANCE_EXECUTIVE', name: 'Finance Executive' }]),
 ]
 
-function rolesApi(session: SessionUser = ADMIN, roles: Role[] = ROLES, onPut?: (request: MockRequest) => MockReply | undefined) {
+const NO_FIXED_ACCESS: NonNullable<RolesResponse['fixedAccess']> = { adminOnly: [], everyone: [] }
+
+function rolesApi(session: SessionUser = ADMIN, roles: Role[] = ROLES, onPut?: (request: MockRequest) => MockReply | undefined, fixedAccess = NO_FIXED_ACCESS) {
   signIn()
 
   return mockApi((request) => {
@@ -85,7 +87,7 @@ function rolesApi(session: SessionUser = ADMIN, roles: Role[] = ROLES, onPut?: (
     if (request.path === '/auth/me') return ok({ user: session })
     if (request.method === 'GET' && request.path === '/users') return usersReply(request.query, USERS)
     if (request.method === 'GET' && request.path === '/roles') {
-      return ok({ roles, modules: MODULES, actions: ACTIONS, catalog: CATALOG, fixedAccess: { adminOnly: [], everyone: [] } })
+      return ok({ roles, modules: MODULES, actions: ACTIONS, catalog: CATALOG, fixedAccess })
     }
     if (request.method === 'PUT' && request.path.startsWith('/roles/')) {
       const id = request.path.split('/')[2]
@@ -289,7 +291,9 @@ describe('Admin and the privileged roles', () => {
       expect(await screen.findByText('Only Super Admin can change role permissions.')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Save permissions' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument()
-      for (const box of screen.getAllByRole('checkbox').filter((item) => (item.getAttribute('aria-label') ?? '').includes(':'))) expect(box).toBeDisabled()
+      // Every permission box is disabled; the only box left enabled is the list filter, which changes no permission.
+      const filter = screen.getByRole('checkbox', { name: 'Only what this role has' })
+      for (const box of screen.getAllByRole('checkbox').filter((item) => item !== filter)) expect(box).toBeDisabled()
     }
   })
 
@@ -502,5 +506,154 @@ describe('pages and data-only read', () => {
     pageApi(session(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'INVOICES:READ', 'CLIENTS:READ']))
     renderApp(path)
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
+  })
+})
+
+// Bulk actions and visibility on the redesigned Roles & Permissions screen (review of coworker 611fcb4, approved 2026-11-02).
+describe('filtered bulk actions', () => {
+  const sentKeys = (api: ReturnType<typeof rolesApi>) =>
+    ((api.find('PUT', '/roles/7/permissions')[0]?.body as { permissions: Role['permissions'] }).permissions ?? []).map((p) => `${p.module}:${p.action}`).sort()
+
+  it('applies Select all only to the modules a search shows, and leaves hidden ones exactly as they were', async () => {
+    const api = rolesApi()
+    await open('Finance Executive')
+    expect(screen.getByText(/apply to all 5 modules, including collapsed sections/)).toBeInTheDocument()
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Find a module' }), 'invoice')
+    expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Select all shown' })).toHaveAccessibleDescription(/apply only to the 1 module shown\. Modules hidden by the search or filter are not changed\./)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Select all shown' }))
+    expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: Export' })).toBeChecked()
+
+    await userEvent.clear(screen.getByRole('searchbox', { name: 'Find a module' }))
+    expect(screen.getByRole('button', { name: 'Select all' })).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: 'Clients: View' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Contracts: View' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: View' })).not.toBeChecked()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
+    await waitFor(() => expect(api.find('PUT', '/roles/7/permissions')).toHaveLength(1))
+    expect(sentKeys(api)).toEqual(['AMC_SCHEDULE:READ', 'DASHBOARD:VIEW', 'INVOICES:CREATE', 'INVOICES:EDIT', 'INVOICES:EXPORT', 'INVOICES:VIEW'])
+  })
+
+  it('applies Clear all only to the modules a search shows, and keeps every hidden grant', async () => {
+    const api = rolesApi()
+    await open('Finance Executive')
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Find a module' }), 'invoice')
+    await userEvent.click(screen.getByRole('button', { name: 'Clear all shown' }))
+    expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: View' })).not.toBeChecked()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
+    await waitFor(() => expect(api.find('PUT', '/roles/7/permissions')).toHaveLength(1))
+    expect(sentKeys(api)).toEqual(['AMC_SCHEDULE:READ', 'DASHBOARD:VIEW'])
+  })
+
+  it('with "Only what this role has", acts on the held modules only, and keeps their rows while they are edited', async () => {
+    const api = rolesApi()
+    await open('Finance Executive')
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Only what this role has' }))
+    expect(screen.queryByRole('checkbox', { name: 'Clients: View' })).not.toBeInTheDocument()
+    expect(screen.getByText(/apply only to the 3 modules shown/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear all shown' }))
+    // The rows stay, so the change can be seen and undone.
+    expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: View' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Dashboard: View' })).not.toBeChecked()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Select all shown' }))
+    expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: Export' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Schedule: Edit' })).toBeChecked()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Only what this role has' }))
+    expect(screen.getByRole('checkbox', { name: 'Clients: View' })).not.toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'AMC Contracts: View' })).not.toBeChecked()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
+    await waitFor(() => expect(api.find('PUT', '/roles/7/permissions')).toHaveLength(1))
+    expect(sentKeys(api).some((key) => key.startsWith('CLIENTS:') || key.startsWith('AMC_CONTRACTS:'))).toBe(false)
+  })
+
+  it('never grants or removes, in bulk, a permission the signed-in user does not hold', async () => {
+    const limited: SessionUser = { ...ADMIN, permissions: ['USERS:VIEW', 'USERS:EDIT', 'INVOICES:VIEW', 'INVOICES:CREATE'] }
+    const api = rolesApi(limited)
+    await open('Finance Executive')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Select all' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
+    await waitFor(() => expect(api.find('PUT', '/roles/7/permissions')).toHaveLength(1))
+    expect(sentKeys(api)).toEqual(['AMC_SCHEDULE:READ', 'DASHBOARD:VIEW', 'INVOICES:CREATE', 'INVOICES:VIEW'])
+  })
+
+  it('offers no bulk action on Super Admin, even while a search or filter is on, and keeps every box locked', async () => {
+    rolesApi()
+    await open('Super Admin')
+
+    expect(screen.getByText('Super Admin always has full access. Its permissions cannot be changed.')).toBeInTheDocument()
+    expect(screen.getByTestId('permission-mode')).toHaveTextContent('Read only')
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Find a module' }), 'a')
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Only what this role has' }))
+    for (const name of [/^Select all/, /^Clear all/, 'Save permissions']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    const filter = screen.getByRole('checkbox', { name: 'Only what this role has' })
+    for (const box of screen.getAllByRole('checkbox').filter((item) => item !== filter)) expect(box).toBeDisabled()
+  })
+
+  it('offers no bulk action on a role the signed-in user may not edit, even while filtering', async () => {
+    const locked = ROLES.map((candidate) => (candidate.code === 'ADMIN' ? candidate : { ...candidate, permissionsEditable: false, lockedReason: 'Only Super Admin can change role permissions.' }))
+    rolesApi(ADMIN_USER, locked)
+    await open('Finance Executive')
+
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Find a module' }), 'invoice')
+    expect(screen.queryByRole('button', { name: /^Select all/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Clear all/ })).not.toBeInTheDocument()
+    expect(screen.getByTestId('permission-mode')).toHaveTextContent('Read only')
+    expect(screen.getByRole('checkbox', { name: 'Invoice Tracking: View' })).toBeDisabled()
+  })
+})
+
+describe('permission visibility', () => {
+  const FIXED = {
+    superAdminOnly: [{ label: 'Backup & Restore', path: '/settings/backups' }],
+    adminOnly: [{ label: 'Security Center', path: '/admin/security' }],
+    everyone: [{ label: 'My account', path: '/account' }],
+  }
+
+  it('shows the fixed restrictions open by default, marked as not changeable here, and lets them be collapsed', async () => {
+    rolesApi(ADMIN, ROLES, undefined, FIXED)
+    await open('Finance Executive')
+
+    const fixed = screen.getByTestId('fixed-access')
+    expect(fixed).toHaveAttribute('open')
+    expect(within(fixed).getByText('Fixed: cannot be changed here')).toBeInTheDocument()
+    expect(within(fixed).getByText('Super Admin only:').parentElement).toHaveTextContent('Backup & Restore')
+    expect(within(fixed).getByText('Super Admin and Admin only:').parentElement).toHaveTextContent('Security Center')
+    expect(within(fixed).queryByRole('checkbox')).not.toBeInTheDocument()
+
+    await userEvent.click(within(fixed).getByText('Not set by role permissions'))
+    expect(fixed).not.toHaveAttribute('open')
+  })
+
+  it('opens and closes each permission section on its own, and marks it Editable or Read only', async () => {
+    rolesApi()
+    await open('Finance Executive')
+    expect(screen.getByTestId('permission-mode')).toHaveTextContent('Editable here')
+
+    const title = (text: string) => screen.getByText(text, { selector: 'summary > span' })
+    const section = (text: string) => title(text).closest('details') as HTMLElement
+    expect(section('Finance')).not.toHaveAttribute('open')
+    expect(within(section('Finance')).getByText('Editable')).toBeInTheDocument()
+
+    await userEvent.click(title('Finance'))
+    expect(section('Finance')).toHaveAttribute('open')
+    expect(section('AMC Operations')).not.toHaveAttribute('open')
+
+    await userEvent.click(title('Finance'))
+    expect(section('Finance')).not.toHaveAttribute('open')
+
+    await userEvent.click(screen.getByRole('tab', { name: 'Super Admin' }))
+    await screen.findByRole('heading', { level: 3, name: /^Super Admin/ })
+    expect(within(section('Finance')).getByText('Read only')).toBeInTheDocument()
   })
 })
