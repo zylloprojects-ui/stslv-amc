@@ -11,6 +11,7 @@ import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { MasterFormModal, type AnyRecord } from './MasterDataPage'
 import { isFeatureUnavailable, type MasterList, type SystemType } from './masterTypes'
 import { DeleteSystemTypeModal, LinkedContractsModal } from './systemTypeDialogs'
+import { FilterPanel } from '../amc/components'
 
 // System Types (migration 0070): the classification an AMC contract is linked
 // to. A contract refers to its type by id, so editing a type's code or name
@@ -201,7 +202,8 @@ export function SystemTypesPage() {
                   <ExportButtons what="system types" fileStem="system-types" size="sm" path={(format) => `/masters/system-types/export?${filterParams().toString()}&format=${format}`} onError={setExportError} />
                 )}
               </div>
-              <div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
+              <FilterPanel id="system-types">
+<div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
                 <div className="min-w-56 flex-1">
                   <label htmlFor={searchId} className={LABEL}>
                     Search
@@ -264,6 +266,7 @@ export function SystemTypesPage() {
                   />
                 </div>
               </div>
+</FilterPanel>
             </div>
 
             {list.isPending && <Spinner label="Loading system types" />}

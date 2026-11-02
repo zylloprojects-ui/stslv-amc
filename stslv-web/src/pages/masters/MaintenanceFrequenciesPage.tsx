@@ -11,6 +11,7 @@ import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { FrequencyContractsModal, FrequencyFormModal, FrequencyStatusWarning } from './maintenanceFrequencyDialogs'
 import { FREQUENCY_STATUS_LABELS, type FrequencyStatus, type MaintenanceFrequencyRule } from './maintenanceFrequencyTypes'
 import { isFeatureUnavailable, type MasterList } from './masterTypes'
+import { FilterPanel } from '../amc/components'
 
 // Maintenance Frequencies (migration 0076): the scheduling rules an AMC
 // contract's frequency refers to. A frequency is never deleted. Once a contract
@@ -254,7 +255,8 @@ export function MaintenanceFrequenciesPage() {
                   />
                 )}
               </div>
-              <div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
+              <FilterPanel id="maintenance-frequencies">
+<div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
                 <div className="min-w-56 flex-1">
                   <label htmlFor={searchId} className={LABEL}>
                     Search
@@ -319,6 +321,7 @@ export function MaintenanceFrequenciesPage() {
                   />
                 </div>
               </div>
+</FilterPanel>
             </div>
 
             {list.isPending && <Spinner label="Loading maintenance frequencies" />}

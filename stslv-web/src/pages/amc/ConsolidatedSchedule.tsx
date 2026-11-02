@@ -9,7 +9,7 @@ import { cx } from '../../lib/format'
 import { queryString } from './amcApi'
 import { currentMonth, formatDate, formatMoney, monthLabel } from './amcFormat'
 import type { CalendarOptions } from './calendar/calendarTypes'
-import { Filter, Pager, RestrictedFilter } from './components'
+import { Filter, FilterPanel, Pager, RestrictedFilter } from './components'
 import { PAID_STATUS_NOTE } from './ManualInvoiceField'
 import { VISIT_STATUS_LABELS, type VisitStatus } from './types'
 
@@ -82,7 +82,8 @@ export function ConsolidatedSchedule() {
 
   return (
     <Card>
-      <div className="border-b border-slate-200 p-4 sm:px-5">
+      <FilterPanel id="consolidated-schedule">
+<div className="border-b border-slate-200 p-4 sm:px-5">
         <form
           className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4"
           aria-label="Consolidated filters"
@@ -164,6 +165,7 @@ export function ConsolidatedSchedule() {
           </p>
         )}
       </div>
+</FilterPanel>
 
       {exportError && (
         <div className="p-4">

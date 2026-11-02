@@ -6,7 +6,6 @@ import { api, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { Link } from 'react-router-dom'
 import { CLIENT_TYPE_LABELS, type Client } from '../../lib/types'
-import { avatarColors, initialsOf } from './clientAvatarHelpers'
 
 const ICONS = {
   person: (
@@ -85,7 +84,6 @@ export function ClientDetailsModal({ clientId, canEdit, onEdit, onClose }: Clien
   // Always read the record again, so the details shown are the stored values.
   const query = useQuery({ queryKey: ['clients', 'detail', clientId], queryFn: () => api.get<Client>(`/clients/${clientId}`) })
   const client = query.data
-  const [from, to] = avatarColors()
 
   return (
     <Modal
@@ -112,13 +110,6 @@ export function ClientDetailsModal({ clientId, canEdit, onEdit, onClose }: Clien
       {client && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-300 bg-gradient-to-r from-sky-50 to-white p-3.5">
-            <span
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-base font-bold tracking-wide text-white shadow-sm"
-              style={{ backgroundImage: `linear-gradient(135deg, ${from}, ${to})` }}
-              aria-hidden="true"
-            >
-              {initialsOf(client.name)}
-            </span>
             <div className="min-w-0 flex-1">
               <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.2em] text-[#1479BD]">{client.code}</p>
               <p className="break-words text-lg font-bold leading-tight text-[#0b3b66]">{client.name}</p>

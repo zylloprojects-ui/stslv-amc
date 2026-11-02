@@ -12,7 +12,7 @@ import { currentMonth, formatDate, monthLabel, monthRange, shiftMonth, todayIso 
 import { BILLING_STATUSES, BILLING_STATUS_LABELS, type CalendarFilters, type CalendarOptions } from './calendar/calendarTypes'
 import { RenewalWarnings } from './calendar/RenewalWarnings'
 import { YearView } from './calendar/YearView'
-import { Filter, RestrictedFilter, VisitStatusPill } from './components'
+import { Filter, FilterPanel, RestrictedFilter, VisitStatusPill } from './components'
 import { VisitDetailsModal, VisitEditModal } from './VisitModals'
 import { OPERATIONAL_VISIT_STATUSES, VISIT_STATUS_LABELS, type ScheduleVisit, type VisitList, type VisitStatus } from './types'
 
@@ -288,7 +288,8 @@ export function AmcCalendarPage() {
           )}
         </div>
 
-        <div className="grid gap-4 bg-slate-50/50 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+        <FilterPanel id="amc-calendar">
+<div className="grid gap-4 bg-slate-50/50 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
           <Filter label="Search">
             {(id, className) => (
               <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Client, system or engineer" className={className} />
@@ -390,6 +391,7 @@ export function AmcCalendarPage() {
             )}
           </Filter>
         </div>
+</FilterPanel>
       </Card>
 
       {view === 'year' && (

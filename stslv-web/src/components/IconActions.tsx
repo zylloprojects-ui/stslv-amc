@@ -72,12 +72,12 @@ export function ActionIcon({ name }: { name: ActionIconName }) {
 }
 
 const ACTION_BUTTON =
-  'inline-flex h-8 w-9 items-center justify-center text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10 disabled:cursor-not-allowed disabled:opacity-40'
+  'inline-flex h-7 w-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10 disabled:cursor-not-allowed disabled:opacity-40'
 const DANGER = 'hover:!bg-red-50 hover:!text-red-700'
 
-/** The row actions of a table as one joined group of icon buttons. */
+/** The row actions of a table: loose icon buttons in a row, with no box around them. */
 export function ActionGroup({ children }: { children: ReactNode }) {
-  return <div className="inline-flex items-center divide-x divide-slate-200 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">{children}</div>
+  return <div className="inline-flex items-center gap-0.5">{children}</div>
 }
 
 /** An icon-only button in an ActionGroup. The label is its accessible name and its tooltip. */

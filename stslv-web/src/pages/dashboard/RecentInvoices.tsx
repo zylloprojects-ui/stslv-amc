@@ -11,6 +11,7 @@ import type { InvoiceStatus, PagedInvoices } from '../../lib/invoiceTypes'
 import { queryString } from '../amc/amcApi'
 import { InvoiceStatusBadge } from '../invoices/InvoicesTable'
 import { useHiddenColumns } from './dashboardPreferences'
+import { FilterPanel } from '../amc/components'
 
 const PAGE_SIZE = 8
 
@@ -59,7 +60,8 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-300 bg-slate-50 p-3">
+      <FilterPanel id="recent-invoices">
+<div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-slate-300 bg-slate-50 p-3">
         <div className="min-w-48 flex-1">
           <label htmlFor="recent-invoice-search" className={FILTER_LABEL}>
             Search
@@ -124,6 +126,7 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
           />
         )}
       </div>
+</FilterPanel>
       {!canExport && <p className="pb-2 text-xs text-slate-600">Excel and PDF exports need the Invoice Tracking export permission.</p>}
       {exportError && (
         <div className="pb-3">

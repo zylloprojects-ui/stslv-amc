@@ -13,7 +13,7 @@ import { cx, formatDate } from '../../lib/format'
 import { PaymentBadge } from '../amc/ManualInvoiceField'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
-import { Filter, Pager } from '../amc/components'
+import { Filter, FilterPanel, Pager } from '../amc/components'
 import { displayName, KPI_NAME_MAX, useKpiCustomization } from '../amcManagement/managementPreferences'
 import './masterStatus.css'
 import { COLUMN_IDS, COLUMN_LABELS, MASTER_STATUS_PREFIX, useHiddenColumns, type ColumnId } from './masterStatusPreferences'
@@ -431,7 +431,8 @@ export function MasterStatusPage() {
               )}
             </p>
           </div>
-          <form className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4" onSubmit={apply} aria-label="Filters">
+          <FilterPanel id="master-status">
+<form className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4" onSubmit={apply} aria-label="Filters">
             <Filter label="Search" className="sm:col-span-2">
               {(id, className) => (
                 <input id={id} type="search" value={draft.search} onChange={(event) => set('search')(event.target.value)} placeholder="AMC reference, client, invoice no. or quote no." className={className} />
@@ -546,6 +547,7 @@ export function MasterStatusPage() {
               {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
             </div>
           </form>
+</FilterPanel>
         </div>
 
         {status.isPending && <Spinner label="Loading services" />}

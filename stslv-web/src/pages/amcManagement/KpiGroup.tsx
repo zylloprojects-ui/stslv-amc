@@ -5,7 +5,7 @@ import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
 import { Icon, IconTile } from '../dashboard/icons'
 import type { KpiReading } from '../dashboard/kpis'
-import { ACCENTS, DASHBOARD_CARD, DASHBOARD_LABEL } from '../dashboard/style'
+import { accentOf, accentStyle, DASHBOARD_CARD, DASHBOARD_LABEL } from '../dashboard/style'
 import type { KpiGroupDefinition, ManagementKpi } from './managementKpis'
 import { displayName, KPI_NAME_MAX, useKpiCustomization } from './managementPreferences'
 import type { AmcManagementSummary } from './managementTypes'
@@ -98,14 +98,13 @@ export function KpiGroup<T = AmcManagementSummary>({ group, userId, data, failed
           const name = displayName(prefs.names, kpi.id, kpi.label)
           const renamed = name !== kpi.label
           const link = kpi.link && canView(kpi.link.module) ? kpi.link : null
-          const from = ACCENTS[index % ACCENTS.length] as string
-          const to = ACCENTS[(index + 1) % ACCENTS.length] as string
+          const { from, to } = accentOf(index)
           const reading = state.kind === 'ready' ? state.reading : null
           const value = reading?.kind === 'value' ? reading.value : null
           // A short line on the card; the full wording is on hover.
           const note = reading ? (reading.kind === 'value' ? reading.detail : (reading.reason.split(/(?<=\.)\s/)[0] ?? reading.reason)) : null
           const hint = reading ? (reading.kind === 'value' ? reading.hint : reading.reason) : undefined
-          const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s` }
+          const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s`, ...accentStyle(index) }
           const inputId = `${headingId}-${kpi.id}-name`
 
           return (

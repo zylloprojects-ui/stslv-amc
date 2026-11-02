@@ -11,6 +11,7 @@ import { api, errorMessage } from '../../lib/api'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { AssignmentWarning, SalesEngineerFormModal } from './SalesEngineerFormModal'
 import { ENGINEER_STATUS_LABELS, isFeatureUnavailable, type Department, type MasterList, type EngineerRecord } from './masterTypes'
+import { FilterPanel } from '../amc/components'
 
 // Master Data Center → Sales Engineers: search, filter, sort, page and export;
 // add, view (Engineer 360), edit and disable. Engineers are never deleted, so
@@ -257,7 +258,8 @@ export function SalesEngineersPage() {
                   />
                 )}
               </div>
-              <div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
+              <FilterPanel id="sales-engineers">
+<div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
                 <div className="min-w-56 flex-1">
                   <Field label="Search">
                     {(id) => (
@@ -345,6 +347,7 @@ export function SalesEngineersPage() {
                   />
                 </div>
               </div>
+</FilterPanel>
             </div>
 
             {list.isPending && <Spinner label="Loading sales engineers" />}
@@ -372,7 +375,7 @@ export function SalesEngineersPage() {
             {data && data.items.length > 0 && (
               <>
                 <TableScroll label="Sales engineers">
-                  <table className={TABLE.table}>
+                  <table className={`${TABLE.table} table-compact`}>
                     <caption className="sr-only">Sales engineers</caption>
                     <thead>
                       <tr>
@@ -427,16 +430,13 @@ export function SalesEngineersPage() {
                         <tr key={engineer.id} className={`${TABLE.row} hover:shadow-[inset_3px_0_0_#1479BD]`}>
                           <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
                           {show('code') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs font-semibold text-slate-600`}>{engineer.code}</td>}
-                          <td className={`${TABLE.td} min-w-48 py-3`}>
+                          <td className={`${TABLE.td} min-w-48`}>
                             <Link
                               to={`/master-data/sales-engineers/${engineer.id}`}
                               className={`block max-w-64 break-words text-sm font-semibold leading-snug hover:text-[#1479BD] hover:underline ${engineer.isActive ? 'text-slate-900' : 'text-slate-500'}`}
                             >
                               {engineer.name}
                             </Link>
-                            <span className="mt-0.5 block text-xs text-slate-500">
-                              {engineer.activeContractCount} active {engineer.activeContractCount === 1 ? 'contract' : 'contracts'}
-                            </span>
                           </td>
                           {show('employeeNo') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs`}>{engineer.employeeNo ?? NONE}</td>}
                           {show('department') && <td className={TABLE.td}>{engineer.department ? `${engineer.department.code} — ${engineer.department.name}` : NONE}</td>}

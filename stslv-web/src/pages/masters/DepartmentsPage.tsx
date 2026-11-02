@@ -10,6 +10,7 @@ import { api, errorMessage } from '../../lib/api'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { DepartmentFormModal, DisableDepartmentModal, LinkedEngineersModal, type DepartmentRecord } from './departmentDialogs'
 import { isFeatureUnavailable, type MasterList } from './masterTypes'
+import { FilterPanel } from '../amc/components'
 
 // Departments (migration 0070): the team a sales engineer belongs to. An
 // engineer refers to a department by id, so editing its code or name never
@@ -212,7 +213,8 @@ export function DepartmentsPage() {
                   <ExportButtons what="departments" fileStem="departments" size="sm" path={(format) => `/masters/departments/export?${filterParams().toString()}&format=${format}`} onError={setExportError} />
                 )}
               </div>
-              <div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
+              <FilterPanel id="departments">
+<div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
                 <div className="min-w-56 flex-1">
                   <label htmlFor={searchId} className={LABEL}>
                     Search
@@ -275,6 +277,7 @@ export function DepartmentsPage() {
                   />
                 </div>
               </div>
+</FilterPanel>
             </div>
 
             {list.isPending && <Spinner label="Loading departments" />}

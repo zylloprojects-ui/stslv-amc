@@ -151,7 +151,7 @@ export function AppLayout() {
 
       {/* The loader covers the page content only, never the sidebar or the header. */}
       <div className="relative min-h-[calc(100vh-4rem)]">
-        <main id="main-content" ref={mainRef} tabIndex={-1} className="mx-auto max-w-[92rem] px-4 py-5 outline-none sm:px-6 sm:py-7 lg:px-5 xl:px-6">
+        <main id="main-content" ref={mainRef} tabIndex={-1} className="mx-auto max-w-[160rem] px-4 py-5 outline-none sm:px-6 sm:py-7 lg:px-5 xl:px-6 2xl:px-8">
           <div key={pathname} className="page-enter">
             <Outlet />
           </div>

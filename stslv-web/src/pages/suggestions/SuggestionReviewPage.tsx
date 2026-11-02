@@ -7,7 +7,7 @@ import { Alert, Card, EmptyState, PageHeader, Spinner, TableScroll } from '../..
 import { api, ApiError } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
-import { Filter } from '../amc/components'
+import { Filter, FilterPanel } from '../amc/components'
 import { IconTile, type IconName } from '../dashboard/icons'
 import { SuggestionStatusBadge } from './SuggestionStatusBadge'
 import {
@@ -133,7 +133,8 @@ export function SuggestionReviewPage() {
             </button>
           ))}
         </div>
-        <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+        <FilterPanel id="suggestions-review">
+<div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
           <Filter label="Search">
             {(id, className) => (
               <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Subject or reference" className={className} />
@@ -191,6 +192,7 @@ export function SuggestionReviewPage() {
           <Filter label="Submitted from">{(id, className) => <input id={id} type="date" value={from} onChange={change(setFrom)} className={className} />}</Filter>
           <Filter label="Submitted to">{(id, className) => <input id={id} type="date" value={to} onChange={change(setTo)} className={className} />}</Filter>
         </div>
+</FilterPanel>
 
         {rangeInvalid && <p className="px-5 py-4 text-sm text-red-700">The From date is after the To date.</p>}
         {!rangeInvalid && list.isPending && <Spinner label="Loading suggestions" />}

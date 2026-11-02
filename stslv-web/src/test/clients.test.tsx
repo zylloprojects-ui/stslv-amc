@@ -40,6 +40,10 @@ function clientApi(user: SessionUser, initial: Client[], override?: (request: Mo
       clients[index] = { ...(clients[index] as Client), ...(request.body as Partial<Client>) }
       return ok(clients[index])
     }
+    if (index >= 0 && request.method === 'DELETE') {
+      clients.splice(index, 1)
+      return ok({ deleted: true })
+    }
     if (index >= 0 && request.method === 'POST' && request.path.endsWith('/deactivate')) {
       clients[index] = { ...(clients[index] as Client), isActive: false }
       return ok(clients[index])
@@ -245,36 +249,38 @@ describe('edit client', () => {
   })
 })
 
-describe('change client status inline', () => {
-  it('shows the status as a badge and offers a deactivate icon action, with no select', async () => {
-    const api = clientApi(ADMIN, [ONE])
+describe('delete a client from the list', () => {
+  it('offers a Delete icon action for an active client and Reactivate for a disabled one', async () => {
+    const api = clientApi(ADMIN, [ONE, OLD])
     renderApp('/clients')
+    await userEvent.selectOptions(await screen.findByLabelText('Status'), 'all')
 
-    const deactivate = await screen.findByRole('button', { name: 'Deactivate Test Client One' })
-    expect(deactivate).toHaveAttribute('title', 'Deactivate Test Client One')
-    expect(deactivate).toHaveTextContent('')
-    expect(screen.queryByLabelText(/^Status of /)).not.toBeInTheDocument()
-    expect(screen.getByText('Active', { selector: 'span' })).toBeInTheDocument()
-    expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(0)
+    const remove = await screen.findByRole('button', { name: 'Delete Test Client One' })
+    expect(remove).toHaveAttribute('title', 'Delete Test Client One')
+    expect(remove).toHaveTextContent('')
+    expect(screen.queryByRole('button', { name: /^Deactivate / })).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Reactivate Old Test Client' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete Old Test Client' })).not.toBeInTheDocument()
+    expect(api.find('DELETE', '/clients/10')).toHaveLength(0)
   })
 
-  it('asks before deactivating, Cancel saves nothing, and Deactivate removes the client from the active list', async () => {
+  it('asks before deleting, Cancel deletes nothing, and Delete client removes the client from the list', async () => {
     const api = clientApi(ADMIN, [ONE, TWO])
     renderApp('/clients')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
-    let dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
-    expect(dialog).toHaveTextContent('Test Client One will no longer be offered for new contracts.')
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete Test Client One' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Delete client' })
+    expect(dialog).toHaveTextContent('Delete Test Client One? The client is removed for good. This cannot be undone.')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(0)
+    expect(api.find('DELETE', '/clients/10')).toHaveLength(0)
 
-    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Client One' }))
-    dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Test Client One' }))
+    dialog = await screen.findByRole('dialog', { name: 'Delete client' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete client' }))
 
-    await waitFor(() => expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(1))
-    expect(await screen.findByRole('status')).toHaveTextContent('Test Client One is now Disabled.')
+    await waitFor(() => expect(api.find('DELETE', '/clients/10')).toHaveLength(1))
+    expect(await screen.findByRole('status')).toHaveTextContent('Test Client One was deleted.')
     await waitFor(() => expect(screen.queryByRole('button', { name: 'View Test Client One' })).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'View Test Client Two' })).toBeInTheDocument()
   })
@@ -424,18 +430,18 @@ describe('client permissions', () => {
   })
 
   it('shows the message from the API when an action is refused', async () => {
-    // The screen believes the user may deactivate; the API is the authority and says no.
+    // A client that contracts use cannot be deleted; the API is the authority and says why.
     clientApi(ADMIN, [ONE], (request) =>
-      request.path === '/clients/10/deactivate' ? fail(403, 'FORBIDDEN', 'You do not have permission to perform this action.') : undefined,
+      request.method === 'DELETE' && request.path === '/clients/10' ? fail(409, 'CONFLICT', 'Test Client One cannot be deleted: it is used by 2 AMC contracts.') : undefined,
     )
     renderApp('/clients')
 
-    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete Test Client One' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete client' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete client' }))
 
     // The refusal is shown in the confirmation, which stays open.
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Test Client One cannot be deleted: it is used by 2 AMC contracts.')
     expect(screen.getByRole('button', { name: 'View Test Client One' })).toBeInTheDocument()
   })
 })

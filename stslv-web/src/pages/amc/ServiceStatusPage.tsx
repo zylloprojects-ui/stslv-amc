@@ -12,7 +12,7 @@ import { api, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { queryString } from './amcApi'
 import { formatDate, todayIso } from './amcFormat'
-import { Filter, Pager } from './components'
+import { Filter, FilterPanel, Pager } from './components'
 import { HideColumnsDialog, KpiCustomizeDialog } from './ServiceStatusDialogs'
 import { useHiddenServiceColumns, useKpiLayout, type KpiId } from './serviceStatusPreferences'
 import { VisitActionsDialog } from './VisitActionsDialog'
@@ -471,7 +471,8 @@ export function ServiceStatusPage() {
               )}
             </p>
           </div>
-          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+          <FilterPanel id="service-status">
+<div className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
             <Filter label="Search" className="sm:col-span-2">
               {(id, className) => (
                 <input
@@ -577,6 +578,7 @@ export function ServiceStatusPage() {
               )}
             </Filter>
           </div>
+</FilterPanel>
           <div className="flex flex-wrap items-center justify-between gap-3 px-4 pb-4 sm:px-5">
             <Legend />
             <div className="flex flex-wrap gap-2">

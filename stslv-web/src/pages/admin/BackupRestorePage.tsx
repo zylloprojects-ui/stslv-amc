@@ -151,11 +151,10 @@ export function BackupRestorePage() {
                   ['Restore from this screen', 'no page or button restores a database.'],
                 ].map(([title, text]) => (
                   <li key={title} className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3">
-                    <p className="flex items-center gap-2 font-bold text-amber-900">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-xs text-white" aria-hidden="true">×</span>
-                      {title}:
+                    <p className="flex items-start gap-2 text-sm leading-snug text-amber-900">
+                      <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white" aria-hidden="true">×</span>
+                      <span>{`${title}: ${text}`}</span>
                     </p>
-                    <p className="mt-1 text-xs leading-snug text-amber-900">{text}</p>
                   </li>
                 ))}
               </ul>

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
+import { createContract } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 let admin: Awaited<ReturnType<typeof signedIn>>;
@@ -216,11 +217,42 @@ describe("deactivate client", () => {
     ]);
   });
 
-  it("offers no route that deletes a client", async () => {
-    const created = await createClient({ name: "Cannot Delete" });
-    const response = await api().delete(`/api/clients/${created.body.data.id}`).set(admin.headers);
+});
 
-    expect(response.status).toBe(404);
+describe("delete client", () => {
+  it("deletes a client that nothing refers to, and the log keeps what it was", async () => {
+    const created = await createClient({ name: "Delete Me", email: "gone@example.com" });
+    const id = created.body.data.id;
+
+    const response = await api().delete(`/api/clients/${id}`).set(admin.headers);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({ deleted: true });
+    expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [id])).rowCount).toBe(0);
+    const logs = await logsFor(id);
+    expect(logs.map((log) => log.action)).toEqual(["client.created", "client.deleted"]);
+    expect(logs[1]?.metadata).toMatchObject({ deleted: { name: "Delete Me", email: "gone@example.com" } });
+    expect((await api().delete(`/api/clients/${id}`).set(admin.headers)).status).toBe(404);
+  });
+
+  it("refuses a client that has an AMC contract, and keeps it", async () => {
+    const created = await createClient({ name: "Has A Contract" });
+    const id = created.body.data.id;
+    expect((await createContract(admin, id)).status).toBe(201);
+
+    const response = await api().delete(`/api/clients/${id}`).set(admin.headers);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toContain("1 AMC contract");
+    expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [id])).rowCount).toBe(1);
+    expect((await logsFor(id)).map((log) => log.action)).toEqual(["client.created"]);
+  });
+
+  it("needs the Delete permission", async () => {
+    const created = await createClient({ name: "Protected Client" });
+    const viewer = await signedIn("viewer@example.com", ["VIEWER"]);
+
+    expect((await api().delete(`/api/clients/${created.body.data.id}`).set(viewer.headers)).status).toBe(403);
     expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [created.body.data.id])).rowCount).toBe(1);
   });
 });

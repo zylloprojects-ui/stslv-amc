@@ -1,6 +1,30 @@
-// The dashboard uses one family of blues from the STSLEV logo, so colour is never mistaken for meaning.
-// Only status (amber for attention, green for live, red for a failure) is coloured differently.
-export const ACCENTS = ['#1479BD', '#1B8AD3', '#4aa3df', '#2b94d6']
+import type { CSSProperties } from 'react'
+
+// Figure cards take their colours from the STSLEV logo (blue, green, orange, magenta, cyan, gold), one
+// colour per card by position. The colour only tells the cards apart; status (amber for attention,
+// red for a failure) is still shown by its own marks.
+export const ACCENT_PAIRS: [string, string][] = [
+  ['#1479BD', '#4aa3df'],
+  ['#3E9A2E', '#7BC96B'],
+  ['#F26B00', '#FFB04D'],
+  ['#B02275', '#E86FB0'],
+  ['#0088A8', '#35C9E3'],
+  ['#D99100', '#FFD04D'],
+]
+
+/** The two colours of the card at a position. */
+export const accentOf = (index: number): { from: string; to: string } => {
+  const [from, to] = ACCENT_PAIRS[index % ACCENT_PAIRS.length] as [string, string]
+
+  return { from, to }
+}
+
+/** Sets the card's accent for its top strip, corner glow, dots and watermark (see .metric-card in index.css). */
+export const accentStyle = (index: number): CSSProperties => {
+  const { from, to } = accentOf(index)
+
+  return { '--accent-from': from, '--accent-to': to } as CSSProperties
+}
 
 /** The card shared by every dashboard figure: rounded, lifts on hover, rises into place. */
 export const DASHBOARD_CARD =

@@ -22,5 +22,7 @@ export default defineConfig({
     css: false,
     // Form tests type character by character; allow slower machines to finish.
     testTimeout: 15000,
+    // The dashboard's detail panels are hidden by default; the tests still cover them.
+    env: { VITE_SHOW_DASHBOARD_DETAIL_PANELS: 'true' },
   },
 })
