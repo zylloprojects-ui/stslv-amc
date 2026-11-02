@@ -5,7 +5,7 @@ import { useAuth } from '../auth/context'
 import { isAdmin } from '../auth/roles'
 import { Badge, Button, Card, NestedPageContext, PageHeader } from '../components/ui'
 import { apiUrl } from '../lib/api'
-import { ROLE_LIST_ENABLED } from '../lib/features'
+import { DIVISIONS_ENABLED, ROLE_LIST_ENABLED } from '../lib/features'
 import { cx, initialsOf } from '../lib/format'
 import { PALETTES, usePalette, useSidebarCollapsed, useTheme, type PaletteId } from '../lib/preferences'
 import { ChangePasswordModal } from './account/ChangePasswordModal'
@@ -458,7 +458,7 @@ export function SettingsPage({ area, children }: { area?: 'security' | 'backups'
     : []
   const organization: NavItem[] = [
     { id: 'company', label: 'Company profile', icon: ICONS.company },
-    { id: 'divisions', label: 'Divisions', icon: ICONS.divisions },
+    ...(DIVISIONS_ENABLED ? [{ id: 'divisions' as const, label: 'Divisions', icon: ICONS.divisions }] : []),
     ...(ROLE_LIST_ENABLED ? [{ id: 'roles' as const, label: 'Role list', icon: ICONS.roles }] : []),
     { id: 'holidays', label: 'Holidays', icon: ICONS.holidays },
     { id: 'tax', label: 'Tax setup', icon: ICONS.tax },

@@ -5,7 +5,7 @@ import { ACTIONS, MODULES, type Role, type SessionUser } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn } from './helpers'
 
 // The panel is hidden in the application for now (lib/features.ts). It is switched on here so it stays tested.
-vi.mock('../lib/features', () => ({ ROLE_LIST_ENABLED: true }))
+vi.mock('../lib/features', () => ({ ROLE_LIST_ENABLED: true, DIVISIONS_ENABLED: false }))
 
 const role = (id: string, code: string, name: string, userCount: number, isActive = true): Role => ({
   id,
