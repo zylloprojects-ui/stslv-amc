@@ -108,7 +108,7 @@ describe('role tabs', () => {
     renderApp('/admin/roles')
 
     const tablist = await screen.findByRole('tablist', { name: 'Roles' })
-    expect(within(tablist).getAllByRole('tab').map((tab) => tab.textContent)).toEqual(['Super Admin', 'Admin', 'Finance Executive', 'AMC Operations Executive'])
+    expect(within(tablist).getAllByRole('tab').map((tab) => tab.getAttribute('aria-label'))).toEqual(['Super Admin', 'Admin', 'Finance Executive', 'AMC Operations Executive'])
     expect(screen.getByText('Inactive roles (1)')).toBeInTheDocument()
     expect(within(tablist).queryByRole('tab', { name: 'Accountant' })).not.toBeInTheDocument()
   })
@@ -289,7 +289,7 @@ describe('Admin and the privileged roles', () => {
       expect(await screen.findByText('Only Super Admin can change role permissions.')).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Save permissions' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument()
-      for (const box of screen.getAllByRole('checkbox')) expect(box).toBeDisabled()
+      for (const box of screen.getAllByRole('checkbox').filter((item) => (item.getAttribute('aria-label') ?? '').includes(':'))) expect(box).toBeDisabled()
     }
   })
 

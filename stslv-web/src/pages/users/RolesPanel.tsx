@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 
 import { useAuth } from '../../auth/context'
 import { Alert, Button, Card, ConfirmDialog, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
+import { Icon, IconTile } from '../dashboard/icons'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { dependencyNote, dependentActions, requiredActions } from '../../lib/permissionRules'
@@ -32,6 +33,7 @@ function LevelBadge({ level }: { level: Level }) {
         level === 'Full' ? 'bg-emerald-50 text-emerald-700 ring-emerald-200' : level === 'None' ? 'bg-slate-100 text-slate-500 ring-slate-200' : 'bg-sky-50 text-[#0b3b66] ring-sky-200',
       )}
     >
+      <span className={cx('mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle', level === 'Full' ? 'bg-emerald-500' : level === 'None' ? 'bg-slate-400' : 'bg-sky-500')} aria-hidden="true" />
       {level}
     </span>
   )
@@ -124,17 +126,6 @@ function ModuleRow({ entry, retired, actions, selected, rules, busy, onToggle, o
       <th scope="row" className={cx(TABLE.td, 'text-left align-top font-normal')}>
         <div className="min-w-0 break-words">
           <span className="block font-semibold text-slate-900">{entry.label}</span>
-          {entry.pages.length > 0 && (
-            <span className="mt-1 flex flex-wrap gap-1">
-              {entry.pages.map((page) => (
-                <span key={page.path} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
-                  {page.label}
-                  {page.alsoRequires && <span title="Also needs view access to the other modules it shows"> +</span>}
-                </span>
-              ))}
-            </span>
-          )}
-          {entry.description && <span className="mt-1 hidden text-xs text-slate-500 sm:block">{entry.description}</span>}
           {readShown && (
             <label className="mt-2 flex items-start gap-2 rounded-md bg-sky-50/70 px-2 py-1.5 text-xs text-slate-700 ring-1 ring-inset ring-sky-100">
               <input
@@ -152,7 +143,19 @@ function ModuleRow({ entry, retired, actions, selected, rules, busy, onToggle, o
             </label>
           )}
           <details className="mt-1 text-xs text-slate-600">
-            <summary className="cursor-pointer font-semibold text-[#1479BD]">What each action allows</summary>
+            <summary className="cursor-pointer font-semibold text-[#1479BD]">Details</summary>
+            {entry.description && <p className="mt-1 text-slate-500">{entry.description}</p>}
+            {entry.pages.length > 0 && (
+              <span className="mt-1.5 flex flex-wrap gap-1">
+                {entry.pages.map((page) => (
+                  <span key={page.path} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 ring-1 ring-inset ring-slate-200">
+                    {page.label}
+                    {page.alsoRequires && <span title="Also needs view access to the other modules it shows"> +</span>}
+                  </span>
+                ))}
+              </span>
+            )}
+            <p className="mt-1.5 font-semibold text-slate-700">What each action allows</p>
             <dl className="mt-1 space-y-0.5">
               {counted.map((action) => {
                 const note = retired ? null : dependencyNote(module, action, ACTION_LABELS)
@@ -224,7 +227,7 @@ function SectionTable({ title, role, actions, children }: { title: string; role:
   return (
     <TableScroll label={`${role.name} permissions: ${title}`}>
       {/* Fixed column widths, the same in every section, so the permission columns line up down the page. */}
-      <table className={cx(TABLE.table, 'min-w-[52rem] table-fixed border border-slate-200')}>
+      <table className={cx(TABLE.table, 'min-w-[52rem] table-fixed')}>
         <caption className="sr-only">
           {title} permissions of the {role.name} role
         </caption>
@@ -274,6 +277,10 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
   const [selected, setSelected] = useState<Set<string>>(() => new Set(keysOf(role)))
   const [saved, setSaved] = useState(false)
   const [stale, setStale] = useState(false)
+  // A light view of a heavy list: find a module, see only what the role holds, open sections as needed.
+  const [query, setQuery] = useState('')
+  const [onlyGranted, setOnlyGranted] = useState(false)
+  const [expand, setExpand] = useState({ all: false, version: 0 })
 
   const original = new Set(keysOf(base))
   const dirty = selected.size !== original.size || [...selected].some((key) => !original.has(key))
@@ -380,6 +387,11 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
   const visibleModules = (section: PermissionSection) =>
     section.modules.filter((entry) => actions.some((action) => rules.shown(entry, section.retired === true, action)))
 
+  const matches = (entry: PermissionCatalogEntry, retired: boolean) =>
+    (query.trim() === '' || entry.label.toLowerCase().includes(query.trim().toLowerCase())) &&
+    (!onlyGranted || actions.some((action) => rules.shown(entry, retired, action) && selected.has(keyOf(entry.module, action))))
+  const shownModules = (section: PermissionSection) => visibleModules(section).filter((entry) => matches(entry, section.retired === true))
+
   // The role's overall level, over the permissions it may hold (a Read that View already covers is not counted).
   const totals = current.flatMap(visibleModules).reduce(
     (sum, entry) => {
@@ -394,7 +406,7 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
   )
 
   const rows = (section: PermissionSection) =>
-    visibleModules(section).map((entry) => (
+    shownModules(section).map((entry) => (
       <ModuleRow
         key={entry.module}
         entry={entry}
@@ -412,33 +424,41 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
 
   return (
     <div>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
-        <div className="min-w-0">
-          <h3 className="flex flex-wrap items-center gap-2 text-base font-semibold text-slate-900">
-            {role.name}
-            <LevelBadge level={levelOf(totals.held, totals.shown)} />
-          </h3>
-          {role.description && <p className="mt-0.5 text-sm text-slate-600">{role.description}</p>}
-          <p className="mt-0.5 text-xs text-slate-500">
-            {totals.held} of {totals.shown} permissions · {role.userCount} {role.userCount === 1 ? 'user' : 'users'}
-          </p>
-        </div>
-        {editable && (
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" disabled={save.isPending || everyChangeable.every((key) => selected.has(key))} onClick={() => setKeys(everyChangeable, true)}>
-              Select all
-            </Button>
-            <Button variant="secondary" size="sm" disabled={save.isPending || everyClearable.every((key) => !selected.has(key))} onClick={() => setKeys(everyClearable, false)}>
-              Clear all
-            </Button>
-            <Button variant="secondary" size="sm" disabled={!dirty || save.isPending} onClick={() => setSelected(new Set(keysOf(base)))}>
-              Cancel
-            </Button>
-            <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>
-              Save permissions
-            </Button>
+      <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-5 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <IconTile icon="shield" from="#0b3b66" to="#1479BD" className="h-12 w-12 rounded-2xl" />
+            <div className="min-w-0">
+              <h3 className="flex flex-wrap items-center gap-2 text-lg font-bold tracking-tight text-[#0b3b66]">
+                {role.name}
+                <LevelBadge level={levelOf(totals.held, totals.shown)} />
+              </h3>
+              {role.description && <p className="mt-0.5 text-sm text-slate-600">{role.description}</p>}
+              <p className="mt-1 text-xs text-slate-500">
+                {totals.held} of {totals.shown} permissions · {role.userCount} {role.userCount === 1 ? 'user' : 'users'}
+              </p>
+            </div>
           </div>
-        )}
+          {editable && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" size="sm" disabled={save.isPending || everyChangeable.every((key) => selected.has(key))} onClick={() => setKeys(everyChangeable, true)}>
+                Select all
+              </Button>
+              <Button variant="secondary" size="sm" disabled={save.isPending || everyClearable.every((key) => !selected.has(key))} onClick={() => setKeys(everyClearable, false)}>
+                Clear all
+              </Button>
+              <Button variant="secondary" size="sm" disabled={!dirty || save.isPending} onClick={() => setSelected(new Set(keysOf(base)))}>
+                Cancel
+              </Button>
+              <Button size="sm" disabled={!dirty} loading={save.isPending} onClick={() => save.mutate()}>
+                Save permissions
+              </Button>
+            </div>
+          )}
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200" aria-hidden="true">
+          <div className="h-full rounded-full bg-gradient-to-r from-[#1479BD] to-[#00A6C8] transition-all duration-500" style={{ width: `${totals.shown === 0 ? 0 : Math.round((totals.held / totals.shown) * 100)}%` }} />
+        </div>
       </div>
 
       <div className="space-y-3 p-4 pb-0" aria-live="polite">
@@ -462,14 +482,65 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
         {saved && !dirty && <Alert tone="success">Permissions saved. They apply immediately.</Alert>}
       </div>
 
-      <div className="space-y-4 p-4">
+      <div className="space-y-3 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
+            <svg viewBox="0 0 20 20" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <circle cx="9" cy="9" r="5.5" />
+              <path d="m13.5 13.5 3.5 3.5" strokeLinecap="round" />
+            </svg>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Find a module"
+              aria-label="Find a module"
+              className="block w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm shadow-sm placeholder:text-slate-400 focus:border-[#1479BD] focus:outline-none focus:ring-2 focus:ring-sky-100"
+            />
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-slate-700">
+            <input type="checkbox" checked={onlyGranted} onChange={(event) => setOnlyGranted(event.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-[#1479BD]" />
+            Only what this role has
+          </label>
+          <span className="ml-auto flex gap-2">
+            <button type="button" onClick={() => setExpand((value) => ({ all: true, version: value.version + 1 }))} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-[#1479BD] hover:text-[#0b3b66]">
+              Expand all
+            </button>
+            <button type="button" onClick={() => setExpand((value) => ({ all: false, version: value.version + 1 }))} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-[#1479BD] hover:text-[#0b3b66]">
+              Collapse all
+            </button>
+          </span>
+        </div>
+        {current.every((section) => shownModules(section).length === 0) && <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">No module matches.</p>}
         {current
-          .filter((section) => visibleModules(section).length > 0)
-          .map((section) => (
-            <SectionTable key={section.title} title={section.title} role={role} actions={columns}>
-              {rows(section)}
-            </SectionTable>
-          ))}
+          .filter((section) => shownModules(section).length > 0)
+          .map((section) => {
+            const modules = shownModules(section)
+            const possible = modules.reduce((sum, entry) => sum + actions.filter((action) => rules.shown(entry, false, action)).length, 0)
+            const granted = modules.reduce((sum, entry) => sum + actions.filter((action) => rules.shown(entry, false, action) && selected.has(keyOf(entry.module, action))).length, 0)
+
+            return (
+              <details key={`${section.title}-${expand.version}`} open={expand.all || query.trim() !== ''} className="group frame-hover overflow-hidden rounded-xl border bg-white shadow-sm">
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3 hover:bg-sky-50/60 [&::-webkit-details-marker]:hidden">
+                  <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-[#1479BD] transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                    <path d="m7 4 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                  <span className="min-w-0 flex-1 text-sm font-bold text-[#0b3b66]">{section.title}</span>
+                  <span className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 sm:block" aria-hidden="true">
+                    <span className="block h-full rounded-full bg-gradient-to-r from-[#1479BD] to-[#00A6C8]" style={{ width: `${possible === 0 ? 0 : Math.round((granted / possible) * 100)}%` }} />
+                  </span>
+                  <span className="whitespace-nowrap text-xs font-semibold text-slate-500">
+                    {granted}/{possible} · {modules.length} {modules.length === 1 ? 'module' : 'modules'}
+                  </span>
+                </summary>
+                <div className="border-t border-slate-200">
+                  <SectionTable title={section.title} role={role} actions={columns}>
+                    {rows(section)}
+                  </SectionTable>
+                </div>
+              </details>
+            )
+          })}
 
         {legacy.map((section) => {
           const held = section.modules.reduce((sum, entry) => sum + actions.filter((action) => rules.shown(entry, true, action) && original.has(keyOf(entry.module, action))).length, 0)
@@ -490,21 +561,29 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
         })}
 
         {catalogue.fixedAccess && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-sm text-slate-700">
-            <h3 className="font-semibold text-slate-900">Not set by role permissions</h3>
-            {catalogue.fixedAccess.superAdminOnly && (
-              <p className="mt-1">
-                <span className="font-semibold">Super Admin only:</span> {catalogue.fixedAccess.superAdminOnly.map((page) => page.label).join(' · ')}
-              </p>
-            )}
-            <p className="mt-1">
-              <span className="font-semibold">Super Admin and Admin only:</span> {catalogue.fixedAccess.adminOnly.map((page) => page.label).join(' · ')}
-            </p>
-            <p className="mt-1">
-              <span className="font-semibold">Every signed-in user:</span> {catalogue.fixedAccess.everyone.map((page) => page.label).join(' · ')}
-            </p>
-            <p className="mt-1 text-xs text-slate-500">A page marked + also needs view access to the other modules whose data it shows.</p>
-          </div>
+          <details className="rounded-xl border-[1.5px] border-slate-300 bg-slate-50/60 p-4 text-sm text-slate-700">
+            <summary className="flex cursor-pointer items-center gap-2 font-bold text-[#0b3b66]">
+              <Icon name="settings" className="h-4 w-4 text-[#1479BD]" />
+              Not set by role permissions
+            </summary>
+            <div className="mt-3 grid gap-3 md:grid-cols-3">
+              {catalogue.fixedAccess.superAdminOnly && (
+                <div className="rounded-lg border border-slate-200 bg-white p-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Super Admin only:</p>
+                  <p className="mt-1">{catalogue.fixedAccess.superAdminOnly.map((page) => page.label).join(' · ')}</p>
+                </div>
+              )}
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Super Admin and Admin only:</p>
+                <p className="mt-1">{catalogue.fixedAccess.adminOnly.map((page) => page.label).join(' · ')}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Every signed-in user:</p>
+                <p className="mt-1">{catalogue.fixedAccess.everyone.map((page) => page.label).join(' · ')}</p>
+              </div>
+            </div>
+            <p className="mt-3 text-xs text-slate-500">A page marked + also needs view access to the other modules whose data it shows.</p>
+          </details>
         )}
       </div>
     </div>
@@ -558,9 +637,15 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
       on ? 'bg-[#1479BD] text-white ring-[#1479BD]' : 'bg-white text-slate-700 ring-slate-300 hover:bg-sky-50 hover:text-[#0b3b66]',
     )
 
+  const cardClass = (on: boolean) =>
+    cx(
+      'frame-hover group flex min-w-0 items-center gap-3 rounded-xl border bg-white px-3.5 py-3 text-left shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1479BD] hover:-translate-y-0.5',
+      on && 'border-[#1479BD]! bg-sky-50 ring-2 ring-[#1479BD]/25',
+    )
+
   return (
     <div className="space-y-4">
-      <div role="tablist" aria-label="Roles" className="flex flex-wrap gap-2">
+      <div role="tablist" aria-label="Roles" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {active.map((candidate, index) => {
           const on = candidate.id === selectedId
 
@@ -578,9 +663,21 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
               tabIndex={on || (!active.some((item) => item.id === selectedId) && index === 0) ? 0 : -1}
               onClick={() => choose(candidate.id)}
               onKeyDown={(event) => onTabKey(event, index)}
-              className={tabClass(on)}
+              aria-label={candidate.name}
+              className={cardClass(on)}
             >
-              {candidate.name}
+              <IconTile icon="shield" from={on ? '#0b3b66' : '#64748B'} to={on ? '#1479BD' : '#94A3B8'} className="h-10 w-10 rounded-xl" />
+              <span className="min-w-0 flex-1" aria-hidden="true">
+                <span className="block truncate text-sm font-bold text-slate-900">{candidate.name}</span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  {candidate.userCount} {candidate.userCount === 1 ? 'user' : 'users'} · {candidate.permissions.length} permissions
+                </span>
+              </span>
+              {on && (
+                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-[#1479BD]" fill="none" stroke="currentColor" strokeWidth="2.4" aria-hidden="true">
+                  <path d="m4.5 10.5 3.5 3.5 7.5-8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
             </button>
           )
         })}
@@ -601,7 +698,7 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
         </details>
       )}
 
-      <Card className="min-w-0">
+      <Card className="min-w-0 overflow-hidden rounded-2xl">
         <div id="role-permissions" role="tabpanel" aria-labelledby={role ? `role-tab-${role.id}` : undefined}>
           {/* key: a fresh matrix for another role. A newer save of the same role is merged by the matrix itself. */}
           {role && (
