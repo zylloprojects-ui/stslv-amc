@@ -52,6 +52,7 @@ function api(user: SessionUser, handler: (request: MockRequest) => MockReply | u
         pageSize: 25,
       })
     }
+    if (request.path === '/security/recycle-bin/amc-contracts') return ok([])
     if (request.path === '/security/deletions') {
       return ok({
         items: [{ id: '3', kind: 'DELETED', action: 'holiday.deleted', entityType: 'holidays', entityId: '44', description: 'Holiday removed.', reason: null, user: 'Asha Admin', createdAt: '2026-10-20T08:00:00.000Z' }],

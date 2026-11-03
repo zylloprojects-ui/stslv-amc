@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
+import { isSuperAdmin } from '../../auth/roles'
 import { ExportButtons } from '../../components/ExportButtons'
 import { LoadError, Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
@@ -13,6 +14,7 @@ import { IconTile, type IconName } from '../dashboard/icons'
 import { ColumnsMenu } from '../clients/ColumnsMenu'
 import { useHiddenColumns } from './useHiddenColumns'
 import { actionLabel, fieldLabel } from './auditTypes'
+import { DeletedContracts } from './DeletedContracts'
 
 interface DeletionEntry {
   id: string
@@ -65,9 +67,10 @@ function Stat({ label, value, icon, from, to, children }: { label: string; value
 const isoDay = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 
 /**
- * Recycle Bin: the removals recorded in the activity log, newest first. Read-only; administrators only.
- * History only: nothing is held here to recover (see docs/RECYCLE_BIN.md). Its address and API keep the
- * former Deletion Log names, so saved links, permissions and existing audit entries stay valid.
+ * Recycle Bin: deleted AMC contracts, which Super Admin can restore (migration 0101), and the removals
+ * recorded in the activity log, newest first. Administrators only. Other record types are history only
+ * (see docs/RECYCLE_BIN.md). Its address and API keep the former Deletion Log names, so saved links,
+ * permissions and existing audit entries stay valid.
  */
 export function DeletionLogPage() {
   const auth = useAuth()
@@ -142,12 +145,14 @@ export function DeletionLogPage() {
       <div role="note" className="mb-4 flex gap-3 rounded-xl border border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white" aria-hidden="true">!</span>
         <div>
-          <p className="font-semibold">History only. Records cannot be recovered from this page.</p>
+          <p className="font-semibold">Deleted AMC contracts can be restored by Super Admin. Everything else here is history.</p>
           <p className="mt-1 text-xs leading-relaxed">
-            Deleted records no longer exist. Cancelled contracts and deactivated clients, master records and users stay on their own pages, where they can be switched back on. Cancelled invoices and voided expenses stay as records; a cancelled invoice's number can be entered again.
+            A deleted AMC contract is kept in full with its services, invoices and documents. Other deleted records no longer exist. Cancelled contracts and deactivated clients, master records and users stay on their own pages, where they can be switched back on. Cancelled invoices and voided expenses stay as records; a cancelled invoice's number can be entered again.
           </p>
         </div>
       </div>
+
+      {isSuperAdmin(auth.user) && <DeletedContracts />}
 
       <dl className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Entries" value={String(data?.total ?? '—')} icon="invoice" from="#1479BD" to="#4aa3df">

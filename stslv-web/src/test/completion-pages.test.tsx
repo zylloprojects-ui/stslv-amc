@@ -99,7 +99,8 @@ describe('Security Center and Deletion Log', () => {
     expect(await screen.findByText('System type removed.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Recycle Bin' })).toBeInTheDocument()
     expect(screen.queryByText('Deletion Log')).not.toBeInTheDocument()
-    expect(screen.getByRole('note')).toHaveTextContent('Records cannot be recovered from this page')
+    // Only deleted AMC contracts can be restored (Super Admin, migration 0101); everything else is history.
+    expect(screen.getByRole('note')).toHaveTextContent('Deleted AMC contracts can be restored by Super Admin. Everything else here is history.')
     // History only: no action on a row.
     expect(screen.queryByRole('button', { name: /restore|recover|undo|empty|delete/i })).not.toBeInTheDocument()
     await userEvent.selectOptions(screen.getByLabelText('Action'), 'DELETED')

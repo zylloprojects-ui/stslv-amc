@@ -94,7 +94,7 @@ describe("Master AMC Status", () => {
   afterAll(closePool);
 
   beforeEach(async () => {
-    await pool.query("TRUNCATE activity_logs, invoice_allocations, invoices, amc_visits, amc_contracts, clients, sales_engineers RESTART IDENTITY CASCADE");
+    await pool.query("TRUNCATE activity_logs, invoice_allocations, invoices, amc_visits_all, amc_contracts_all, clients, sales_engineers RESTART IDENTITY CASCADE");
     const alphaId = await createClient(admin, "Alpha Towers");
     const betaId = await createClient(admin, "Beta Mall");
     const esha = await insertEngineer("Esha Engineer");

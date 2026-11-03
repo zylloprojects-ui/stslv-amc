@@ -304,7 +304,7 @@ describe("future invoice tracking", () => {
         `CREATE TABLE trial_invoice_allocations (
            invoice_id bigint NOT NULL REFERENCES trial_invoices (id),
            project_id bigint REFERENCES projects (id),
-           amc_visit_id bigint REFERENCES amc_visits (id),
+           amc_visit_id bigint REFERENCES amc_visits_all (id), -- the table; amc_visits is a view since 0101
            CHECK (num_nonnulls(project_id, amc_visit_id) = 1)
          )`
       );

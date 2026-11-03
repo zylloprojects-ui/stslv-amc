@@ -4,6 +4,8 @@ import { adminOnly } from "../../middleware/admin-only";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { forbidden } from "../../shared/errors";
 import { isSuperAdmin } from "../../shared/role-model";
+import { parseIdParam } from "../../shared/validation";
+import { listDeletedContracts, restoreContract } from "../amc/contracts.service";
 import { listBackups, startBackup, verifiedBackupFile } from "./backups.service";
 import { sendExport } from "../../shared/export/send";
 import { transportOf } from "../dashboard/readiness.service";
@@ -38,6 +40,15 @@ securityRouter.get("/deletions/export", async (req, res) => {
 
 securityRouter.get("/deletions", async (req, res) => {
   res.json({ success: true, data: await listDeletions(listDeletionsSchema.parse(req.query)) });
+});
+
+// AMC contracts in the Recycle Bin, and restoring one. Super Admin only (checked in the service).
+securityRouter.get("/recycle-bin/amc-contracts", async (req, res) => {
+  res.json({ success: true, data: await listDeletedContracts(requireAuth(req)) });
+});
+
+securityRouter.post("/recycle-bin/amc-contracts/:id/restore", async (req, res) => {
+  res.json({ success: true, data: await restoreContract(requireAuth(req), parseIdParam(req.params.id)) });
 });
 
 securityRouter.get("/backups", async (_req, res) => {

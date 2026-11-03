@@ -3,6 +3,7 @@ import { diffFields, logActivity } from "../../shared/activity-log";
 import { listEntityHistory, type HistoryEntry } from "../../shared/entity-history";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
+import { isSuperAdmin } from "../../shared/role-model";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { featureUnavailable } from "../../middleware/require-schema";
@@ -1236,64 +1237,169 @@ async function assertNoOtherOpenRenewal(db: Queryable, id: string): Promise<void
   }
 }
 
-/** True for a PostgreSQL foreign-key violation (23503). */
-function isForeignKeyViolation(error: unknown): boolean {
-  return (error as { code?: unknown } | null)?.code === "23503";
+// ---------------------------------------------------------------------------
+// AMC Recycle Bin (approved 2026-11-03, migration 0101). Super Admin only.
+// Deleting never removes rows: the contract is marked deleted (deleted_at, deleted_by)
+// and the amc_contracts / amc_visits views stop showing it and its services, so every
+// list, schedule, KPI and endpoint treats it as not found. Its services, invoices,
+// documents and history are untouched, and restoring brings back the same contract
+// (same id, so the same AMC number) with the same services.
+// ---------------------------------------------------------------------------
+
+const SUPER_ADMIN_ONLY = "Only Super Admin can move AMC contracts to the Recycle Bin or restore them.";
+
+function assertSuperAdmin(auth: AuthContext): void {
+  if (!isSuperAdmin(auth.roles)) {
+    throw forbidden(SUPER_ADMIN_ONLY);
+  }
 }
 
-/**
- * Deletes a contract whose services nobody has acted on, together with those untouched services.
- * Once a service has been worked on, moved, noted or invoiced, or the contract has been renewed or
- * imported, it is refused with a 409: the contract is then cancelled instead, which keeps its history.
- * The database's ON DELETE RESTRICT refuses it again should anything be linked meanwhile.
- */
+const isUniqueViolation = (error: unknown) => (error as { code?: unknown } | null)?.code === "23505";
+
+/** Moves a contract to the Recycle Bin. Refused while a renewal of it exists, which would lose its source. */
 export async function deleteContract(auth: AuthContext, id: string): Promise<void> {
-  let label = "This contract";
+  assertSuperAdmin(auth);
+
+  await withTransaction(async (db) => {
+    // Locked, so nothing can change the contract or its services until this transaction ends.
+    const contract = await findContract(db, id, true);
+    const label = `The contract for "${contract.client.name}" (${contract.systemDescription})`;
+
+    const renewal = await db.query<{ id: string }>("SELECT id FROM amc_contracts WHERE renewed_from_id = $1 ORDER BY id LIMIT 1", [id]);
+    if (renewal.rows[0]) {
+      throw conflict(
+        `${label} cannot be moved to the Recycle Bin: it was renewed as AMC-${renewal.rows[0].id.padStart(4, "0")}. Move the renewal to the Recycle Bin first, or cancel this contract instead.`
+      );
+    }
+
+    const kept = await db.query<{ services: number; invoices: number }>(
+      `SELECT (SELECT count(*)::int FROM amc_visits WHERE amc_contract_id = $1) AS services,
+              (SELECT count(DISTINCT al.invoice_id)::int FROM invoice_allocations al JOIN amc_visits v ON v.id = al.amc_visit_id
+               WHERE v.amc_contract_id = $1) AS invoices`,
+      [id]
+    );
+    const { services, invoices } = kept.rows[0] ?? { services: 0, invoices: 0 };
+
+    await db.query("UPDATE amc_contracts_all SET deleted_at = now(), deleted_by = $2 WHERE id = $1 AND deleted_at IS NULL", [id, auth.user.id]);
+    await logActivity(db, {
+      userId: auth.user.id,
+      action: "amc_contract.deleted",
+      module: "AMC_CONTRACTS",
+      entityType: "amc_contracts",
+      entityId: id,
+      description: `AMC contract for "${contract.client.name}" (${contract.systemDescription}) moved to the Recycle Bin with its ${services} service${services === 1 ? "" : "s"}; nothing was removed.`,
+      metadata: {
+        recycleBin: true,
+        deleted: { client: contract.client.name, systemDescription: contract.systemDescription, validFrom: contract.validFrom, validTo: contract.validTo, status: contract.status, contractValue: contract.contractValue, services, invoices },
+      },
+    });
+  });
+}
+
+/** Restores a contract from the Recycle Bin with the same id and services. */
+export async function restoreContract(auth: AuthContext, id: string): Promise<Contract> {
+  assertSuperAdmin(auth);
 
   try {
-    await withTransaction(async (db) => {
-      // Locked, so no service can be changed until this transaction ends.
-      const contract = await findContract(db, id, true);
-      label = `The contract for "${contract.client.name}" (${contract.systemDescription})`;
-
-      const visits = await db.query<{ total: number; worked: number }>(
-        `SELECT count(*)::int AS total, count(*) FILTER (WHERE ${VISIT_LOCKED_SQL})::int AS worked
-         FROM amc_visits v WHERE v.amc_contract_id = $1`,
+    return await withTransaction(async (db) => {
+      const found = await db.query<{ renewed_from_id: string | null; status: string }>(
+        "SELECT renewed_from_id, status FROM amc_contracts_all WHERE id = $1 AND deleted_at IS NOT NULL FOR UPDATE",
         [id]
       );
-      const { total, worked } = visits.rows[0] ?? { total: 0, worked: 0 };
+      const row = found.rows[0];
 
-      if (worked > 0) {
-        throw conflict(
-          `${label} cannot be deleted: ${worked} of its ${total} service${total === 1 ? "" : "s"} ${worked === 1 ? "has" : "have"} been worked on, moved, noted or invoiced. Cancel the contract instead; its history is kept.`
+      if (!row) {
+        throw notFound("No AMC contract with this id is in the Recycle Bin.");
+      }
+      if (row.renewed_from_id !== null && row.status !== "CANCELLED") {
+        const other = await db.query<{ id: string }>(
+          "SELECT id FROM amc_contracts WHERE renewed_from_id = $1 AND status <> 'CANCELLED' AND id <> $2 LIMIT 1",
+          [row.renewed_from_id, id]
         );
+        if (other.rows[0]) {
+          throw conflict(
+            `This contract cannot be restored: AMC-${row.renewed_from_id.padStart(4, "0")} has since been renewed as AMC-${other.rows[0].id.padStart(4, "0")}. Cancel or delete that renewal first.`
+          );
+        }
       }
 
-      if (await schemaHas(["amc_contract_custom_months.amc_contract_id"])) {
-        await db.query("DELETE FROM amc_contract_custom_months WHERE amc_contract_id = $1", [id]);
-      }
-      await db.query("DELETE FROM amc_visits WHERE amc_contract_id = $1", [id]);
-      await db.query("DELETE FROM amc_contracts WHERE id = $1", [id]);
+      await db.query("UPDATE amc_contracts_all SET deleted_at = NULL, deleted_by = NULL WHERE id = $1", [id]);
+      const contract = await findContract(db, id);
       await logActivity(db, {
         userId: auth.user.id,
-        action: "amc_contract.deleted",
+        action: "amc_contract.restored",
         module: "AMC_CONTRACTS",
         entityType: "amc_contracts",
         entityId: id,
-        description: `AMC contract for "${contract.client.name}" (${contract.systemDescription}) deleted with its ${total} untouched service${total === 1 ? "" : "s"}.`,
-        // The record no longer exists; the log keeps what it was.
-        metadata: {
-          deleted: { client: contract.client.name, systemDescription: contract.systemDescription, validFrom: contract.validFrom, validTo: contract.validTo, status: contract.status, contractValue: contract.contractValue, services: total },
-        },
+        description: `AMC contract for "${contract.client.name}" (${contract.systemDescription}) restored from the Recycle Bin.`,
+        metadata: { recycleBin: true },
       });
+
+      return contract;
     });
   } catch (error) {
-    if (isForeignKeyViolation(error)) {
-      throw conflict(`${label} cannot be deleted: other records, such as a renewal or an invoice, still refer to it. Cancel the contract instead; its history is kept.`);
+    // The open-renewal index refuses it again should a renewal be created meanwhile.
+    if (isUniqueViolation(error)) {
+      throw conflict("This contract cannot be restored: its source contract now has another open renewal.");
     }
-
     throw error;
   }
+}
+
+export interface DeletedContract {
+  id: string;
+  client: { id: string; name: string };
+  systemDescription: string;
+  validFrom: string;
+  validTo: string;
+  status: string;
+  contractValue: string | null;
+  services: number;
+  invoices: number;
+  documents: number;
+  deletedAt: string;
+  deletedBy: string | null;
+}
+
+/** The contracts in the Recycle Bin, most recently deleted first. */
+export async function listDeletedContracts(auth: AuthContext): Promise<DeletedContract[]> {
+  assertSuperAdmin(auth);
+
+  const documents = (await schemaHas(["attachments"]))
+    ? "(SELECT count(*)::int FROM attachments a WHERE a.entity_type = 'amc_contracts' AND a.entity_id = c.id AND a.is_current)"
+    : "0";
+  const result = await pool.query<{
+    id: string; client_id: string; client_name: string; system_description: string; valid_from: string; valid_to: string;
+    status: string; contract_value: string | null; services: number; invoices: number; documents: number; deleted_at: Date; deleted_by: string | null;
+  }>(
+    `SELECT c.id, c.client_id, cl.name AS client_name, c.system_description, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
+            c.status, c.contract_value, c.deleted_at, u.full_name AS deleted_by,
+            (SELECT count(*)::int FROM amc_visits_all v WHERE v.amc_contract_id = c.id) AS services,
+            (SELECT count(DISTINCT al.invoice_id)::int FROM invoice_allocations al JOIN amc_visits_all v ON v.id = al.amc_visit_id
+             WHERE v.amc_contract_id = c.id) AS invoices,
+            ${documents} AS documents
+     FROM amc_contracts_all c
+     JOIN clients cl ON cl.id = c.client_id
+     LEFT JOIN users u ON u.id = c.deleted_by
+     WHERE c.deleted_at IS NOT NULL
+     ORDER BY c.deleted_at DESC, c.id DESC
+     LIMIT 500`
+  );
+
+  return result.rows.map((row) => ({
+    id: row.id,
+    client: { id: row.client_id, name: row.client_name },
+    systemDescription: row.system_description,
+    validFrom: row.valid_from,
+    validTo: row.valid_to,
+    status: row.status,
+    contractValue: row.contract_value,
+    services: row.services,
+    invoices: row.invoices,
+    documents: row.documents,
+    deletedAt: row.deleted_at.toISOString(),
+    deletedBy: row.deleted_by,
+  }));
 }
 
 export function changeContractStatus(
@@ -1301,8 +1407,8 @@ export function changeContractStatus(
   id: string,
   input: ChangeContractStatusInput
 ): Promise<Contract & { scheduleChange: ScheduleChange | null; cancelledVisits: number }> {
-  // The DELETE permission governs cancellation (the same convention as deactivating a client)
-  // and deleting a contract that nothing has been done on (deleteContract).
+  // The DELETE permission governs cancellation (the same convention as deactivating a client).
+  // Moving a contract to the Recycle Bin is Super Admin only (deleteContract).
   if (input.status === "CANCELLED" && !auth.permissions.has("AMC_CONTRACTS:DELETE")) {
     throw forbidden();
   }

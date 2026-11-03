@@ -245,7 +245,8 @@ amcRouter.patch("/contracts/:id", authorize("AMC_CONTRACTS", "EDIT"), async (req
   res.json({ success: true, data: contract });
 });
 
-// Only a contract whose services are all untouched; otherwise 409 with the reason.
+// Moves the contract to the Recycle Bin (nothing is removed). Super Admin only: 403 for anyone else,
+// checked in deleteContract on top of AMC_CONTRACTS:DELETE.
 amcRouter.delete("/contracts/:id", authorize("AMC_CONTRACTS", "DELETE"), async (req, res) => {
   await deleteContract(requireAuth(req), parseIdParam(req.params.id));
 

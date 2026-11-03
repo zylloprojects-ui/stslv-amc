@@ -285,8 +285,11 @@ describe("with contracts, renewals, visits and invoices", () => {
   });
 
   it("protects renewal chains from deletion", async () => {
-    expect((await api().delete(`/api/amc/contracts/${ids.d45}`).set(admin.headers)).status).toBe(404);
-    await expect(pool.query("DELETE FROM amc_contracts WHERE id = $1", [ids.d45])).rejects.toMatchObject({ code: "23503" });
+    // A renewed contract cannot go to the Recycle Bin (0101), and the database refuses a physical delete.
+    const refused = await api().delete(`/api/amc/contracts/${ids.d45}`).set(admin.headers);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toContain("was renewed as");
+    await expect(pool.query("DELETE FROM amc_contracts_all WHERE id = $1", [ids.d45])).rejects.toMatchObject({ code: "23503" });
   });
 
   describe("expiry alerts", () => {

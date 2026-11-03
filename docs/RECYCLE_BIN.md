@@ -2,15 +2,30 @@
 
 Page: `/admin/deletion-log`. API: `/api/security/deletions`. Formerly named Deletion Log; the address, API, permissions and logged action names are unchanged, so links and audit history stay valid.
 
-**It is a history page. Nothing can be recovered from it.** It reads `activity_logs` and holds no removed records. There is no Restore button, by decision (2026-11-01).
+**AMC contracts can be restored from it (approved 2026-11-03, migration 0101). Everything else on it is history.** The history list reads `activity_logs`.
+
+## AMC contracts in the Recycle Bin
+
+* **Delete** on AMC Contracts (Super Admin only; the API returns 403 to everyone else, even with AMC Contracts Delete) moves the contract to the Recycle Bin. Nothing is removed: the contract row, its services, service reports, quotations, invoices, documents and history all stay.
+* **How it is hidden:** the tables are now `amc_contracts_all` and `amc_visits_all`. The views `amc_contracts` and `amc_visits` show only contracts that are not deleted, and their services. Every list, schedule, calendar, KPI, report, export and endpoint reads the views, so a deleted contract is "not found" everywhere and cannot be changed. Its documents stay stored but cannot be opened until it is restored.
+* **Invoices** of a deleted contract stay in Invoice Tracking and still show which contract and service they cover. They cannot be re-allocated while the contract is in the Recycle Bin.
+* **Refused:** a contract that has been renewed (move the renewal to the Recycle Bin first, or cancel the contract).
+* **Restore** (Super Admin, Recycle Bin page) brings back the same contract: same id, so the same AMC number, same services and history. Refused while its source contract has since been renewed by another open contract.
+* **AMC numbers** are derived from the contract id, which is never reused, so a deleted or restored contract never shares a number.
+* **Audit:** `amc_contract.deleted` and `amc_contract.restored` in the activity log; deletions also appear in the history below.
+* **Clients:** a client whose only contract is in the Recycle Bin still cannot be permanently deleted.
+* **For later migrations:** alter `amc_contracts_all` / `amc_visits_all`, reference them in new foreign keys, and recreate the matching view afterwards.
+
+Other record types still have no Restore, for the reasons below.
 
 ## How removal works
 
-There is no general soft-delete mechanism: no `deleted_at` column and no trash table. All 68 foreign keys are `ON DELETE RESTRICT`, so a record in use cannot be deleted and nothing cascades.
+AMC contracts have `deleted_at` (above); no other record type does, and there is no trash table. All 68 foreign keys are `ON DELETE RESTRICT`, so a record in use cannot be deleted and nothing cascades.
 
 | Record | What happens | Kept? | How it comes back |
 |---|---|---|---|
-| Contract | Status Cancelled | Yes | Its own page (Cancelled to Active). Visits cancelled with it stay cancelled |
+| Contract (cancelled) | Status Cancelled | Yes | Its own page (Cancelled to Active). Visits cancelled with it stay cancelled |
+| Contract (deleted) | Moved to the Recycle Bin (`deleted_at`) | Yes, with everything linked | Restore on this page (Super Admin) |
 | Scheduled visit | Status Cancelled | Yes | Not offered as a recovery; regenerate cannot revive one |
 | Untouched visit outside new terms | Row deleted | Log keeps id, number and period | Generated again if the terms return |
 | Invoice | Status Cancelled | Yes | Not reversible; the number can be entered again |

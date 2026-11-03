@@ -127,8 +127,9 @@ const SELECT_ALLOCATIONS = `
          v.completed_date::text AS visit_completed_date,
          p.job_number, p.description AS project_description
   FROM invoice_allocations al
-  LEFT JOIN amc_visits v ON v.id = al.amc_visit_id
-  LEFT JOIN amc_contracts ac ON ac.id = v.amc_contract_id
+  -- *_all: an invoice keeps showing what it covers even when that AMC is in the Recycle Bin.
+  LEFT JOIN amc_visits_all v ON v.id = al.amc_visit_id
+  LEFT JOIN amc_contracts_all ac ON ac.id = v.amc_contract_id
   LEFT JOIN projects p ON p.id = al.project_id
   WHERE al.invoice_id = ANY($1::bigint[])
   ORDER BY al.id`;

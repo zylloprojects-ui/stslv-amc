@@ -371,7 +371,7 @@ export async function deleteClient(auth: AuthContext, id: string): Promise<void>
       name = client.name;
 
       const used = await db.query<{ contracts: number; projects: number; invoices: number }>(
-        `SELECT (SELECT count(*)::int FROM amc_contracts WHERE client_id = $1) AS contracts,
+        `SELECT (SELECT count(*)::int FROM amc_contracts_all WHERE client_id = $1) AS contracts, -- including the Recycle Bin
                 (SELECT count(*)::int FROM projects WHERE client_id = $1) AS projects,
                 (SELECT count(*)::int FROM invoices WHERE client_id = $1) AS invoices`,
         [id],

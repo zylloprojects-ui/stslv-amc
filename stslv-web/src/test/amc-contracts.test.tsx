@@ -546,8 +546,17 @@ describe('contract permissions', () => {
   })
 })
 
-describe('delete contract from the list', () => {
-  it('asks first, Cancel deletes nothing, and Delete contract removes it', async () => {
+// Holds AMC Contracts Delete (cancellation) but is not Super Admin.
+const CONTRACT_MANAGER = {
+  id: '8',
+  email: 'manager@example.com',
+  fullName: 'Mira Manager',
+  roles: [{ id: '8', code: 'ADMINISTRATOR', name: 'Admin' }],
+  permissions: ['AMC_CONTRACTS:VIEW', 'AMC_CONTRACTS:CREATE', 'AMC_CONTRACTS:EDIT', 'AMC_CONTRACTS:DELETE'],
+}
+
+describe('move a contract to the Recycle Bin (Super Admin only)', () => {
+  it('asks first, says nothing is removed, Cancel does nothing, and confirming moves it', async () => {
     const api = amcApi(ADMIN, {
       contracts: [FIRE, DRAFT],
       override: (request) => (request.method === 'DELETE' && request.path === '/amc/contracts/101' ? { status: 200, body: { success: true, data: { deleted: true } } } : undefined),
@@ -555,33 +564,42 @@ describe('delete contract from the list', () => {
     renderApp('/amc/contracts')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Delete Test Hotel Two CCTV' }))
-    let dialog = await screen.findByRole('dialog', { name: 'Delete contract' })
-    expect(dialog).toHaveTextContent('Delete the contract for Test Hotel Two CCTV and its scheduled services? This cannot be undone.')
+    let dialog = await screen.findByRole('dialog', { name: 'Move contract to the Recycle Bin' })
+    expect(dialog).toHaveTextContent('Move the contract for Test Hotel Two CCTV to the Recycle Bin?')
+    expect(dialog).toHaveTextContent('Nothing is removed: its services, service reports, quotations, invoices, documents and history are kept')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(api.find('DELETE', '/amc/contracts/101')).toHaveLength(0)
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Test Hotel Two CCTV' }))
-    dialog = await screen.findByRole('dialog', { name: 'Delete contract' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete contract' }))
+    dialog = await screen.findByRole('dialog', { name: 'Move contract to the Recycle Bin' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' }))
 
     await waitFor(() => expect(api.find('DELETE', '/amc/contracts/101')).toHaveLength(1))
-    expect(await screen.findByRole('status')).toHaveTextContent('The contract for Test Hotel Two CCTV was deleted.')
+    expect(await screen.findByRole('status')).toHaveTextContent('The contract for Test Hotel Two CCTV was moved to the Recycle Bin.')
   })
 
-  it('shows the API reason in the popup when a contract cannot be deleted', async () => {
+  it('shows the API reason in the popup when a contract cannot be moved', async () => {
     amcApi(ADMIN, {
       contracts: [FIRE],
       override: (request) =>
-        request.method === 'DELETE' && request.path === '/amc/contracts/100' ? fail(409, 'CONFLICT', 'The contract cannot be deleted: 1 of its 4 services has been worked on.') : undefined,
+        request.method === 'DELETE' && request.path === '/amc/contracts/100' ? fail(409, 'CONFLICT', 'The contract cannot be moved to the Recycle Bin: it was renewed as AMC-0102.') : undefined,
     })
     renderApp('/amc/contracts')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Delete Test Hotel One FIRE' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete contract' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete contract' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Move contract to the Recycle Bin' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' }))
 
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('1 of its 4 services has been worked on.')
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('it was renewed as AMC-0102.')
     expect(screen.getByRole('link', { name: 'View Test Hotel One FIRE' })).toBeInTheDocument()
+  })
+
+  it('offers no Delete to a role that holds AMC Contracts Delete but is not Super Admin', async () => {
+    amcApi(CONTRACT_MANAGER, { contracts: [FIRE] })
+    renderApp('/amc/contracts')
+
+    expect(await screen.findByRole('button', { name: 'Edit Test Hotel One FIRE' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument()
   })
 })

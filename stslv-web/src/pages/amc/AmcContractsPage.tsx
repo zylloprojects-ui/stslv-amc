@@ -2,6 +2,8 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { isSuperAdmin } from '../../auth/roles'
+import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { ExportButtons } from '../../components/ExportButtons'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { Alert, Button, Card, ConfirmDialog, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
@@ -247,7 +249,8 @@ export function AmcContractsPage() {
   const canExport = auth.can('AMC_CONTRACTS', 'EXPORT')
   const [exportError, setExportError] = useState<string | null>(null)
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
-  const canDelete = auth.can('AMC_CONTRACTS', 'DELETE')
+  // Moving a contract to the Recycle Bin is Super Admin only; the API refuses everyone else with 403.
+  const canDelete = isSuperAdmin(auth.user)
 
   const data = contracts.data
   const filtered = search !== '' || status !== 'all' || clientId !== '' || system !== '' || year !== '' || salesEngineerId !== '' || frequency !== ''
@@ -269,14 +272,15 @@ export function AmcContractsPage() {
   }
   const closeDialog = () => setDialog({ kind: 'none' })
   const label = (contract: Contract) => `${contract.client.name} ${contract.systemDescription}`
-  // Deletes a contract whose services nobody has acted on; the API refuses any other and says why.
+  // Moves a contract to the Recycle Bin. Nothing is removed; Super Admin can restore it there.
   const remove = useMutation({
     mutationFn: (contract: Contract) => api.delete(`/amc/contracts/${contract.id}`),
     onMutate: () => setNotice(null),
     onSuccess: async (_result, contract) => {
       setDialog({ kind: 'none' })
-      await Promise.all([queryClient.invalidateQueries({ queryKey: ['amc'] }), queryClient.invalidateQueries({ queryKey: ['dashboard'] })])
-      setNotice(`The contract for ${label(contract)} was deleted.`)
+      // Every page that shows contracts, services or their figures.
+      await refreshOperationalData(queryClient)
+      setNotice(`The contract for ${label(contract)} was moved to the Recycle Bin.`)
     },
   })
   // The Filtered Total row: the label spans every column before the first amount.
@@ -684,14 +688,17 @@ export function AmcContractsPage() {
 
       {dialog.kind === 'delete' && (
         <ConfirmDialog
-          title="Delete contract"
+          title="Move contract to the Recycle Bin"
           message={
             <>
-              Delete the contract for <strong>{label(dialog.contract)}</strong> and its scheduled services? This cannot be undone.
-              <span className="mt-2 block text-sm">A contract with a service that has been worked on, moved, noted or invoiced cannot be deleted; cancel it instead, which keeps its history.</span>
+              Move the contract for <strong>{label(dialog.contract)}</strong> to the Recycle Bin?
+              <span className="mt-2 block text-sm">
+                It leaves AMC Contracts, schedules, the calendar, Accounts and the dashboard figures. Nothing is removed: its services, service reports,
+                quotations, invoices, documents and history are kept, and Super Admin can restore it from Administration &gt; Recycle Bin.
+              </span>
             </>
           }
-          confirmLabel="Delete contract"
+          confirmLabel="Move to Recycle Bin"
           danger
           loading={remove.isPending}
           error={remove.isError ? errorMessage(remove.error) : null}
