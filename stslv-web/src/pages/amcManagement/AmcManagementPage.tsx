@@ -9,12 +9,13 @@ import { cx, formatCount, formatTime } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import type { Module } from '../../lib/types'
 import { formatDate } from '../amc/amcFormat'
-import { ContractStatusPill } from '../amc/components'
+import { ContractStatusPill, ToggleButton } from '../amc/components'
 import { ContractFormModal } from '../amc/ContractFormModal'
 import type { SavedContract } from '../amc/types'
 import { Icon, IconTile, type IconName } from '../dashboard/icons'
 import { KpiGroup } from './KpiGroup'
 import { KPI_GROUPS } from './managementKpis'
+import { useSectionOpen } from './managementPreferences'
 import { MANAGEMENT_QUERY_KEY, type AmcManagementSummary, type ExpiryBand } from './managementTypes'
 
 // AMC Management: the administrative control center of the AMC system. Every
@@ -32,17 +33,21 @@ interface PanelProps {
   icon: IconName
   accent: [string, string]
   link?: { to: string; label: string } | null
+  /** With these, the header has a Hide / Show button and the content below it can be collapsed. */
+  open?: boolean
+  onToggle?: (open: boolean) => void
   children: ReactNode
 }
 
-function Panel({ title, description, link, children, id, icon, accent }: PanelProps) {
+function Panel({ title, description, link, children, id, icon, accent, open = true, onToggle }: PanelProps) {
   const headingId = useId()
+  const contentId = useId()
 
   return (
     <section aria-labelledby={headingId} id={id} className="flex min-w-0 flex-col">
       <div className="surface flex flex-1 flex-col overflow-hidden rounded-2xl">
         <div className="h-1" style={{ backgroundImage: `linear-gradient(90deg, ${accent[0]}, ${accent[1]})` }} aria-hidden="true" />
-        <div className="flex items-start justify-between gap-3 border-b border-slate-200/70 bg-gradient-to-r from-sky-50/80 to-transparent px-4 py-4 sm:px-5">
+        <div className={cx('flex flex-wrap items-start justify-between gap-3 bg-gradient-to-r from-sky-50/80 to-transparent px-4 py-4 sm:px-5', open && 'border-b border-slate-200/70')}>
           <div className="flex min-w-0 items-center gap-3">
             <IconTile icon={icon} from={accent[0]} to={accent[1]} className="h-10 w-10 rounded-xl" />
             <div className="min-w-0">
@@ -52,13 +57,18 @@ function Panel({ title, description, link, children, id, icon, accent }: PanelPr
               <p className="mt-0.5 text-xs text-slate-600">{description}</p>
             </div>
           </div>
-          {link && (
-            <Link to={link.to} className="shrink-0 whitespace-nowrap rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-bold text-[#0b3b66] shadow-sm transition-colors hover:border-[#1479BD] hover:bg-[#1479BD] hover:text-white">
-              {link.label} →
-            </Link>
-          )}
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {onToggle && <ToggleButton open={open} onClick={() => onToggle(!open)} controls={contentId} openLabel="Hide" closedLabel="Show" label={`${open ? 'Hide' : 'Show'} ${title}`} />}
+            {link && (
+              <Link to={link.to} className="shrink-0 whitespace-nowrap rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-bold text-[#0b3b66] shadow-sm transition-colors hover:border-[#1479BD] hover:bg-[#1479BD] hover:text-white">
+                {link.label} →
+              </Link>
+            )}
+          </div>
         </div>
-        <div className="flex flex-1 flex-col p-4 sm:p-5">{children}</div>
+        <div id={contentId} hidden={!open} className={cx('flex-1 flex-col p-4 sm:p-5', open ? 'flex' : 'hidden')}>
+          {children}
+        </div>
       </div>
     </section>
   )
@@ -339,6 +349,9 @@ export function AmcManagementPage() {
   const canCreate = auth.can('AMC_CONTRACTS', 'CREATE')
   const [creating, setCreating] = useState(false)
   const [saved, setSaved] = useState<SavedContract | null>(null)
+  // Each section remembers its own choice; hiding one never hides the other.
+  const [recentOpen, setRecentOpen] = useSectionOpen(userId, 'recent-contracts')
+  const [expiryOpen, setExpiryOpen] = useSectionOpen(userId, 'expiry-renewal')
 
   const summary = useQuery({ queryKey: MANAGEMENT_QUERY_KEY, queryFn: () => api.get<AmcManagementSummary>('/amc/management/summary') })
   const data = summary.data
@@ -399,10 +412,10 @@ export function AmcManagementPage() {
 
       {data && (
         <div className="mb-6 grid gap-6">
-          <Panel icon="contract" accent={['#1479BD', '#00A6C8']} title="Recent AMC Contracts" description={`Latest contracts added, newest first · ${formatCount(data.recentContracts.total)} in total`} link={{ to: '/amc/contracts', label: 'View All' }}>
+          <Panel icon="contract" accent={['#1479BD', '#00A6C8']} title="Recent AMC Contracts" description={`Latest contracts added, newest first · ${formatCount(data.recentContracts.total)} in total`} link={{ to: '/amc/contracts', label: 'View All' }} open={recentOpen} onToggle={setRecentOpen}>
             <RecentContracts recent={data.recentContracts} />
           </Panel>
-          <Panel id="expiry" icon="calendar" accent={['#F59E0B', '#EF4444']} title="Expiry & Renewal" description="Warnings at 90, 60, 45, 30 and 15 days before the end of validity." link={{ to: '/amc/contracts', label: 'AMC Contracts' }}>
+          <Panel id="expiry" icon="calendar" accent={['#F59E0B', '#EF4444']} title="Expiry & Renewal" description="Warnings at 90, 60, 45, 30 and 15 days before the end of validity." link={{ to: '/amc/contracts', label: 'AMC Contracts' }} open={expiryOpen} onToggle={setExpiryOpen}>
             <ExpiryRenewal expiry={data.expiry} />
           </Panel>
         </div>

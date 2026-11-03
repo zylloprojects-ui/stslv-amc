@@ -17,6 +17,7 @@ export interface ManagementKpi<T = AmcManagementSummary> {
   /** Mirrors the API's permission check, so the right cards show while loading. The API decides. */
   visible: (canView: (module: Module) => boolean) => boolean
   read: (data: T) => KpiReading | null
+  /** Optional link under the figure. AMC Management's cards have none: they are informational only. */
   link?: { to: string; label: string; module: Module }
 }
 
@@ -32,11 +33,6 @@ export interface KpiGroupDefinition<T = AmcManagementSummary> {
 
 const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`
 
-const CONTRACTS_LINK = { to: '/amc/contracts', label: 'View contracts', module: 'AMC_CONTRACTS' as Module }
-const SCHEDULE_LINK = { to: '/amc/schedule', label: 'AMC Schedule', module: 'AMC_SCHEDULE' as Module }
-const INVOICES_LINK = { to: '/invoices', label: 'Invoice Tracking', module: 'INVOICES' as Module }
-const ACCOUNTS_LINK = { to: '/finance/accounts', label: 'Accounts', module: 'ACCOUNTS' as Module }
-
 const canVisits = (canView: (module: Module) => boolean) => canView('AMC_SCHEDULE') || canView('AMC_EXECUTION')
 
 export const CONTRACT_KPIS: KpiGroupDefinition = {
@@ -50,7 +46,6 @@ export const CONTRACT_KPIS: KpiGroupDefinition = {
       label: 'Active AMC',
       icon: 'contract',
       visible: (canView) => canView('AMC_CONTRACTS'),
-      link: CONTRACTS_LINK,
       read: ({ contracts }) => ({
         kind: 'value',
         value: formatCount(contracts.active),
@@ -62,7 +57,6 @@ export const CONTRACT_KPIS: KpiGroupDefinition = {
       label: 'Total AMC Value',
       icon: 'wallet',
       visible: (canView) => canView('AMC_CONTRACTS'),
-      link: CONTRACTS_LINK,
       // AMC Value / Year of Active contracts, as entered. Values entered before that rule are not reinterpreted.
       read: ({ contracts }) => ({
         kind: 'value',
@@ -76,7 +70,6 @@ export const CONTRACT_KPIS: KpiGroupDefinition = {
       label: 'Total Final Credit',
       icon: 'chart',
       visible: (canView) => canView('AMC_CONTRACTS'),
-      link: CONTRACTS_LINK,
       // Final Credit Value, an annual Billing Basis option, summed as entered.
       read: ({ contracts }) => ({
         kind: 'value',
@@ -90,7 +83,6 @@ export const CONTRACT_KPIS: KpiGroupDefinition = {
       label: 'Expiring within 45 days',
       icon: 'shield',
       visible: (canView) => canView('AMC_CONTRACTS'),
-      link: CONTRACTS_LINK,
       read: ({ contracts }) => ({
         kind: 'value',
         value: formatCount(contracts.expiringSoon),
@@ -113,7 +105,6 @@ export const SCHEDULE_KPIS: KpiGroupDefinition = {
       label: 'Services This Month',
       icon: 'calendar',
       visible: canVisits,
-      link: SCHEDULE_LINK,
       read: ({ schedule }) =>
         schedule && {
           kind: 'value',
@@ -126,7 +117,6 @@ export const SCHEDULE_KPIS: KpiGroupDefinition = {
       label: 'Schedule Pending Billing',
       icon: 'invoice',
       visible: (canView) => canView('AMC_SCHEDULE'),
-      link: INVOICES_LINK,
       // Completed visits ready for invoice only: a future visit is never pending billing.
       read: ({ schedule }) =>
         schedule?.pendingBilling
@@ -145,7 +135,6 @@ export const SCHEDULE_KPIS: KpiGroupDefinition = {
       label: 'Current Scheduled Value',
       icon: 'wallet',
       visible: (canView) => canView('AMC_SCHEDULE'),
-      link: SCHEDULE_LINK,
       read: ({ schedule }) =>
         schedule?.currentScheduledValue
           ? {
@@ -163,7 +152,6 @@ export const SCHEDULE_KPIS: KpiGroupDefinition = {
       label: 'Schedule Engine Status',
       icon: 'settings',
       visible: canVisits,
-      link: SCHEDULE_LINK,
       read: ({ schedule }) =>
         schedule && {
           kind: 'value',
@@ -189,7 +177,6 @@ export const INVOICE_KPIS: KpiGroupDefinition = {
       label: 'Paid Invoices',
       icon: 'invoice',
       visible: (canView) => canView('INVOICES'),
-      link: ACCOUNTS_LINK,
       read: ({ invoices }) => invoices && { kind: 'value', value: formatCount(invoices.paid.count), detail: 'Services with a manual Invoice No.' },
     },
     {
@@ -197,7 +184,6 @@ export const INVOICE_KPIS: KpiGroupDefinition = {
       label: 'Unpaid Invoices',
       icon: 'invoice',
       visible: (canView) => canView('INVOICES'),
-      link: ACCOUNTS_LINK,
       read: ({ invoices }) => invoices && { kind: 'value', value: formatCount(invoices.unpaid.count), detail: `Services without one · ${formatMoney(invoices.unpaid.amount)}` },
     },
     {
@@ -205,7 +191,6 @@ export const INVOICE_KPIS: KpiGroupDefinition = {
       label: 'Paid Invoice Total',
       icon: 'wallet',
       visible: (canView) => canView('INVOICES'),
-      link: ACCOUNTS_LINK,
       read: ({ invoices }) => invoices && { kind: 'value', value: formatMoney(invoices.paidTotal.amount), detail: 'Value of Paid services, OMR excluding VAT' },
     },
     {
@@ -213,7 +198,6 @@ export const INVOICE_KPIS: KpiGroupDefinition = {
       label: 'Invoice Module Status',
       icon: 'pulse',
       visible: (canView) => canView('INVOICES'),
-      link: INVOICES_LINK,
       read: ({ invoices }) =>
         invoices && {
           kind: 'value',

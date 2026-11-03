@@ -102,11 +102,12 @@ export function RestrictedFilter({ label, reason }: { label: string; reason: str
  * The Hide / Show button, the same size and look as the Excel and PDF export buttons beside it: a white
  * button with a tile at its left. The tile is blue and filled while the section is hidden.
  */
-export function ToggleButton({ open, onClick, controls, openLabel, closedLabel, marked = false }: { open: boolean; onClick: () => void; controls?: string | undefined; openLabel: string; closedLabel: string; marked?: boolean }) {
+export function ToggleButton({ open, onClick, controls, openLabel, closedLabel, marked = false, label }: { open: boolean; onClick: () => void; controls?: string | undefined; openLabel: string; closedLabel: string; marked?: boolean; /** Fuller accessible name, e.g. "Hide Recent AMC Contracts"; it should start with the visible label. */ label?: string | undefined }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-label={label}
       aria-expanded={open}
       aria-controls={controls}
       className="group inline-flex items-center gap-2.5 rounded-lg border border-slate-300 bg-white py-1 pl-1 pr-3.5 text-sm font-semibold text-[#0b3b66] shadow-sm transition-all duration-200 hover:-translate-y-px hover:border-[#1479BD] hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-200 active:translate-y-0"
