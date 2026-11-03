@@ -8,7 +8,7 @@ import { sendExport } from "../../shared/export/send";
 import { getClientSummary } from "./client-summary.service";
 import { buildClientContractsExport, buildClientsExport } from "./clients.export";
 import { createClientSchema, exportClientContractsSchema, exportClientsSchema, listClientsSchema, updateClientSchema } from "./clients.schemas";
-import { clientFeatures, createClient, getClient, listClientHistory, listClients, setClientActive, updateClient } from "./clients.service";
+import { clientFeatures, createClient, deleteClient, getClient, listClientHistory, listClients, setClientActive, updateClient } from "./clients.service";
 
 export const clientsRouter = Router();
 
@@ -76,7 +76,14 @@ clientsRouter.patch("/:id", authorize("CLIENTS", "EDIT"), async (req, res) => {
   res.json({ success: true, data: client });
 });
 
-// Clients are never hard-deleted, so the DELETE permission governs deactivation.
+// Only a client that no contract, project or invoice uses can be deleted; otherwise 409 with the reason.
+clientsRouter.delete("/:id", authorize("CLIENTS", "DELETE"), async (req, res) => {
+  await deleteClient(requireAuth(req), parseIdParam(req.params.id));
+
+  res.json({ success: true, data: { deleted: true } });
+});
+
+// The DELETE permission also governs deactivation.
 clientsRouter.post("/:id/deactivate", authorize("CLIENTS", "DELETE"), async (req, res) => {
   res.json({ success: true, data: await setClientActive(requireAuth(req), parseIdParam(req.params.id), false) });
 });

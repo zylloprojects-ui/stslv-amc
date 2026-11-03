@@ -7,7 +7,7 @@ import { Alert, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../
 import { api } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
-import { Filter } from '../amc/components'
+import { Filter, FilterPanel } from '../amc/components'
 import { IconTile, type IconName } from '../dashboard/icons'
 import { ColumnsMenu } from '../clients/ColumnsMenu'
 import { useHiddenColumns } from './useHiddenColumns'
@@ -272,7 +272,8 @@ export function AuditLogPage() {
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" />Removed</span>
           </span>
         </div>
-        <div className="grid gap-4 border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-3 xl:grid-cols-6">
+        <FilterPanel id="audit-log">
+<div className="grid gap-4 border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-3 xl:grid-cols-6">
           <Filter label="Search">
             {(id, className) => (
               <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Action or description" className={className} />
@@ -321,6 +322,7 @@ export function AuditLogPage() {
           <Filter label="From">{(id, className) => <input id={id} type="date" value={from} onChange={change(setFrom)} className={className} />}</Filter>
           <Filter label="To">{(id, className) => <input id={id} type="date" value={to} onChange={change(setTo)} className={className} />}</Filter>
         </div>
+</FilterPanel>
 
         {rangeInvalid && <p className="px-5 py-4 text-sm text-red-700">The From date is after the To date.</p>}
         {!rangeInvalid && activity.isPending && <Spinner label="Loading activity" />}

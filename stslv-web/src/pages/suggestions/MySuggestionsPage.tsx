@@ -8,7 +8,7 @@ import { SuggestionFormModal } from '../../layout/FeedbackWidget'
 import { api, ApiError } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
-import { Filter } from '../amc/components'
+import { Filter, FilterPanel } from '../amc/components'
 import { SuggestionStatusBadge } from './SuggestionStatusBadge'
 import { CATEGORIES, CATEGORY_LABELS, STATUSES, STATUS_LABELS, SUGGESTIONS_QUERY_KEY, type SuggestionList, type SuggestionSummary } from './suggestionTypes'
 
@@ -54,7 +54,8 @@ export function MySuggestionsPage() {
       />
 
       <Card>
-        <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-3 sm:px-5">
+        <FilterPanel id="my-suggestions">
+<div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-3 sm:px-5">
           <Filter label="Search">
             {(id, className) => (
               <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Subject or reference" className={className} />
@@ -85,6 +86,7 @@ export function MySuggestionsPage() {
             )}
           </Filter>
         </div>
+</FilterPanel>
 
         {list.isPending && <Spinner label="Loading your suggestions" />}
         {unavailable && (

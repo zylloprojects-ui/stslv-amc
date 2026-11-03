@@ -14,7 +14,7 @@ import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
 import { ManualInvoiceField, PAID_STATUS_NOTE } from '../amc/ManualInvoiceField'
-import { Filter, Pager } from '../amc/components'
+import { Filter, FilterPanel, Pager } from '../amc/components'
 import { SERVICE_STATUS_LABELS } from '../amc/serviceStatusTypes'
 import { displayName, KPI_NAME_MAX, useKpiCustomization } from '../amcManagement/managementPreferences'
 import { serviceCodeLabel } from '../masterStatus/masterStatusTypes'
@@ -459,7 +459,8 @@ export function AccountsPage() {
               )}
             </p>
           </div>
-          <form className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4" onSubmit={apply} aria-label="Filters">
+          <FilterPanel id="accounts">
+<form className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4" onSubmit={apply} aria-label="Filters">
             <Filter label="Search" className="sm:col-span-2">
               {(id, className) => (
                 <input
@@ -573,6 +574,7 @@ export function AccountsPage() {
               </span>
             </div>
           </form>
+</FilterPanel>
         </div>
 
         {accounts.isPending && <Spinner label="Loading services" />}

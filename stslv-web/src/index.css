@@ -638,7 +638,7 @@ select:not([multiple]) {
   position: absolute;
   inset: 0 0 auto 0;
   height: 3px;
-  background: linear-gradient(90deg, #0b3b66, #1479bd 60%, #4aa3df);
+  background: linear-gradient(90deg, var(--accent-from, #0b3b66), var(--accent-from, #1479bd) 40%, var(--accent-to, #4aa3df));
 }
 .metric-card::after {
   content: '';
@@ -648,11 +648,11 @@ select:not([multiple]) {
   width: 190px;
   height: 190px;
   border-radius: 9999px;
-  background: radial-gradient(circle, rgba(27, 138, 211, 0.17), transparent 68%);
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent-from, #1b8ad3) 20%, transparent), transparent 68%);
   pointer-events: none;
 }
 .metric-card:hover {
-  border-color: #5fb0e6;
+  border-color: var(--accent-to, #5fb0e6);
 }
 .dark .metric-card {
   border-color: #2b4a6b;
@@ -670,7 +670,7 @@ select:not([multiple]) {
   width: 150px;
   height: 90px;
   pointer-events: none;
-  background-image: radial-gradient(rgba(20, 121, 189, 0.28) 1.2px, transparent 1.4px);
+  background-image: radial-gradient(color-mix(in srgb, var(--accent-from, #1479bd) 35%, transparent) 1.2px, transparent 1.4px);
   background-size: 11px 11px;
   -webkit-mask-image: radial-gradient(ellipse at 100% 100%, #000, transparent 70%);
   mask-image: radial-gradient(ellipse at 100% 100%, #000, transparent 70%);
@@ -684,8 +684,8 @@ select:not([multiple]) {
   bottom: 10px;
   width: 78px;
   height: 78px;
-  color: #1479bd;
-  opacity: 0.07;
+  color: var(--accent-from, #1479bd);
+  opacity: 0.09;
   pointer-events: none;
 }
 .dark .card-watermark {
@@ -1297,3 +1297,17 @@ html:not(.dark) .frame-hover .table-scroll,
 .dark .hover\:bg-slate-100\/70:hover { background-color: #1b3354; }
 .dark .bg-slate-100\/70 { background-color: #172c46; }
 .dark .border-amber-400 { border-color: #b8801e; }
+
+/* A compact table: short rows. The table-scroll padding above is not in a layer, so it beats a Tailwind padding class; this wins over it. */
+.table-scroll table.table-compact td {
+  padding-top: 0.125rem;
+  padding-bottom: 0.125rem;
+}
+/* The header stays roomier than the short rows beneath it. */
+.table-scroll table.table-compact th {
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+}
+.table-scroll table.table-compact td .text-sm {
+  line-height: 1.25rem;
+}

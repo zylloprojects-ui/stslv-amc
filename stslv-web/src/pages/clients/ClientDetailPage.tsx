@@ -20,7 +20,6 @@ import { VisitStatusPill } from '../amc/components'
 import type { VisitList } from '../amc/types'
 import { InvoiceStatusBadge } from '../invoices/InvoicesTable'
 import { ClientFormModal } from './ClientFormModal'
-import { initialsOf } from './clientAvatarHelpers'
 import { ClientStatusBadge } from './ClientStatusBadge'
 
 const ACTION_LABELS: Record<string, string> = {
@@ -471,9 +470,6 @@ export function ClientDetailPage() {
       <div className="space-y-6">
         <Card className="rounded-2xl">
           <div className="flex flex-wrap items-center gap-x-6 gap-y-4 p-5">
-            <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#0a3a66] to-[#2f9bd8] text-xl font-bold tracking-wide text-white shadow-md" aria-hidden="true">
-              {initialsOf(client.name)}
-            </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-md bg-sky-50 px-2 py-0.5 font-mono text-xs font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200">{client.code}</span>

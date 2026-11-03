@@ -10,7 +10,7 @@ import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
 import { IconTile } from '../dashboard/icons'
-import { Filter, Pager } from '../amc/components'
+import { Filter, FilterPanel, Pager } from '../amc/components'
 
 interface Catalogue {
   id: string
@@ -161,7 +161,8 @@ export function ReportsPage() {
       )}
 
       <Card>
-        <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-5">
+        <FilterPanel id="reports">
+<div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-5">
           <Filter label="Report">
             {(id, className) => (
               <select id={id} value={type} onChange={change(setType)} className={className}>
@@ -247,6 +248,7 @@ export function ReportsPage() {
             </Filter>
           )}
         </div>
+</FilterPanel>
         {chosen && <p className="border-b border-slate-200 px-5 py-3 text-sm text-slate-600">{chosen.description}</p>}
         {data && data.kpis && data.kpis.length > 0 && <KpiStrip title={data.title} kpis={data.kpis} />}
 

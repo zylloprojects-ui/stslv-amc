@@ -11,7 +11,7 @@ import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
-import { Filter, Pager } from '../amc/components'
+import { Filter, FilterPanel, Pager } from '../amc/components'
 import { ContractFormModal } from '../amc/ContractFormModal'
 import { ContractStatusDialog } from '../amc/ContractStatusDialog'
 import { amcReference } from '../amc/calendar/calendarTypes'
@@ -183,7 +183,8 @@ function QueueTab({ userId, onNotice }: { userId: string; onNotice: (message: st
         )}
         <KpiGroup group={RENEWAL_KPIS} userId={userId} data={data} failed={queue.isError} canView={canView} storagePrefix={RENEWAL_KPI_PREFIX} />
 
-        <form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={apply} aria-label="Filters">
+        <FilterPanel id="amc-renewal">
+<form className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={apply} aria-label="Filters">
           <Filter label="Search" className="sm:col-span-2">
             {(id, className) => (
               <input id={id} type="search" value={draftSearch} onChange={(event) => setDraftSearch(event.target.value)} placeholder="AMC reference, client or system" className={className} />
@@ -210,6 +211,7 @@ function QueueTab({ userId, onNotice }: { userId: string; onNotice: (message: st
             </Button>
           </div>
         </form>
+</FilterPanel>
       </div>
 
       {queue.isPending && <Spinner label="Loading the renewal queue" />}

@@ -8,7 +8,7 @@ import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
 import { queryString } from '../amc/amcApi'
-import { Filter } from '../amc/components'
+import { Filter, FilterPanel } from '../amc/components'
 import { isFeatureUnavailable, type Department, type MaintenanceFrequency, type MasterList, type SalesEngineer, type SystemType } from './masterTypes'
 
 // Master lists of the Master Data Center: departments, sales engineers, system
@@ -419,7 +419,8 @@ export function MasterListPage({ tab }: { tab: ListTab }) {
           </div>
         ) : (
           <>
-            <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5">
+            <FilterPanel id="master-data">
+<div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5">
               <Filter label="Search">
                 {(id, className) => <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={spec.searchHint} className={className} />}
               </Filter>
@@ -441,6 +442,7 @@ export function MasterListPage({ tab }: { tab: ListTab }) {
                 )}
               </Filter>
             </div>
+</FilterPanel>
 
             {list.isPending && <Spinner label={`Loading ${spec.label.toLowerCase()}`} />}
             {list.isError && <LoadError error={list.error} onRetry={() => void list.refetch()} />}

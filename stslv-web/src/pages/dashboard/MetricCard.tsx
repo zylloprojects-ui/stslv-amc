@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { Badge } from '../../components/ui'
 import { cx } from '../../lib/format'
 import { Icon, IconTile, type IconName } from './icons'
-import { ACCENTS, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
+import { accentOf, accentStyle, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
 import type { MetricDefinition, MetricLink, MetricReading } from './metrics'
 
 export type MetricState =
@@ -74,9 +74,8 @@ function ShareRing({ share }: { share: number }) {
 
 /** One dashboard figure. A card never shows a number it did not receive from the API. */
 export function MetricCard({ metric, state, link = null, index = 0, ring }: MetricCardProps) {
-  const from = ACCENTS[index % ACCENTS.length] as string
-  const to = ACCENTS[(index + 1) % ACCENTS.length] as string
-  const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s` }
+  const { from, to } = accentOf(index)
+  const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s`, ...accentStyle(index) }
   const icon = METRIC_ICONS[metric.id] ?? 'pulse'
 
   if (state.kind === 'unavailable') {

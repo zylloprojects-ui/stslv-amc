@@ -145,7 +145,7 @@ export async function getSecurityOverview(transport: RequestTransport | null = n
  * VOIDED: the record stays, cancelled or voided. A schedule update counts only
  * when it removed untouched visits. Reads activity_logs; deletion itself is unchanged.
  */
-const DELETED = `(l.action IN ('holiday.deleted', 'system_type.deleted', 'role.deleted')
+const DELETED = `(l.action IN ('holiday.deleted', 'system_type.deleted', 'role.deleted', 'client.deleted')
   OR (l.action IN ('amc_contract.schedule_generated', 'amc_contract.schedule_regenerated') AND jsonb_array_length(COALESCE(l.metadata -> 'removed', '[]'::jsonb)) > 0))`;
 const VOIDED = `(l.action IN ('invoice.cancelled', 'expense.voided', 'user.registration_rejected')
   OR (l.action LIKE '%.status_changed' AND l.metadata -> 'changes' -> 'status' ->> 'to' = 'CANCELLED'))`;

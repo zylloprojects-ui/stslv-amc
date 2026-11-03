@@ -9,7 +9,7 @@ import { Alert, Badge, Card, EmptyState, PageHeader, Spinner } from '../../compo
 import { api } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
-import { Filter } from '../amc/components'
+import { Filter, FilterPanel } from '../amc/components'
 import { ColumnsMenu } from '../clients/ColumnsMenu'
 import { useHiddenColumns } from './useHiddenColumns'
 import { FAILURE_REASON_LABELS, type LoginList } from './auditTypes'
@@ -69,7 +69,8 @@ export function LoginHistoryPage() {
       )}
 
       <Card>
-        <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+        <FilterPanel id="sign-in-history">
+<div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
           <Filter label="Search">
             {(id, className) => (
               <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Name, email or address" className={className} />
@@ -121,6 +122,7 @@ export function LoginHistoryPage() {
             )}
           </Filter>
         </div>
+</FilterPanel>
 
         {rangeInvalid && <p className="px-5 py-4 text-sm text-red-700">The From date is after the To date.</p>}
         {!rangeInvalid && logins.isPending && <Spinner label="Loading sign-ins" />}

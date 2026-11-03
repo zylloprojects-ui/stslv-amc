@@ -10,6 +10,7 @@ import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../comp
 import { api } from '../../lib/api'
 import { formatCount, formatDate } from '../../lib/format'
 import type { BillableWork, InvoiceStatus, PagedInvoices } from '../../lib/invoiceTypes'
+import { CollapseButton, FilterPanel, useCollapse } from '../amc/components'
 import { InvoiceDialogs, type InvoiceDialog } from './InvoiceDialogs'
 import { InvoicesTable } from './InvoicesTable'
 
@@ -27,6 +28,8 @@ export function InvoicesPage() {
   // Another page (Accounts) can ask for the form to open with one visit already ticked.
   const recordForVisit = searchParams.get('recordForVisit') ?? ''
 
+  const waiting = useCollapse('invoices-waiting')
+  const recorded = useCollapse('invoices-recorded')
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<InvoiceStatus | ''>('')
@@ -154,17 +157,21 @@ export function InvoicesPage() {
             <h2 className="text-base font-semibold text-slate-900">Waiting for an invoice</h2>
             <p className="mt-1 text-sm text-slate-600">Completed work that no invoice covers yet. Raise the invoice in Zoho, then record it here.</p>
           </div>
-          {/* Offered when the role may export and may see at least one kind of waiting work. */}
-          {canExport && (visits !== null || projects !== null) && (
-            <ExportButtons
-              what="pending invoices"
-              fileStem="pending-invoices"
-              size="sm"
-              path={(format) => `/invoices/billable/export?format=${format}`}
-              onError={setExportError}
-            />
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Offered when the role may export and may see at least one kind of waiting work. */}
+            {canExport && (visits !== null || projects !== null) && (
+              <ExportButtons
+                what="pending invoices"
+                fileStem="pending-invoices"
+                size="sm"
+                path={(format) => `/invoices/billable/export?format=${format}`}
+                onError={setExportError}
+              />
+            )}
+            <CollapseButton open={waiting.open} toggle={waiting.toggle} controls="invoices-waiting-body" />
+          </div>
         </div>
+        <div id="invoices-waiting-body" hidden={!waiting.open}>
 
         {pending.isPending && <Spinner size="sm" label="Loading work waiting for an invoice" />}
         {pending.isError && <LoadError error={pending.error} onRetry={() => void pending.refetch()} />}
@@ -324,13 +331,19 @@ export function InvoicesPage() {
             </div>
           </>
         )}
+        </div>
       </Card>
 
       <Card className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
           <h2 className="text-base font-semibold text-slate-900">Invoices recorded</h2>
-          {canExport && <ExportButtons what="invoices" fileStem="invoice-tracking" size="sm" path={invoicesExportPath} onError={setExportError} />}
+          <div className="flex flex-wrap items-center gap-2">
+            {canExport && <ExportButtons what="invoices" fileStem="invoice-tracking" size="sm" path={invoicesExportPath} onError={setExportError} />}
+            <CollapseButton open={recorded.open} toggle={recorded.toggle} controls="invoices-recorded-body" />
+          </div>
         </div>
+        <div id="invoices-recorded-body" hidden={!recorded.open}>
+        <FilterPanel id="invoices">
         <div className="flex flex-wrap items-end gap-4 border-b border-slate-200 p-4">
           <div className="min-w-56 flex-1">
             <label htmlFor={searchId} className={FILTER_LABEL}>
@@ -408,6 +421,7 @@ export function InvoicesPage() {
             </div>
           )}
         </div>
+        </FilterPanel>
 
         {invoices.isPending && <Spinner label="Loading invoices" />}
         {invoices.isError && <LoadError error={invoices.error} onRetry={() => void invoices.refetch()} />}
@@ -438,6 +452,7 @@ export function InvoicesPage() {
             </Pager>
           </>
         )}
+        </div>
       </Card>
 
       <p className="mt-3 text-xs text-slate-500">

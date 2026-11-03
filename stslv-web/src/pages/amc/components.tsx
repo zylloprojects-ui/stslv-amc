@@ -1,4 +1,4 @@
-import { useId, type ReactNode, type Ref, type SelectHTMLAttributes } from 'react'
+import { useId, useState, type ReactNode, type Ref, type SelectHTMLAttributes } from 'react'
 import { Button } from '../../components/ui'
 import { cx } from '../../lib/format'
 import {
@@ -96,6 +96,103 @@ export function RestrictedFilter({ label, reason }: { label: string; reason: str
       )}
     </Filter>
   )
+}
+
+/**
+ * The Hide / Show button, the same size and look as the Excel and PDF export buttons beside it: a white
+ * button with a tile at its left. The tile is blue and filled while the section is hidden.
+ */
+export function ToggleButton({ open, onClick, controls, openLabel, closedLabel, marked = false }: { open: boolean; onClick: () => void; controls?: string | undefined; openLabel: string; closedLabel: string; marked?: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      aria-controls={controls}
+      className="group inline-flex items-center gap-2.5 rounded-lg border border-slate-300 bg-white py-1 pl-1 pr-3.5 text-sm font-semibold text-[#0b3b66] shadow-sm transition-all duration-200 hover:-translate-y-px hover:border-[#1479BD] hover:shadow-md focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-sky-200 active:translate-y-0"
+    >
+      <span className={cx('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors duration-200', open ? 'bg-sky-50 text-[#1479BD] group-hover:bg-[#1479BD] group-hover:text-white' : 'bg-[#1479BD] text-white')} aria-hidden="true">
+        <svg viewBox="0 0 24 24" className={cx('h-4 w-4 transition-transform duration-200', open && 'rotate-180')} fill="none" stroke="currentColor" strokeWidth="2.2">
+          <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+      {open ? openLabel : closedLabel}
+      {marked && <span className="h-2 w-2 rounded-full bg-amber-500" title="Filters are applied" />}
+    </button>
+  )
+}
+
+const FILTER_KEY = 'stslev.filters.'
+
+/**
+ * A list's filters with a Hide filters / Show filters button above them, so the list can have the
+ * room. The filters stay in place and keep working while hidden; the choice is remembered per list.
+ */
+export function FilterPanel({ id, children }: { id: string; children: ReactNode }) {
+  const panelId = useId()
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(FILTER_KEY + id) !== 'closed'
+    } catch {
+      return true
+    }
+  })
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    try {
+      localStorage.setItem(FILTER_KEY + id, next ? 'open' : 'closed')
+    } catch {
+      // Storage may be blocked; the choice then lasts for this visit only.
+    }
+  }
+
+  return (
+    <div>
+      <div className={cx('flex items-center justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-2 sm:px-5', !open && 'border-b-0')}>
+        <span className="flex items-center gap-2.5">
+          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-[#0b3b66] to-[#1479BD] text-white shadow-sm" aria-hidden="true">
+            <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 5h14l-5.5 6.5V16l-3-1.5v-3L3 5Z" />
+            </svg>
+          </span>
+          <span className="text-xs font-bold uppercase tracking-[0.14em] text-[#0b3b66]">Filters</span>
+          {!open && <span className="hidden text-xs text-slate-500 sm:inline">Hidden. Anything you set still applies.</span>}
+        </span>
+        <ToggleButton open={open} onClick={toggle} controls={panelId} openLabel="Hide filters" closedLabel="Show filters" />
+      </div>
+      <div id={panelId} hidden={!open}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
+/** Whether a section of a page is open, remembered per section in this browser. */
+export function useCollapse(id: string): { open: boolean; toggle: () => void } {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(FILTER_KEY + id) !== 'closed'
+    } catch {
+      return true
+    }
+  })
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    try {
+      localStorage.setItem(FILTER_KEY + id, next ? 'open' : 'closed')
+    } catch {
+      // Storage may be blocked; the choice then lasts for this visit only.
+    }
+  }
+
+  return { open, toggle }
+}
+
+/** A Hide / Show button for a section, for the section's header. */
+export function CollapseButton({ open, toggle, controls }: { open: boolean; toggle: () => void; controls?: string }) {
+  return <ToggleButton open={open} onClick={toggle} controls={controls} openLabel="Hide" closedLabel="Show" />
 }
 
 type Tone = 'green' | 'slate' | 'blue' | 'amber' | 'red'

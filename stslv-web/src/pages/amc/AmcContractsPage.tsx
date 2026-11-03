@@ -7,15 +7,13 @@ import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActi
 import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
-import { initialsOf } from '../../lib/format'
 import type { Paged } from '../../lib/types'
-import { ClientAvatar } from '../clients/clientAvatar'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import type { DashboardSummary } from '../dashboard/metrics'
 import { queryString } from './amcApi'
 import { amcReference } from './calendar/calendarTypes'
 import { formatDate, formatMoney } from './amcFormat'
-import { ContractStatusPill, Filter, Pager, Pill } from './components'
+import { ContractStatusPill, Filter, FilterPanel, Pager, Pill } from './components'
 import { ContractFormModal } from './ContractFormModal'
 import { StatTile } from '../../components/StatTile'
 import {
@@ -335,7 +333,8 @@ export function AmcContractsPage() {
               )}
             </p>
           </div>
-          <div className="mx-4 my-4 grid gap-4 rounded-xl border border-sky-100 bg-white/70 p-4 shadow-sm sm:mx-5 sm:grid-cols-2 lg:grid-cols-4">
+          <FilterPanel id="amc-contracts">
+<div className="mx-4 my-4 grid gap-4 rounded-xl border border-sky-100 bg-white/70 p-4 shadow-sm sm:mx-5 sm:grid-cols-2 lg:grid-cols-4">
           <Filter label="Search">
             {(id, className) => (
               <input
@@ -449,6 +448,7 @@ export function AmcContractsPage() {
             />
           </div>
           </div>
+</FilterPanel>
         </div>
 
         {contracts.isPending && <Spinner label="Loading contracts" />}
@@ -554,10 +554,7 @@ export function AmcContractsPage() {
                         </td>
                       )}
                       <td className={`${TABLE.td} min-w-48`}>
-                        <div className="flex items-center gap-3">
-                          <ClientAvatar name={contract.client.name} className="h-11 w-11 text-sm shadow-md ring-2 ring-white" />
-                          <span className="min-w-0 break-words text-sm font-bold leading-snug text-[#0b3b66]">{contract.client.name}</span>
-                        </div>
+                        <span className="min-w-0 break-words text-sm font-bold leading-snug text-[#0b3b66]">{contract.client.name}</span>
                       </td>
                       {show('system') && <td className={TABLE.td}>
                         <span className="inline-block rounded-md bg-slate-100 px-2 py-1 text-[11px] font-semibold tracking-wide text-slate-700 ring-1 ring-inset ring-slate-200">
@@ -566,15 +563,7 @@ export function AmcContractsPage() {
                       </td>}
                       {show('engineer') && <td className={TABLE.td}>
                         {contract.responsibleEngineer ? (
-                          <span className="flex items-center gap-2">
-                            <span
-                              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200"
-                              aria-hidden="true"
-                            >
-                              {initialsOf(contract.responsibleEngineer)}
-                            </span>
-                            <span>{contract.responsibleEngineer}</span>
-                          </span>
+                          <span>{contract.responsibleEngineer}</span>
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}

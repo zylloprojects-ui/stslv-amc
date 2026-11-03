@@ -13,7 +13,7 @@ import { RolesPanel } from './RolesPanel'
 import { isAdmin, isPrivilegedRole, isSuperAdmin } from '../../auth/roles'
 import { CreateUserModal, EditRolesModal, EditUserModal, TemporaryPasswordModal } from './UserDialogs'
 import { queryString } from '../amc/amcApi'
-import { Filter } from '../amc/components'
+import { Filter, FilterPanel } from '../amc/components'
 import { useHiddenColumns } from '../admin/useHiddenColumns'
 import { ColumnsMenu } from '../clients/ColumnsMenu'
 import { UnsavedChangesGuard } from '../../lib/unsavedChanges'
@@ -229,7 +229,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
         )}
         {tab === 'users' && (
           <Card>
-            <div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-3">
+            <FilterPanel id="users">
+<div className="grid gap-4 border-b border-slate-200 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-3">
               <Filter label="Search">
                 {(id, className) => <input id={id} type="search" value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder="Name, email or role" className={className} />}
               </Filter>
@@ -256,6 +257,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                 <ColumnsMenu options={COLUMNS} hidden={hidden} onChange={setHidden} />
               </div>
             </div>
+</FilterPanel>
             {users.isPending && <Spinner label="Loading users" />}
             {users.isError && (
               <div className="p-4">

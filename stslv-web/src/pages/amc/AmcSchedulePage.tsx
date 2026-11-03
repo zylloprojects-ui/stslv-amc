@@ -7,12 +7,11 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { Alert, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
-import { initialsOf } from '../../lib/format'
 import type { DashboardSummary } from '../dashboard/metrics'
 import { fetchClients, queryString } from './amcApi'
 import { amcReference } from './calendar/calendarTypes'
 import { currentMonth, formatDate, formatMoney, monthLabel, monthRange, shiftMonth } from './amcFormat'
-import { EligibilityPill, Filter, Pager, PlannedDate, RestrictedFilter, VisitStatusPill } from './components'
+import { EligibilityPill, Filter, FilterPanel, Pager, PlannedDate, RestrictedFilter, VisitStatusPill } from './components'
 import {
   COLOR_PRIORITY_RULE,
   INVOICE_ELIGIBILITIES,
@@ -346,7 +345,8 @@ export function AmcSchedulePage() {
               </p>
             )}
 
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <FilterPanel id="amc-schedule">
+<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {canViewClients ? (
                 <Filter label="Client">
                   {(id, className) => (
@@ -415,6 +415,7 @@ export function AmcSchedulePage() {
                 )}
               </Filter>
             </div>
+</FilterPanel>
           </div>
         </div>
 
@@ -523,12 +524,7 @@ export function AmcSchedulePage() {
                       {!hiddenColumns.has('assigned') && (
                       <td className={TABLE.td}>
                         {visit.assignedTo ? (
-                          <span className="flex items-center gap-2">
-                            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[10px] font-bold text-[#0b3b66] ring-1 ring-inset ring-sky-200" aria-hidden="true">
-                              {initialsOf(visit.assignedTo)}
-                            </span>
-                            <span>{visit.assignedTo}</span>
-                          </span>
+                          <span>{visit.assignedTo}</span>
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}

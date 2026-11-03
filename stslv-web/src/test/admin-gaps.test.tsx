@@ -255,9 +255,9 @@ describe('Backup & Restore', () => {
     // Each gap is stated with its own explanation, in the same item: title and meaning are never separated.
     const gaps = within(screen.getByRole('list', { name: 'Not provided' })).getAllByRole('listitem')
     expect(gaps).toHaveLength(3)
+    // The title and its meaning are one sentence in one item ("Title: meaning").
     const gap = (index: number, title: string, text: string) => {
-      expect(within(gaps[index] as HTMLElement).getByText(`${title}:`)).toBeInTheDocument()
-      expect(within(gaps[index] as HTMLElement).getByText(text)).toBeInTheDocument()
+      expect(within(gaps[index] as HTMLElement).getByText(`${title}: ${text}`)).toBeInTheDocument()
     }
     gap(0, 'Automatic backups', 'no backup runs on a schedule.')
     gap(1, 'Retention', 'no backup is removed or expired automatically, and no retention period applies.')

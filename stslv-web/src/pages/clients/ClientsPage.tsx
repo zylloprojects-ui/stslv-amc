@@ -7,10 +7,9 @@ import { Pager } from '../../components/records'
 import { Alert, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
-import { formatDate } from '../../lib/format'
 import { Link } from 'react-router-dom'
+import { ToggleButton } from '../amc/components'
 import { CLIENT_STATUS_LABELS, CLIENT_TYPE_LABELS, type Client, type ClientFeatures, type Paged } from '../../lib/types'
-import { ClientAvatar } from './clientAvatar'
 import { ClientDetailsModal } from './ClientDetailsModal'
 import { ClientFormModal } from './ClientFormModal'
 import { ClientStatusBadge } from './ClientStatusBadge'
@@ -29,7 +28,7 @@ const SORTS: Record<string, { label: string; sort: string; direction: 'asc' | 'd
 
 const PAGE_SIZE = 25
 
-type Dialog = { kind: 'none' } | { kind: 'create' } | { kind: 'edit'; client: Client } | { kind: 'view'; clientId: string } | { kind: 'status'; client: Client }
+type Dialog = { kind: 'none' } | { kind: 'create' } | { kind: 'edit'; client: Client } | { kind: 'view'; clientId: string } | { kind: 'status'; client: Client } | { kind: 'delete'; client: Client }
 
 // The columns a user may hide. Client name always shows, so every row stays identifiable.
 type ColumnKey = 'code' | 'type' | 'vat' | 'contact' | 'phone' | 'status'
@@ -108,6 +107,23 @@ export function ClientsPage() {
   const [clientType, setClientType] = useState('')
   const [sortKey, setSortKey] = useState('name-asc')
   const [page, setPage] = useState(1)
+  // The search and filter row can be folded away to leave more room for the list; the choice is remembered.
+  const [filtersOpen, setFiltersOpen] = useState(() => {
+    try {
+      return localStorage.getItem('stslev.clients.filters') !== 'closed'
+    } catch {
+      return true
+    }
+  })
+  const toggleFilters = () => {
+    const next = !filtersOpen
+    setFiltersOpen(next)
+    try {
+      localStorage.setItem('stslev.clients.filters', next ? 'open' : 'closed')
+    } catch {
+      // Storage may be blocked; the choice then lasts for this visit only.
+    }
+  }
   // Client type and VAT number need migration 0074; without it they are not shown.
   const features = useQuery({ queryKey: ['clients', 'features'], queryFn: () => api.get<ClientFeatures>('/clients/features'), staleTime: 60_000 })
   const withDetails = features.data?.clientDetails === true
@@ -168,11 +184,26 @@ export function ClientsPage() {
     },
   })
 
+  // Deletes a client that nothing refers to; the API refuses one with contracts, projects or invoices and says why.
+  const remove = useMutation({
+    mutationFn: (client: Client) => api.delete(`/clients/${client.id}`),
+    onMutate: () => setNotice(null),
+    onSuccess: async (_result, client) => {
+      setDialog({ kind: 'none' })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['clients'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+        queryClient.invalidateQueries({ queryKey: ['masters'] }),
+      ])
+      setNotice(`${client.name} was deleted.`)
+    },
+  })
+
   const closeDialog = () => setDialog({ kind: 'none' })
 
   const canCreate = auth.can('CLIENTS', 'CREATE')
   const canEdit = auth.can('CLIENTS', 'EDIT')
-  // Clients are never deleted: the DELETE permission governs disabling and re-enabling.
+  // The DELETE permission governs deleting a client and re-enabling a disabled one.
   const canChangeStatus = auth.can('CLIENTS', 'DELETE')
   const canExport = auth.can('CLIENTS', 'EXPORT')
 
@@ -207,7 +238,7 @@ export function ClientsPage() {
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
-          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-4 sm:px-5">
+          <div className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4 pt-4 sm:px-5 ${filtersOpen ? '' : 'pb-3'}`}>
             <div className="flex flex-wrap items-baseline gap-x-3">
               <h2 className="text-base font-semibold text-slate-900">Client directory</h2>
               <p className="text-sm text-slate-500" aria-live="polite">
@@ -221,9 +252,12 @@ export function ClientsPage() {
                 )}
               </p>
             </div>
-            {canExport && <ExportButtons what="clients" fileStem="clients" size="sm" path={(format) => `/clients/export?${filterParams().toString()}&format=${format}`} onError={setExportError} />}
+            <div className="flex flex-wrap items-center gap-2">
+              {canExport && <ExportButtons what="clients" fileStem="clients" size="sm" path={(format) => `/clients/export?${filterParams().toString()}&format=${format}`} onError={setExportError} />}
+              <ToggleButton open={filtersOpen} onClick={toggleFilters} controls="client-filters" openLabel="Hide filters" closedLabel="Show filters" marked={!filtersOpen && filtered} />
+            </div>
           </div>
-          <div className="flex flex-wrap items-end gap-4 p-4 sm:p-5">
+          <div id="client-filters" className={`${filtersOpen ? 'flex' : 'hidden'} flex-wrap items-end gap-4 p-4 sm:p-5`}>
             <div className="min-w-56 flex-1">
               <label htmlFor={searchId} className={LABEL}>
                 Search
@@ -335,7 +369,7 @@ export function ClientsPage() {
         {data && data.items.length > 0 && (
           <>
             <TableScroll label="Clients">
-              <table className={TABLE.table}>
+              <table className={`${TABLE.table} table-compact`}>
                 <caption className="sr-only">Clients</caption>
                 <thead>
                   <tr>
@@ -385,32 +419,29 @@ export function ClientsPage() {
                     <tr key={client.id} className={`${TABLE.row} hover:shadow-[inset_3px_0_0_#1479BD]`}>
                       <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
                       {show('code') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs font-semibold text-slate-600`}>{client.code}</td>}
-                      <td className={`${TABLE.td} min-w-56 py-3`}>
-                        <div className="flex items-center gap-3">
-                          <ClientAvatar name={client.name} />
-                          <div className="min-w-0 max-w-[16rem]">
-                            <Link
-                              to={`/clients/${client.id}`}
-                              className={`line-clamp-2 break-words text-sm font-semibold leading-snug hover:text-[#1479BD] hover:underline ${client.isActive ? 'text-[#0b3b66]' : 'text-slate-500'}`}
-                            >
-                              {client.name}
-                            </Link>
-                            <span className="mt-0.5 block text-xs text-slate-500">Added {formatDate(client.createdAt.slice(0, 10))}</span>
-                          </div>
-                        </div>
+                      <td className={`${TABLE.td} min-w-48`}>
+                        <Link
+                          to={`/clients/${client.id}`}
+                          className={`block max-w-[18rem] truncate text-sm font-semibold hover:text-[#1479BD] hover:underline ${client.isActive ? 'text-[#0b3b66]' : 'text-slate-500'}`}
+                          title={client.name}
+                        >
+                          {client.name}
+                        </Link>
                       </td>
                       {show('type') && <td className={`${TABLE.td} whitespace-nowrap`}>{client.clientType ? CLIENT_TYPE_LABELS[client.clientType] : NONE}</td>}
                       {show('vat') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-xs`}>{client.vatNumber ?? NONE}</td>}
                       {show('contact') && (
-                        <td className={`${TABLE.td} min-w-48 max-w-64`}>
-                          {client.contactPerson && <span className="block truncate text-sm font-semibold text-slate-900" title={client.contactPerson}>{client.contactPerson}</span>}
+                        <td className={`${TABLE.td} min-w-48 max-w-80`}>
+                          <div className="flex min-w-0 items-center gap-2">
+                          {client.contactPerson && <span className="max-w-[10rem] shrink-0 truncate text-sm font-semibold text-slate-900" title={client.contactPerson}>{client.contactPerson}</span>}
                           {client.email && (
-                            <a href={`mailto:${client.email}`} title={client.email} className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs text-slate-600 hover:text-[#1479BD] hover:underline">
+                            <a href={`mailto:${client.email}`} title={client.email} className="flex min-w-0 items-center gap-1.5 text-xs text-slate-600 hover:text-[#1479BD] hover:underline">
                               <Icon name="mail" className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                               <span className="truncate">{client.email}</span>
                             </a>
                           )}
                           {!client.contactPerson && !client.email && NONE}
+                          </div>
                         </td>
                       )}
                       {show('phone') && (
@@ -434,11 +465,22 @@ export function ClientsPage() {
                         <ActionGroup>
                           <ActionButton label={`View ${client.name}`} icon="view" onClick={() => setDialog({ kind: 'view', clientId: client.id })} />
                           {canEdit && <ActionButton label={`Edit ${client.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', client })} />}
-                          {canChangeStatus && (
+                          {canChangeStatus && client.isActive && (
                             <ActionButton
-                              danger={client.isActive}
-                              label={`${client.isActive ? 'Deactivate' : 'Reactivate'} ${client.name}`}
-                              icon={client.isActive ? 'deactivate' : 'reactivate'}
+                              danger
+                              label={`Delete ${client.name}`}
+                              icon="delete"
+                              disabled={remove.isPending && remove.variables?.id === client.id}
+                              onClick={() => {
+                                remove.reset()
+                                setDialog({ kind: 'delete', client })
+                              }}
+                            />
+                          )}
+                          {canChangeStatus && !client.isActive && (
+                            <ActionButton
+                              label={`Reactivate ${client.name}`}
+                              icon="reactivate"
                               disabled={toggle.isPending && toggle.variables?.id === client.id}
                               onClick={() => {
                                 toggle.reset()
@@ -475,6 +517,26 @@ export function ClientsPage() {
       )}
 
       {/* A status change from the row icon is confirmed first, as on the client page. */}
+      {dialog.kind === 'delete' && (
+        <ConfirmDialog
+          title="Delete client"
+          message={
+            <>
+              Delete <strong>{dialog.client.name}</strong>? The client is removed for good. This cannot be undone.
+              <span className="mt-2 block text-sm">A client that has AMC contracts, projects or invoices cannot be deleted; you will be told what uses it.</span>
+            </>
+          }
+          confirmLabel="Delete client"
+          danger
+          loading={remove.isPending}
+          error={remove.isError ? errorMessage(remove.error) : null}
+          onConfirm={() => remove.mutate(dialog.client)}
+          onCancel={() => {
+            remove.reset()
+            closeDialog()
+          }}
+        />
+      )}
       {dialog.kind === 'status' && (
         <ConfirmDialog
           title={dialog.client.isActive ? 'Deactivate client' : 'Reactivate client'}

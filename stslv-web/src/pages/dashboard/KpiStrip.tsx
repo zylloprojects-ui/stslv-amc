@@ -5,7 +5,7 @@ import type { Module } from '../../lib/types'
 import { displayName, KPI_NAME_MAX } from '../amcManagement/managementPreferences'
 import { KPIS, type KpiDefinition, type KpiReading } from './kpis'
 import { Icon, IconTile, type IconName } from './icons'
-import { ACCENTS, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
+import { accentOf, accentStyle, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
 import type { OperationsDashboard } from './operationsTypes'
 
 // The icon of each figure, the same family as the other dashboard figure cards.
@@ -70,18 +70,17 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder, n
   }
 
   return (
-    <ul aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+    <ul aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 min-[1500px]:grid-cols-4">
       {cards.map(({ kpi, state }, index) => {
         const link = kpi.link && canView(kpi.link.module) ? kpi.link : null
         const icon = KPI_ICONS[kpi.id] ?? 'pulse'
-        const from = ACCENTS[index % ACCENTS.length] as string
-        const to = ACCENTS[(index + 1) % ACCENTS.length] as string
+        const { from, to } = accentOf(index)
         const reading = state.kind === 'ready' ? state.reading : null
         const value = reading?.kind === 'value' ? reading.value : null
         // A short line on the card; the full wording is on hover.
         const note = reading ? (reading.kind === 'value' ? reading.detail : (reading.reason.split(/(?<=\.)\s/)[0] ?? reading.reason)) : null
         const hint = reading ? (reading.kind === 'value' ? reading.hint : reading.reason) : undefined
-        const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s` }
+        const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s`, ...accentStyle(index) }
         const name = displayName(names, kpi.id, kpi.label)
 
         return (

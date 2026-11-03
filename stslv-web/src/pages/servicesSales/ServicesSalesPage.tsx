@@ -11,7 +11,7 @@ import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
-import { Filter, Pager } from '../amc/components'
+import { Filter, FilterPanel, Pager } from '../amc/components'
 import { CustomizeKpisDialog, HideColumnsDialog } from './ServicesSalesDialogs'
 import { COLUMN_IDS, COLUMN_LABELS, useHiddenColumns, useKpiLayout, type ColumnId, type KpiId } from './servicesSalesPreferences'
 import {
@@ -330,7 +330,8 @@ export function ServicesSalesPage() {
               )}
             </p>
           </div>
-          <div className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
+          <FilterPanel id="services-sales">
+<div className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4">
             <Filter label="Search" className="sm:col-span-2">
               {(id, className) => (
                 <input
@@ -458,6 +459,7 @@ export function ServicesSalesPage() {
               </button>
             </div>
           </div>
+</FilterPanel>
         </div>
 
         {sales.isPending && <Spinner label="Loading services" />}
