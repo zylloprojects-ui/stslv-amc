@@ -1,10 +1,10 @@
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
-import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, ConfirmDialog, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import type { Paged } from '../../lib/types'
@@ -190,7 +190,7 @@ const STATUS_EDGE: Record<ContractStatus, string> = {
 }
 
 // A contract's details, schedule, invoices and status changes are on its own page (ContractDetailPage).
-type Dialog = { kind: 'none' } | { kind: 'create' } | { kind: 'edit'; contract: Contract }
+type Dialog = { kind: 'none' } | { kind: 'create' } | { kind: 'edit'; contract: Contract } | { kind: 'delete'; contract: Contract }
 
 function scheduleNote(saved: SavedContract): string {
   const change = saved.scheduleChange
@@ -205,6 +205,7 @@ function scheduleNote(saved: SavedContract): string {
 
 export function AmcContractsPage() {
   const auth = useAuth()
+  const queryClient = useQueryClient()
 
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
@@ -246,6 +247,7 @@ export function AmcContractsPage() {
   const canExport = auth.can('AMC_CONTRACTS', 'EXPORT')
   const [exportError, setExportError] = useState<string | null>(null)
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
+  const canDelete = auth.can('AMC_CONTRACTS', 'DELETE')
 
   const data = contracts.data
   const filtered = search !== '' || status !== 'all' || clientId !== '' || system !== '' || year !== '' || salesEngineerId !== '' || frequency !== ''
@@ -267,6 +269,16 @@ export function AmcContractsPage() {
   }
   const closeDialog = () => setDialog({ kind: 'none' })
   const label = (contract: Contract) => `${contract.client.name} ${contract.systemDescription}`
+  // Deletes a contract whose services nobody has acted on; the API refuses any other and says why.
+  const remove = useMutation({
+    mutationFn: (contract: Contract) => api.delete(`/amc/contracts/${contract.id}`),
+    onMutate: () => setNotice(null),
+    onSuccess: async (_result, contract) => {
+      setDialog({ kind: 'none' })
+      await Promise.all([queryClient.invalidateQueries({ queryKey: ['amc'] }), queryClient.invalidateQueries({ queryKey: ['dashboard'] })])
+      setNotice(`The contract for ${label(contract)} was deleted.`)
+    },
+  })
   // The Filtered Total row: the label spans every column before the first amount.
   const leadingColumns = 2 + (['reference', 'system', 'engineer', 'validity', 'frequency'] as const).filter(show).length
   const trailingColumns = 1 + (show('visits') ? 1 : 0) + (canEdit ? 1 : 0) + (show('status') ? 1 : 0)
@@ -634,6 +646,18 @@ export function AmcContractsPage() {
                         <ActionGroup>
                           <ActionLink to={`/amc/contracts/${contract.id}`} label={`View ${label(contract)}`} icon="view" />
                           {canEdit && <ActionButton label={`Edit ${label(contract)}`} icon="edit" onClick={() => setDialog({ kind: 'edit', contract })} />}
+                          {canDelete && (
+                            <ActionButton
+                              danger
+                              label={`Delete ${label(contract)}`}
+                              icon="delete"
+                              disabled={remove.isPending && remove.variables?.id === contract.id}
+                              onClick={() => {
+                                remove.reset()
+                                setDialog({ kind: 'delete', contract })
+                              }}
+                            />
+                          )}
                         </ActionGroup>
                       </td>
                     </tr>
@@ -658,6 +682,26 @@ export function AmcContractsPage() {
         )}
       </Card>
 
+      {dialog.kind === 'delete' && (
+        <ConfirmDialog
+          title="Delete contract"
+          message={
+            <>
+              Delete the contract for <strong>{label(dialog.contract)}</strong> and its scheduled services? This cannot be undone.
+              <span className="mt-2 block text-sm">A contract with a service that has been worked on, moved, noted or invoiced cannot be deleted; cancel it instead, which keeps its history.</span>
+            </>
+          }
+          confirmLabel="Delete contract"
+          danger
+          loading={remove.isPending}
+          error={remove.isError ? errorMessage(remove.error) : null}
+          onConfirm={() => remove.mutate(dialog.contract)}
+          onCancel={() => {
+            remove.reset()
+            closeDialog()
+          }}
+        />
+      )}
       {(dialog.kind === 'create' || dialog.kind === 'edit') && (
         <ContractFormModal
           contract={dialog.kind === 'edit' ? dialog.contract : null}
