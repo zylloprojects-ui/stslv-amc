@@ -18,8 +18,9 @@ import { ExpiringContracts, PaymentTrend, PortfolioStatus, WorkloadChart } from 
 import { useKpiCustomization } from './amcManagement/managementPreferences'
 import { useKpiOrder, useStoredFlag } from './dashboard/dashboardPreferences'
 
-// AMC Portfolio Status, Expiring Contracts and Recent Invoices are hidden on the dashboard for now. Set VITE_SHOW_DASHBOARD_DETAIL_PANELS=true to bring them back.
-const SHOW_DETAIL_PANELS = import.meta.env.VITE_SHOW_DASHBOARD_DETAIL_PANELS === 'true'
+// AMC Portfolio Status, Expiring Contracts and Recent Invoices are hidden on the dashboard by default. Set VITE_SHOW_DASHBOARD_DETAIL_PANELS=true to bring them back.
+// Read on each render (not once at load) so tests can check both settings.
+const showDetailPanels = () => import.meta.env.VITE_SHOW_DASHBOARD_DETAIL_PANELS === 'true'
 
 const SECTION_HEADING = 'mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#0b3b66]'
 
@@ -231,7 +232,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      {SHOW_DETAIL_PANELS && data && (data.portfolio || data.expiring) && (
+      {showDetailPanels() && data && (data.portfolio || data.expiring) && (
         <div className="mb-6 grid gap-x-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-rows-[auto_1fr]">
           {data.portfolio && (
             <Panel id="dashboard-portfolio" className="max-lg:mb-6 lg:row-span-2 lg:grid lg:grid-rows-subgrid" icon="chart"
@@ -255,7 +256,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      {SHOW_DETAIL_PANELS && canView('INVOICES') && (
+      {showDetailPanels() && canView('INVOICES') && (
         <Panel id="dashboard-invoices" icon="invoice"
           eyebrow="Finance" title="Recent Invoices (Zoho)" description="Latest invoices recorded from Zoho, newest invoice date first." link={{ to: '/invoices', label: 'Invoice Tracking' }} className="mb-6">
           <RecentInvoices userId={userId} canExport={auth.can('INVOICES', 'EXPORT')} />

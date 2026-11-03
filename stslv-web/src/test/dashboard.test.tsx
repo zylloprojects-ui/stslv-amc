@@ -1,7 +1,7 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionUser } from '../lib/types'
 import { monthCells } from '../pages/dashboard/calendarCells'
 import { orderedIds } from '../pages/dashboard/dashboardPreferences'
@@ -546,6 +546,42 @@ describe('recent invoices', () => {
     await screen.findByText(/Figures as of/)
     expect(screen.queryByRole('heading', { name: 'Recent Invoices (Zoho)' })).not.toBeInTheDocument()
     expect(api.find('GET', '/invoices')).toHaveLength(0)
+  })
+})
+
+describe('dashboard detail panels', () => {
+  const PANELS = ['AMC Portfolio Status', 'Expiring Contracts', 'Recent Invoices (Zoho)']
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('are hidden by default, when VITE_SHOW_DASHBOARD_DETAIL_PANELS is not set', async () => {
+    vi.stubEnv('VITE_SHOW_DASHBOARD_DETAIL_PANELS', undefined)
+    const api = dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    await kpiCard('Active AMC')
+    for (const name of PANELS) expect(screen.queryByRole('heading', { name })).not.toBeInTheDocument()
+    // The recent-invoices list is not requested when its panel is hidden.
+    expect(api.find('GET', '/invoices')).toHaveLength(0)
+  })
+
+  it('stay hidden for any value other than "true"', async () => {
+    vi.stubEnv('VITE_SHOW_DASHBOARD_DETAIL_PANELS', 'false')
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    await kpiCard('Active AMC')
+    for (const name of PANELS) expect(screen.queryByRole('heading', { name })).not.toBeInTheDocument()
+  })
+
+  it('all three show when the setting is "true"', async () => {
+    vi.stubEnv('VITE_SHOW_DASHBOARD_DETAIL_PANELS', 'true')
+    const api = dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    for (const name of PANELS) expect(await screen.findByRole('heading', { name })).toBeInTheDocument()
+    await waitFor(() => expect(api.find('GET', '/invoices').length).toBeGreaterThan(0))
   })
 })
 

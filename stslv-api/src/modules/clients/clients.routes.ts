@@ -76,7 +76,8 @@ clientsRouter.patch("/:id", authorize("CLIENTS", "EDIT"), async (req, res) => {
   res.json({ success: true, data: client });
 });
 
-// Only a client that no contract, project or invoice uses can be deleted; otherwise 409 with the reason.
+// Permanent deletion: Super Admin only (403 for everyone else, checked in deleteClient), and only a
+// client that no contract, project or invoice uses; otherwise 409 with the reason.
 clientsRouter.delete("/:id", authorize("CLIENTS", "DELETE"), async (req, res) => {
   await deleteClient(requireAuth(req), parseIdParam(req.params.id));
 

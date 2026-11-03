@@ -3,7 +3,8 @@ import { featureUnavailable } from "../../middleware/require-schema";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { listEntityHistory } from "../../shared/entity-history";
-import { conflict, isUniqueViolation, notFound, validationError } from "../../shared/errors";
+import { conflict, forbidden, isUniqueViolation, notFound, validationError } from "../../shared/errors";
+import { isSuperAdmin } from "../../shared/role-model";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
@@ -352,8 +353,15 @@ function inUseMessage(name: string, parts: { contracts: number; projects: number
  * Deletes a client that nothing refers to. A client with contracts, projects or invoices is refused
  * with a 409; the database's ON DELETE RESTRICT refuses it again should one be linked between the
  * check and the delete. The activity log keeps what the client was.
+ *
+ * Permanent deletion is reserved to Super Admin (approved 2026-11-03): every other user gets 403,
+ * even with the Clients Delete permission, which governs disabling and re-enabling a client.
  */
 export async function deleteClient(auth: AuthContext, id: string): Promise<void> {
+  if (!isSuperAdmin(auth.roles)) {
+    throw forbidden("Only Super Admin can permanently delete a client. Disable the client instead.");
+  }
+
   let name = "";
 
   try {

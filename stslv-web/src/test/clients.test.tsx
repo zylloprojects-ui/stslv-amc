@@ -48,6 +48,10 @@ function clientApi(user: SessionUser, initial: Client[], override?: (request: Mo
       clients[index] = { ...(clients[index] as Client), isActive: false }
       return ok(clients[index])
     }
+    if (index >= 0 && request.method === 'POST' && request.path.endsWith('/reactivate')) {
+      clients[index] = { ...(clients[index] as Client), isActive: true }
+      return ok(clients[index])
+    }
 
     return undefined
   })
@@ -249,8 +253,61 @@ describe('edit client', () => {
   })
 })
 
-describe('delete a client from the list', () => {
-  it('offers a Delete icon action for an active client and Reactivate for a disabled one', async () => {
+// Holds Clients Delete (disable / re-enable) but is not Super Admin.
+const CLIENT_MANAGER: SessionUser = {
+  id: '7',
+  email: 'manager@example.com',
+  fullName: 'Mira Manager',
+  roles: [{ id: '7', code: 'ADMINISTRATOR', name: 'Admin' }],
+  permissions: ['CLIENTS:VIEW', 'CLIENTS:CREATE', 'CLIENTS:EDIT', 'CLIENTS:DELETE'],
+}
+
+describe('change client status inline', () => {
+  it('shows the status as a badge and offers Deactivate as the normal action, Reactivate for a disabled client', async () => {
+    const api = clientApi(CLIENT_MANAGER, [ONE, OLD])
+    renderApp('/clients')
+    await userEvent.selectOptions(await screen.findByLabelText('Status'), 'all')
+
+    const deactivate = await screen.findByRole('button', { name: 'Deactivate Test Client One' })
+    expect(deactivate).toHaveAttribute('title', 'Deactivate Test Client One')
+    expect(deactivate).toHaveTextContent('')
+    expect(screen.queryByLabelText(/^Status of /)).not.toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Reactivate Old Test Client' })).toBeInTheDocument()
+    // Not Super Admin: no permanent delete, even with Clients Delete.
+    expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument()
+    expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(0)
+  })
+
+  it('asks before deactivating, Cancel saves nothing, Deactivate disables the client and Reactivate brings it back', async () => {
+    const api = clientApi(CLIENT_MANAGER, [ONE, TWO])
+    renderApp('/clients')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Deactivate Test Client One' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
+    expect(dialog).toHaveTextContent('Test Client One will no longer be offered for new contracts.')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Deactivate Test Client One' }))
+    dialog = await screen.findByRole('dialog', { name: 'Deactivate client' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Deactivate' }))
+
+    await waitFor(() => expect(api.find('POST', '/clients/10/deactivate')).toHaveLength(1))
+    expect(await screen.findByRole('status')).toHaveTextContent('Test Client One is now Disabled.')
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'View Test Client One' })).not.toBeInTheDocument())
+
+    await userEvent.selectOptions(screen.getByLabelText('Status'), 'all')
+    await userEvent.click(await screen.findByRole('button', { name: 'Reactivate Test Client One' }))
+    dialog = await screen.findByRole('dialog', { name: 'Reactivate client' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Reactivate' }))
+    await waitFor(() => expect(api.find('POST', '/clients/10/reactivate')).toHaveLength(1))
+    expect(await screen.findByRole('button', { name: 'Deactivate Test Client One' })).toBeInTheDocument()
+  })
+})
+
+describe('delete a client from the list (Super Admin only)', () => {
+  it('offers Super Admin Delete beside Deactivate or Reactivate, for active and disabled clients', async () => {
     const api = clientApi(ADMIN, [ONE, OLD])
     renderApp('/clients')
     await userEvent.selectOptions(await screen.findByLabelText('Status'), 'all')
@@ -258,9 +315,9 @@ describe('delete a client from the list', () => {
     const remove = await screen.findByRole('button', { name: 'Delete Test Client One' })
     expect(remove).toHaveAttribute('title', 'Delete Test Client One')
     expect(remove).toHaveTextContent('')
-    expect(screen.queryByRole('button', { name: /^Deactivate / })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Deactivate Test Client One' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Reactivate Old Test Client' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Delete Old Test Client' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete Old Test Client' })).toBeInTheDocument()
     expect(api.find('DELETE', '/clients/10')).toHaveLength(0)
   })
 

@@ -1,6 +1,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { isSuperAdmin } from '../../auth/roles'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
@@ -203,8 +204,10 @@ export function ClientsPage() {
 
   const canCreate = auth.can('CLIENTS', 'CREATE')
   const canEdit = auth.can('CLIENTS', 'EDIT')
-  // The DELETE permission governs deleting a client and re-enabling a disabled one.
+  // The DELETE permission governs disabling and re-enabling a client, the normal way to retire one.
   const canChangeStatus = auth.can('CLIENTS', 'DELETE')
+  // Permanent deletion is Super Admin only; the API refuses everyone else with 403.
+  const canDelete = isSuperAdmin(auth.user)
   const canExport = auth.can('CLIENTS', 'EXPORT')
 
   const data = clients.data
@@ -465,7 +468,19 @@ export function ClientsPage() {
                         <ActionGroup>
                           <ActionButton label={`View ${client.name}`} icon="view" onClick={() => setDialog({ kind: 'view', clientId: client.id })} />
                           {canEdit && <ActionButton label={`Edit ${client.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', client })} />}
-                          {canChangeStatus && client.isActive && (
+                          {canChangeStatus && (
+                            <ActionButton
+                              danger={client.isActive}
+                              label={`${client.isActive ? 'Deactivate' : 'Reactivate'} ${client.name}`}
+                              icon={client.isActive ? 'deactivate' : 'reactivate'}
+                              disabled={toggle.isPending && toggle.variables?.id === client.id}
+                              onClick={() => {
+                                toggle.reset()
+                                setDialog({ kind: 'status', client })
+                              }}
+                            />
+                          )}
+                          {canDelete && (
                             <ActionButton
                               danger
                               label={`Delete ${client.name}`}
@@ -474,17 +489,6 @@ export function ClientsPage() {
                               onClick={() => {
                                 remove.reset()
                                 setDialog({ kind: 'delete', client })
-                              }}
-                            />
-                          )}
-                          {canChangeStatus && !client.isActive && (
-                            <ActionButton
-                              label={`Reactivate ${client.name}`}
-                              icon="reactivate"
-                              disabled={toggle.isPending && toggle.variables?.id === client.id}
-                              onClick={() => {
-                                toggle.reset()
-                                setDialog({ kind: 'status', client })
                               }}
                             />
                           )}

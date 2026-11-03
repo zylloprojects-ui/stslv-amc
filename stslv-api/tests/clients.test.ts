@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { createContract } from "./amc-helpers";
+import { insertBatch, stageRow } from "./historical-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 let admin: Awaited<ReturnType<typeof signedIn>>;
@@ -254,6 +255,82 @@ describe("delete client", () => {
 
     expect((await api().delete(`/api/clients/${created.body.data.id}`).set(viewer.headers)).status).toBe(403);
     expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [created.body.data.id])).rowCount).toBe(1);
+  });
+
+  it("is Super Admin only: Admin and a custom role holding Clients Delete get 403, and can still disable and re-enable", async () => {
+    await pool.query("INSERT INTO roles (code, name) VALUES ('CLIENT_DELETER', 'Client Deleter')");
+    await pool.query(
+      `INSERT INTO role_permissions (role_id, module, action)
+       SELECT r.id, 'CLIENTS', a.action FROM roles r CROSS JOIN (VALUES ('VIEW'), ('DELETE')) AS a (action)
+       WHERE r.code IN ('CLIENT_DELETER', 'ADMINISTRATOR') ON CONFLICT DO NOTHING`
+    );
+    const others = [await signedIn("administrator@example.com", ["ADMINISTRATOR"]), await signedIn("deleter@example.com", ["CLIENT_DELETER"])];
+
+    for (const [index, other] of others.entries()) {
+      const id = (await createClient({ name: `Not Theirs To Delete ${index}` })).body.data.id;
+      const response = await api().delete(`/api/clients/${id}`).set(other.headers);
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.message).toContain("Only Super Admin");
+      expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [id])).rowCount).toBe(1);
+      // Clients Delete still governs disabling and re-enabling.
+      expect((await api().post(`/api/clients/${id}/deactivate`).set(other.headers)).body.data.isActive).toBe(false);
+      expect((await api().post(`/api/clients/${id}/reactivate`).set(other.headers)).body.data.isActive).toBe(true);
+      expect((await logsFor(id)).map((log) => log.action)).toEqual(["client.created", "client.deactivated", "client.reactivated"]);
+    }
+  });
+
+  it("refuses a client with a project or an invoice, naming each", async () => {
+    const id = (await createClient({ name: "Has Project And Invoice" })).body.data.id;
+    const db = await pool.connect();
+    try {
+      await db.query("BEGIN");
+      const project = await db.query<{ id: string }>(
+        "INSERT INTO projects (job_number, client_id, description, job_date, job_value, vat_rate) VALUES ('DELCHK01', $1, 'Job', '2026-09-01', 500, 5) RETURNING id",
+        [id]
+      );
+      const invoice = await db.query<{ id: string }>(
+        "INSERT INTO invoices (invoice_number, client_id, invoice_date, amount_excl_vat, vat_amount, created_by) VALUES ('DELCHK-1', $1, '2026-09-15', 405.000, 0, $2) RETURNING id",
+        [id, admin.id]
+      );
+      await db.query("INSERT INTO invoice_allocations (invoice_id, project_id, allocated_amount, created_by) VALUES ($1, $2, 405.000, $3)", [
+        invoice.rows[0]?.id,
+        project.rows[0]?.id,
+        admin.id,
+      ]);
+      await db.query("COMMIT");
+    } finally {
+      db.release();
+    }
+
+    const response = await api().delete(`/api/clients/${id}`).set(admin.headers);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.message).toContain("1 project, 1 invoice");
+    expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [id])).rowCount).toBe(1);
+    expect((await logsFor(id)).map((log) => log.action)).toEqual(["client.created"]);
+  });
+
+  it("refuses a client that only an import row refers to (the database restriction), and keeps it", async () => {
+    const id = (await createClient({ name: "Import Row Client" })).body.data.id;
+    const batch = await insertBatch();
+    await stageRow(batch.id, { row: 1, kind: "CLIENT", identifier: "X", clientId: id });
+
+    const response = await api().delete(`/api/clients/${id}`).set(admin.headers);
+
+    expect(response.status).toBe(409);
+    expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [id])).rowCount).toBe(1);
+    expect((await logsFor(id)).map((log) => log.action)).toEqual(["client.created"]);
+  });
+
+  it("shows a deletion in the Deletion Log", async () => {
+    const id = (await createClient({ name: "Logged Deletion" })).body.data.id;
+    expect((await api().delete(`/api/clients/${id}`).set(admin.headers)).status).toBe(200);
+
+    const log = await api().get("/api/security/deletions").set(admin.headers);
+    const item = log.body.data.items.find((entry: { action: string; entityId: string }) => entry.action === "client.deleted" && entry.entityId === id);
+
+    expect(item).toMatchObject({ kind: "DELETED", entityType: "clients", description: 'Client "Logged Deletion" deleted.' });
   });
 });
 
