@@ -1236,13 +1236,73 @@ async function assertNoOtherOpenRenewal(db: Queryable, id: string): Promise<void
   }
 }
 
+/** True for a PostgreSQL foreign-key violation (23503). */
+function isForeignKeyViolation(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === "23503";
+}
+
+/**
+ * Deletes a contract whose services nobody has acted on, together with those untouched services.
+ * Once a service has been worked on, moved, noted or invoiced, or the contract has been renewed or
+ * imported, it is refused with a 409: the contract is then cancelled instead, which keeps its history.
+ * The database's ON DELETE RESTRICT refuses it again should anything be linked meanwhile.
+ */
+export async function deleteContract(auth: AuthContext, id: string): Promise<void> {
+  let label = "This contract";
+
+  try {
+    await withTransaction(async (db) => {
+      // Locked, so no service can be changed until this transaction ends.
+      const contract = await findContract(db, id, true);
+      label = `The contract for "${contract.client.name}" (${contract.systemDescription})`;
+
+      const visits = await db.query<{ total: number; worked: number }>(
+        `SELECT count(*)::int AS total, count(*) FILTER (WHERE ${VISIT_LOCKED_SQL})::int AS worked
+         FROM amc_visits v WHERE v.amc_contract_id = $1`,
+        [id]
+      );
+      const { total, worked } = visits.rows[0] ?? { total: 0, worked: 0 };
+
+      if (worked > 0) {
+        throw conflict(
+          `${label} cannot be deleted: ${worked} of its ${total} service${total === 1 ? "" : "s"} ${worked === 1 ? "has" : "have"} been worked on, moved, noted or invoiced. Cancel the contract instead; its history is kept.`
+        );
+      }
+
+      if (await schemaHas(["amc_contract_custom_months.amc_contract_id"])) {
+        await db.query("DELETE FROM amc_contract_custom_months WHERE amc_contract_id = $1", [id]);
+      }
+      await db.query("DELETE FROM amc_visits WHERE amc_contract_id = $1", [id]);
+      await db.query("DELETE FROM amc_contracts WHERE id = $1", [id]);
+      await logActivity(db, {
+        userId: auth.user.id,
+        action: "amc_contract.deleted",
+        module: "AMC_CONTRACTS",
+        entityType: "amc_contracts",
+        entityId: id,
+        description: `AMC contract for "${contract.client.name}" (${contract.systemDescription}) deleted with its ${total} untouched service${total === 1 ? "" : "s"}.`,
+        // The record no longer exists; the log keeps what it was.
+        metadata: {
+          deleted: { client: contract.client.name, systemDescription: contract.systemDescription, validFrom: contract.validFrom, validTo: contract.validTo, status: contract.status, contractValue: contract.contractValue, services: total },
+        },
+      });
+    });
+  } catch (error) {
+    if (isForeignKeyViolation(error)) {
+      throw conflict(`${label} cannot be deleted: other records, such as a renewal or an invoice, still refer to it. Cancel the contract instead; its history is kept.`);
+    }
+
+    throw error;
+  }
+}
+
 export function changeContractStatus(
   auth: AuthContext,
   id: string,
   input: ChangeContractStatusInput
 ): Promise<Contract & { scheduleChange: ScheduleChange | null; cancelledVisits: number }> {
-  // Contracts are never deleted, so the DELETE permission governs cancellation
-  // (the same convention as deactivating a client).
+  // The DELETE permission governs cancellation (the same convention as deactivating a client)
+  // and deleting a contract that nothing has been done on (deleteContract).
   if (input.status === "CANCELLED" && !auth.permissions.has("AMC_CONTRACTS:DELETE")) {
     throw forbidden();
   }

@@ -1,5 +1,4 @@
 import { useState, type CSSProperties, type DragEvent } from 'react'
-import { Link } from 'react-router-dom'
 import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
 import { displayName, KPI_NAME_MAX } from '../amcManagement/managementPreferences'
@@ -72,7 +71,6 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder, n
   return (
     <ul aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 min-[1500px]:grid-cols-4">
       {cards.map(({ kpi, state }, index) => {
-        const link = kpi.link && canView(kpi.link.module) ? kpi.link : null
         const icon = KPI_ICONS[kpi.id] ?? 'pulse'
         const { from, to } = accentOf(index)
         const reading = state.kind === 'ready' ? state.reading : null
@@ -118,14 +116,6 @@ export function KpiStrip({ data, failed, canView, order, arranging, onReorder, n
                 )}
                 <p className="mt-3 break-words text-sm text-slate-600" title={hint}>
                   <span>{note}</span>
-                  {link && !arranging && (
-                    <>
-                      <span aria-hidden="true"> · </span>
-                      <Link to={link.to} className="font-medium text-[#1479BD] hover:underline">
-                        {link.label}
-                      </Link>
-                    </>
-                  )}
                 </p>
               </>
             )}

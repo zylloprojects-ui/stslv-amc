@@ -512,6 +512,7 @@ describe('contract permissions', () => {
     expect(await screen.findByRole('link', { name: 'View Test Hotel One FIRE' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Add Contract' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('link', { name: 'View Test Hotel One FIRE' }))
     const page = await openedContract('Test Hotel One — FIRE')
@@ -542,5 +543,45 @@ describe('contract permissions', () => {
     await userEvent.click(within(confirm).getByRole('button', { name: 'Mark contract as expired' }))
 
     expect(await within(confirm).findByRole('alert')).toHaveTextContent('You do not have permission to perform this action.')
+  })
+})
+
+describe('delete contract from the list', () => {
+  it('asks first, Cancel deletes nothing, and Delete contract removes it', async () => {
+    const api = amcApi(ADMIN, {
+      contracts: [FIRE, DRAFT],
+      override: (request) => (request.method === 'DELETE' && request.path === '/amc/contracts/101' ? { status: 200, body: { success: true, data: { deleted: true } } } : undefined),
+    })
+    renderApp('/amc/contracts')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete Test Hotel Two CCTV' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Delete contract' })
+    expect(dialog).toHaveTextContent('Delete the contract for Test Hotel Two CCTV and its scheduled services? This cannot be undone.')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(api.find('DELETE', '/amc/contracts/101')).toHaveLength(0)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Test Hotel Two CCTV' }))
+    dialog = await screen.findByRole('dialog', { name: 'Delete contract' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete contract' }))
+
+    await waitFor(() => expect(api.find('DELETE', '/amc/contracts/101')).toHaveLength(1))
+    expect(await screen.findByRole('status')).toHaveTextContent('The contract for Test Hotel Two CCTV was deleted.')
+  })
+
+  it('shows the API reason in the popup when a contract cannot be deleted', async () => {
+    amcApi(ADMIN, {
+      contracts: [FIRE],
+      override: (request) =>
+        request.method === 'DELETE' && request.path === '/amc/contracts/100' ? fail(409, 'CONFLICT', 'The contract cannot be deleted: 1 of its 4 services has been worked on.') : undefined,
+    })
+    renderApp('/amc/contracts')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete Test Hotel One FIRE' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete contract' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete contract' }))
+
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('1 of its 4 services has been worked on.')
+    expect(screen.getByRole('link', { name: 'View Test Hotel One FIRE' })).toBeInTheDocument()
   })
 })

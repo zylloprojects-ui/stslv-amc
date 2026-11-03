@@ -18,7 +18,7 @@ import { ExpiringContracts, PaymentTrend, PortfolioStatus, WorkloadChart } from 
 import { useKpiCustomization } from './amcManagement/managementPreferences'
 import { useKpiOrder, useStoredFlag } from './dashboard/dashboardPreferences'
 
-// AMC Portfolio Status, Expiring Contracts and Recent Invoices are hidden on the dashboard for now. Set VITE_SHOW_DASHBOARD_DETAIL_PANELS=true to bring them back.
+// AMC Maintenance Calendar, AMC Portfolio Status, Expiring Contracts and Recent Invoices are hidden on the dashboard for now. Set VITE_SHOW_DASHBOARD_DETAIL_PANELS=true to bring them back.
 const SHOW_DETAIL_PANELS = import.meta.env.VITE_SHOW_DASHBOARD_DETAIL_PANELS === 'true'
 
 const SECTION_HEADING = 'mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-[#0b3b66]'
@@ -180,7 +180,7 @@ export function DashboardPage() {
 
       {operations.isPending && <Spinner label="Loading dashboard" />}
 
-      {data?.schedule && (
+      {SHOW_DETAIL_PANELS && data?.schedule && (
         <Panel
           id="dashboard-calendar"
           icon="calendar"

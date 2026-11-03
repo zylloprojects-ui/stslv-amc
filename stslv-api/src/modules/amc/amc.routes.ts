@@ -33,6 +33,7 @@ import {
 } from "./amc.schemas";
 import {
   changeContractStatus,
+  deleteContract,
   createContract,
   generateSchedule,
   previewRegeneration,
@@ -242,6 +243,13 @@ amcRouter.patch("/contracts/:id", authorize("AMC_CONTRACTS", "EDIT"), async (req
   const contract = await updateContract(requireAuth(req), parseIdParam(req.params.id), updateContractSchema.parse(req.body));
 
   res.json({ success: true, data: contract });
+});
+
+// Only a contract whose services are all untouched; otherwise 409 with the reason.
+amcRouter.delete("/contracts/:id", authorize("AMC_CONTRACTS", "DELETE"), async (req, res) => {
+  await deleteContract(requireAuth(req), parseIdParam(req.params.id));
+
+  res.json({ success: true, data: { deleted: true } });
 });
 
 // Cancelling additionally needs AMC_CONTRACTS:DELETE (checked in the service).
