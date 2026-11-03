@@ -39,9 +39,21 @@ describe("client details", () => {
     expect(fetched).toMatchObject({ clientType: "COMPANY", vatNumber: "OM1100223344", contactPerson: "Front Desk" });
   });
 
-  it("requires a client type for a new client and leaves an omitted VAT number empty", async () => {
-    for (const clientType of [undefined, "", null]) {
-      const refused = await postClient({ name: "Beta Test Person", ...(clientType === undefined ? {} : { clientType }) });
+  it("defaults an omitted client type to Company and keeps an explicitly supplied type", async () => {
+    const omitted = await postClient({ name: "Omitted Type Co" });
+    expect(omitted.status).toBe(201);
+    expect(omitted.body.data).toMatchObject({ clientType: "COMPANY" });
+    const stored = await pool.query("SELECT client_type FROM clients WHERE id = $1", [omitted.body.data.id]);
+    expect(stored.rows[0].client_type).toBe("COMPANY");
+
+    const individual = await postClient({ name: "Explicit Individual Person", clientType: "INDIVIDUAL" });
+    expect(individual.status).toBe(201);
+    expect(individual.body.data).toMatchObject({ clientType: "INDIVIDUAL" });
+  });
+
+  it("refuses an explicitly cleared client type for a new client and leaves an omitted VAT number empty", async () => {
+    for (const clientType of ["", null]) {
+      const refused = await postClient({ name: "Beta Test Person", clientType });
 
       expect(refused.status).toBe(400);
       expect(refused.body.error.details).toEqual([{ field: "clientType", message: "Select Company or Individual." }]);
@@ -88,7 +100,7 @@ describe("client details", () => {
 
   it("searches by VAT number, filters by type and sorts", async () => {
     expect((await listClients({ search: "OM1100" })).body.data.items.map((item: { name: string }) => item.name)).toEqual(["Alpha Test Co"]);
-    expect((await listClients({ clientType: "INDIVIDUAL" })).body.data.items.map((item: { name: string }) => item.name)).toEqual(["Beta Test Person"]);
+    expect((await listClients({ clientType: "INDIVIDUAL" })).body.data.items.map((item: { name: string }) => item.name)).toEqual(["Beta Test Person", "Explicit Individual Person"]);
 
     const newest = (await listClients({ sort: "createdAt", direction: "desc" })).body.data.items as { name: string }[];
     expect(newest[0]?.name).toBe("Beta Test Person");

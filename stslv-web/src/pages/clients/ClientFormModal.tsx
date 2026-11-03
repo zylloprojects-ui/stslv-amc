@@ -39,6 +39,9 @@ const FIELD_LABELS: Record<(typeof FIELDS)[number], string> = {
   vatNumber: 'VAT number',
 }
 
+/** Add Client does not ask for a type: every new client is saved as a Company. */
+const NEW_CLIENT_TYPE = 'COMPANY' as const
+
 interface ClientFormModalProps {
   /** The client to edit, or null to add a new one. */
   client: Client | null
@@ -66,7 +69,8 @@ export function ClientFormModal({ client, onClose, onSaved }: ClientFormModalPro
       phone: client?.phone ?? '',
       address: client?.address ?? '',
       notes: client?.notes ?? '',
-      clientType: client?.clientType ?? '',
+      // A new client is always a Company; the type is chosen only when editing.
+      clientType: client ? (client.clientType ?? '') : NEW_CLIENT_TYPE,
       vatNumber: client?.vatNumber ?? '',
     },
   })
@@ -74,7 +78,7 @@ export function ClientFormModal({ client, onClose, onSaved }: ClientFormModalPro
   const save = useMutation({
     mutationFn: (values: ClientForm) => {
       const { clientType, vatNumber, ...base } = values
-      const body = withDetails ? { ...base, clientType, vatNumber } : base
+      const body = withDetails ? { ...base, clientType: client ? clientType : NEW_CLIENT_TYPE, vatNumber } : base
 
       return client ? api.patch<Client>(`/clients/${client.id}`, body) : api.post<Client>('/clients', body)
     },
@@ -117,8 +121,8 @@ export function ClientFormModal({ client, onClose, onSaved }: ClientFormModalPro
 
   const onSubmit = handleSubmit((values) => {
     setFailure(null)
-    // Client type is required once the database stores it (migration 0074). The API checks it too.
-    if (withDetails && values.clientType === '') {
+    // When editing, client type is required once the database stores it (migration 0074). The API checks it too.
+    if (client && withDetails && values.clientType === '') {
       setError('clientType', { message: 'Select Company or Individual.' }, { shouldFocus: true })
       return
     }
@@ -148,7 +152,9 @@ export function ClientFormModal({ client, onClose, onSaved }: ClientFormModalPro
 
         <TextField label="Client name" required error={errors.name?.message} {...register('name')} />
 
-        {withDetails && (
+        {withDetails && !client && <TextField label="VAT number" error={errors.vatNumber?.message} {...register('vatNumber')} />}
+
+        {withDetails && client && (
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectField label="Client type" required error={errors.clientType?.message} {...register('clientType')}>
               <option value="">Select…</option>

@@ -385,23 +385,23 @@ describe('list tools', () => {
 })
 
 describe('client type', () => {
-  it('is required on a database that stores it', async () => {
+  it('is not asked for on Add Client, and a new client is saved as a Company', async () => {
     const api = clientApi(ADMIN, [], (request) => (request.path === '/clients/features' ? ok({ clientDetails: true }) : undefined))
     renderApp('/clients')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add Client' }))
     const dialog = await screen.findByRole('dialog', { name: 'Add Client' })
+    // VAT number is offered (so the database stores client details), but there is no type dropdown.
+    expect(await within(dialog).findByLabelText('VAT number')).toBeInTheDocument()
+    expect(within(dialog).queryByLabelText(/Client type/)).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument()
+
     await userEvent.type(within(dialog).getByLabelText(/Client name/), 'Typed Test Client')
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Add client' }))
-
-    expect(await within(dialog).findByText('Select Company or Individual.')).toBeInTheDocument()
-    expect(api.find('POST', '/clients')).toHaveLength(0)
-
-    await userEvent.selectOptions(within(dialog).getByLabelText(/Client type/), 'COMPANY')
+    await userEvent.type(within(dialog).getByLabelText('VAT number'), 'OM123')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add client' }))
 
     await waitFor(() => expect(api.find('POST', '/clients')).toHaveLength(1))
-    expect(api.find('POST', '/clients')[0]?.body).toMatchObject({ name: 'Typed Test Client', clientType: 'COMPANY', vatNumber: '' })
+    expect(api.find('POST', '/clients')[0]?.body).toMatchObject({ name: 'Typed Test Client', clientType: 'COMPANY', vatNumber: 'OM123' })
   })
 })
 
