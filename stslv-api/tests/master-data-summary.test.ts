@@ -64,7 +64,7 @@ describe("master data summary", () => {
     const department = await api().post("/api/masters/departments").set(admin.headers).send({ code: "SUM2", name: "Summary Two" });
     await api().post(`/api/masters/departments/${department.body.data.id}/status`).set(admin.headers).send({ isActive: false });
     await api().post("/api/masters/system-types").set(admin.headers).send({ code: "SUMST", name: "Summary system" });
-    await api().post("/api/masters/sales-engineers").set(admin.headers).send({ name: "Summary Engineer" });
+    await api().post("/api/masters/sales-engineers").set(admin.headers).send({ code: "SE-SUM", name: "Summary Engineer" });
     await api().post(`/api/masters/maintenance-frequencies/${(await frequency("ANNUALLY")).id}/status`).set(admin.headers).send({ status: "disabled" });
 
     const response = await summary(admin);

@@ -6,7 +6,7 @@ import { forbidden } from "../../shared/errors";
 import { parseIdParam } from "../../shared/validation";
 import { sendExport } from "../../shared/export/send";
 import { canReadMaster, MASTER_MODULE, mayReadMaster, type MasterPath } from "./master-permissions";
-import { buildSalesEngineersExport, engineerUserOptions, getEngineerSummary } from "./sales-engineers.service";
+import { buildSalesEngineersExport, deleteSalesEngineer, engineerUserOptions, getEngineerSummary } from "./sales-engineers.service";
 import {
   departmentSchemas,
   exportSalesEngineersSchema,
@@ -139,6 +139,14 @@ mastersRouter.get("/sales-engineers/user-options", engineersReady, async (req, r
 // Engineer 360 figures. Each section is included only when the role can see that module (checked in the service).
 mastersRouter.get("/sales-engineers/:id/summary", engineersReady, canReadMaster("sales-engineers"), async (req, res) => {
   res.json({ success: true, data: await getEngineerSummary(requireAuth(req), parseIdParam(req.params.id)) });
+});
+
+// Permanent deletion: Super Admin only (403 for everyone else, checked in deleteSalesEngineer, so no
+// permission code grants it), and only an engineer no AMC contract refers to; otherwise 409 with the reason.
+mastersRouter.delete("/sales-engineers/:id", engineersReady, async (req, res) => {
+  await deleteSalesEngineer(requireAuth(req), parseIdParam(req.params.id));
+
+  res.json({ success: true, data: { deleted: true } });
 });
 
 mount("departments", DEPARTMENTS, departmentSchemas, MASTER_DATA);

@@ -90,7 +90,7 @@ describe("sales engineers", () => {
     const department = (await post("departments", { code: "SALES", name: "Sales" })).body.data.id as string;
     const userId = await insertUser({ email: "engineer@example.com", fullName: "Field Engineer" });
 
-    const created = await post("sales-engineers", { name: "Test Engineer", employeeNo: "E-001", email: "engineer@example.com", departmentId: department, userId });
+    const created = await post("sales-engineers", { code: "SE-TEST", name: "Test Engineer", employeeNo: "E-001", email: "engineer@example.com", departmentId: department, userId });
 
     expect(created.status).toBe(201);
     expect(created.body.data).toMatchObject({
@@ -102,7 +102,7 @@ describe("sales engineers", () => {
     });
 
     await api().post(`/api/masters/departments/${department}/status`).set(admin.headers).send({ isActive: false });
-    const refused = await post("sales-engineers", { name: "Second Engineer", departmentId: department });
+    const refused = await post("sales-engineers", { code: "SE-SECOND", name: "Second Engineer", departmentId: department });
     expect(refused.status).toBe(400);
     expect(refused.body.error.details[0].field).toBe("departmentId");
 
@@ -115,10 +115,10 @@ describe("sales engineers", () => {
   it("refuses a second engineer for the same user or employee number", async () => {
     const existing = (await api().get("/api/masters/sales-engineers").set(admin.headers)).body.data.items[0];
 
-    expect((await post("sales-engineers", { name: "Other", userId: existing.user.id })).status).toBe(409);
-    expect((await post("sales-engineers", { name: "Other", employeeNo: "e-001" })).status).toBe(409);
-    expect((await post("sales-engineers", { name: "Other", email: "not-an-email" })).status).toBe(400);
-    expect((await post("sales-engineers", { name: "Other", userId: "999999" })).status).toBe(400);
+    expect((await post("sales-engineers", { code: "SE-OTHER", name: "Other", userId: existing.user.id })).status).toBe(409);
+    expect((await post("sales-engineers", { code: "SE-OTHER", name: "Other", employeeNo: "e-001" })).status).toBe(409);
+    expect((await post("sales-engineers", { code: "SE-OTHER", name: "Other", email: "not-an-email" })).status).toBe(400);
+    expect((await post("sales-engineers", { code: "SE-OTHER", name: "Other", userId: "999999" })).status).toBe(400);
   });
 });
 
@@ -147,7 +147,7 @@ describe("contract links to master records", () => {
   beforeAll(async () => {
     const clientId = await createClient(admin, "Link Test Client");
     contractId = await activeContract(admin, clientId, { responsibleEngineer: "Typed Engineer", systemDescription: "Typed system" });
-    engineerId = (await post("sales-engineers", { name: "Linked Engineer" })).body.data.id as string;
+    engineerId = (await post("sales-engineers", { code: "SE-LINKED", name: "Linked Engineer" })).body.data.id as string;
     typeId = (await api().get("/api/masters/system-types").query({ search: "CCTV" }).set(admin.headers)).body.data.items[0].id as string;
   });
 

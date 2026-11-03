@@ -208,7 +208,7 @@ describe("Deletion Log coverage", () => {
     expect((await patch(`/amc/execution/visits/${first!.id}`, { status: "CANCELLED", statusReason: "Client asked" })).status).toBe(200);
     expect((await post(`/amc/contracts/${id}/status`, { status: "CANCELLED", reason: "Test" })).status).toBe(200);
 
-    const engineer = (await post("/masters/sales-engineers", { name: "Log Engineer" })).body.data.id;
+    const engineer = (await post("/masters/sales-engineers", { code: "SE-LOG", name: "Log Engineer" })).body.data.id;
     expect((await post(`/masters/sales-engineers/${engineer}/status`, { isActive: false })).status).toBe(200);
     const gone = await createClient(admin, "Log Client");
     expect((await post(`/clients/${gone}/deactivate`)).status).toBe(200);

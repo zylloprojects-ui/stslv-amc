@@ -27,6 +27,7 @@ const ACTION_LABELS: Record<string, string> = {
 }
 
 const FIELD_LABELS: Record<string, string> = {
+  code: 'Engineer code',
   name: 'Engineer name',
   employeeNo: 'Employee number',
   email: 'Email',
