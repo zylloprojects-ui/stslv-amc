@@ -44,27 +44,6 @@ function parseList(raw: string | null): string[] | null {
   }
 }
 
-/** The KPI order for this user, with a setter that remembers it and a reset to the default order. */
-export function useKpiOrder(userId: string, defaults: readonly string[]) {
-  const key = `${PREFIX}.kpi-order.${userId}`
-  const [order, setOrder] = useState<string[]>(() => orderedIds(parseList(read(key)), defaults))
-
-  const save = useCallback(
-    (next: string[]) => {
-      setOrder(next)
-      write(key, JSON.stringify(next))
-    },
-    [key],
-  )
-
-  const reset = useCallback(() => {
-    setOrder([...defaults])
-    write(key, null)
-  }, [defaults, key])
-
-  return { order, setOrder: save, reset }
-}
-
 /** A remembered on/off choice for this user, for example whether the calendar is open. */
 export function useStoredFlag(userId: string, name: string, fallback: boolean): [boolean, (value: boolean) => void] {
   const key = `${PREFIX}.${name}.${userId}`
