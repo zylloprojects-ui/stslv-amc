@@ -1,7 +1,7 @@
 import { QueryClient } from '@tanstack/react-query'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppProviders } from '../App'
 import type { SessionUser } from '../lib/types'
@@ -326,6 +326,86 @@ describe('Master AMC Status page', () => {
     expect(screen.getByRole('group', { name: 'Master AMC Status figures' })).toHaveClass('grid-cols-1')
     expect(screen.getByRole('form', { name: 'Filters' })).not.toHaveClass('grid-cols-2')
     expect(screen.getByRole('table').parentElement).toHaveClass('overflow-x-auto')
+  })
+})
+
+function ContractStandIn() {
+  const { id } = useParams()
+  const navigate = useNavigate()
+  return (
+    <>
+      <h1>Contract {id}</h1>
+      <button type="button" onClick={() => navigate(-1)}>
+        Back
+      </button>
+    </>
+  )
+}
+
+function renderWithContractStandIn() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <MemoryRouter initialEntries={['/amc/master-status']}>
+      <AppProviders client={client}>
+        <Routes>
+          <Route path="/amc/master-status" element={<MasterStatusPage />} />
+          <Route path="/amc/contracts/:id" element={<ContractStandIn />} />
+        </Routes>
+      </AppProviders>
+    </MemoryRouter>,
+  )
+}
+
+describe('Master AMC Status AMC Reference links', () => {
+  // Contract ids deliberately differ from the reference digits: navigation must use the id.
+  const A9 = makeItem({ id: '21', reference: 'AMC-0009', contract: { id: '42', status: 'ACTIVE' } })
+  const A12_Q1 = makeItem({ id: '22', reference: 'AMC-0012', contract: { id: '77', status: 'ACTIVE' } })
+  const A12_Q2 = makeItem({ id: '23', reference: 'AMC-0012', contract: { id: '77', status: 'ACTIVE' }, service: { sequenceNo: 2, cycleNo: 1, serviceCode: 'Q2' } })
+  const A7 = makeItem({ id: '24', reference: 'AMC-0007', contract: { id: '5', status: 'ACTIVE' } })
+
+  it('links every reference to its own contract by database id', async () => {
+    statusApi(VIEWER, [A9, A12_Q1, A12_Q2, A7])
+    renderWithContractStandIn()
+    await screen.findByRole('link', { name: 'Open contract AMC-0009' })
+
+    expect(screen.getByRole('link', { name: 'Open contract AMC-0009' })).toHaveAttribute('href', '/amc/contracts/42')
+    expect(screen.getByRole('link', { name: 'Open contract AMC-0007' })).toHaveAttribute('href', '/amc/contracts/5')
+    const twelve = screen.getAllByRole('link', { name: 'Open contract AMC-0012' })
+    expect(twelve).toHaveLength(2)
+    twelve.forEach((link) => expect(link).toHaveAttribute('href', '/amc/contracts/77'))
+    expect(twelve[0]).toHaveTextContent('AMC-0012')
+  })
+
+  it('opens the contract without opening the Details dialog, and Back returns to the list', async () => {
+    statusApi(VIEWER, [A9, A12_Q1])
+    renderWithContractStandIn()
+
+    await userEvent.click(await screen.findByRole('link', { name: 'Open contract AMC-0012' }))
+    expect(await screen.findByRole('heading', { name: 'Contract 77' })).toBeInTheDocument()
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+    expect(await screen.findByRole('link', { name: 'Open contract AMC-0009' })).toBeInTheDocument()
+  })
+
+  it('opens the contract from the keyboard with Enter', async () => {
+    statusApi(VIEWER, [A9])
+    renderWithContractStandIn()
+
+    const link = await screen.findByRole('link', { name: 'Open contract AMC-0009' })
+    link.focus()
+    expect(link).toHaveFocus()
+    await userEvent.keyboard('{Enter}')
+    expect(await screen.findByRole('heading', { name: 'Contract 42' })).toBeInTheDocument()
+  })
+
+  it('keeps Details working beside the reference link', async () => {
+    statusApi(VIEWER, [A9])
+    renderWithContractStandIn()
+
+    await userEvent.click(await screen.findByRole('button', { name: /Details of AMC-0009/ }))
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open contract' })).toHaveAttribute('href', '/amc/contracts/42')
   })
 })
 

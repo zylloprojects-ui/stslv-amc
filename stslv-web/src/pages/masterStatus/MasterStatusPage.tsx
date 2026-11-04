@@ -634,7 +634,19 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
         {number}
         <span className="sr-only">, {ROW_COLOUR_LABELS[item.colour]}</span>
       </td>
-      <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>{item.reference}</td>
+      <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
+        {canViewContract ? (
+          <Link
+            to={`/amc/contracts/${item.contract.id}`}
+            aria-label={`Open contract ${item.reference}`}
+            className="rounded-sm text-[#1479BD] underline decoration-[#1479BD]/40 underline-offset-2 hover:text-[#0b3b66] hover:decoration-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1479BD]"
+          >
+            {item.reference}
+          </Link>
+        ) : (
+          item.reference
+        )}
+      </td>
       {shown('client') && <td className={`${TABLE.td} ${TABLE.text} font-semibold text-slate-900`}>{item.client.name}</td>}
       {shown('system') && (
         <td className={`${TABLE.td} ${TABLE.text}`}>
