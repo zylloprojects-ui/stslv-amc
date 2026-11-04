@@ -245,5 +245,8 @@ removes data.
   and TLS. This is accepted for the review copy only; it is not the production
   arrangement (see CLAUDE.md, "Do not expose PostgreSQL directly to the public
   internet in production").
-- No file uploads exist yet. When they are added they need object storage; the
-  Render service's disk is erased on every deploy.
+- Uploaded documents (contract documents, service reports, attachments) need
+  object storage, because the Render service's disk is erased on every deploy.
+  They are kept in a private Supabase Storage bucket: set the five SUPABASE_*
+  variables on Render as described in docs/DOCUMENT_STORAGE.md. Without them, contracts
+  cannot be added.

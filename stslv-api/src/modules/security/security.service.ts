@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { pool } from "../../config/database";
 import { env } from "../../config/env";
+import { describeStorage } from "../../config/storage-config";
 import { dateSchema, pagingSchema } from "../../shared/money";
 import { escapeLike, idSchema } from "../../shared/validation";
 import { logActivity } from "../../shared/activity-log";
@@ -121,7 +122,7 @@ export async function getSecurityOverview(transport: RequestTransport | null = n
     checks: [
       ...readiness.checks,
       { id: "headers", label: "Security headers", state: "OK", detail: `nosniff, frame denial and referrer policy are sent by the API${process.env.NODE_ENV === "production" ? ", with HSTS." : "; HSTS only in production."}` },
-      { id: "attachments", label: "Document storage", state: env.attachmentsDir ? "OK" : "UNAVAILABLE", detail: env.attachmentsDir ? "A folder is configured. Its durability cannot be checked from here." : "Not configured, so document uploads are off." },
+      { id: "attachments", label: "Document storage", state: env.fileStorage ? "OK" : "UNAVAILABLE", detail: describeStorage(env.fileStorage).detail },
     ],
     // Settings in force, as values safe to show. No secret, address or connection detail.
     configuration: {
@@ -132,7 +133,9 @@ export async function getSecurityOverview(transport: RequestTransport | null = n
       signUpRequestsPer15Min: env.publicAuthRateLimit,
       temporaryPasswordsPer15Min: env.temporaryPasswordRateLimit,
       allowedWebOrigins: env.corsOrigins.length,
-      attachmentsConfigured: env.attachmentsDir !== null,
+      attachmentsConfigured: env.fileStorage !== null,
+      // SUPABASE, R2, LOCAL or NONE: which kind of store, never its name, address or keys.
+      attachmentsStorage: describeStorage(env.fileStorage).kind,
       backupsAvailable: backup.available,
     },
   };
