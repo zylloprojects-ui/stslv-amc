@@ -5,8 +5,8 @@ import path from "node:path";
  * Where attachment files live. The database holds only the metadata and a
  * generated key, so a different store (object storage) can replace this one
  * without changing the business model. Two stores exist: a local folder
- * (LocalDiskStorage, development and tests) and a private Cloudflare R2 bucket
- * (R2Storage in r2-storage.ts, production). Files are only ever served through
+ * (LocalDiskStorage, development and tests) and a private S3-compatible bucket,
+ * Supabase Storage or Cloudflare R2 (S3ObjectStorage in object-storage.ts, production). Files are only ever served through
  * the API, after its permission checks: no store hands out public links.
  */
 export interface FileStorage {

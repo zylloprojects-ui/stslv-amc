@@ -40,8 +40,8 @@ interface Overview {
     temporaryPasswordsPer15Min: number
     allowedWebOrigins: number
     attachmentsConfigured: boolean
-    /** Which kind of store: a private Cloudflare R2 bucket, a local folder, or none. Absent from older APIs. */
-    attachmentsStorage?: 'R2' | 'LOCAL' | 'NONE'
+    /** Which kind of store: a private Supabase Storage or Cloudflare R2 bucket, a local folder, or none. Absent from older APIs. */
+    attachmentsStorage?: 'SUPABASE' | 'R2' | 'LOCAL' | 'NONE'
     backupsAvailable: boolean
   }
 }
@@ -130,7 +130,7 @@ export function SecurityCenterPage() {
           colour: '#059669',
           items: [
             { label: 'Allowed web addresses', value: String(config.allowedWebOrigins) },
-            { label: 'Document storage', value: !config.attachmentsConfigured ? 'Not configured' : config.attachmentsStorage === 'R2' ? 'Cloudflare R2 (private)' : config.attachmentsStorage === 'LOCAL' ? 'Local folder' : 'Configured', state: config.attachmentsConfigured ? 'on' : 'off' },
+            { label: 'Document storage', value: !config.attachmentsConfigured ? 'Not configured' : config.attachmentsStorage === 'SUPABASE' ? 'Supabase Storage (private)' : config.attachmentsStorage === 'R2' ? 'Cloudflare R2 (private)' : config.attachmentsStorage === 'LOCAL' ? 'Local folder' : 'Configured', state: config.attachmentsConfigured ? 'on' : 'off' },
             { label: 'Backups from this application', value: config.backupsAvailable ? 'Available' : 'Not available', state: config.backupsAvailable ? 'on' : 'off' },
           ],
         },

@@ -134,7 +134,7 @@ export async function getSecurityOverview(transport: RequestTransport | null = n
       temporaryPasswordsPer15Min: env.temporaryPasswordRateLimit,
       allowedWebOrigins: env.corsOrigins.length,
       attachmentsConfigured: env.fileStorage !== null,
-      // R2, LOCAL or NONE: which kind of store, never its name, address or keys.
+      // SUPABASE, R2, LOCAL or NONE: which kind of store, never its name, address or keys.
       attachmentsStorage: describeStorage(env.fileStorage).kind,
       backupsAvailable: backup.available,
     },

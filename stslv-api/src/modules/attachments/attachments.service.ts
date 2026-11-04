@@ -5,7 +5,7 @@ import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { AppError, conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import type { Action, Module } from "../../shared/permissions";
-import { R2Storage } from "../../shared/r2-storage";
+import { S3ObjectStorage } from "../../shared/object-storage";
 import { LocalDiskStorage, StoredFileNotFoundError, type FileStorage } from "../../shared/storage";
 import type { AuthContext } from "../auth/access";
 import type { EntityType, UploadInput } from "./attachments.schemas";
@@ -92,7 +92,7 @@ export function setStorageForTests(storage: FileStorage | null): void {
   storageOverride = storage;
 }
 
-// One store per process, built on first use from env.fileStorage (an R2 client keeps its connections open).
+// One store per process, built on first use from env.fileStorage (an S3 client keeps its connections open).
 let configuredStorage: FileStorage | null = null;
 
 export function storage(): FileStorage {
@@ -104,12 +104,12 @@ export function storage(): FileStorage {
     throw new AppError(503, "STORAGE_UNAVAILABLE", "File storage is not configured on this server, so attachments cannot be uploaded or opened yet.");
   }
 
-  configuredStorage ??= config.driver === "r2" ? new R2Storage(config) : new LocalDiskStorage(config.dir);
+  configuredStorage ??= config.driver === "local" ? new LocalDiskStorage(config.dir) : new S3ObjectStorage(config);
 
   return configuredStorage;
 }
 
-/** Whether this server can store files at all (an R2 bucket, a local folder, or a test storage). */
+/** Whether this server can store files at all (a Supabase or R2 bucket, a local folder, or a test storage). */
 export function storageConfigured(): boolean {
   return storageOverride !== null || env.fileStorage !== null;
 }
@@ -119,12 +119,12 @@ export function contractDocumentStorageUnavailable(): AppError {
   return new AppError(
     503,
     "STORAGE_UNAVAILABLE",
-    "No contract was created: a new AMC contract needs its contract document, and this server has no document storage configured (Cloudflare R2 or ATTACHMENTS_DIR). Ask the system administrator to configure durable document storage."
+    "No contract was created: a new AMC contract needs its contract document, and this server has no document storage configured (Supabase Storage, Cloudflare R2 or ATTACHMENTS_DIR). Ask the system administrator to configure durable document storage."
   );
 }
 
 /**
- * Writes a file to the store. A store that cannot be reached (R2 down, a wrong key, a full disk) becomes a 503
+ * Writes a file to the store. A store that cannot be reached (bucket down, a wrong key, a full disk) becomes a 503
  * with a plain message; the cause is logged on the server without the file or any credential.
  */
 export async function putStoredFile(key: string, data: Buffer, nothingSaved: string): Promise<void> {

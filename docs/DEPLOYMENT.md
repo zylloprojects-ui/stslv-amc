@@ -247,6 +247,6 @@ removes data.
   internet in production").
 - Uploaded documents (contract documents, service reports, attachments) need
   object storage, because the Render service's disk is erased on every deploy.
-  They are kept in a private Cloudflare R2 bucket: set the four R2_* variables
-  on Render as described in docs/DOCUMENT_STORAGE.md. Without them, contracts
+  They are kept in a private Supabase Storage bucket: set the five SUPABASE_*
+  variables on Render as described in docs/DOCUMENT_STORAGE.md. Without them, contracts
   cannot be added.

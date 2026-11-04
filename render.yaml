@@ -58,14 +58,17 @@ services:
       # Render's load balancer is the one proxy in front of the API.
       - key: TRUST_PROXY
         value: "1"
-      # Document storage: a private Cloudflare R2 bucket (see docs/DOCUMENT_STORAGE.md).
-      # All four are entered in the Render dashboard; set all of them or none.
-      # Without them the API runs, but contracts cannot be added (no place for the contract document).
-      - key: R2_ACCOUNT_ID
+      # Document storage: a private Supabase Storage bucket through its S3
+      # endpoint (see docs/DOCUMENT_STORAGE.md). All five are entered in the
+      # Render dashboard; set all of them or none. Without them the API runs,
+      # but contracts cannot be added (no place for the contract document).
+      - key: SUPABASE_PROJECT_REF
         sync: false
-      - key: R2_BUCKET
+      - key: SUPABASE_S3_REGION
         sync: false
-      - key: R2_ACCESS_KEY_ID
+      - key: SUPABASE_S3_BUCKET
         sync: false
-      - key: R2_SECRET_ACCESS_KEY
+      - key: SUPABASE_S3_ACCESS_KEY_ID
+        sync: false
+      - key: SUPABASE_S3_SECRET_ACCESS_KEY
         sync: false
