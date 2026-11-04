@@ -9,6 +9,7 @@ import {
   logsFor,
   visitsOf,
   type Session,
+  withServiceReport,
 } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
@@ -35,8 +36,10 @@ const patch = (id: string, body: Record<string, unknown>, session: Session = adm
   api().patch(`/api/amc/contracts/${id}`).set(session.headers).send(body);
 const setStatus = (id: string, body: Record<string, unknown>, session: Session = admin) =>
   api().post(`/api/amc/contracts/${id}/status`).set(session.headers).send(body);
-const complete = (visitId: string) =>
-  api().patch(`/api/amc/execution/visits/${visitId}`).set(admin.headers).send({ status: "COMPLETED", completedDate: "2026-01-05" });
+const complete = async (visitId: string) => {
+  await withServiceReport(visitId);
+  return api().patch(`/api/amc/execution/visits/${visitId}`).set(admin.headers).send({ status: "COMPLETED", completedDate: "2026-01-05" });
+};
 
 describe("create contract", () => {
   it("saves a draft contract against an existing client and records who created it", async () => {

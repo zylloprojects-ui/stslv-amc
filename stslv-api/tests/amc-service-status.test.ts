@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { HEADER_ROW } from "../src/shared/export/excel";
-import { activeContract, contractBody, createClient, grant, logsFor, today, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
+import { activeContract, contractBody, createClient, grant, logsFor, today, visitsOf, withServiceReport, type Session, type VisitRecord } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The Service Status page (/api/amc/service-status): one row per scheduled
@@ -198,6 +198,7 @@ describe("renewal", () => {
 describe("saving one service", () => {
   it("completes exactly the chosen visit and nothing else", async () => {
     const target = fireVisits[0]?.id as string;
+    await withServiceReport(target);
     const before = await storedVisits();
     const row = await rowOf(target);
     const response = await save(target, { status: "COMPLETED", completedDate: `${year}-10-01`, expectedUpdatedAt: row?.updatedAt });
@@ -222,18 +223,21 @@ describe("saving one service", () => {
     expect((await list()).body.data.kpis).toMatchObject({ completed: 1, notCompleted: 8 });
   });
 
-  it("needs a completion date, not in the future", async () => {
+  it("records today's date when no completion date is sent, and refuses one in the future", async () => {
     const target = fireVisits[1]?.id as string;
+    await withServiceReport(target);
     const row = await rowOf(target);
-
-    const missing = await save(target, { status: "COMPLETED", expectedUpdatedAt: row?.updatedAt });
-    expect(missing.status).toBe(400);
-    expect(missing.body.error.details).toContainEqual({ field: "completedDate", message: "Enter the date the visit was completed." });
 
     const future = await save(target, { status: "COMPLETED", completedDate: `${year + 3}-01-01`, expectedUpdatedAt: row?.updatedAt });
     expect(future.status).toBe(400);
-
     expect((await rowOf(target))?.serviceStatus).toBe("NOT_COMPLETED");
+
+    // The page no longer asks for a date: completion is recorded on the database's current date.
+    const other = (await visitsOf(cctv))[0]?.id as string;
+    await withServiceReport(other);
+    const missing = await save(other, { status: "COMPLETED", expectedUpdatedAt: (await rowOf(other))?.updatedAt });
+    expect(missing.status).toBe(200);
+    expect(missing.body.data).toMatchObject({ serviceStatus: "COMPLETED", completedDate: await today() });
   });
 
   it("refuses Waiting for Renewal as a choice, and other bad input", async () => {
@@ -259,17 +263,20 @@ describe("saving one service", () => {
     expect((await rowOf(target))?.serviceStatus).toBe("NOT_COMPLETED");
   });
 
-  it("reopens completed work only with approval, back to scheduled", async () => {
+  it("never reopens completed work, not even with approval", async () => {
     const target = fireVisits[0]?.id as string;
-    let row = await rowOf(target);
+    const row = await rowOf(target);
 
-    const refused = await save(target, { status: "NOT_COMPLETED", expectedUpdatedAt: row?.updatedAt });
-    expect(refused.status).toBe(403);
-
-    row = await rowOf(target);
-    const reopened = await save(target, { status: "NOT_COMPLETED", expectedUpdatedAt: row?.updatedAt }, admin);
-    expect(reopened.status).toBe(200);
-    expect(reopened.body.data).toMatchObject({ serviceStatus: "NOT_COMPLETED", visitStatus: "SCHEDULED", completedDate: null });
+    // Completion lock (2026-11-04): completed work cannot be reopened.
+    for (const session of [execution, admin]) {
+      const refused = await save(target, { status: "NOT_COMPLETED", expectedUpdatedAt: row?.updatedAt }, session);
+      expect(refused.status).toBe(409);
+      expect(refused.body.error.code).toBe("COMPLETION_LOCKED");
+    }
+    const redated = await save(target, { completedDate: `${year}-09-30`, expectedUpdatedAt: row?.updatedAt }, admin);
+    expect(redated.status).toBe(409);
+    expect(redated.body.error.code).toBe("COMPLETION_LOCKED");
+    expect(await rowOf(target)).toMatchObject({ serviceStatus: "COMPLETED", completedDate: `${year}-10-01`, updatedAt: row?.updatedAt });
   });
 
   it("does not manage cancelled visits", async () => {
@@ -342,6 +349,7 @@ describe("exports", () => {
 describe("report number (migration 0077)", () => {
   it("saves, shows, searches and clears the report number of one visit", async () => {
     const target = fireVisits[2]?.id as string;
+    await withServiceReport(target);
     let row = await rowOf(target);
 
     const saved = await save(target, { status: "COMPLETED", completedDate: `${year}-10-03`, reportNumber: "  SR-2027/014 ", expectedUpdatedAt: row?.updatedAt });

@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, logsFor, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, logsFor, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Services Sales: migrations 0078 (quotation number, module) and 0079 (grants).
@@ -33,6 +33,7 @@ const save = (id: string, body: Record<string, unknown>, session: Session = admi
 const exportFile = (query: Record<string, unknown>, session: Session = admin) => api().get("/api/services-sales/export").query(query).set(session.headers).responseType("blob");
 
 async function complete(visitId: string): Promise<void> {
+  await withServiceReport(visitId);
   const response = await api().patch(`/api/amc/execution/visits/${visitId}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() });
   if (response.status !== 200) throw new Error(`Could not complete visit ${visitId}: ${response.status} ${JSON.stringify(response.body)}`);
 }
@@ -151,6 +152,7 @@ describe("Services Sales", () => {
   describe("integration with Service Status", () => {
     it("reflects a completion saved on Service Status, over the same visit record", async () => {
       const [first] = await visitsOf(fx.betaContract);
+      await withServiceReport(first!.id);
       const status = await api().get("/api/amc/service-status").query({ clientId: fx.betaId, pageSize: 200 }).set(admin.headers);
       expect(status.status).toBe(200);
       const row = status.body.data.items.find((item: { id: string }) => item.id === first!.id);
@@ -169,15 +171,16 @@ describe("Services Sales", () => {
       expect(sales.body.data.kpis.total).toBe(service.body.data.kpis.total);
     });
 
-    it("keeps a quotation number when the visit is reopened, counts it Not Completed and reports it", async () => {
+    it("keeps a quotation number when reopening is refused by the completion lock", async () => {
       const [first] = await visitsOf(fx.alphaContract);
       await complete(first!.id);
       await quote(first!.id, "QT-KEEP");
+      // Completion lock (2026-11-04): completed work cannot be reopened.
       const reopened = await api().patch(`/api/amc/execution/visits/${first!.id}`).set(admin.headers).send({ status: "SCHEDULED" });
-      expect(reopened.status).toBe(200);
+      expect(reopened.status).toBe(409);
+      expect(reopened.body.error.code).toBe("COMPLETION_LOCKED");
 
-      expect(await itemOf(first!.id)).toMatchObject({ quotationNo: "QT-KEEP", salesStatus: "NOT_COMPLETED", quotationBeforeCompletion: true });
-      expect((await list({ clientId: fx.alphaId })).body.data.kpis).toMatchObject({ notCompleted: 4, quoted: 0, quotationBeforeCompletion: 1 });
+      expect(await itemOf(first!.id)).toMatchObject({ quotationNo: "QT-KEEP", serviceStatus: "COMPLETED", quotationBeforeCompletion: false });
       // It may be cleared on purpose, never automatically.
       expect((await quote(first!.id, null)).status).toBe(200);
       expect(await itemOf(first!.id)).toMatchObject({ quotationNo: null, quotationBeforeCompletion: false });

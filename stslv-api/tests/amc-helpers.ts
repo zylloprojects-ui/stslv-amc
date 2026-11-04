@@ -107,3 +107,28 @@ export async function grant(roleCode: string, permissions: [string, string][]) {
     );
   }
 }
+
+/**
+ * Records a current Service Report against one visit (migration 0104) directly in the database, so a test whose
+ * subject is not the upload itself can complete the visit. Metadata only: no file is stored, so it cannot be
+ * downloaded. tests/service-reports.test.ts covers the real upload. Returns the attachment id.
+ */
+export async function withServiceReport(visitId: string): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    `INSERT INTO attachments (entity_type, entity_id, category, title, original_name, mime_type, size_bytes, sha256, storage_key, uploaded_by)
+     VALUES ('amc_visits', $1, 'SERVICE_REPORT', 'Service report', 'fixture-report.pdf', 'application/pdf', 1, repeat('0', 64),
+             gen_random_uuid()::text || '.pdf', (SELECT min(id) FROM users))
+     ON CONFLICT DO NOTHING
+     RETURNING id`,
+    [visitId]
+  );
+  const id = result.rows[0]?.id;
+
+  if (id) await pool.query("UPDATE attachments SET document_id = id WHERE id = $1", [id]);
+  return id ?? "";
+}
+
+/** Attaches a fixture Service Report (withServiceReport) when a request body is about to complete the visit. */
+export async function reportIfCompleting(visitId: string | undefined, body: Record<string, unknown>): Promise<void> {
+  if (visitId && body.status === "COMPLETED") await withServiceReport(visitId);
+}

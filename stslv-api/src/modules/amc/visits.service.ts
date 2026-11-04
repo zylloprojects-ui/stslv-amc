@@ -4,12 +4,13 @@ import { pool } from "../../config/database";
 import { featureUnavailable } from "../../middleware/require-schema";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
-import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
+import { AppError, conflict, notFound, validationError } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { assertVisitNotInvoiced } from "../invoices/invoice-locks";
 import { assertVisitNotPaid, PAYMENT_STATUS_SQL, type PaymentStatus } from "./manual-invoice.service";
+import { assertServiceReportPresent } from "./service-reports.service";
 import type { ContractStatus, InvoiceEligibility, VisitStatus } from "./amc.constants";
 import type {
   ListExecutionQuery,
@@ -670,6 +671,13 @@ export async function listExecutionVisits(query: ListExecutionQuery) {
 
 const fieldError = (field: string, message: string) => validationError(message, [{ field, message }]);
 
+/** A completed visit cannot leave Completed or change its completion date. */
+const completionLocked = (field = "status") => {
+  const message = "This service is completed and locked. Its status and completion date cannot be changed.";
+
+  return new AppError(409, "COMPLETION_LOCKED", message, [{ field, message }]);
+};
+
 /** Execution changes to one visit: status, completion, planned date and work notes. */
 export function updateExecution(auth: AuthContext, id: string, input: UpdateExecutionInput): Promise<ExecutionVisit> {
   return withTransaction((client) => applyExecution(client, auth, id, input));
@@ -688,14 +696,14 @@ export async function applyExecution(client: Queryable, auth: AuthContext, id: s
   const status = input.status ?? row.status;
   const statusChanged = status !== row.status;
 
-  // Reopening completed work changes what is ready for invoice, so it needs
-  // the APPROVE permission. PROVISIONAL: who may reopen is unconfirmed.
-  if (row.status === "COMPLETED" && statusChanged && !auth.permissions.has("AMC_EXECUTION:APPROVE")) {
-    throw forbidden("A completed visit can only be reopened by a user with approval permission for AMC Execution.");
-  }
-  // Invoiced work stays completed until its invoice is cancelled.
+  // Completion lock (approved 2026-11-04): once a visit is saved as Completed its status and completion date are
+  // final, for every user and on every route. There is no reopening; an unlock would need a separately approved
+  // change. Migration 0104 adds the same guard in the database.
   if (row.status === "COMPLETED" && statusChanged) {
-    await assertVisitNotInvoiced(client, id, "reopened");
+    throw completionLocked();
+  }
+  if (row.status === "COMPLETED" && input.completedDate !== undefined && input.completedDate !== row.completed_date) {
+    throw completionLocked("completedDate");
   }
 
   let completedDate = row.completed_date;
@@ -717,6 +725,8 @@ export async function applyExecution(client: Queryable, auth: AuthContext, id: s
     }
     if (statusChanged) {
       completedBy = auth.user.id;
+      // A service is completed only with its service report (0104), checked with the visit locked.
+      await assertServiceReportPresent(client, id);
     }
   } else {
     if (input.completedDate) {

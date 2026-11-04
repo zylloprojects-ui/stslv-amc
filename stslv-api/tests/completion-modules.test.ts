@@ -8,7 +8,7 @@ import { env } from "../src/config/env";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { REPORTS } from "../src/modules/reports/reports.service";
 import { waitForBackups } from "../src/modules/security/backups.service";
-import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -103,6 +103,8 @@ describe("Master AMC Status sorting", () => {
 describe("Reports", () => {
   beforeAll(async () => {
     const [first, second] = await visitsOf(contractId);
+    await withServiceReport(first!.id);
+    await withServiceReport(second!.id);
     await api().patch(`/api/amc/execution/visits/${first!.id}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() });
     await api().patch(`/api/amc/execution/visits/${second!.id}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() });
     await newInvoice(admin, invoiceBody(clientId, [{ amcVisitId: first!.id, amount: "300.000" }], { amountExclVat: "300.000", vatAmount: "0.000", invoiceDate: await today() }));

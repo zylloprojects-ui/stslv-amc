@@ -1,8 +1,9 @@
-import { Router } from "express";
+import express, { Router } from "express";
+import { env } from "../../config/env";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize, authorizeOnAny } from "../../middleware/authorize";
 import { requireSchema } from "../../middleware/require-schema";
-import { forbidden } from "../../shared/errors";
+import { forbidden, validationError } from "../../shared/errors";
 import { sendExport } from "../../shared/export/send";
 import { parseIdParam } from "../../shared/validation";
 import {
@@ -62,7 +63,8 @@ import { getContractRenewals, listRenewalHistory } from "./renewals.service";
 import { getWorkload, listExpiringContracts } from "./reports.service";
 import { buildScheduleExport } from "./schedule.export";
 import { buildServiceStatusExport } from "./service-status.export";
-import { getCalendarOptions, getServiceStatusOptions, listServiceStatus, saveServiceStatus } from "./service-status.service";
+import { getCalendarOptions, getServiceStatusItem, getServiceStatusOptions, listServiceStatus, saveServiceStatus } from "./service-status.service";
+import { readServiceReport, removeServiceReport, uploadServiceReport } from "./service-reports.service";
 import { canViewSummary, getAmcSummary } from "./summary.service";
 import {
   getExecutionVisit,
@@ -351,7 +353,7 @@ amcRouter.get("/execution/visits/:id", authorize("AMC_EXECUTION", "VIEW"), async
   res.json({ success: true, data: await getExecutionVisit(parseIdParam(req.params.id)) });
 });
 
-// Reopening a completed visit additionally needs AMC_EXECUTION:APPROVE (checked in the service).
+// Completing needs the visit's service report; a completed visit is locked (both checked in the service).
 amcRouter.patch("/execution/visits/:id", authorize("AMC_EXECUTION", "EDIT"), async (req, res) => {
   const visit = await updateExecution(requireAuth(req), parseIdParam(req.params.id), updateExecutionSchema.parse(req.body));
 
@@ -361,8 +363,8 @@ amcRouter.patch("/execution/visits/:id", authorize("AMC_EXECUTION", "EDIT"), asy
 // --- Service Status ------------------------------------------------------------
 // One row per scheduled visit, read from the same records as the schedule.
 // Viewing needs SERVICE_STATUS:VIEW (migration 0080); saving changes the visit's
-// execution, so it needs AMC_EXECUTION:EDIT, and reopening completed work also
-// needs AMC_EXECUTION:APPROVE (checked by the execution rules).
+// execution, so it needs AMC_EXECUTION:EDIT. Completing needs the visit's service
+// report and a completed visit is locked (checked by the execution rules).
 amcRouter.get("/service-status", authorize("SERVICE_STATUS", "VIEW"), async (req, res) => {
   res.json({ success: true, data: await listServiceStatus(listServiceStatusSchema.parse(req.query)) });
 });
@@ -383,6 +385,50 @@ amcRouter.get("/service-status/export", authorize("SERVICE_STATUS", "VIEW"), aut
   const { report, recordExport } = await buildServiceStatusExport(requireAuth(req), query);
 
   await sendExport(res, report, query.format, recordExport);
+});
+
+// One service, by its visit id, for the read-only View dialog.
+amcRouter.get("/service-status/:id", authorize("SERVICE_STATUS", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getServiceStatusItem(parseIdParam(req.params.id)) });
+});
+
+// The Service Report document of one service (migration 0104). Viewing or downloading it needs SERVICE_STATUS:VIEW;
+// uploading, replacing or removing it changes what completion depends on, so it needs AMC_EXECUTION:EDIT, like saving
+// the status. A completed service's report is locked (checked in the service).
+// The file arrives as the raw request body with its name URI-encoded in X-File-Name, as for other attachments.
+const rawReport = express.raw({ type: () => true, limit: (env.attachmentMaxMb + 1) * 1024 * 1024 });
+
+amcRouter.get("/service-status/:id/report/download", authorize("SERVICE_STATUS", "VIEW"), async (req, res) => {
+  const file = await readServiceReport(parseIdParam(req.params.id));
+  // The stored name is already cleaned; the ASCII fallback keeps only safe characters.
+  const ascii = file.fileName.replace(/[^A-Za-z0-9._ -]/g, "_");
+
+  res.set({
+    "Content-Type": file.mimeType,
+    "Content-Length": String(file.data.length),
+    "Content-Disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.send(file.data);
+});
+
+amcRouter.post("/service-status/:id/report", authorize("AMC_EXECUTION", "EDIT"), rawReport, async (req, res) => {
+  const name = req.get("X-File-Name");
+
+  if (typeof name !== "string" || name.trim() === "") {
+    throw validationError("The file name is missing.", [{ field: "serviceReport", message: "Choose a file to upload." }]);
+  }
+
+  const body = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+
+  res.status(201).json({ success: true, data: await uploadServiceReport(requireAuth(req), parseIdParam(req.params.id), name, body) });
+});
+
+amcRouter.delete("/service-status/:id/report", authorize("AMC_EXECUTION", "EDIT"), async (req, res) => {
+  await removeServiceReport(requireAuth(req), parseIdParam(req.params.id));
+
+  res.json({ success: true, data: null });
 });
 
 amcRouter.patch("/service-status/:id", authorize("AMC_EXECUTION", "EDIT"), async (req, res) => {

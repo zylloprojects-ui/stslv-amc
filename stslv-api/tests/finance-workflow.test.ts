@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, createContract, logsFor, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, createContract, logsFor, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -28,8 +28,10 @@ const amounts = async (id: string) => (await visitsOf(id)).map((visit) => visit.
 const updatedAt = async (id: string) => (await get(`/amc/visits/${id}`)).body.data.updatedAt as string;
 const setInvoiceNo = async (id: string, invoiceNo: string | null, session: Session = admin) =>
   patch(`/amc/visits/${id}/manual-invoice`, { invoiceNo, expectedUpdatedAt: await updatedAt(id) }, session);
-const complete = async (id: string) =>
+const complete = async (id: string) => {
+  await withServiceReport(id);
   expect((await patch(`/amc/execution/visits/${id}`, { status: "COMPLETED", completedDate: await today() })).status).toBe(200);
+};
 const accountsRow = async (id: string, reference: string) =>
   ((await get("/accounts", { search: reference, pageSize: 200 })).body.data.items as { id: string; manualInvoiceNo: string | null; paymentStatus: string; colour: string; invoiceNumbers: string[] }[]).find((item) => item.id === id);
 const reference = (contractId: string) => `AMC-${contractId.padStart(4, "0")}`;
