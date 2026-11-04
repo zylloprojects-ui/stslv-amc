@@ -147,6 +147,10 @@ describe('renewing a contract added before the requirements', () => {
     await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toHaveDisplayValue('Typed old system (as on the renewed contract)'))
     // No document is asked for on a renewal.
     expect(dialog.querySelector('input[type="file"]')).toBeNull()
+    // Unlike Add AMC Contract (Active only since 2026-11-04), a renewal still starts as a draft, under client approval.
+    const status = within(dialog).getByLabelText(/^Status/) as HTMLSelectElement
+    expect(status.value).toBe('DRAFT')
+    expect([...status.options].map((option) => option.textContent)).toEqual(['Active', 'Draft'])
 
     // A renewal has its own AMC Reference Number (0105).
     await typeReference(dialog, 'RENEW-OLD-001')

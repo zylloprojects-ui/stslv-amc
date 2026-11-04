@@ -189,11 +189,12 @@ describe("the sales engineer of a renewal", () => {
   });
 
   it("needs an engineer on a new contract that is not a renewal too (2026-11-03)", async () => {
-    const refused = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { systemDescription: "SE-NEW", status: "DRAFT", salesEngineerId: undefined }));
+    // Through the endpoint, as a user adds one: a new contract is Active (2026-11-04), so no status is sent.
+    const refused = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { systemDescription: "SE-NEW", salesEngineerId: undefined }));
     expect(refused.status).toBe(400);
     expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select a sales engineer." }]);
 
-    const created = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { systemDescription: "SE-NEW", status: "DRAFT", salesEngineerId: defaultEngineerId }));
+    const created = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { systemDescription: "SE-NEW", salesEngineerId: defaultEngineerId }));
     expect(created.status).toBe(201);
     expect((await linkedTo(created.body.data.id))?.id).toBe(defaultEngineerId);
   });

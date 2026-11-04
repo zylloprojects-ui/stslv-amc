@@ -179,7 +179,7 @@ const contractDocument = z.strictObject(
  * records its Final Credit (zero is allowed) and carries at least one contract document (PDF or Word). These apply
  * to new contracts only: renewals keep createRenewalSchema, and existing contracts are never re-checked.
  */
-export const createNewContractSchema = createContractSchema.extend({
+export const createNewContractFieldsSchema = createContractSchema.extend({
   salesEngineerId: z.string({ error: "Select a sales engineer." }).regex(/^[1-9]\d{0,17}$/, "Select a sales engineer."),
   systemTypeId: z.string({ error: "Select a system." }).regex(/^[1-9]\d{0,17}$/, "Select a system."),
   // Set from the chosen system type; a value sent here is replaced by the type's name.
@@ -194,6 +194,19 @@ export const createNewContractSchema = createContractSchema.extend({
     })
     .transform(normalizeMoney),
   contractDocument,
+  // Internal callers (seed scripts, test setup) may still add a draft through the service; the API may not.
+  status: z.enum(["DRAFT", "ACTIVE"]).default("ACTIVE"),
+});
+
+export const NEW_CONTRACT_STATUS_MESSAGE = "A new AMC contract is added as Active. Draft is not available when adding a contract; a renewal starts as a draft.";
+
+/**
+ * POST /api/amc/contracts (2026-11-04): a new contract is always Active. Leaving the status out gives Active; an
+ * explicit Draft, or any other status, is refused with a validation error rather than changed. Draft stays valid
+ * everywhere else: renewals (createRenewalSchema, which defaults to Draft), the historical import and stored records.
+ */
+export const createNewContractSchema = createNewContractFieldsSchema.extend({
+  status: z.literal("ACTIVE", { error: NEW_CONTRACT_STATUS_MESSAGE }).default("ACTIVE"),
 });
 
 /** A renewal: the same fields, plus optional notes kept in the activity log of the new contract. */
@@ -464,7 +477,8 @@ export const summarySchema = z.object({
 });
 
 export type CreateContractInput = z.infer<typeof createContractSchema>;
-export type CreateNewContractInput = z.infer<typeof createNewContractSchema>;
+/** What the service accepts: the API's input (always Active), or an internal one that may be a draft. */
+export type CreateNewContractInput = z.infer<typeof createNewContractFieldsSchema>;
 export type UpdateContractInput = z.infer<typeof updateContractSchema>;
 export type ChangeContractStatusInput = z.infer<typeof changeContractStatusSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsSchema>;

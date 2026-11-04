@@ -238,6 +238,18 @@ describe('add contract', () => {
     expect(api.find('POST', '/amc/contracts')).toHaveLength(0)
   })
 
+  it('offers Active as the only status, selected by default (Draft removed 2026-11-04)', async () => {
+    amcApi(ADMIN)
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    const status = within(dialog).getByLabelText(/^Status/) as HTMLSelectElement
+    expect([...status.options].map((option) => option.textContent)).toEqual(['Active'])
+    expect(status.value).toBe('ACTIVE')
+    expect(within(dialog).queryByRole('option', { name: 'Draft' })).not.toBeInTheDocument()
+    expect(within(dialog).getByText('The maintenance schedule is generated as soon as the contract is added.')).toBeInTheDocument()
+  })
+
   it('saves a new contract for a client from the Client Master, with money sent as text', async () => {
     const api = amcApi(ADMIN, { contracts: [FIRE] })
     renderApp('/amc/contracts')

@@ -11,6 +11,7 @@ import {
   activeContract,
   contractDocument,
   createClient,
+  createContract,
   legacyContract,
   logsFor,
   newContractBody,
@@ -311,6 +312,63 @@ describe("contract document", () => {
   });
 });
 
+describe("status (2026-11-04: Add AMC Contract adds Active)", () => {
+  it("adds a new contract as Active when no status is sent, and generates its schedule", async () => {
+    const created = await post(await newContractBody(clientId, { systemDescription: "DEFAULT ACTIVE", status: undefined }));
+
+    expect(created.status).toBe(201);
+    expect(created.body.data.status).toBe("ACTIVE");
+    expect((await pool.query("SELECT status FROM amc_contracts WHERE id = $1", [created.body.data.id])).rows[0]?.status).toBe("ACTIVE");
+    expect((await visitsOf(created.body.data.id)).length).toBeGreaterThan(0);
+  });
+
+  it("adds a new contract sent as Active", async () => {
+    const created = await post(await newContractBody(clientId, { systemDescription: "EXPLICIT ACTIVE", status: "ACTIVE" }));
+
+    expect(created.status).toBe(201);
+    expect(created.body.data.status).toBe("ACTIVE");
+  });
+
+  it("refuses an explicit Draft with a clear validation error, never turning it into Active, and adds nothing", async () => {
+    const before = await contractCount();
+
+    for (const status of ["DRAFT", "EXPIRED", "CANCELLED", "draft"]) {
+      const refused = await post(await newContractBody(clientId, { systemDescription: `REFUSED ${status}`, status }));
+
+      expect(refused.status).toBe(400);
+      expect(refused.body.error.code).toBe("VALIDATION_ERROR");
+      expect(refused.body.error.details).toEqual([
+        { field: "status", message: "A new AMC contract is added as Active. Draft is not available when adding a contract; a renewal starts as a draft." },
+      ]);
+    }
+    expect(await contractCount()).toBe(before);
+    // Nothing was stored for the refused requests, document included.
+    expect((await pool.query("SELECT count(*)::int AS n FROM amc_contracts_all WHERE system_description LIKE 'REFUSED %'")).rows[0]?.n).toBe(0);
+  });
+
+  it("leaves a renewal's default as Draft, under client approval", async () => {
+    const source = await activeContract(admin, clientId, { systemDescription: "RENEWAL SOURCE", validFrom: "2026-01-01", validTo: "2026-12-31" });
+    const body = await newContractBody(clientId, { systemDescription: "RENEWAL SOURCE", validFrom: "2027-01-01", validTo: "2027-12-31", status: undefined });
+    const { contractDocument: _document, finalCredit: _finalCredit, ...renewal } = body as Record<string, unknown>;
+    const created = await api().post(`/api/amc/contracts/${source}/renewals`).set(admin.headers).send(renewal);
+
+    expect(created.status).toBe(201);
+    expect(created.body.data.status).toBe("DRAFT");
+    // Still no schedule: a draft renewal waits for client approval.
+    expect(await visitsOf(created.body.data.id)).toEqual([]);
+  });
+
+  it("accepts an explicit Draft on a renewal, as the AMC Renewal page sends", async () => {
+    const source = await activeContract(admin, clientId, { systemDescription: "RENEWAL SOURCE 2", validFrom: "2026-01-01", validTo: "2026-12-31" });
+    const body = await newContractBody(clientId, { systemDescription: "RENEWAL SOURCE 2", validFrom: "2027-01-01", validTo: "2027-12-31", status: "DRAFT" });
+    const { contractDocument: _document, finalCredit: _finalCredit, ...renewal } = body as Record<string, unknown>;
+    const created = await api().post(`/api/amc/contracts/${source}/renewals`).set(admin.headers).send(renewal);
+
+    expect(created.status).toBe(201);
+    expect(created.body.data.status).toBe("DRAFT");
+  });
+});
+
 describe("existing contracts", () => {
   it("stay editable without a sales engineer, system type, Final Credit or document", async () => {
     const id = await legacyContract(admin, clientId, { systemDescription: "Old typed system" });
@@ -376,7 +434,8 @@ describe("the Link master records panel (PUT /contracts/:id/masters)", () => {
   });
 
   it("changes the system type and the contract's system name together, and records both", async () => {
-    const id = (await post(await newContractBody(clientId, { systemDescription: "Panel Before" }))).body.data.id as string;
+    // A draft, so linking changes no schedule (test setup through the service: the API adds Active only).
+    const id = (await createContract(admin, clientId, { systemDescription: "Panel Before" })).body.data.id as string;
     const after = await systemTypeNamed("Panel After");
 
     const response = await put(id, { systemTypeId: after });
@@ -424,15 +483,16 @@ describe("the AMC Contracts page's figures", () => {
 
     // Active and current; draft; cancelled; expired by status; active but ended (expired by date); an older contract without Final Credit.
     await activeContract(admin, hotel, { systemDescription: "K1", contractValue: "1000.125", finalCredit: "900.100", validFrom: `${nextYear}-01-01`, validTo: `${nextYear}-12-31` });
-    await post(await newContractBody(hotel, { systemDescription: "K2", contractValue: "200.000", finalCredit: "150.000", status: "DRAFT" }));
-    const cancelled = (await post(await newContractBody(hotel, { systemDescription: "K3", contractValue: "300.500", finalCredit: "0.001", status: "DRAFT" }))).body.data.id as string;
+    // Drafts are test setup (POST /api/amc/contracts adds Active only): createContract adds them through the service.
+    await createContract(admin, hotel, { systemDescription: "K2", contractValue: "200.000", finalCredit: "150.000", status: "DRAFT" });
+    const cancelled = (await createContract(admin, hotel, { systemDescription: "K3", contractValue: "300.500", finalCredit: "0.001", status: "DRAFT" })).body.data.id as string;
     await api().post(`/api/amc/contracts/${cancelled}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" });
     const expired = await activeContract(admin, hotel, { systemDescription: "K4", contractValue: "50.000", finalCredit: "10.000", validFrom: `${lastYear}-01-01`, validTo: `${lastYear}-12-31` });
     await api().post(`/api/amc/contracts/${expired}/status`).set(admin.headers).send({ status: "EXPIRED" });
     await activeContract(admin, hotel, { systemDescription: "K5", contractValue: "25.000", finalCredit: "5.000", validFrom: `${lastYear}-01-01`, validTo: `${lastYear}-06-30` });
     await legacyContract(admin, hotel, { systemDescription: "K6", contractValue: "75.000", validFrom: `${nextYear}-01-01`, validTo: `${nextYear}-12-31` });
     // In the Recycle Bin: left out of every figure.
-    const binned = (await post(await newContractBody(hotel, { systemDescription: "K7", contractValue: "99999.000", finalCredit: "99999.000", status: "DRAFT" }))).body.data.id as string;
+    const binned = (await createContract(admin, hotel, { systemDescription: "K7", contractValue: "99999.000", finalCredit: "99999.000", status: "DRAFT" })).body.data.id as string;
     expect((await api().delete(`/api/amc/contracts/${binned}`).set(superAdmin.headers)).status).toBe(200);
 
     const response = await kpis();

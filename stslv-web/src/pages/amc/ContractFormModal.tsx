@@ -37,7 +37,11 @@ const amcReferenceRule = z
   .regex(/^[A-Za-z0-9][A-Za-z0-9 _./&-]*$/, 'AMC Reference Number may use letters, digits, spaces and - _ . / & only, and must start with a letter or digit.')
 
 /** `creating`: a new contract or renewal, which must be given its AMC Reference Number. An edit never sends it. */
-const buildContractSchema = (creating: boolean) =>
+/**
+ * `newContract`: Add AMC Contract (not a renewal, not an edit). A new contract is always added as Active
+ * (2026-11-04): Draft is not offered there. Renewals keep Draft, which means "under client approval".
+ */
+const buildContractSchema = (creating: boolean, newContract = false) =>
   z
   .object({
     amcReference: creating ? amcReferenceRule : z.string(),
@@ -57,7 +61,7 @@ const buildContractSchema = (creating: boolean) =>
     description: z.string().trim().max(2000, 'Description must be at most 2000 characters.'),
     notes: z.string().trim().max(2000, 'Notes must be at most 2000 characters.'),
     renewalNotes: z.string().trim().max(1000, 'Renewal notes must be at most 1000 characters.'),
-    status: z.enum(['DRAFT', 'ACTIVE']),
+    status: z.enum(['DRAFT', 'ACTIVE']).refine((status) => !newContract || status === 'ACTIVE', 'A new contract is added as Active.'),
   })
   .refine((value) => !value.validFrom || !value.validTo || value.validTo >= value.validFrom, {
     path: ['validTo'],
@@ -67,6 +71,7 @@ const buildContractSchema = (creating: boolean) =>
   })
 
 const CREATE_SCHEMA = buildContractSchema(true)
+const NEW_CONTRACT_SCHEMA = buildContractSchema(true, true)
 const EDIT_SCHEMA = buildContractSchema(false)
 
 type ContractForm = z.infer<typeof CREATE_SCHEMA>
@@ -133,7 +138,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     control,
     formState: { errors },
   } = useForm<ContractForm>({
-    resolver: zodResolver(contract ? EDIT_SCHEMA : CREATE_SCHEMA),
+    resolver: zodResolver(contract ? EDIT_SCHEMA : isNew ? NEW_CONTRACT_SCHEMA : CREATE_SCHEMA),
     defaultValues: {
       // Never prefilled: a new contract or renewal gets the number the user types. An edit shows the stored one, read-only.
       amcReference: contract?.amcReference ?? '',
@@ -871,7 +876,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               {...register('status')}
             >
               <option value="ACTIVE">Active</option>
-              <option value="DRAFT">Draft</option>
+              {/* Add AMC Contract offers Active only (2026-11-04); a renewal may still start as a draft. */}
+              {!isNew && <option value="DRAFT">Draft</option>}
             </SelectField>
           )}
         </form>

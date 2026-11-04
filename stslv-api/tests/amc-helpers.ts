@@ -1,5 +1,10 @@
+import { ZodError } from "zod";
 import { pool } from "../src/config/database";
+import { createNewContractFieldsSchema } from "../src/modules/amc/amc.schemas";
+import { createNewContract } from "../src/modules/amc/contracts.service";
 import { discardStoredFile } from "../src/modules/attachments/attachments.service";
+import { loadUserPermissions, loadUserRoles, type AuthContext } from "../src/modules/auth/access";
+import { AppError } from "../src/shared/errors";
 import { api, signedIn } from "./helpers";
 
 export type Session = Awaited<ReturnType<typeof signedIn>>;
@@ -110,8 +115,61 @@ export async function newContractBody(clientId: string, overrides: Record<string
   };
 }
 
-export async function createContract(session: Session, clientId: string, overrides: Record<string, unknown> = {}) {
-  return api().post("/api/amc/contracts").set(session.headers).send(await newContractBody(clientId, overrides));
+/** A response as the API would send it: the status code and the parsed JSON body. */
+interface FixtureResponse {
+  status: number;
+  body: { success: boolean; data?: any; error?: { code: string; message: string; details?: { field: string; message: string }[] } };
+}
+
+/**
+ * Test setup only: adds a DRAFT contract through the service, because POST /api/amc/contracts adds Active contracts
+ * only (2026-11-04) and refuses an explicit Draft. Everything else is as the endpoint does it: the same AMC Contracts
+ * Create permission, the same field rules (createNewContractFieldsSchema, which still allows Draft for internal use),
+ * the same contract document handling, and the same response shape.
+ */
+async function createDraftForTest(session: Session, body: Record<string, unknown>): Promise<FixtureResponse> {
+  const fail = (status: number, code: string, message: string, details?: { field: string; message: string }[]): FixtureResponse => ({
+    status,
+    body: { success: false, error: { code, message, ...(details ? { details } : {}) } },
+  });
+  const found = await pool.query<{ id: string; email: string; full_name: string }>("SELECT id, email, full_name FROM users WHERE id = $1", [session.id]);
+  const user = found.rows[0];
+
+  if (!user) return fail(401, "UNAUTHORIZED", "Authentication is required.");
+
+  const auth: AuthContext = {
+    user: { id: user.id, email: user.email, fullName: user.full_name },
+    roles: await loadUserRoles(pool, user.id),
+    permissions: await loadUserPermissions(pool, user.id),
+  };
+
+  if (!auth.permissions.has("AMC_CONTRACTS:CREATE")) return fail(403, "FORBIDDEN", "You do not have permission to perform this action.");
+
+  try {
+    const contract = await createNewContract(auth, createNewContractFieldsSchema.parse(JSON.parse(JSON.stringify(body))));
+
+    return { status: 201, body: { success: true, data: JSON.parse(JSON.stringify(contract)) } };
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return fail(400, "VALIDATION_ERROR", "Some fields are invalid.", error.issues.map((issue) => ({ field: issue.path.join("."), message: issue.message })));
+    }
+    if (error instanceof AppError) return fail(error.status, error.code, error.message, error.details);
+    throw error;
+  }
+}
+
+/**
+ * Adds a contract for a test. Like the old endpoint default, a fixture that names no status is a DRAFT: those are
+ * added through the service (createDraftForTest). An ACTIVE fixture goes through POST /api/amc/contracts as a user's would.
+ */
+export async function createContract(session: Session, clientId: string, overrides: Record<string, unknown> = {}): Promise<FixtureResponse> {
+  const body: Record<string, unknown> = { status: "DRAFT", ...(await newContractBody(clientId, overrides)) };
+
+  if (body.status === "DRAFT") return createDraftForTest(session, body);
+
+  const response = await api().post("/api/amc/contracts").set(session.headers).send(body);
+
+  return { status: response.status, body: response.body };
 }
 
 /** Creates an ACTIVE contract (its schedule is generated) and returns its id. */

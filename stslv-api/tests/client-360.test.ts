@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { clientCode } from "../src/modules/clients/clients.service";
 import { HEADER_ROW } from "../src/shared/export/excel";
-import { activeContract, createClient, grant, newContractBody, type Session } from "./amc-helpers";
+import { activeContract, createClient, createContract, grant, type Session } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { cancelInvoice, completeVisit, invoiceBody, newInvoice } from "./invoices-helpers";
 import { resetProjectData } from "./projects-helpers";
@@ -39,9 +39,9 @@ beforeAll(async () => {
   });
   // Four quarterly visits far ahead.
   await activeContract(admin, clientId, { validFrom: "2030-01-01", validTo: "2030-12-31", contractValue: "1620.000" });
-  // A draft and a cancelled contract.
-  await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { contractValue: "500.000" }));
-  const cancelled = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { contractValue: "9000.000" }));
+  // A draft and a cancelled one (cancelled from draft). Drafts are test setup: the API adds Active only (2026-11-04).
+  await createContract(admin, clientId, { contractValue: "500.000" });
+  const cancelled = await createContract(admin, clientId, { contractValue: "9000.000" });
   await api().post(`/api/amc/contracts/${cancelled.body.data.id}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" });
   // Another client's contract is never counted.
   await activeContract(admin, otherClientId, { contractValue: "7777.000" });
