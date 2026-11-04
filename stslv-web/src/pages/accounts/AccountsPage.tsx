@@ -1,5 +1,4 @@
-import { refreshOperationalData } from '../../lib/refreshOperationalData'
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
@@ -7,7 +6,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner, TextField } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
@@ -232,7 +231,7 @@ const Missing = ({ title }: { title: string }) => (
   </span>
 )
 
-/** Show or hide columns. AMC Reference and the actions always stay. */
+/** Show or hide columns. AMC Reference always stays. */
 function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<ColumnId>; onSave: (hidden: ReadonlySet<ColumnId>) => void; onClose: () => void }) {
   const [draft, setDraft] = useState<Set<ColumnId>>(new Set(hidden))
   const toggle = (id: ColumnId) => {
@@ -260,7 +259,7 @@ function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<Co
         </div>
       }
     >
-      <p className="mb-3 text-sm text-slate-600">AMC Reference and Actions are always shown. Downloads include only the columns shown here, plus the row colour.</p>
+      <p className="mb-3 text-sm text-slate-600">AMC Reference is always shown. Downloads include only the columns shown here, plus the row colour.</p>
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">
@@ -274,83 +273,6 @@ function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<Co
           ))}
         </ul>
       </fieldset>
-    </Modal>
-  )
-}
-
-/**
- * Records the Zoho invoice details of one service through Invoice Tracking's own API, so every rule and
- * check still applies. Optional and separate from the manual Invoice No., which alone decides Paid / Unpaid.
- */
-function RecordInvoiceDialog({ item, onClose }: { item: AccountsItem; onClose: () => void }) {
-  const queryClient = useQueryClient()
-  const [invoiceNumber, setInvoiceNumber] = useState('')
-  const [invoiceDate, setInvoiceDate] = useState('')
-  const [amountExclVat, setAmountExclVat] = useState(item.visitValue ?? '')
-  const [vatAmount, setVatAmount] = useState('')
-  const [failure, setFailure] = useState<string | null>(null)
-
-  const save = useMutation({
-    mutationFn: () =>
-      api.post('/invoices', {
-        invoiceNumber: invoiceNumber.trim(),
-        clientId: item.client.id,
-        invoiceDate,
-        amountExclVat: amountExclVat.trim(),
-        vatAmount: vatAmount.trim(),
-        allocations: [{ amcVisitId: item.id, amount: amountExclVat.trim() }],
-      }),
-    onSuccess: async () => {
-      await refreshOperationalData(queryClient)
-      onClose()
-    },
-    onError: (error) => setFailure(errorMessage(error)),
-  })
-  const ready = invoiceNumber.trim() !== '' && invoiceDate !== '' && amountExclVat.trim() !== '' && vatAmount.trim() !== ''
-
-  return (
-    <Modal
-      title={`Record Zoho invoice · ${item.reference}`}
-      onClose={onClose}
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose} disabled={save.isPending}>
-            Cancel
-          </Button>
-          <Button type="submit" form="record-invoice-form" loading={save.isPending} disabled={!ready}>
-            Save invoice
-          </Button>
-        </>
-      }
-    >
-      <form
-        id="record-invoice-form"
-        className="space-y-4"
-        noValidate
-        onSubmit={(event) => {
-          event.preventDefault()
-          setFailure(null)
-          if (ready) save.mutate()
-        }}
-      >
-        {failure && <Alert>{failure}</Alert>}
-        <p className="text-sm text-slate-600">
-          {item.client.name} · {serviceCodeLabel(item.service)}. Enter the details from the Zoho invoice for Invoice Tracking. This does not change Paid / Unpaid: that follows the manual Invoice No. on the row.
-        </p>
-        <TextField label="Invoice No." required maxLength={50} value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} />
-        <TextField label="Invoice date" type="date" required value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Amount excluding VAT" required inputMode="decimal" value={amountExclVat} onChange={(event) => setAmountExclVat(event.target.value)} />
-          <TextField label="VAT amount" required inputMode="decimal" value={vatAmount} onChange={(event) => setVatAmount(event.target.value)} />
-        </div>
-        <p className="text-xs text-slate-500">
-          One invoice covering several services:{' '}
-          <Link to={`/invoices?recordForVisit=${item.id}`} className="font-medium text-[#1479BD] underline">
-            use Invoice Tracking
-          </Link>
-          .
-        </p>
-      </form>
     </Modal>
   )
 }
@@ -382,7 +304,6 @@ export function AccountsPage() {
 
   const canExport = auth.can('ACCOUNTS', 'EXPORT')
   const canViewContract = auth.can('AMC_CONTRACTS', 'VIEW')
-  const canRecordInvoice = auth.can('INVOICES', 'CREATE')
   const canEditInvoiceNo = auth.can('INVOICES', 'EDIT')
 
   const options = useQuery({ queryKey: ['accounts', 'options'], queryFn: () => api.get<AccountsOptions>('/accounts/options') })
@@ -416,20 +337,15 @@ export function AccountsPage() {
         title="Accounts"
         description="Billing reconciliation of every scheduled AMC service: completion, service report and Invoice No. Enter the Invoice No. to mark a service Paid; clear it to return it to Unpaid. Amounts are OMR excluding VAT."
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
-              Hide Columns · {visible.length} of {COLUMN_IDS.length} shown
-            </Button>
-            {canExport && (
-              // The download covers every service that matches the applied filters, on every page, with the columns shown.
-              <ExportButtons
-                what="Accounts"
-                fileStem="accounts"
-                path={(format) => `/accounts/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
-                onError={setExportError}
-              />
-            )}
-          </div>
+          canExport ? (
+            // The download covers every service that matches the applied filters, on every page, with the columns shown.
+            <ExportButtons
+              what="Accounts"
+              fileStem="accounts"
+              path={(format) => `/accounts/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
+              onError={setExportError}
+            />
+          ) : undefined
         }
       />
 
@@ -561,14 +477,19 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
-            <div className="flex flex-wrap items-end gap-2 sm:col-span-2 lg:col-span-4">
-              <Button type="submit" variant={pendingChanges ? 'primary' : 'secondary'}>
-                Apply
+            <div className="flex flex-wrap items-end justify-between gap-2 sm:col-span-2 lg:col-span-4">
+              <div className="flex flex-wrap items-end gap-2">
+                <Button type="submit" variant={pendingChanges ? 'primary' : 'secondary'}>
+                  Apply
+                </Button>
+                <Button variant="secondary" disabled={!filtered && !pendingChanges} onClick={reset}>
+                  Reset
+                </Button>
+                {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
+              </div>
+              <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
+                Hide Columns · {visible.length} of {COLUMN_IDS.length} shown
               </Button>
-              <Button variant="secondary" disabled={!filtered && !pendingChanges} onClick={reset}>
-                Reset
-              </Button>
-              {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
               <span id="accounts-payment-note" className="basis-full text-xs text-slate-500">
                 {PAID_STATUS_NOTE}
               </span>
@@ -616,9 +537,6 @@ export function AccountsPage() {
                         {COLUMN_LABELS[id]}
                       </th>
                     ))}
-                    <th scope="col" className={TABLE.th}>
-                      Actions
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -629,7 +547,6 @@ export function AccountsPage() {
                       number={(data.page - 1) * data.pageSize + index + 1}
                       shown={shown}
                       canViewContract={canViewContract}
-                      canRecordInvoice={canRecordInvoice}
                       canEditInvoiceNo={canEditInvoiceNo}
                     />
                   ))}
@@ -655,20 +572,16 @@ export function AccountsPage() {
   )
 }
 
-const ACTION_LINK = 'inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-semibold text-[#0b3b66] shadow-sm hover:border-[#1479BD] hover:text-[#1479BD]'
-
 interface RowProps {
   item: AccountsItem
   number: number
   shown: (id: ColumnId) => boolean
   canViewContract: boolean
-  canRecordInvoice: boolean
   canEditInvoiceNo: boolean
 }
 
-function Row({ item, number, shown, canViewContract, canRecordInvoice, canEditInvoiceNo }: RowProps) {
+function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProps) {
   const tone = COLOUR_TONE[item.colour]
-  const [recording, setRecording] = useState(false)
 
   return (
     <tr className={cx(TABLE.row, 'acc-row')} data-colour={item.colour}>
@@ -726,30 +639,17 @@ function Row({ item, number, shown, canViewContract, canRecordInvoice, canEditIn
       )}
       {shown('invoiceNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
-          <ManualInvoiceField visitId={item.id} invoiceNo={item.manualInvoiceNo} updatedAt={item.updatedAt} canEdit={canEditInvoiceNo} label={`${item.reference} ${serviceCodeLabel(item.service)}`} />
+          <ManualInvoiceField
+            visitId={item.id}
+            invoiceNo={item.manualInvoiceNo}
+            updatedAt={item.updatedAt}
+            canEdit={canEditInvoiceNo}
+            completed={item.visitStatus === 'COMPLETED'}
+            label={`${item.reference} ${serviceCodeLabel(item.service)}`} />
           {item.invoiceNumbers.length > 0 && <div className="mt-1 text-xs text-slate-500">Zoho: {item.invoiceNumbers.join(', ')}</div>}
         </td>
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
-      <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-        <span className="inline-flex gap-2">
-          {item.visitStatus === 'COMPLETED' && item.invoiceNumbers.length === 0 && canRecordInvoice && (
-            <button type="button" onClick={() => setRecording(true)} aria-label={`Record a Zoho invoice for ${item.reference} ${serviceCodeLabel(item.service)}`} className={ACTION_LINK}>
-              Record Zoho invoice
-            </button>
-          )}
-          {canViewContract ? (
-            <Link to={`/amc/contracts/${item.contract.id}`} aria-label={`View contract ${item.reference}`} className={ACTION_LINK}>
-              View
-            </Link>
-          ) : (
-            <span className="text-xs text-slate-400" title="Viewing contracts needs the AMC Contracts permission">
-              No access
-            </span>
-          )}
-        </span>
-        {recording && <RecordInvoiceDialog item={item} onClose={() => setRecording(false)} />}
-      </td>
     </tr>
   )
 }

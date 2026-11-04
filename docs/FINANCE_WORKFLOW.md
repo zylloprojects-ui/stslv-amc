@@ -14,13 +14,15 @@ Approved by the project owner on 2026-11-01, following the Aqua Executive refere
 | No Billing Basis | The visit keeps the manually entered Cost per Visit until a basis is explicitly selected |
 | Recalculating existing visits | Only through an explicit Regenerate, with a reason |
 | Paid / Unpaid | Manual Invoice No. entered = Paid. Cleared = Unpaid. No invoice generation, VAT, date or amount |
-| Service completion | Independent of Paid / Unpaid, in both directions |
+| Service completion | Changed 2026-11-04: a manual Invoice No. can be entered or changed only on a service whose stored status is Completed. Clearing it (Unpaid) is allowed at any status. Completing a service never makes it Paid |
 
 ## Paid is a reference status
 
 Paid means a manual Invoice No. is entered on the service. **It does not verify that money was received.** STSLV AMC has no bank or receipt record. Screens and exports that show Paid carry this note or a hint with it.
 
 The manual number lives on the visit (`amc_visits.manual_invoice_no`, migration 0100). It may be shared by several services. Its date (`manual_invoice_at`) is when it was first entered: correcting a number keeps the date, and clearing it removes the date. Every change is in the activity log with the old and new number.
+
+**Completion first (2026-11-04).** `PATCH /api/amc/visits/:id/manual-invoice` refuses (409 CONFLICT, "Complete the service before entering an invoice number.") a new or different number when the visit's stored `status` is not `COMPLETED`. The status is read under the row lock in the same transaction, never taken from the request. Clearing, and re-saving an unchanged number, are allowed at any status, so numbers entered before the rule on services not yet completed stay visible, still count as Paid and can be cleared. The Invoice No. field (Accounts, AMC Schedule, contract detail) disables entry with the same message on a service that is not completed and offers **Clear** for an existing number.
 
 ## Invoice Tracking is separate
 

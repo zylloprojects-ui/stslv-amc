@@ -19,6 +19,7 @@ const VIEWER: SessionUser = {
   permissions: ['ACCOUNTS:VIEW', 'AMC_CONTRACTS:VIEW'],
 }
 const INVOICER: SessionUser = { ...VIEWER, id: '8', permissions: [...VIEWER.permissions, 'INVOICES:CREATE'] }
+const INVOICE_EDITOR: SessionUser = { ...VIEWER, id: '10', permissions: [...VIEWER.permissions, 'INVOICES:EDIT'] }
 const EXPORTER: SessionUser = { ...VIEWER, id: '9', permissions: [...VIEWER.permissions, 'ACCOUNTS:EXPORT'] }
 
 function makeItem(overrides: Partial<AccountsItem> = {}): AccountsItem {
@@ -179,7 +180,6 @@ describe('Accounts page', () => {
       'Value (Ex VAT, OMR)',
       'Invoice No.',
       'Sales Engineer',
-      'Actions',
     ])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'BLUE')
@@ -288,7 +288,29 @@ describe('Accounts page', () => {
     expect(screen.getByRole('button', { name: 'Reset KPI Names' })).toBeDisabled()
   })
 
-  it('hides columns, keeps AMC Reference and Actions, remembers the choice and resets to default', async () => {
+  it('shows one Hide Columns control, beside Apply and Reset in the Filters section, not in the page header', async () => {
+    accountsApi(EXPORTER, [GREEN])
+    renderPage()
+    await screen.findByText('AMC-0009')
+
+    const buttons = screen.getAllByRole('button', { name: /Hide Columns/ })
+    expect(buttons).toHaveLength(1)
+    const filters = within(screen.getByRole('form', { name: 'Filters' }))
+    expect(filters.getByRole('button', { name: 'Hide Columns · 10 of 10 shown' })).toBe(buttons[0])
+    expect(filters.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
+    expect(filters.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
+    // Excel and PDF stay in the header, outside the filters.
+    expect(filters.queryByRole('group', { name: 'Export Accounts' })).not.toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Export Accounts' })).toBeInTheDocument()
+
+    // Opening the column chooser does not submit the filters, and Actions is not a choice.
+    await userEvent.click(buttons[0])
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.getAllByRole('checkbox')).toHaveLength(10)
+    expect(dialog.queryByRole('checkbox', { name: 'Actions' })).not.toBeInTheDocument()
+  })
+
+  it('hides columns, keeps AMC Reference, remembers the choice and resets to default', async () => {
     accountsApi(VIEWER, [GREEN])
     const view = renderPage()
     await screen.findByText('AMC-0009')
@@ -303,7 +325,7 @@ describe('Accounts page', () => {
     expect(headers()).not.toContain('Invoice No.')
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
-    expect(headers()).toContain('Actions')
+    expect(headers()).not.toContain('Actions')
     expect(screen.getByRole('button', { name: 'Hide Columns · 8 of 10 shown' })).toBeInTheDocument()
 
     view.unmount()
@@ -347,45 +369,54 @@ describe('Accounts page', () => {
     expect(screen.queryByRole('group', { name: 'Export Accounts' })).not.toBeInTheDocument()
   })
 
-  it('links the AMC reference and View to the contract, and a Blue row to Invoice Tracking for an invoicing user', async () => {
+  it('links the AMC reference to the contract and has no Actions column, View or Record Zoho invoice button', async () => {
     accountsApi(INVOICER, [RED, BLUE, GREEN])
     renderPage()
     await screen.findByText('AMC-0008')
 
     expect(within(rowOf('AMC-0008')).getByRole('link', { name: 'Contract AMC-0008' })).toHaveAttribute('href', '/amc/contracts/8')
-    // Only a completed service without an invoice offers recording one; it opens Invoice Tracking and saves nothing here.
-    expect(within(rowOf('AMC-0007')).queryByRole('button', { name: /Record a Zoho invoice/ })).not.toBeInTheDocument()
-    expect(within(rowOf('AMC-0009')).queryByRole('button', { name: /Record a Zoho invoice/ })).not.toBeInTheDocument()
-    await userEvent.click(within(rowOf('AMC-0008')).getByRole('button', { name: /Record a Zoho invoice for AMC-0008/ }))
-    // Several services on one invoice still go to Invoice Tracking, with this visit ticked.
-    expect(await screen.findByRole('link', { name: 'use Invoice Tracking' })).toHaveAttribute('href', `/invoices?recordForVisit=${BLUE.id}`)
+    expect(headers()).not.toContain('Actions')
+    expect(screen.queryByRole('link', { name: /View contract/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Record a Zoho invoice/ })).not.toBeInTheDocument()
+    // Every row has exactly one cell per header.
+    for (const row of screen.getAllByRole('row').slice(1)) expect(within(row).getAllByRole('cell')).toHaveLength(headers().length)
   })
 
-  it('records an invoice from the row with the typed figures, through the invoice API, and shows its refusal', async () => {
-    const api = accountsApi(INVOICER, [BLUE], (request) => (request.method === 'POST' && request.path === '/invoices' ? (request.body as { invoiceNumber: string }).invoiceNumber === 'DUP-1' ? fail(409, 'CONFLICT', 'This invoice number already exists.') : ok({ id: '1' }, 201) : undefined))
+  it('lets the Invoice No. be entered only on a completed service, each service on its own', async () => {
+    const OTHER_OPEN = makeItem({ id: '5', reference: 'AMC-0008', contract: { id: '8', status: 'ACTIVE' }, service: { sequenceNo: 2, cycleNo: 1, serviceCode: 'Q2' } })
+    const OPEN_PAID = makeItem({ id: '6', reference: 'AMC-0011', contract: { id: '11', status: 'ACTIVE' }, manualInvoiceNo: 'OLD-1', paymentStatus: 'PAID', colour: 'RED' })
+    const api = accountsApi(INVOICE_EDITOR, [RED, BLUE, OTHER_OPEN, OPEN_PAID], (request) => (request.method === 'PATCH' ? ok({ id: '2' }) : undefined))
     renderPage()
-    await userEvent.click(within(await screen.findByRole('row', { name: /AMC-0008/ })).getByRole('button', { name: /Record a Zoho invoice for AMC-0008/ }))
-    const dialog = within(await screen.findByRole('dialog'))
-    const save = dialog.getByRole('button', { name: 'Save invoice' })
+    await screen.findByText('AMC-0011')
 
-    // Nothing is assumed: number, date and VAT must be typed.
-    expect(save).toBeDisabled()
-    await userEvent.type(dialog.getByLabelText(/Invoice No\./), 'DUP-1')
-    await userEvent.type(dialog.getByLabelText(/Invoice date/), '2026-10-31')
-    await userEvent.clear(dialog.getByLabelText(/Amount excluding VAT/))
-    await userEvent.type(dialog.getByLabelText(/Amount excluding VAT/), '405.000')
-    await userEvent.type(dialog.getByLabelText(/VAT amount/), '20.250')
-    await userEvent.click(save)
-    expect(await dialog.findByText('This invoice number already exists.')).toBeInTheDocument()
+    // Not completed: field and OK disabled, with the reason.
+    const open = within(rowOf('AMC-0007'))
+    expect(open.getByLabelText('Invoice No. for AMC-0007 Q1')).toBeDisabled()
+    expect(open.getByRole('button', { name: 'Save Invoice No. for AMC-0007 Q1' })).toBeDisabled()
+    expect(open.getByText('Complete the service before entering an invoice number.')).toBeInTheDocument()
 
-    await userEvent.clear(dialog.getByLabelText(/Invoice No\./))
-    await userEvent.type(dialog.getByLabelText(/Invoice No\./), 'ZOHO-9')
-    await userEvent.click(save)
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
-    expect(api.find('POST', '/invoices').at(-1)?.body).toEqual({ invoiceNumber: 'ZOHO-9', clientId: BLUE.client.id, invoiceDate: '2026-10-31', amountExclVat: '405.000', vatAmount: '20.250', allocations: [{ amcVisitId: BLUE.id, amount: '405.000' }] })
+    // Two services of the same contract: Q1 completed and editable, Q2 not completed and disabled.
+    const q1 = screen.getByLabelText('Invoice No. for AMC-0008 Q1')
+    const q2 = screen.getByLabelText('Invoice No. for AMC-0008 Q2')
+    expect(q1).toBeEnabled()
+    expect(q2).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Invoice No. for AMC-0008 Q2' })).toBeDisabled()
+
+    // Not completed but already Paid: the number stays visible and may be cleared.
+    const paid = screen.getByLabelText('Invoice No. for AMC-0011 Q1')
+    expect(paid).toHaveValue('OLD-1')
+    expect(paid).toHaveAttribute('readonly')
+    expect(screen.getByRole('button', { name: 'Clear Invoice No. for AMC-0011 Q1' })).toBeEnabled()
+
+    // Completed: a number is saved through the manual Invoice No. API of that service only.
+    await userEvent.type(q1, 'INV-77')
+    await userEvent.click(screen.getByRole('button', { name: 'Save Invoice No. for AMC-0008 Q1' }))
+    await waitFor(() => expect(api.find('PATCH', '/amc/visits/2/manual-invoice')).toHaveLength(1))
+    expect(api.find('PATCH', '/amc/visits/2/manual-invoice')[0]?.body).toEqual({ invoiceNo: 'INV-77', expectedUpdatedAt: BLUE.updatedAt })
+    expect(api.find('PATCH', '/amc/visits/5/manual-invoice')).toHaveLength(0)
   })
 
-  it('offers no invoice link to a user who may not record invoices, and has no editable invoice field', async () => {
+  it('has no editable invoice field for a user who may not edit invoices', async () => {
     accountsApi(VIEWER, [BLUE])
     renderPage()
     await screen.findByText('AMC-0008')
@@ -446,12 +477,12 @@ describe('Accounts routing and permissions', () => {
     expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Accounts' })).not.toBeInTheDocument()
   })
 
-  it('shows the contract reference as plain text and no View link to a user who may not open contracts', async () => {
+  it('shows the contract reference as plain text to a user who may not open contracts', async () => {
     accountsApi({ ...VIEWER, permissions: ['ACCOUNTS:VIEW'] }, [RED])
     renderPage()
     await screen.findByText('AMC-0007')
     expect(within(rowOf('AMC-0007')).queryByRole('link')).not.toBeInTheDocument()
-    expect(within(rowOf('AMC-0007')).getByText('No access')).toBeInTheDocument()
+    expect(within(rowOf('AMC-0007')).getByText('AMC-0007')).toBeInTheDocument()
   })
 })
 

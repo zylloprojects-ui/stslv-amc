@@ -208,6 +208,8 @@ describe("Accounts", () => {
       const [first, second] = await visitsOf(fx.alphaContract);
       await complete(first!.id);
       await invoice(fx.alphaId, [[first!.id, "405.000"]]);
+      // A manual Invoice No. needs a completed service (2026-11-04).
+      await complete(second!.id);
       await setManualNo(second!.id, "M-1");
 
       const rows = byId((await list()).body.data.items);
