@@ -248,7 +248,7 @@ export const serial = (iso: string): number => Math.round((Date.parse(`${iso}T00
  * A contract register, a maintenance schedule and a job register laid out like
  * the client's, with invented content, written to a temporary folder.
  */
-export function writeFixtureWorkbooks(): { config: ImportConfig; directory: string } {
+export function writeFixtureWorkbooks(options: { withoutReferences?: boolean } = {}): { config: ImportConfig; directory: string } {
   const contracts = workbook("Contracts", [
     { ref: "A2", value: "CONTRACTS" },
     ...["S. No", "Engineer", "From\r\n(Validity)", "To\r\n(Validity)", "Client", "Description", "Value", "FINAL CREDIT"].map((value, index) => ({
@@ -265,7 +265,10 @@ export function writeFixtureWorkbooks(): { config: ImportConfig; directory: stri
     { ref: "A7", value: 3 }, { ref: "B7", value: "ENGINEER" }, { ref: "C7", value: serial("2026-03-01") }, { ref: "D7", value: serial("2027-02-28") },
     { ref: "E7", value: "GAMMA " }, { ref: "F7", value: "Automation" }, { ref: "G7", value: 12000 }, { ref: "H7", value: 10000 },
     // The optional AMC Reference column (migration 0105): the import requires one per contract and never generates it.
-    { ref: "I4", value: "AMC Reference" }, { ref: "I5", value: "HIST-AMC-001" }, { ref: "I6", value: "HIST-AMC-002" }, { ref: "I7", value: "HIST-AMC-003" },
+    // `withoutReferences` leaves the column out, as an older register would.
+    ...(options.withoutReferences
+      ? []
+      : [{ ref: "I4", value: "AMC Reference" }, { ref: "I5", value: "HIST-AMC-001" }, { ref: "I6", value: "HIST-AMC-002" }, { ref: "I7", value: "HIST-AMC-003" }]),
     // Formatted, empty rows inside the table.
     { ref: "A8", style: 1 }, { ref: "G8", style: 1 },
     { ref: "A12", value: "TOTAL" }, { ref: "G12", value: 16700, formula: "SUM(G5:G11)" }, { ref: "H12", value: 14700, formula: "SUM(H5:H11)" },
