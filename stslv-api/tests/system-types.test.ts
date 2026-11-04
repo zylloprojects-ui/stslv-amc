@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { HEADER_ROW } from "../src/shared/export/excel";
-import { activeContract, createClient, logsFor } from "./amc-helpers";
+import { createClient, legacyContract, logsFor } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -128,7 +128,7 @@ describe("status and AMC contracts", () => {
 
   beforeAll(async () => {
     const clientId = await createClient(admin, "System Type Test Client");
-    contractId = await activeContract(admin, clientId, { systemDescription: "Typed fire alarm system" });
+    contractId = await legacyContract(admin, clientId, { systemDescription: "Typed fire alarm system" });
     const linked = await api().put(`/api/amc/contracts/${contractId}/masters`).set(admin.headers).send({ systemTypeId: ids.get("FA") });
     expect(linked.status).toBe(200);
   });
@@ -141,7 +141,8 @@ describe("status and AMC contracts", () => {
     expect(contracts.status).toBe(200);
     expect(contracts.body.data).toMatchObject({
       total: 1,
-      items: [{ id: contractId, client: { name: "System Type Test Client" }, systemDescription: "Typed fire alarm system", status: "ACTIVE" }],
+      // Linking set the contract's system to the type's name (2026-11-03).
+      items: [{ id: contractId, client: { name: "System Type Test Client" }, systemDescription: "Fire Alarm", status: "ACTIVE" }],
     });
 
     expect((await api().get(`${PATH}/${ids.get("CCTV")}/contracts`).set(admin.headers)).body.data.total).toBe(0);
@@ -171,7 +172,7 @@ describe("status and AMC contracts", () => {
     expect(options.every((option) => option.isActive)).toBe(true);
 
     const clientId = await createClient(admin, "Second System Type Client");
-    const other = await activeContract(admin, clientId);
+    const other = await legacyContract(admin, clientId);
     const refused = await api().put(`/api/amc/contracts/${other}/masters`).set(admin.headers).send({ systemTypeId: ids.get("FA") });
     expect(refused.status).toBe(400);
     expect(refused.body.error.details[0].field).toBe("systemTypeId");

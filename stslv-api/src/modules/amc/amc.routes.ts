@@ -1,4 +1,5 @@
-import { Router } from "express";
+import express, { Router } from "express";
+import { env } from "../../config/env";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize, authorizeOnAny } from "../../middleware/authorize";
 import { requireSchema } from "../../middleware/require-schema";
@@ -9,7 +10,7 @@ import {
   changeContractStatusSchema,
   contractHistorySchema,
   contractMastersSchema,
-  createContractSchema,
+  createNewContractSchema,
   createRenewalSchema,
   expiringContractsSchema,
   renewalHistorySchema,
@@ -35,6 +36,8 @@ import {
   changeContractStatus,
   deleteContract,
   createContract,
+  createNewContract,
+  getContractKpis,
   generateSchedule,
   previewRegeneration,
   regenerateSchedule,
@@ -169,6 +172,12 @@ amcRouter.get("/contracts/systems", authorize("AMC_CONTRACTS", "VIEW"), async (_
   res.json({ success: true, data: await listSystems() });
 });
 
+// The AMC Contracts page's four figures: all contracts, Total AMC Value, Total Final Credit and Expired.
+// Contracts in the Recycle Bin are left out. Declared before "/contracts/:id".
+amcRouter.get("/contracts/kpis", authorize("AMC_CONTRACTS", "VIEW"), async (_req, res) => {
+  res.json({ success: true, data: await getContractKpis() });
+});
+
 // Contract figures only, for the register's status filters; no Dashboard permission needed.
 amcRouter.get("/contracts/status-summary", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
   const { contracts } = await getAmcSummary(requireAuth(req), 30);
@@ -233,8 +242,15 @@ amcRouter.get("/contracts/:id/history", authorize("AMC_CONTRACTS", "VIEW"), asyn
   });
 });
 
-amcRouter.post("/contracts", authorize("AMC_CONTRACTS", "CREATE"), async (req, res) => {
-  const contract = await createContract(requireAuth(req), createContractSchema.parse(req.body));
+// Add AMC Contract carries its mandatory contract document as base64 in the JSON body, so the contract and its
+// document are saved together or not at all. The body is read only after the caller is signed in and may add
+// contracts, with room for the largest allowed file (base64 adds a third) plus the contract's own fields.
+// app.ts leaves this one route out of the global JSON parser, whose default limit is 100 kB.
+export const CONTRACT_CREATE_PATH = "/api/amc/contracts";
+const contractWithDocument = express.json({ limit: Math.ceil(env.attachmentMaxMb * 1.34 + 1) * 1024 * 1024 });
+
+amcRouter.post("/contracts", authorize("AMC_CONTRACTS", "CREATE"), contractWithDocument, async (req, res) => {
+  const contract = await createNewContract(requireAuth(req), createNewContractSchema.parse(req.body));
 
   res.status(201).json({ success: true, data: contract });
 });

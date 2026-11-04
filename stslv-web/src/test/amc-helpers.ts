@@ -23,6 +23,21 @@ export const VIEWER: SessionUser = {
 
 export const CLIENTS = [makeClient({ id: '10', name: 'Test Hotel One' }), makeClient({ id: '11', name: 'Test Hotel Two' })]
 
+/** The active System Types the contract form offers (GET /masters/system-types/options). */
+export const SYSTEM_TYPES = [
+  { id: '21', code: 'FIRE', name: 'FIRE', description: null, sortOrder: 1, contractCount: 1, isActive: true, createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-01T08:00:00.000Z' },
+  { id: '22', code: 'AUTO', name: 'Automation', description: null, sortOrder: 2, contractCount: 0, isActive: true, createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-01T08:00:00.000Z' },
+  { id: '23', code: 'CCTV', name: 'CCTV', description: null, sortOrder: 3, contractCount: 1, isActive: true, createdAt: '2026-10-01T08:00:00.000Z', updatedAt: '2026-10-01T08:00:00.000Z' },
+]
+
+/** The active Sales Engineers the contract form offers (GET /masters/sales-engineers/options). */
+export const SALES_ENGINEERS = [{ id: '5', name: 'Test Sales Engineer', employeeNo: null }]
+
+/** A file the contract form accepts as the contract document. */
+export function contractPdf(name = 'signed-contract.pdf', size = 2048): File {
+  return new File([new Uint8Array(size)], name, { type: 'application/pdf' })
+}
+
 export function makeContract(overrides: Partial<Contract> = {}): Contract {
   return {
     id: '100',
@@ -137,6 +152,21 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
     if (method === 'GET' && path === '/clients') return ok({ items: CLIENTS, total: CLIENTS.length, page: 1, pageSize: 100 })
     if (method === 'GET' && path === '/amc/contracts/client-options') return ok(CLIENTS.filter((client) => client.isActive).map(({ id, name }) => ({ id, name })))
     if (method === 'GET' && path === '/amc/contracts/systems') return ok([...new Set(contracts.map((contract) => contract.systemDescription))])
+    if (method === 'GET' && path === '/masters/system-types/options') return ok(SYSTEM_TYPES)
+    if (method === 'GET' && path === '/masters/sales-engineers/options') return ok(SALES_ENGINEERS)
+    if (method === 'GET' && path === '/attachments/limits') return ok({ maxMb: 12, allowedTypes: ['PDF', 'PNG', 'JPEG', 'Word (.doc)', 'Word (.docx)'] })
+    // The register's four figures, worked out from the contracts held here (amounts as three-decimal text).
+    if (method === 'GET' && path === '/amc/contracts/kpis') {
+      const sum = (values: (string | null)[]) => (values.reduce((total, value) => total + Math.round(Number(value ?? 0) * 1000), 0) / 1000).toFixed(3)
+
+      return ok({
+        total: contracts.length,
+        contractValue: sum(contracts.map((contract) => contract.contractValue)),
+        finalCredit: sum(contracts.map((contract) => contract.finalCredit)),
+        finalCreditMissing: contracts.filter((contract) => contract.finalCredit === null).length,
+        expired: contracts.filter((contract) => contract.status === 'EXPIRED' || (contract.status === 'ACTIVE' && contract.isPastValidity)).length,
+      })
+    }
     if (method === 'GET' && path === '/amc/contracts/filter-options') {
       const years = contracts.flatMap((contract) => {
         const from = Number(contract.validFrom.slice(0, 4))
@@ -187,7 +217,12 @@ export function amcApi(user: SessionUser, options: AmcApiOptions = {}) {
 
       if (!contract) return fail(404, 'NOT_FOUND', 'AMC contract not found.')
       if (method === 'GET' && rest === '') return ok(contract)
-      if (method === 'GET' && rest === '/masters') return ok({ salesEngineer: null, systemType: null })
+      if (method === 'GET' && rest === '/masters') {
+        // Linked to the system type of the same name, as contracts saved from the form are.
+        const type = SYSTEM_TYPES.find((item) => item.name === contract.systemDescription)
+
+        return ok({ salesEngineer: null, systemType: type ? { id: type.id, code: type.code, name: type.name, isActive: true } : null })
+      }
       if (method === 'GET' && rest === '/renewals') return ok({ renewedFrom: null, renewals: [] })
       if (method === 'GET' && rest === '/history') {
         const items = options.history?.[contract.id] ?? []

@@ -8,7 +8,7 @@ import { env } from "../src/config/env";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { REPORTS } from "../src/modules/reports/reports.service";
 import { waitForBackups } from "../src/modules/security/backups.service";
-import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, legacyContract, newContractBody, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -47,19 +47,25 @@ describe("Billing Basis", () => {
   });
 
   it("generates new visits from the chosen basis, and from Cost per Visit when none is chosen", async () => {
-    const created = await post("/amc/contracts", contract({ billingBasis: "FINAL_CREDIT", finalCredit: "999.000", systemDescription: "BASIS" }));
+    const created = await post("/amc/contracts", await newContractBody(clientId, contract({ billingBasis: "FINAL_CREDIT", finalCredit: "999.000", systemDescription: "BASIS" })));
     expect(created.status).toBe(201);
     expect((await visitsOf(created.body.data.id)).map((visit) => visit.visit_amount)).toEqual(["249.750", "249.750", "249.750", "249.750"]);
 
-    const manual = await post("/amc/contracts", contract({ systemDescription: "NO-BASIS" }));
+    const manual = await post("/amc/contracts", await newContractBody(clientId, contract({ systemDescription: "NO-BASIS" })));
     expect((await visitsOf(manual.body.data.id)).map((visit) => visit.visit_amount)).toEqual(["300.000", "300.000", "300.000", "300.000"]);
   });
 
   it("refuses an unknown basis, and Final Credit without an amount", async () => {
-    expect((await post("/amc/contracts", contract({ billingBasis: "ANNUAL" }))).status).toBe(400);
-    const missing = await post("/amc/contracts", contract({ billingBasis: "FINAL_CREDIT" }));
+    expect((await post("/amc/contracts", await newContractBody(clientId, contract({ billingBasis: "ANNUAL" })))).status).toBe(400);
+    // A new contract always records its Final Credit (2026-11-03), so the basis can only lack it on an older contract.
+    const missing = await post("/amc/contracts", await newContractBody(clientId, contract({ billingBasis: "FINAL_CREDIT", finalCredit: undefined })));
     expect(missing.status).toBe(400);
-    expect(missing.body.error.details).toContainEqual({ field: "billingBasis", message: "This basis needs a final credit amount." });
+    expect(missing.body.error.details).toContainEqual({ field: "finalCredit", message: "Final credit is required." });
+
+    const older = await legacyContract(admin, clientId, contract({ systemDescription: "OLDER" }));
+    const refused = await api().patch(`/api/amc/contracts/${older}`).set(admin.headers).send({ billingBasis: "FINAL_CREDIT" });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.details).toContainEqual({ field: "billingBasis", message: "This basis needs a final credit amount." });
   });
 
   it("is recorded in the contract's history", async () => {

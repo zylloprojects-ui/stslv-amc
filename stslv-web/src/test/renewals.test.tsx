@@ -57,7 +57,8 @@ describe('contract renewals', () => {
     await userEvent.click(await section.findByRole('button', { name: 'Create renewal' }))
     const dialog = await screen.findByRole('dialog', { name: 'Renew AMC Contract' })
 
-    expect(within(dialog).getByLabelText(/System/)).toHaveValue('FIRE')
+    // The renewed contract's system is offered as it is (a list now, 2026-11-03).
+    expect(within(dialog).getByLabelText(/^System/)).toHaveDisplayValue(/^FIRE/)
     expect(within(dialog).getByLabelText(/AMC Value \/ Year/)).toHaveValue('1620.000')
     expect(within(dialog).getByLabelText(/Valid from/)).toHaveValue('')
     expect(within(dialog).getByLabelText(/^Status/)).toHaveValue('DRAFT')

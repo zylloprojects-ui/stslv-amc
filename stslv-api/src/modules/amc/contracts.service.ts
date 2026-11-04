@@ -9,6 +9,7 @@ import type { AuthContext } from "../auth/access";
 import { featureUnavailable } from "../../middleware/require-schema";
 import { schemaHas } from "../../shared/schema-features";
 import { assertContractNotInvoiced } from "../invoices/invoice-locks";
+import { attachStoredDocument, discardStoredFile, prepareContractDocument, storePreparedDocument } from "../attachments/attachments.service";
 import { clientCode } from "../clients/clients.service";
 import { amountForService, expectedTermTotal, serviceAmounts, servicesPerCycle, subtractMoney } from "./amc.billing";
 import { applyContractMasters } from "./contract-masters.service";
@@ -28,6 +29,7 @@ import type {
   ChangeContractStatusInput,
   ContractHistoryQuery,
   CreateContractInput,
+  CreateNewContractInput,
   ListContractsQuery,
   SchedulePreviewQuery,
   UpdateContractInput,
@@ -448,6 +450,43 @@ export async function listContracts(query: ListContractsQuery) {
     page: query.page,
     pageSize: query.pageSize,
     totals: { contractValue: total.rows[0]?.contract_value ?? "0.000", finalCredit: total.rows[0]?.final_credit ?? "0.000" },
+  };
+}
+
+export interface ContractKpis {
+  /** Every contract that is not in the Recycle Bin, whatever its status. */
+  total: number;
+  /** Sum of AMC Value / Year over those contracts, OMR excluding VAT, as text with 3 decimals. */
+  contractValue: string;
+  /** Sum of Final Credit over those contracts (a contract without one adds nothing), OMR excluding VAT. */
+  finalCredit: string;
+  /** How many of those contracts have no Final Credit recorded (contracts added before it was required). */
+  finalCreditMissing: number;
+  /**
+   * Contracts whose validity has ended: status Expired, or Active with an end date before today (the rule of AMC
+   * Management's "not renewed / expired" figure). Each contract counts once.
+   */
+  expired: number;
+}
+
+/** The AMC Contracts page's figures. The amc_contracts view already leaves out the Recycle Bin (migration 0101). */
+export async function getContractKpis(): Promise<ContractKpis> {
+  const result = await pool.query<{ total: number; contract_value: string; final_credit: string; final_credit_missing: number; expired: number }>(
+    `SELECT count(*)::int AS total,
+            COALESCE(sum(c.contract_value), 0)::numeric(16,3) AS contract_value,
+            COALESCE(sum(c.final_credit), 0)::numeric(16,3) AS final_credit,
+            count(*) FILTER (WHERE c.final_credit IS NULL)::int AS final_credit_missing,
+            count(*) FILTER (WHERE c.status = 'EXPIRED' OR (c.status = 'ACTIVE' AND c.valid_to < current_date))::int AS expired
+     FROM amc_contracts c`
+  );
+  const row = result.rows[0];
+
+  return {
+    total: row?.total ?? 0,
+    contractValue: row?.contract_value ?? "0.000",
+    finalCredit: row?.final_credit ?? "0.000",
+    finalCreditMissing: row?.final_credit_missing ?? 0,
+    expired: row?.expired ?? 0,
   };
 }
 
@@ -1012,10 +1051,72 @@ async function writeCustomMonths(db: Queryable, auth: AuthContext, contractId: s
   );
 }
 
+/**
+ * A system type a contract may be saved with: it must exist and be active, unless it is the type the contract is
+ * already linked to (kept even after it was disabled). Locked for the transaction, so it cannot be deleted meanwhile.
+ */
+async function resolveSystemType(db: Queryable, id: string, currentId: string | null = null): Promise<{ id: string; name: string }> {
+  if (!(await schemaHas(["amc_contracts.system_type_id", "system_types"]))) {
+    throw featureUnavailable();
+  }
+
+  const result = await db.query<{ id: string; name: string; is_active: boolean }>("SELECT id, name, is_active FROM system_types WHERE id = $1 FOR SHARE", [id]);
+  const row = result.rows[0];
+
+  if (!row || (!row.is_active && row.id !== currentId)) {
+    throw validationError("Select an active system.", [{ field: "systemTypeId", message: "Select an active system from the System Types list." }]);
+  }
+
+  return { id: row.id, name: row.name };
+}
+
+/** The contract's current master links, or none on a database without migration 0070. */
+async function currentLinks(db: Queryable, id: string): Promise<{ salesEngineerId: string | null; systemTypeId: string | null }> {
+  if (!(await schemaHas(["amc_contracts.sales_engineer_id", "amc_contracts.system_type_id"]))) {
+    return { salesEngineerId: null, systemTypeId: null };
+  }
+
+  const result = await db.query<{ sales_engineer_id: string | null; system_type_id: string | null }>("SELECT sales_engineer_id, system_type_id FROM amc_contracts WHERE id = $1", [id]);
+
+  return { salesEngineerId: result.rows[0]?.sales_engineer_id ?? null, systemTypeId: result.rows[0]?.system_type_id ?? null };
+}
+
+/**
+ * Add AMC Contract (approved 2026-11-03): a new contract with its mandatory sales engineer, system type, Final
+ * Credit and contract document. The document is checked first, then stored, and recorded in the same transaction
+ * as the contract: if anything fails, no contract is created and the stored file is removed again. A contract is
+ * never created without its document, and no document row exists without its contract.
+ */
+export async function createNewContract(auth: AuthContext, input: CreateNewContractInput): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
+  const { contractDocument, ...fields } = input;
+  // Checked before anything is stored: name, size, and content (PDF or Word).
+  const prepared = prepareContractDocument(contractDocument.fileName, Buffer.from(contractDocument.contentBase64, "base64"));
+  // A plain date mistake is reported before the file is written, so it leaves nothing behind.
+  assertValidity(fields.validFrom, fields.validTo);
+  const stored = await storePreparedDocument(prepared);
+
+  try {
+    // The system is the chosen type's name (createContract sets it from systemTypeId, which is required here).
+    return await createContract(auth, { ...fields, systemDescription: fields.systemDescription ?? "" }, {
+      attach: async (db, contractId) => {
+        await attachStoredDocument(db, auth, contractId, stored);
+      },
+    });
+  } catch (error) {
+    await discardStoredFile(stored.key);
+    throw error;
+  }
+}
+
 export function createContract(
   auth: AuthContext,
   input: CreateContractInput,
-  options: { renewedFromId?: string; renewalNotes?: string | null } = {}
+  options: {
+    renewedFromId?: string;
+    renewalNotes?: string | null;
+    /** Runs inside the contract's transaction once it exists, before its schedule is generated (the contract document). */
+    attach?: (db: Queryable, contractId: string) => Promise<void>;
+  } = {}
 ): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
   assertValidity(input.validFrom, input.validTo);
 
@@ -1023,6 +1124,9 @@ export function createContract(
     if (input.salesEngineerId) {
       await assertEngineerLinksAvailable();
     }
+    // A chosen system type sets the contract's system to its name, so the two always agree.
+    const systemType = input.systemTypeId ? await resolveSystemType(client, input.systemTypeId) : null;
+    const systemDescription = systemType ? systemType.name : input.systemDescription;
     await assertSelectableClient(client, input.clientId);
 
     // A renewal (migration 0072): the source is locked and checked before the new contract is added.
@@ -1047,7 +1151,7 @@ export function createContract(
         input.responsibleEngineer ?? null,
         input.validFrom,
         input.validTo,
-        input.systemDescription,
+        systemDescription,
         input.description ?? null,
         input.contractValue,
         input.finalCredit ?? null,
@@ -1078,8 +1182,14 @@ export function createContract(
     if (source) {
       await linkRenewal(client, auth, source, created, options.renewalNotes ?? null);
     }
-    if (input.salesEngineerId) {
-      await applyContractMasters(client, auth, id, { salesEngineerId: input.salesEngineerId });
+    if (input.salesEngineerId || systemType) {
+      await applyContractMasters(client, auth, id, {
+        ...(input.salesEngineerId ? { salesEngineerId: input.salesEngineerId } : {}),
+        ...(systemType ? { systemTypeId: systemType.id } : {}),
+      });
+    }
+    if (options.attach) {
+      await options.attach(client, id);
     }
 
     const scheduleChange = created.status === "ACTIVE" ? await syncSchedule(client, auth, created, "Contract created") : null;
@@ -1101,6 +1211,21 @@ export function updateContract(
     const before = await findContract(client, id, true);
     const beforeValues = valuesOf(before);
     const afterValues: ContractValues = { ...beforeValues };
+    const links = await currentLinks(client, id);
+
+    // Required on new contracts since 2026-11-03. An older contract without it stays valid and editable, but a
+    // value that is recorded cannot be removed again. (A recorded sales engineer or system type link is kept the
+    // same way, by applyContractMasters, for every route that changes links.)
+    if (input.finalCredit === null && before.finalCredit !== null) {
+      throw validationError("Final credit is required.", [{ field: "finalCredit", message: "Final credit is required. Enter 0 when there is none." }]);
+    }
+    // The system follows the chosen system type. A contract linked to a type cannot be given other free text.
+    let systemType: { id: string; name: string } | null = null;
+    if (input.systemTypeId !== undefined && input.systemTypeId !== links.systemTypeId) {
+      systemType = await resolveSystemType(client, input.systemTypeId, links.systemTypeId);
+    } else if (input.systemTypeId === undefined && links.systemTypeId !== null && input.systemDescription !== undefined && input.systemDescription !== before.systemDescription) {
+      throw validationError("Select a system.", [{ field: "systemTypeId", message: "This contract's system comes from the System Types list. Select a system there instead of typing one." }]);
+    }
 
     for (const field of EDITABLE_FIELDS) {
       if (field === "customMonths") {
@@ -1113,6 +1238,7 @@ export function updateContract(
       }
     }
 
+    if (systemType) afterValues.systemDescription = systemType.name;
     // A custom amount belongs to the custom basis only.
     if (afterValues.billingBasis !== "CUSTOM") afterValues.customBillingValue = null;
     assertBillingBasis(afterValues.billingBasis as BillingBasis | null, afterValues.finalCredit as string | null, afterValues.customBillingValue as string | null);
@@ -1125,9 +1251,12 @@ export function updateContract(
 
     const changes = diffFields(beforeValues, afterValues, EDITABLE_FIELDS);
 
-    // The engineer link is recorded on its own (amc_contract.masters_linked); it never touches the schedule.
-    if (input.salesEngineerId !== undefined) {
-      await applyContractMasters(client, auth, id, { salesEngineerId: input.salesEngineerId });
+    // The links are recorded on their own (amc_contract.masters_linked); they never touch the schedule.
+    if (input.salesEngineerId !== undefined || systemType) {
+      await applyContractMasters(client, auth, id, {
+        ...(input.salesEngineerId !== undefined ? { salesEngineerId: input.salesEngineerId } : {}),
+        ...(systemType ? { systemTypeId: systemType.id } : {}),
+      });
     }
 
     if (Object.keys(changes).length === 0) {

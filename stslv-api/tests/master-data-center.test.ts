@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { contractBody, createClient } from "./amc-helpers";
+import { createClient, legacyContract, newContractBody, renewalEngineer } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -142,7 +142,7 @@ describe("sales engineers in the Master Data Center", () => {
     const created = await api()
       .post("/api/amc/contracts")
       .set(admin.headers)
-      .send(contractBody(clientId, { responsibleEngineer: "Amy Engineer", salesEngineerId: engineerB }));
+      .send(await newContractBody(clientId, { responsibleEngineer: "Amy Engineer", salesEngineerId: engineerB }));
 
     expect(created.status).toBe(201);
     const contractId = created.body.data.id as string;
@@ -156,14 +156,20 @@ describe("sales engineers in the Master Data Center", () => {
 
   it("is changed on an existing contract, alone or with other fields, without touching its schedule", async () => {
     const clientId = await createClient(admin, "Engineer Change Client");
-    const contractId = (await api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { status: "ACTIVE" }))).body.data.id as string;
+    // An older contract, added before a sales engineer was required: it starts with none.
+    const contractId = await legacyContract(admin, clientId);
     const visitsBefore = await pool.query("SELECT id, scheduled_date, visit_amount FROM amc_visits WHERE amc_contract_id = $1 ORDER BY id", [contractId]);
 
     const only = await api().patch(`/api/amc/contracts/${contractId}`).set(admin.headers).send({ salesEngineerId: engineerA });
     expect(only.status).toBe(200);
-    const both = await api().patch(`/api/amc/contracts/${contractId}`).set(admin.headers).send({ salesEngineerId: null, notes: "Changed engineer" });
+    const other = await renewalEngineer("Engineer Change Other");
+    const both = await api().patch(`/api/amc/contracts/${contractId}`).set(admin.headers).send({ salesEngineerId: other, notes: "Changed engineer" });
     expect(both.body.data.notes).toBe("Changed engineer");
-    expect((await api().get(`/api/amc/contracts/${contractId}/masters`).set(admin.headers)).body.data.salesEngineer).toBeNull();
+    expect((await api().get(`/api/amc/contracts/${contractId}/masters`).set(admin.headers)).body.data.salesEngineer).toMatchObject({ id: other });
+    // Once linked, the engineer can be changed but not removed (2026-11-03).
+    const removed = await api().patch(`/api/amc/contracts/${contractId}`).set(admin.headers).send({ salesEngineerId: null });
+    expect(removed.status).toBe(400);
+    expect(removed.body.error.details[0].field).toBe("salesEngineerId");
 
     const visitsAfter = await pool.query("SELECT id, scheduled_date, visit_amount FROM amc_visits WHERE amc_contract_id = $1 ORDER BY id", [contractId]);
     expect(visitsAfter.rows).toEqual(visitsBefore.rows);
@@ -176,7 +182,7 @@ describe("sales engineers in the Master Data Center", () => {
     await api().post(`/api/masters/sales-engineers/${engineerB}/status`).set(admin.headers).send({ isActive: false });
 
     const clientId = await createClient(admin, "Inactive Engineer Client");
-    const refused = await api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { salesEngineerId: engineerB }));
+    const refused = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { salesEngineerId: engineerB }));
     expect(refused.status).toBe(400);
     expect(refused.body.error.details[0].field).toBe("salesEngineerId");
 

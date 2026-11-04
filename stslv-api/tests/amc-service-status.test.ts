@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { HEADER_ROW } from "../src/shared/export/excel";
-import { activeContract, contractBody, createClient, grant, logsFor, today, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
+import { activeContract, contractBody, createClient, grant, legacyContract, logsFor, today, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The Service Status page (/api/amc/service-status): one row per scheduled
@@ -63,7 +63,8 @@ beforeAll(async () => {
     salesEngineerId: engineerId,
   });
   await api().put(`/api/amc/contracts/${fire}/masters`).set(admin.headers).send({ systemTypeId });
-  cctv = await activeContract(admin, hotelTwo, {
+  // Older contracts, with no master links: the filter options come only from linked records.
+  cctv = await legacyContract(admin, hotelTwo, {
     systemDescription: "CCTV",
     validFrom: `${year + 1}-01-01`,
     validTo: `${year + 1}-06-30`,
@@ -71,7 +72,7 @@ beforeAll(async () => {
     contractValue: "900.000",
     defaultVisitAmount: "150.000",
   });
-  ended = await activeContract(admin, hotelOne, {
+  ended = await legacyContract(admin, hotelOne, {
     systemDescription: "PUMPS",
     validFrom: `${year - 2}-01-01`,
     validTo: `${year - 2}-03-31`,
@@ -101,7 +102,8 @@ describe("listing", () => {
     expect(first).toMatchObject({
       reference: `AMC-${fire.padStart(4, "0")}`,
       client: { id: hotelOne, name: "Service Hotel One" },
-      system: { description: "FIRE", typeId: systemTypeId, typeName: "Fire Alarm" },
+      // Linking the system type set the contract's system to its name (2026-11-03).
+      system: { description: "Fire Alarm", typeId: systemTypeId, typeName: "Fire Alarm" },
       frequency: { code: "QUARTERLY", label: "Quarterly" },
       service: { sequenceNo: 1 },
       scheduledDate: fireVisits[0]?.scheduled_date,

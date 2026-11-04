@@ -11,7 +11,6 @@ import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import type { Paged } from '../../lib/types'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
-import type { DashboardSummary } from '../dashboard/metrics'
 import { queryString } from './amcApi'
 import { amcReference } from './calendar/calendarTypes'
 import { formatDate, formatMoney } from './amcFormat'
@@ -80,75 +79,122 @@ interface ContractFilterOptions {
   years: number[]
 }
 
-interface TileSpec {
-  key: ContractStatus | 'all'
+/** GET /amc/contracts/kpis: figures over every contract that is not in the Recycle Bin, whatever its status. */
+interface ContractKpis {
+  total: number
+  /** Sum of AMC Value / Year, OMR excluding VAT. */
+  contractValue: string
+  /** Sum of Final Credit, OMR excluding VAT. A contract without one adds nothing. */
+  finalCredit: string
+  /** Contracts with no Final Credit recorded (added before it was required). */
+  finalCreditMissing: number
+  /** Status Expired, or Active with an end date before today. Each contract counts once. */
+  expired: number
+}
+
+interface KpiSpec {
+  key: string
   label: string
   count: number
-  hint?: string
+  value?: string
+  extra?: string
+  hint: string
+  warn?: boolean
   icon: ReactNode
   tone: string
   /** The colour of the tile's edge and its soft tint. */
   edge: string
 }
 
-/** The contract figures from the dashboard summary, as clickable tiles that filter the register. Hidden when the figures are not available. */
-function StatusTiles({ selected, onSelect }: { selected: ContractStatus | 'all'; onSelect: (value: ContractStatus | 'all') => void }) {
-  const summary = useQuery({
-    queryKey: ['amc', 'contracts', 'status-summary'],
-    queryFn: () => api.get<{ contracts: NonNullable<DashboardSummary['amc']>['contracts'] }>('/amc/contracts/status-summary'),
-  })
-  const figures = summary.data?.contracts
+/**
+ * The register's four figures. They count every contract outside the Recycle Bin and do not follow the filters
+ * below; the Filtered Total row under the register gives the sums of what the filters select.
+ */
+function ContractKpiStrip() {
+  const kpis = useQuery({ queryKey: ['amc', 'contracts', 'kpis'], queryFn: () => api.get<ContractKpis>('/amc/contracts/kpis') })
+  const figures = kpis.data
 
+  if (kpis.isError) {
+    return (
+      <div className="mb-5">
+        <Alert>The contract figures could not be loaded. {errorMessage(kpis.error)}</Alert>
+      </div>
+    )
+  }
   if (!figures) {
     return null
   }
 
-  const active = figures.active
-  const draft = figures.draft ?? 0
-  const expired = figures.expired ?? 0
-  const cancelled = figures.cancelled ?? 0
   const icon = (path: ReactNode) => (
     <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
       {path}
     </svg>
   )
 
-  const specs: TileSpec[] = [
-    { key: 'all', label: 'All contracts', count: active + draft + expired + cancelled, icon: icon(<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20V3.5ZM14 3.5v4h4M9.5 12h5M9.5 15.5h5" strokeLinecap="round" strokeLinejoin="round" />), tone: 'from-[#1479BD] to-[#4aa3df]', edge: '#1479BD' },
+  const specs: KpiSpec[] = [
     {
-      key: 'ACTIVE',
-      label: 'Active',
-      count: active,
-      hint: figures.activePastValidity > 0 ? `${figures.activePastValidity} past their validity` : 'All within validity',
-      icon: icon(<path d="m5 12.5 4.2 4.2L19 7" strokeLinecap="round" strokeLinejoin="round" />),
-      tone: 'from-emerald-600 to-emerald-400', edge: '#10b981',
+      key: 'all',
+      label: 'All AMC Contracts',
+      count: figures.total,
+      hint: 'Every status. Recycle Bin excluded.',
+      icon: icon(<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20V3.5ZM14 3.5v4h4M9.5 12h5M9.5 15.5h5" strokeLinecap="round" strokeLinejoin="round" />),
+      tone: 'from-[#1479BD] to-[#4aa3df]',
+      edge: '#1479BD',
     },
-    { key: 'DRAFT', label: 'Draft', count: draft, icon: icon(<path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3Z" strokeLinecap="round" strokeLinejoin="round" />), tone: 'from-amber-600 to-amber-400', edge: '#f59e0b' },
-    { key: 'EXPIRED', label: 'Expired', count: expired, icon: icon(<><circle cx="12" cy="12" r="8" /><path d="M12 7.5V12l3 2" strokeLinecap="round" /></>), tone: 'from-slate-600 to-slate-400', edge: '#64748b' },
-    { key: 'CANCELLED', label: 'Cancelled', count: cancelled, icon: icon(<><circle cx="12" cy="12" r="8" /><path d="m8.5 8.5 7 7" strokeLinecap="round" /></>), tone: 'from-rose-600 to-rose-400', edge: '#f43f5e' },
+    {
+      key: 'contractValue',
+      label: 'Total AMC Value',
+      count: 0,
+      value: formatMoney(figures.contractValue),
+      extra: 'OMR',
+      hint: 'Sum of AMC Value / Year, excluding VAT.',
+      icon: icon(<><rect x="3.5" y="6.5" width="17" height="11" rx="2" /><circle cx="12" cy="12" r="2.5" /><path d="M6.5 9.5v5M17.5 9.5v5" strokeLinecap="round" /></>),
+      tone: 'from-emerald-600 to-emerald-400',
+      edge: '#10b981',
+    },
+    {
+      key: 'finalCredit',
+      label: 'Total Final Credit',
+      count: 0,
+      value: formatMoney(figures.finalCredit),
+      extra: 'OMR',
+      hint:
+        figures.finalCreditMissing > 0
+          ? `Excluding VAT. ${figures.finalCreditMissing} ${figures.finalCreditMissing === 1 ? 'contract has' : 'contracts have'} no Final Credit recorded.`
+          : 'Sum of Final Credit, excluding VAT.',
+      warn: figures.finalCreditMissing > 0,
+      icon: icon(<><path d="M5 19.5h14M6.5 16.5v-5M10.5 16.5v-5M13.5 16.5v-5M17.5 16.5v-5M4.5 9 12 4.5 19.5 9Z" strokeLinecap="round" strokeLinejoin="round" /></>),
+      tone: 'from-violet-600 to-violet-400',
+      edge: '#8b5cf6',
+    },
+    {
+      key: 'expired',
+      label: 'Expired',
+      count: figures.expired,
+      hint: 'Status Expired, or Active with its end date passed.',
+      icon: icon(<><circle cx="12" cy="12" r="8" /><path d="M12 7.5V12l3 2" strokeLinecap="round" /></>),
+      tone: 'from-slate-600 to-slate-400',
+      edge: '#64748b',
+    },
   ]
 
   return (
-    <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5" role="group" aria-label="Filter contracts by status">
-      {specs.map((tile, position) => {
-        const on = selected === tile.key
-
-        return (
-          <StatTile
-            key={tile.key}
-            label={tile.label}
-            count={tile.count}
-            hint={tile.hint}
-            warn={tile.key === 'ACTIVE' && figures.activePastValidity > 0}
-            icon={tile.icon}
-            tone={tile.tone}
-            edge={tile.edge}
-            position={position}
-            selected={on}
-            onSelect={() => onSelect(on && tile.key !== 'all' ? 'all' : tile.key)}
-          />
-        )
-      })}
+    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="AMC contract figures">
+      {specs.map((tile, position) => (
+        <StatTile
+          key={tile.key}
+          label={tile.label}
+          count={tile.count}
+          value={tile.value}
+          extra={tile.extra}
+          hint={tile.hint}
+          warn={tile.warn}
+          icon={tile.icon}
+          tone={tile.tone}
+          edge={tile.edge}
+          position={position}
+        />
+      ))}
     </div>
   )
 }
@@ -320,13 +366,7 @@ export function AmcContractsPage() {
         </div>
       )}
 
-      <StatusTiles
-        selected={status}
-        onSelect={(value) => {
-          setStatus(value)
-          setPage(1)
-        }}
-      />
+      <ContractKpiStrip />
       <Card>
         <div className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 pt-4 sm:px-5">

@@ -4,9 +4,13 @@ import {
   activeContract,
   contractBody,
   createClient,
+  contractDocument,
   createContract,
   grant,
+  legacyContract,
   logsFor,
+  renewalEngineer,
+  systemTypeNamed,
   visitsOf,
   type Session,
 } from "./amc-helpers";
@@ -35,6 +39,8 @@ const patch = (id: string, body: Record<string, unknown>, session: Session = adm
   api().patch(`/api/amc/contracts/${id}`).set(session.headers).send(body);
 const setStatus = (id: string, body: Record<string, unknown>, session: Session = admin) =>
   api().post(`/api/amc/contracts/${id}/status`).set(session.headers).send(body);
+// Adding a contract also records its master links and its contract document (2026-11-03).
+const CREATED = ["amc_contract.created", "amc_contract.masters_linked", "attachment.uploaded"];
 const complete = (visitId: string) =>
   api().patch(`/api/amc/execution/visits/${visitId}`).set(admin.headers).send({ status: "COMPLETED", completedDate: "2026-01-05" });
 
@@ -51,7 +57,7 @@ describe("create contract", () => {
       systemDescription: "FIRE",
       description: "Fire alarm and fire fighting",
       contractValue: "1620.000",
-      finalCredit: null,
+      finalCredit: "0.000",
       maintenanceFrequency: "QUARTERLY",
       defaultVisitAmount: "405.000",
       status: "DRAFT",
@@ -72,24 +78,33 @@ describe("create contract", () => {
     expect(await visitsOf(id)).toEqual([]);
     expect(await logsFor("amc_contracts", id)).toMatchObject([
       { action: "amc_contract.created", user_id: admin.id, module: "AMC_CONTRACTS" },
+      { action: "amc_contract.masters_linked", user_id: admin.id, module: "AMC_CONTRACTS" },
+      { action: "attachment.uploaded", user_id: admin.id, module: "AMC_CONTRACTS" },
     ]);
   });
 
-  it("requires only the client, validity, system, contract value and frequency", async () => {
-    const response = await api().post("/api/amc/contracts").set(admin.headers).send({
-      clientId: hotelOne,
-      validFrom: "2027-01-01",
-      validTo: "2027-12-31",
-      systemDescription: "CCTV",
-      contractValue: "600",
-      maintenanceFrequency: "QUARTERLY",
-    });
+  it("requires only the client, validity, system, sales engineer, value, Final Credit, frequency and document", async () => {
+    const response = await api()
+      .post("/api/amc/contracts")
+      .set(admin.headers)
+      .send({
+        clientId: hotelOne,
+        validFrom: "2027-01-01",
+        validTo: "2027-12-31",
+        systemTypeId: await systemTypeNamed("CCTV"),
+        salesEngineerId: await renewalEngineer("Contract Test Engineer"),
+        contractValue: "600",
+        finalCredit: "0",
+        maintenanceFrequency: "QUARTERLY",
+        contractDocument: contractDocument(),
+      });
 
     expect(response.status).toBe(201);
     expect(response.body.data).toMatchObject({
       responsibleEngineer: null,
       description: null,
-      finalCredit: null,
+      systemDescription: "CCTV",
+      finalCredit: "0.000",
       defaultVisitAmount: null,
       contractValue: "600.000",
     });
@@ -166,7 +181,7 @@ describe("money", () => {
 
   it("treats Final Credit as a neutral value: it changes no figure", async () => {
     const withCredit = await activeContract(admin, hotelOne, { contractValue: "1000.000", finalCredit: "800.000", systemDescription: "Automation A" });
-    const withoutCredit = await activeContract(admin, hotelOne, { contractValue: "1000.000", systemDescription: "Automation B" });
+    const withoutCredit = await legacyContract(admin, hotelOne, { contractValue: "1000.000", systemDescription: "Automation B" });
 
     const a = (await get(withCredit)).body.data;
     const b = (await get(withoutCredit)).body.data;
@@ -185,10 +200,14 @@ describe("validation", () => {
     const response = await api().post("/api/amc/contracts").set(admin.headers).send({ clientId: hotelOne });
 
     expect(response.status).toBe(400);
+    // The system is chosen as a system type; its text follows from it.
     expect(response.body.error.details.map((detail: { field: string }) => detail.field).sort()).toEqual([
+      "contractDocument",
       "contractValue",
+      "finalCredit",
       "maintenanceFrequency",
-      "systemDescription",
+      "salesEngineerId",
+      "systemTypeId",
       "validFrom",
       "validTo",
     ]);
@@ -320,11 +339,7 @@ describe("schedule generation", () => {
     expect(activated.status).toBe(200);
     expect(activated.body.data).toMatchObject({ status: "ACTIVE", scheduleChange: { created: 4, removed: 0, kept: 0 } });
     expect(await visitsOf(id)).toHaveLength(4);
-    expect((await logsFor("amc_contracts", id)).map((log) => log.action)).toEqual([
-      "amc_contract.created",
-      "amc_contract.schedule_generated",
-      "amc_contract.status_changed",
-    ]);
+    expect((await logsFor("amc_contracts", id)).map((log) => log.action)).toEqual([...CREATED, "amc_contract.schedule_generated", "amc_contract.status_changed"]);
   });
 
   it("never duplicates visits when generation is repeated", async () => {
@@ -504,12 +519,12 @@ describe("update contract", () => {
     });
 
     const logs = await logsFor("amc_contracts", id);
-    expect(logs.map((log) => log.action)).toEqual(["amc_contract.created", "amc_contract.updated"]);
-    expect(logs[1]?.metadata).toEqual({
+    expect(logs.map((log) => log.action)).toEqual([...CREATED, "amc_contract.updated"]);
+    expect(logs[3]?.metadata).toEqual({
       changes: {
         responsibleEngineer: { from: "Test Engineer", to: "New Engineer" },
         contractValue: { from: "1620.000", to: "2000.000" },
-        finalCredit: { from: null, to: "1800.500" },
+        finalCredit: { from: "0.000", to: "1800.500" },
       },
     });
   });
@@ -520,14 +535,18 @@ describe("update contract", () => {
 
     await patch(id, { contractValue: "1620", systemDescription: "NO CHANGE" });
 
-    expect((await logsFor("amc_contracts", id)).map((log) => log.action)).toEqual(["amc_contract.created"]);
+    expect((await logsFor("amc_contracts", id)).map((log) => log.action)).toEqual(CREATED);
   });
 
   it("can move a contract to another active client, and clears optional fields", async () => {
     const created = await createContract(admin, hotelOne, { systemDescription: "MOVE CLIENT", finalCredit: "100" });
-    const response = await patch(created.body.data.id, { clientId: hotelTwo, finalCredit: "", responsibleEngineer: null });
+    const response = await patch(created.body.data.id, { clientId: hotelTwo, responsibleEngineer: null, description: "" });
 
-    expect(response.body.data).toMatchObject({ client: { id: hotelTwo, name: "Test Hotel Two" }, finalCredit: null, responsibleEngineer: null });
+    expect(response.body.data).toMatchObject({ client: { id: hotelTwo, name: "Test Hotel Two" }, finalCredit: "100.000", responsibleEngineer: null, description: null });
+    // A recorded Final Credit is required and cannot be cleared (2026-11-03).
+    const cleared = await patch(created.body.data.id, { finalCredit: "" });
+    expect(cleared.status).toBe(400);
+    expect(cleared.body.error.details).toEqual([{ field: "finalCredit", message: "Final credit is required. Enter 0 when there is none." }]);
   });
 
   it("rejects an empty update, an invalid value, a status change and an unknown contract", async () => {

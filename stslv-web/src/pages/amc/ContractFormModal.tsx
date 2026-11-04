@@ -1,18 +1,23 @@
 import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage, isForbidden } from '../../lib/api'
+import type { SystemType } from '../masters/masterTypes'
 import { queryString } from './amcApi'
 import { contractEndDate, formatDate, MONEY_PATTERN } from './amcFormat'
 import { SelectField } from './components'
+import { CONTRACT_DOCUMENT_ACCEPT, contractDocumentProblem, DEFAULT_MAX_MB, formatFileSize, readAsBase64 } from './contractDocument'
 import { MONTH_NAMES, useFrequencyOptions } from './frequencyOptions'
 import { frequencyLabel, type Contract, type SavedContract, type SchedulePreview } from './types'
 
 const DURATION_YEARS = [1, 2, 3, 4, 5, 6]
+
+/** The System choice of an older contract whose typed system is not linked to the System Types list: kept as it is. */
+const CURRENT_SYSTEM = '__current__'
 
 // Mirrors the API's rules so most problems are caught before a request is sent.
 // The API validates again and remains the authority.
@@ -25,7 +30,6 @@ const optionalMoney = z
 const contractSchema = z
   .object({
     clientId: z.string().min(1, 'Select a client.'),
-    systemDescription: z.string().trim().min(1, 'System is required.').max(200, 'System must be at most 200 characters.'),
     responsibleEngineer: z.string().trim().max(200, 'Responsible engineer must be at most 200 characters.'),
     validFrom: z.string().min(1, 'Valid from is required.'),
     validTo: z.string().min(1, 'Valid to is required.'),
@@ -34,6 +38,7 @@ const contractSchema = z
     customMonths: z.array(z.number()),
     contractValue: z.string().trim().min(1, 'AMC Value / Year is required.').regex(MONEY_PATTERN, MONEY_MESSAGE),
     defaultVisitAmount: optionalMoney,
+    // Required on a new contract (checked on submit); an older contract may have none.
     finalCredit: optionalMoney,
     billingBasis: z.enum(['', 'CONTRACT_VALUE', 'FINAL_CREDIT', 'CUSTOM']),
     customBillingValue: optionalMoney,
@@ -53,7 +58,6 @@ type ContractForm = z.infer<typeof contractSchema>
 
 const FIELDS = [
   'clientId',
-  'systemDescription',
   'responsibleEngineer',
   'validFrom',
   'validTo',
@@ -90,15 +94,19 @@ interface ContractFormModalProps {
 export function ContractFormModal({ contract, renewalOf, draftOnly = false, onClose, onSaved }: ContractFormModalProps) {
   // The details a new contract starts from: the contract being edited, or the one being renewed (without its validity).
   const start = contract ?? renewalOf ?? null
+  // Add AMC Contract (2026-11-03): a new contract that is not a renewal needs Final Credit and a contract document.
+  const isNew = contract === null && !renewalOf
   const queryClient = useQueryClient()
-  const systemsId = useId()
+  const documentInputId = useId()
+  const documentInput = useRef<HTMLInputElement>(null)
   const [failure, setFailure] = useState<string | null>(null)
   // Set when an active contract's terms change: the user confirms the effect on its schedule first.
   const [review, setReview] = useState<{ values: ContractForm; preview: SchedulePreview } | null>(null)
 
   // Names only, on the permission to save this form; opens none of the Clients pages (the API checks the same).
   const clients = useQuery({ queryKey: ['amc', 'contracts', 'client-options'], queryFn: () => api.get<{ id: string; code?: string; name: string }[]>('/amc/contracts/client-options') })
-  const systems = useQuery({ queryKey: ['amc', 'systems'], queryFn: () => api.get<string[]>('/amc/contracts/systems') })
+  // Active system types, the only systems a contract can be saved with (readable with AMC Contracts access).
+  const systemTypes = useQuery({ queryKey: ['masters', 'system-types', 'options'], queryFn: () => api.get<SystemType[]>('/masters/system-types/options'), retry: false })
 
   const {
     register,
@@ -112,7 +120,6 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     resolver: zodResolver(contractSchema),
     defaultValues: {
       clientId: start?.client.id ?? '',
-      systemDescription: start?.systemDescription ?? '',
       responsibleEngineer: start?.responsibleEngineer ?? '',
       validFrom: contract?.validFrom ?? '',
       validTo: contract?.validTo ?? '',
@@ -131,17 +138,20 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     },
   })
 
-  // Optional link to the Sales Engineer master list (migration 0070). Offered only when the list can be read.
+  // The Sales Engineer master list (migration 0070): active engineers only.
   const engineers = useQuery({
     queryKey: ['masters', 'sales-engineers', 'options'],
     queryFn: () => api.get<{ id: string; name: string; employeeNo: string | null }[]>('/masters/sales-engineers/options'),
     retry: false,
   })
-  // The link of the contract being edited, or of the contract being renewed.
+  // The links of the contract being edited, or of the contract being renewed.
   const currentLinks = useQuery({
     queryKey: ['amc', 'contracts', 'masters', start?.id],
-    queryFn: () => api.get<{ salesEngineer: { id: string; name: string; isActive: boolean } | null }>(`/amc/contracts/${start?.id}/masters`),
-    enabled: Boolean(start) && engineers.isSuccess,
+    queryFn: () =>
+      api.get<{ salesEngineer: { id: string; name: string; isActive: boolean } | null; systemType: { id: string; code: string; name: string; isActive: boolean } | null }>(
+        `/amc/contracts/${start?.id}/masters`,
+      ),
+    enabled: Boolean(start),
     retry: false,
   })
   const currentEngineer = contract ? (currentLinks.data?.salesEngineer ?? null) : null
@@ -152,12 +162,13 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const [chosenEngineerId, setChosenEngineerId] = useState<string | null>(null)
   const engineerId = chosenEngineerId ?? initialEngineerId
   const engineerPicker = engineers.isSuccess && (!start || currentLinks.isSuccess)
-  // Every renewal names an active sales engineer, chosen by the user ("Not linked" is not offered). When the renewed
-  // contract's engineer is no longer active, that earlier assignment is shown but cannot be chosen.
-  const engineerRequired = Boolean(renewalOf)
+  // A new contract and a renewal name an active sales engineer, chosen by the user ("Not linked" is not offered).
+  // An existing contract keeps its link; one that has an engineer cannot lose it, and an older contract without one
+  // stays valid. When the renewed contract's engineer is no longer active, that assignment is shown but cannot be chosen.
+  const engineerRequired = contract === null || currentEngineer !== null
   const previousInactive = renewedEngineer !== null && !renewedEngineer.isActive ? renewedEngineer : null
-  // A renewal cannot be saved without the engineer list: say so instead of failing on save.
-  const engineerListUnavailable = engineerRequired && (engineers.isError || currentLinks.isError)
+  // A new contract cannot be saved without the engineer list: say so instead of failing on save.
+  const engineerListUnavailable = contract === null && (engineers.isError || currentLinks.isError)
   const [engineerError, setEngineerError] = useState<string | null>(null)
   const chooseEngineer = (id: string) => {
     setChosenEngineerId(id)
@@ -168,6 +179,73 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       setValue('responsibleEngineer', engineer.name)
     }
   }
+
+  // System: an active System Types record. The contract's system text is that type's name (set by the API).
+  // An existing contract keeps its linked type even when it has since been disabled; an older contract whose
+  // typed system was never linked keeps it until another system is chosen.
+  const linkedType = currentLinks.data?.systemType ?? null
+  // A renewal's creation rules are unchanged: it may keep the renewed contract's system as typed when that contract
+  // has no active system type to copy (an older contract), exactly as before the System became a list.
+  const legacySystem =
+    contract !== null
+      ? currentLinks.isSuccess && linkedType === null
+        ? contract.systemDescription
+        : null
+      : renewalOf && (currentLinks.isError || (currentLinks.isSuccess && !linkedType?.isActive))
+        ? renewalOf.systemDescription
+        : null
+  const initialSystem = contract
+    ? (linkedType?.id ?? (legacySystem !== null ? CURRENT_SYSTEM : ''))
+    : renewalOf && linkedType?.isActive
+      ? linkedType.id
+      : legacySystem !== null
+        ? CURRENT_SYSTEM
+        : ''
+  const [chosenSystem, setChosenSystem] = useState<string | null>(null)
+  const systemChoice = chosenSystem ?? initialSystem
+  const [systemError, setSystemError] = useState<string | null>(null)
+  const activeTypes = systemTypes.data ?? []
+  const inactiveLinkedType = contract && linkedType && !linkedType.isActive ? linkedType : null
+  // Until the contract's own link is known, its current system cannot be shown correctly.
+  const systemReady = systemTypes.isSuccess && (!start || currentLinks.isSuccess || currentLinks.isError)
+  const systemUnavailable = systemTypes.isError
+  const chooseSystem = (value: string) => {
+    setChosenSystem(value)
+    setSystemError(null)
+  }
+
+  // The contract document of a new contract: chosen here, sent with the contract, saved with it or not at all.
+  const limits = useQuery({
+    queryKey: ['attachments', 'limits', 'amc_contracts'],
+    queryFn: () => api.get<{ maxMb: number; allowedTypes: string[]; storageAvailable?: boolean }>('/attachments/limits?entityType=amc_contracts'),
+    enabled: isNew,
+    retry: false,
+  })
+  const maxMb = limits.data?.maxMb ?? DEFAULT_MAX_MB
+  // A server without file storage cannot keep the mandatory document, so a new contract cannot be added there.
+  const storageMissing = isNew && limits.data?.storageAvailable === false
+  const [documentFile, setDocumentFile] = useState<File | null>(null)
+  const [documentError, setDocumentError] = useState<string | null>(null)
+  const chooseDocument = (file: File | undefined) => {
+    if (!file) return
+
+    const problem = contractDocumentProblem(file, maxMb)
+
+    setDocumentError(problem)
+    setDocumentFile(problem ? null : file)
+  }
+  const removeDocument = () => {
+    setDocumentFile(null)
+    setDocumentError(null)
+    if (documentInput.current) documentInput.current.value = ''
+  }
+  // Editing never asks for a new upload: the contract's documents are managed on its page. Shown so the user knows.
+  const documents = useQuery({
+    queryKey: ['attachments', 'amc_contracts', contract?.id],
+    queryFn: () => api.get<{ id: string; category: string }[]>(`/attachments?entityType=amc_contracts&entityId=${contract?.id}`),
+    enabled: contract !== null,
+    retry: false,
+  })
 
   // The frequencies a contract can choose (frequency master, or the four built-in ones).
   const frequencies = useFrequencyOptions()
@@ -190,20 +268,41 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     if (value && from) setValue('validTo', contractEndDate(from, Number(value)), { shouldValidate: true })
   }
 
+  // Final Credit is required on a new contract, and on a contract that already has one (it cannot be cleared).
+  const finalCreditRequired = isNew || (contract !== null && contract.finalCredit !== null)
+
   const save = useMutation({
-    mutationFn: (values: ContractForm) => {
+    mutationFn: async (values: ContractForm) => {
       const { status, customMonths, billingBasis, customBillingValue, renewalNotes, ...rest } = values
       // Months are sent only for a custom frequency; for a fixed one the API clears them.
       const fields = { ...(isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest), billingBasis: billingBasis === '' ? null : billingBasis, ...(billingBasis === 'CUSTOM' ? { customBillingValue } : {}) }
 
       // The Sales Engineer master link is sent only when the picker is offered and its value changed.
       const link = engineerPicker && engineerId !== currentEngineerId ? { salesEngineerId: engineerId || null } : {}
+      // The system: a chosen type (the API sets the system text to its name). An existing contract sends it only when it changed.
+      const chosenType = activeTypes.find((type) => type.id === systemChoice) ?? (inactiveLinkedType?.id === systemChoice ? inactiveLinkedType : null)
+      const system =
+        systemChoice === CURRENT_SYSTEM && renewalOf
+          ? { systemDescription: renewalOf.systemDescription }
+          : systemChoice === CURRENT_SYSTEM || !chosenType
+          ? {}
+          : contract
+            ? chosenType.id !== linkedType?.id
+              ? { systemTypeId: chosenType.id }
+              : {}
+            : { systemTypeId: chosenType.id, systemDescription: chosenType.name }
 
-      return contract
-        ? api.patch<SavedContract>(`/amc/contracts/${contract.id}`, { ...fields, ...link })
-        : renewalOf
-          ? api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, { ...fields, status, ...link, ...(renewalNotes ? { renewalNotes } : {}) })
-          : api.post<SavedContract>('/amc/contracts', { ...fields, status, ...link })
+      if (contract) {
+        return api.patch<SavedContract>(`/amc/contracts/${contract.id}`, { ...fields, ...link, ...system })
+      }
+      if (renewalOf) {
+        return api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, { ...fields, status, ...link, ...system, ...(renewalNotes ? { renewalNotes } : {}) })
+      }
+
+      const file = documentFile as File
+      const contractDocument = { fileName: file.name, contentBase64: await readAsBase64(file) }
+
+      return api.post<SavedContract>('/amc/contracts', { ...fields, status, ...link, ...system, contractDocument })
     },
     onSuccess: async (saved) => {
       await refreshOperationalData(queryClient)
@@ -216,6 +315,12 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
         for (const detail of error.details) {
           if (detail.field === 'salesEngineerId' && engineerPicker) {
             setEngineerError(detail.message)
+            shownOnField = true
+          } else if (detail.field === 'systemTypeId' || detail.field === 'systemDescription') {
+            setSystemError(detail.message)
+            shownOnField = true
+          } else if (detail.field === 'contractDocument' || detail.field.startsWith('contractDocument.')) {
+            setDocumentError(detail.message)
             shownOnField = true
           } else if ((FIELDS as readonly string[]).includes(detail.field)) {
             setError(detail.field as (typeof FIELDS)[number], { message: detail.message })
@@ -251,39 +356,70 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     onError: (error) => setFailure(errorMessage(error)),
   })
 
-  const onSubmit = handleSubmit((values) => {
-    setFailure(null)
+  /** The checks outside the form library: system, engineer, Final Credit and the document. True when all pass. */
+  const checkRequiredChoices = (values: ContractForm): boolean => {
+    let ok = true
 
+    if (!systemChoice) {
+      setSystemError('Select a system.')
+      ok = false
+    }
     if (engineerRequired && engineerPicker && !engineerId) {
       setEngineerError(
         previousInactive
           ? `Select an active sales engineer. ${previousInactive.name}, the previous engineer, is no longer active.`
-          : 'Select an active sales engineer for the renewal.',
+          : renewalOf
+            ? 'Select an active sales engineer for the renewal.'
+            : 'Select a sales engineer.',
       )
-      return
+      ok = false
+    }
+    if (finalCreditRequired && values.finalCredit.trim() === '') {
+      setError('finalCredit', { message: contract ? 'Final credit is required. Enter 0 when there is none.' : 'Final credit is required.' })
+      ok = false
+    }
+    if (isNew && !documentFile) {
+      setDocumentError(documentError ?? 'Attach the contract document.')
+      ok = false
     }
 
-    if (isCustom(values.maintenanceFrequency) && (values.customMonths.length === 0 || values.customMonths.length > 11)) {
-      setError('customMonths', {
-        message: values.customMonths.length === 0 ? 'Select the months in which visits take place.' : 'Select at most 11 months. For a visit every month, choose the monthly frequency.',
-      })
-      return
-    }
+    return ok
+  }
 
-    const termsChanged =
-      contract !== null &&
-      (values.validFrom !== contract.validFrom ||
-        values.validTo !== contract.validTo ||
-        values.maintenanceFrequency !== contract.maintenanceFrequency ||
-        (isCustom(values.maintenanceFrequency) && values.customMonths.join(',') !== (contract.customMonths ?? []).join(',')))
+  const onSubmit = handleSubmit(
+    (values) => {
+      setFailure(null)
 
-    // Changing the terms of an active contract changes its schedule: show what will happen first.
-    if (contract?.status === 'ACTIVE' && termsChanged) {
-      preview.mutate(values)
-    } else {
-      save.mutate(values)
-    }
-  })
+      // Every problem is shown at once, not one at a time.
+      const choicesOk = checkRequiredChoices(values)
+      const monthsOk = !isCustom(values.maintenanceFrequency) || (values.customMonths.length > 0 && values.customMonths.length <= 11)
+
+      if (!monthsOk) {
+        setError('customMonths', {
+          message: values.customMonths.length === 0 ? 'Select the months in which visits take place.' : 'Select at most 11 months. For a visit every month, choose the monthly frequency.',
+        })
+      }
+      if (!choicesOk || !monthsOk) {
+        return
+      }
+
+      const termsChanged =
+        contract !== null &&
+        (values.validFrom !== contract.validFrom ||
+          values.validTo !== contract.validTo ||
+          values.maintenanceFrequency !== contract.maintenanceFrequency ||
+          (isCustom(values.maintenanceFrequency) && values.customMonths.join(',') !== (contract.customMonths ?? []).join(',')))
+
+      // Changing the terms of an active contract changes its schedule: show what will happen first.
+      if (contract?.status === 'ACTIVE' && termsChanged) {
+        preview.mutate(values)
+      } else {
+        save.mutate(values)
+      }
+    },
+    // The other required choices are flagged at the same time as the form's own errors.
+    () => checkRequiredChoices(getValues()),
+  )
 
   const busy = save.isPending || preview.isPending
   const termsLocked = contract !== null && contract.status !== 'DRAFT' && contract.status !== 'ACTIVE'
@@ -293,8 +429,11 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const currentMissing = start !== null && !options.some((client) => client.id === start.client.id)
   const newStatus = useWatch({ control, name: 'status' })
   const chosenBasis = useWatch({ control, name: 'billingBasis' })
+  // A new contract or renewal cannot be saved without a system from the list (an existing one keeps its own).
+  const systemBlocking = contract === null && systemUnavailable
 
   const plan = review?.preview ?? null
+  const documentCount = documents.data?.length ?? null
 
   return (
     <Modal
@@ -316,7 +455,12 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             <Button variant="secondary" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
-            <Button type="submit" form="amc-contract-form" loading={busy} disabled={clients.isPending || (engineerRequired && !engineerPicker)}>
+            <Button
+              type="submit"
+              form="amc-contract-form"
+              loading={busy}
+              disabled={clients.isPending || (engineerRequired && !engineerPicker) || systemBlocking || engineerListUnavailable || storageMissing}
+            >
               {contract ? 'Save changes' : renewalOf ? 'Create renewal' : 'Add contract'}
             </Button>
           </>
@@ -384,19 +528,47 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
                 </option>
               ))}
             </SelectField>
-            <TextField
+            <SelectField
               label="System"
               required
-              list={systemsId}
-              placeholder="For example FIRE or CCTV"
-              error={errors.systemDescription?.message}
-              {...register('systemDescription')}
-            />
-            <datalist id={systemsId}>
-              {(systems.data ?? []).map((system) => (
-                <option key={system} value={system} />
+              disabled={!systemReady && !systemUnavailable}
+              error={systemError ?? undefined}
+              hint={
+                systemUnavailable
+                  ? isForbidden(systemTypes.error)
+                    ? 'Your role cannot read the System Types list, so a system cannot be chosen. Ask an administrator for access.'
+                    : contract
+                      ? 'The System Types list could not be loaded. The contract keeps its current system; close the form and try again to change it.'
+                      : 'The System Types list could not be loaded, and a contract needs a system. Close this form and try again.'
+                  : !systemReady
+                    ? 'Loading systems…'
+                    : activeTypes.length === 0
+                      ? 'No active system types. Add one in Master Data → System Types first.'
+                      : legacySystem !== null && systemChoice === CURRENT_SYSTEM
+                        ? renewalOf
+                          ? 'Kept as typed on the renewed contract, which has no active system type. You can choose one from the list instead.'
+                          : 'This older contract’s system is not linked to the System Types list. It is kept unless you choose a system.'
+                        : 'From the System Types master list. Only active systems are offered.'
+              }
+              value={systemChoice}
+              onChange={(event) => chooseSystem(event.target.value)}
+            >
+              <option value="" disabled={contract !== null && systemChoice !== ''}>
+                Select a system...
+              </option>
+              {legacySystem !== null && (
+                <option value={CURRENT_SYSTEM}>
+                  {legacySystem} {renewalOf ? '(as on the renewed contract)' : '(current, not in the list)'}
+                </option>
+              )}
+              {inactiveLinkedType && <option value={inactiveLinkedType.id}>{inactiveLinkedType.name} (inactive)</option>}
+              {activeTypes.map((type) => (
+                <option key={type.id} value={type.id}>
+                  {type.name}
+                  {type.code && type.code !== type.name ? ` (${type.code})` : ''}
+                </option>
               ))}
-            </datalist>
+            </SelectField>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
@@ -404,8 +576,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             {engineerListUnavailable && (
               <Alert>
                 {isForbidden(engineers.error) || isForbidden(currentLinks.error)
-                  ? 'A renewal needs a sales engineer, but your role cannot read the sales engineer list. Ask an administrator to renew this contract or to grant access.'
-                  : 'The sales engineer list could not be loaded, and a renewal needs one. Close this form and try again.'}
+                  ? `${renewalOf ? 'A renewal' : 'A new contract'} needs a sales engineer, but your role cannot read the sales engineer list. Ask an administrator to grant access.`
+                  : `The sales engineer list could not be loaded, and ${renewalOf ? 'a renewal' : 'a new contract'} needs one. Close this form and try again.`}
               </Alert>
             )}
             {engineerPicker && (
@@ -416,11 +588,15 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
                 hint={
                   previousInactive
                     ? `Previously assigned: ${previousInactive.name} (inactive). Select an active sales engineer for the renewal.`
-                    : engineerRequired
+                    : renewalOf
                       ? renewedEngineer
                         ? 'Kept from the contract being renewed. A renewal needs an active sales engineer; you can choose another.'
                         : 'A renewal needs an active sales engineer.'
-                      : "Links the contract to the engineer's master record. The typed name above stays as entered."
+                      : (engineers.data ?? []).length === 0 && engineerRequired
+                        ? 'No active sales engineers. Add one in Master Data → Sales Engineers first.'
+                        : contract === null
+                          ? "Required. Links the contract to the engineer's master record; the typed name stays as entered."
+                          : "Links the contract to the engineer's master record. The typed name stays as entered."
                 }
                 value={engineerId}
                 onChange={(event) => chooseEngineer(event.target.value)}
@@ -532,8 +708,13 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             />
             <TextField
               label="Final credit"
+              required={finalCreditRequired}
               inputMode="decimal"
-              hint="Annual amount. Used for visit amounts only when it is the selected billing basis."
+              hint={
+                finalCreditRequired
+                  ? 'Annual amount in OMR, excluding VAT; 0 when there is none. Used for visit amounts only when it is the selected billing basis.'
+                  : 'Not recorded on this older contract. Annual amount; used for visit amounts only when it is the selected billing basis.'
+              }
               error={errors.finalCredit?.message}
               {...register('finalCredit')}
             />
@@ -546,6 +727,79 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             <option value="CUSTOM">Custom Billing Value</option>
           </SelectField>
           {chosenBasis === 'CUSTOM' && <TextField label="Custom Billing Value" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.customBillingValue?.message} {...register('customBillingValue')} />}
+
+          {storageMissing && (
+            <Alert>
+              A new contract needs its contract document, but this server has no file storage configured, so contracts cannot be added yet. Ask the system administrator to configure document storage.
+            </Alert>
+          )}
+          {isNew && (
+            <div>
+              <span id={`${documentInputId}-label`} className="mb-1 block text-sm font-medium text-slate-700">
+                Contract document
+                <span className="text-red-600" aria-hidden="true">
+                  {' '}
+                  *
+                </span>
+              </span>
+              <input
+                ref={documentInput}
+                id={documentInputId}
+                type="file"
+                accept={CONTRACT_DOCUMENT_ACCEPT}
+                className="sr-only"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={(event) => chooseDocument(event.target.files?.[0])}
+              />
+              <div
+                className={`flex flex-wrap items-center gap-3 rounded-lg border border-dashed px-3 py-3 ${documentError ? 'border-red-500 bg-red-50/40' : 'border-slate-300 bg-slate-50'}`}
+              >
+                <Button
+                  variant="secondary"
+                  aria-labelledby={`${documentInputId}-label ${documentInputId}-action`}
+                  aria-describedby={`${documentInputId}-${documentError ? 'error' : 'hint'}`}
+                  aria-required="true"
+                  aria-invalid={documentError ? true : undefined}
+                  onClick={() => documentInput.current?.click()}
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="m20.5 11.5-8.2 8.2a5 5 0 0 1-7.1-7.1l8.6-8.6a3.4 3.4 0 0 1 4.8 4.8l-8.6 8.6a1.7 1.7 0 0 1-2.4-2.4l7.9-7.9" />
+                  </svg>
+                  <span id={`${documentInputId}-action`}>{documentFile ? 'Replace file' : 'Attach file'}</span>
+                </Button>
+                {documentFile ? (
+                  <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                    <span className="min-w-0 break-all font-medium text-slate-800">{documentFile.name}</span>
+                    <span className="text-slate-500">{formatFileSize(documentFile.size)}</span>
+                    <Button variant="ghost" size="sm" onClick={removeDocument} aria-label={`Remove ${documentFile.name}`}>
+                      Remove
+                    </Button>
+                  </span>
+                ) : (
+                  <span className="text-sm text-slate-500">No file chosen</span>
+                )}
+              </div>
+              {documentError ? (
+                <p id={`${documentInputId}-error`} role="alert" className="mt-1 text-xs font-medium text-red-700">
+                  {documentError}
+                </p>
+              ) : (
+                <p id={`${documentInputId}-hint`} className="mt-1 text-xs text-slate-500">
+                  The signed contract: PDF or Word (.doc, .docx), at most {maxMb} MB. Saved with the contract as its Signed contract document.
+                </p>
+              )}
+            </div>
+          )}
+          {contract && (
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              {documentCount === null
+                ? 'Contract documents are managed in the Documents section of the contract page. Saving changes here does not ask for a new upload.'
+                : documentCount === 0
+                  ? 'No document is on file for this contract. Saving changes here does not require one; upload the contract document from the Documents section of the contract page.'
+                  : `${documentCount} ${documentCount === 1 ? 'document is' : 'documents are'} on file. Saving changes here does not ask for a new upload; replace documents from the Documents section of the contract page.`}
+            </p>
+          )}
 
           <TextAreaField label="Description" rows={2} error={errors.description?.message} {...register('description')} />
           <TextAreaField label="Notes" rows={2} error={errors.notes?.message} {...register('notes')} />

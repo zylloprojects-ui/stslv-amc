@@ -5,6 +5,8 @@ interface StatTileProps {
   label: string
   /** A whole number; it counts up when the tile appears. */
   count: number
+  /** Text shown in place of the count, for a figure that is not a whole number (for example "OMR 1,620.000"). */
+  value?: string
   /** A second line under the label, for example "2 past their validity". */
   hint?: string
   /** Show the hint in amber, as a warning. */
@@ -24,7 +26,7 @@ interface StatTileProps {
 }
 
 /** One figure of a summary strip: icon, big number, label and an optional note. Shared by the AMC pages. */
-export function StatTile({ label, count, hint, warn = false, extra, icon, tone, edge, position = 0, selected = false, onSelect }: StatTileProps) {
+export function StatTile({ label, count, value, hint, warn = false, extra, icon, tone, edge, position = 0, selected = false, onSelect }: StatTileProps) {
   const style = {
     animationDelay: `${position * 70}ms`,
     borderColor: selected ? edge : `${edge}40`,
@@ -46,9 +48,13 @@ export function StatTile({ label, count, hint, warn = false, extra, icon, tone, 
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold text-slate-600">{label}</span>
         <span className="mt-0.5 flex items-baseline gap-2">
-          <span className="text-3xl font-bold leading-none tabular-nums tracking-tight text-[#0b3b66]">
-            <CountUp value={count} />
-          </span>
+          {value !== undefined ? (
+            <span className="text-2xl font-bold leading-tight tabular-nums tracking-tight text-[#0b3b66] [overflow-wrap:anywhere]">{value}</span>
+          ) : (
+            <span className="text-3xl font-bold leading-none tabular-nums tracking-tight text-[#0b3b66]">
+              <CountUp value={count} />
+            </span>
+          )}
           {extra && <span className="truncate text-sm font-semibold tabular-nums text-slate-500">{extra}</span>}
         </span>
         {hint && <span className={`mt-1.5 block text-xs font-medium ${warn ? 'text-amber-700' : 'text-slate-500'}`}>{hint}</span>}
