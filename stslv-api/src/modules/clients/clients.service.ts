@@ -3,9 +3,9 @@ import { featureUnavailable } from "../../middleware/require-schema";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { listEntityHistory } from "../../shared/entity-history";
-import { conflict, forbidden, isUniqueViolation, notFound, validationError } from "../../shared/errors";
-import { isSuperAdmin } from "../../shared/role-model";
+import { conflict, isUniqueViolation, notFound, validationError } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
+import { getMasterUsage, moveMasterToRecycleBin } from "../recycle-bin/recycle-bin.service";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import type { CreateClientInput, ListClientsQuery, UpdateClientInput } from "./clients.schemas";
@@ -91,10 +91,21 @@ function toClient(row: ClientRow): Client {
   };
 }
 
-const duplicateName = (name: string) =>
-  conflict(`A client named "${name}" already exists.`, [
-    { field: "name", message: "A client with this name already exists." },
-  ]);
+/**
+ * The name is unique over every client, those in the Recycle Bin included (migration 0106), so a
+ * restore can never collide. When the holder is in the Recycle Bin, the message says so.
+ */
+async function duplicateName(name: string) {
+  const binned = await pool.query("SELECT 1 FROM clients_all WHERE lower(btrim(name)) = lower(btrim($1)) AND deleted_at IS NOT NULL", [name]);
+
+  if ((binned.rowCount ?? 0) > 0) {
+    const message = `A client named "${name}" is in the Recycle Bin. Ask Super Admin to restore it instead of adding it again.`;
+
+    return conflict(message, [{ field: "name", message: "A client with this name is in the Recycle Bin." }]);
+  }
+
+  return conflict(`A client named "${name}" already exists.`, [{ field: "name", message: "A client with this name already exists." }]);
+}
 
 /** A value for client type or VAT number can only be stored once the database has the columns. */
 async function assertDetailsStorable(input: { clientType?: unknown; vatNumber?: unknown }, details: boolean) {
@@ -272,7 +283,7 @@ export async function createClient(auth: AuthContext, given: CreateClientInput):
     });
   } catch (error) {
     if (isUniqueViolation(error, "clients_name_uq")) {
-      throw duplicateName(input.name);
+      throw await duplicateName(input.name);
     }
     throw error;
   }
@@ -332,82 +343,29 @@ export async function updateClient(auth: AuthContext, id: string, input: UpdateC
     });
   } catch (error) {
     if (isUniqueViolation(error, "clients_name_uq")) {
-      throw duplicateName(input.name ?? "");
+      throw await duplicateName(input.name ?? "");
     }
     throw error;
   }
-}
-
-/** True for a PostgreSQL foreign-key violation (23503). */
-function isForeignKeyViolation(error: unknown): boolean {
-  return (error as { code?: unknown } | null)?.code === "23503";
-}
-
-function inUseMessage(name: string, parts: { contracts: number; projects: number; invoices: number }): string {
-  const used = [
-    parts.contracts > 0 ? `${parts.contracts} AMC contract${parts.contracts === 1 ? "" : "s"}` : null,
-    parts.projects > 0 ? `${parts.projects} project${parts.projects === 1 ? "" : "s"}` : null,
-    parts.invoices > 0 ? `${parts.invoices} invoice${parts.invoices === 1 ? "" : "s"}` : null,
-  ].filter((part) => part !== null);
-
-  return `${name} cannot be deleted: it is used by ${used.length > 0 ? used.join(", ") : "other records"}. Only a client with no contracts, projects or invoices can be deleted.`;
 }
 
 /**
- * Deletes a client that nothing refers to. A client with contracts, projects or invoices is refused
- * with a 409; the database's ON DELETE RESTRICT refuses it again should one be linked between the
- * check and the delete. The activity log keeps what the client was.
- *
- * Permanent deletion is reserved to Super Admin (approved 2026-11-03): every other user gets 403,
- * even with the Clients Delete permission, which governs disabling and re-enabling a client.
+ * Moves a client to the Recycle Bin (migration 0106, approved 2026-11-04). Nothing is removed and
+ * Super Admin can restore it with the same id and code. Super Admin only: every other user gets 403,
+ * even with the Clients Delete permission, which governs disabling and re-enabling a client. Refused
+ * with 409 while an AMC contract outside the Recycle Bin, an invoice, a project or an import row uses
+ * the client. Permanent deletion is only possible from the Recycle Bin, for a client never used.
  */
-export async function deleteClient(auth: AuthContext, id: string): Promise<void> {
-  if (!isSuperAdmin(auth.roles)) {
-    throw forbidden("Only Super Admin can permanently delete a client. Disable the client instead.");
-  }
-
-  let name = "";
-
-  try {
-    await withTransaction(async (db) => {
-      // Locked, so nothing can be linked to it until this transaction ends.
-      const client = await findClient(db, id, true);
-      name = client.name;
-
-      const used = await db.query<{ contracts: number; projects: number; invoices: number }>(
-        `SELECT (SELECT count(*)::int FROM amc_contracts_all WHERE client_id = $1) AS contracts, -- including the Recycle Bin
-                (SELECT count(*)::int FROM projects WHERE client_id = $1) AS projects,
-                (SELECT count(*)::int FROM invoices WHERE client_id = $1) AS invoices`,
-        [id],
-      );
-      const counts = used.rows[0] ?? { contracts: 0, projects: 0, invoices: 0 };
-
-      if (counts.contracts + counts.projects + counts.invoices > 0) {
-        throw conflict(inUseMessage(client.name, counts));
-      }
-
-      await db.query("DELETE FROM clients WHERE id = $1", [id]);
-      await logActivity(db, {
-        userId: auth.user.id,
-        action: "client.deleted",
-        module: "CLIENTS",
-        entityType: "clients",
-        entityId: id,
-        description: `Client "${client.name}" deleted.`,
-        // The record no longer exists; the log keeps what it was.
-        metadata: { deleted: { code: client.code, name: client.name, email: client.email, phone: client.phone, isActive: client.isActive } },
-      });
-    });
-  } catch (error) {
-    if (isForeignKeyViolation(error)) {
-      throw conflict(inUseMessage(name, { contracts: 0, projects: 0, invoices: 0 }));
-    }
-
-    throw error;
-  }
+export function deleteClient(auth: AuthContext, id: string): Promise<void> {
+  return moveMasterToRecycleBin(auth, "CLIENT", id);
 }
 
-/** Deactivation keeps the record for anything that references it. A client nothing refers to can also be deleted (deleteClient). */
+/** What uses a client, for the delete dialog. */
+export function getClientUsage(id: string) {
+  return getMasterUsage("CLIENT", id);
+}
+
+/** Deactivation keeps the record for anything that references it and keeps it out of the Recycle Bin. */
 export function setClientActive(auth: AuthContext, id: string, isActive: boolean): Promise<Client> {
   return withTransaction(async (client) => {
     const before = await findClient(client, id, true);

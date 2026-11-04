@@ -19,7 +19,10 @@ export interface SystemType {
   name: string
   description: string | null
   sortOrder: number
+  /** AMC contracts outside the Recycle Bin that use the type. */
   contractCount: number
+  /** AMC contracts in the Recycle Bin that use it (migration 0106); they do not block moving it there. */
+  recycledContractCount?: number
   isActive: boolean
   createdAt: string
   updatedAt: string
@@ -50,6 +53,8 @@ export interface SalesEngineer {
   user: { id: string; fullName: string; email: string } | null
   notes: string | null
   contractCount: number
+  /** AMC contracts in the Recycle Bin linked to the engineer (migration 0106). */
+  recycledContractCount?: number
   isActive: boolean
   createdAt: string
   updatedAt: string

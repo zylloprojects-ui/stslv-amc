@@ -35,6 +35,10 @@ function clientApi(user: SessionUser, initial: Client[], override?: (request: Mo
       clients.push(created)
       return ok(created, 201)
     }
+    // Nothing uses these clients unless a test says otherwise (override).
+    if (index >= 0 && request.method === 'GET' && request.path.endsWith('/usage')) {
+      return ok({ contracts: { total: 0, byStatus: {} }, recycledContracts: 0, invoices: 0, projects: 0, importRows: 0, canMoveToRecycleBin: true, blockers: [] })
+    }
     if (index >= 0 && request.method === 'GET') return ok(clients[index])
     if (index >= 0 && request.method === 'PATCH') {
       clients[index] = { ...(clients[index] as Client), ...(request.body as Partial<Client>) }
@@ -321,23 +325,24 @@ describe('delete a client from the list (Super Admin only)', () => {
     expect(api.find('DELETE', '/clients/10')).toHaveLength(0)
   })
 
-  it('asks before deleting, Cancel deletes nothing, and Delete client removes the client from the list', async () => {
+  it('asks before deleting, Cancel deletes nothing, and the move to the Recycle Bin takes the client off the list', async () => {
     const api = clientApi(ADMIN, [ONE, TWO])
     renderApp('/clients')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Delete Test Client One' }))
-    let dialog = await screen.findByRole('dialog', { name: 'Delete client' })
-    expect(dialog).toHaveTextContent('Delete Test Client One? The client is removed for good. This cannot be undone.')
+    let dialog = await screen.findByRole('dialog', { name: 'Move client to the Recycle Bin' })
+    await waitFor(() => expect(dialog).toHaveTextContent('Move Test Client One (CL-00010) to the Recycle Bin? No live record uses it.'))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(api.find('DELETE', '/clients/10')).toHaveLength(0)
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Test Client One' }))
-    dialog = await screen.findByRole('dialog', { name: 'Delete client' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete client' }))
+    dialog = await screen.findByRole('dialog', { name: 'Move client to the Recycle Bin' })
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' })).toBeEnabled())
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' }))
 
     await waitFor(() => expect(api.find('DELETE', '/clients/10')).toHaveLength(1))
-    expect(await screen.findByRole('status')).toHaveTextContent('Test Client One was deleted.')
+    expect(await screen.findByRole('status')).toHaveTextContent('Test Client One (CL-00010) was moved to the Recycle Bin.')
     await waitFor(() => expect(screen.queryByRole('button', { name: 'View Test Client One' })).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'View Test Client Two' })).toBeInTheDocument()
   })
@@ -487,18 +492,18 @@ describe('client permissions', () => {
   })
 
   it('shows the message from the API when an action is refused', async () => {
-    // A client that contracts use cannot be deleted; the API is the authority and says why.
-    clientApi(ADMIN, [ONE], (request) =>
-      request.method === 'DELETE' && request.path === '/clients/10' ? fail(409, 'CONFLICT', 'Test Client One cannot be deleted: it is used by 2 AMC contracts.') : undefined,
-    )
+    // A client that live contracts use cannot go to the Recycle Bin; the API is the authority and says why.
+    const message = 'Client "Test Client One" cannot be moved to the Recycle Bin: it is used by 2 AMC contracts (2 Active). Disable it instead; those records keep it.'
+    clientApi(ADMIN, [ONE], (request) => (request.method === 'DELETE' && request.path === '/clients/10' ? fail(409, 'CONFLICT', message) : undefined))
     renderApp('/clients')
 
     await userEvent.click(await screen.findByRole('button', { name: 'Delete Test Client One' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete client' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete client' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Move client to the Recycle Bin' })
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' })).toBeEnabled())
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' }))
 
     // The refusal is shown in the confirmation, which stays open.
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Test Client One cannot be deleted: it is used by 2 AMC contracts.')
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(message)
     expect(screen.getByRole('button', { name: 'View Test Client One' })).toBeInTheDocument()
   })
 })

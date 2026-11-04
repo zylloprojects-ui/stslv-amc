@@ -52,7 +52,9 @@ function api(user: SessionUser, handler: (request: MockRequest) => MockReply | u
         pageSize: 25,
       })
     }
-    if (request.path === '/security/recycle-bin/amc-contracts') return ok([])
+    if (request.path === '/security/recycle-bin') {
+      return ok({ items: [], total: 0, page: 1, pageSize: 25, counts: { AMC_CONTRACT: 0, CLIENT: 0, SYSTEM_TYPE: 0, SALES_ENGINEER: 0 }, options: { deletedBy: [] } })
+    }
     if (request.path === '/security/deletions') {
       return ok({
         items: [{ id: '3', kind: 'DELETED', action: 'holiday.deleted', entityType: 'holidays', entityId: '44', description: 'Holiday removed.', reason: null, user: 'Asha Admin', createdAt: '2026-10-20T08:00:00.000Z' }],
@@ -233,7 +235,8 @@ describe('Audit Log', () => {
 describe('Deletion Log', () => {
   it('hides a column', async () => {
     api(ADMIN)
-    renderApp('/admin/deletion-log')
+    // Super Admin opens on the Recycle Bin; the history is its own view.
+    renderApp('/admin/deletion-log?view=history')
 
     await screen.findByRole('columnheader', { name: 'Record no.' })
     await userEvent.click(screen.getByRole('button', { name: /Columns/ }))

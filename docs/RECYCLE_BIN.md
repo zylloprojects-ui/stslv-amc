@@ -1,60 +1,104 @@
-# Recycle Bin
+# Recycle Bin and Deletion History
 
-Page: `/admin/deletion-log`. API: `/api/security/deletions`. Formerly named Deletion Log; the address, API, permissions and logged action names are unchanged, so links and audit history stay valid.
+Page: `/admin/deletion-log` (menu: Recycle Bin). Formerly named Deletion Log; the address, permissions and logged action names are unchanged, so links and audit history stay valid.
 
-**AMC contracts can be restored from it (approved 2026-11-03, migration 0101). Everything else on it is history.** The history list reads `activity_logs`.
+Approved 2026-11-03 for AMC contracts (migration 0101) and 2026-11-04 for clients, system types and sales engineers (migration 0106, decisions D1–D7 below).
 
-## AMC contracts in the Recycle Bin
+The page has two views:
 
-* **Delete** on AMC Contracts (Super Admin only; the API returns 403 to everyone else, even with AMC Contracts Delete) moves the contract to the Recycle Bin. Nothing is removed: the contract row, its services, service reports, quotations, invoices, documents and history all stay.
-* **How it is hidden:** the tables are now `amc_contracts_all` and `amc_visits_all`. The views `amc_contracts` and `amc_visits` show only contracts that are not deleted, and their services. Every list, schedule, calendar, KPI, report, export and endpoint reads the views, so a deleted contract is "not found" everywhere and cannot be changed. Its documents stay stored but cannot be opened until it is restored.
-* **Invoices** of a deleted contract stay in Invoice Tracking and still show which contract and service they cover. They cannot be re-allocated while the contract is in the Recycle Bin.
-* **Refused:** a contract that has been renewed (move the renewal to the Recycle Bin first, or cancel the contract).
-* **Restore** (Super Admin, Recycle Bin page) brings back the same contract: same id, so the same AMC number, same services and history. Refused while its source contract has since been renewed by another open contract.
-* **AMC numbers** are derived from the contract id, which is never reused, so a deleted or restored contract never shares a number.
-* **Audit:** `amc_contract.deleted` and `amc_contract.restored` in the activity log; deletions also appear in the history below.
-* **Clients:** a client whose only contract is in the Recycle Bin still cannot be permanently deleted.
-* **For later migrations:** alter `amc_contracts_all` / `amc_visits_all`, reference them in new foreign keys, and recreate the matching view afterwards.
+| View | Who | Source | Shows | Actions |
+|---|---|---|---|---|
+| **Recycle Bin** | Super Admin only | the records' current state (`deleted_at IS NOT NULL` on four tables) | records deleted **now** | Restore; Delete permanently (never-used clients, system types and sales engineers only) |
+| **Deletion History** | Admin and Super Admin | `activity_logs` | every deletion, cancellation, deactivation, restore and reactivation, with each record's **status now** | none (history) |
 
-Other record types still have no Restore, for the reasons below.
+The **Audit Log** keeps every event of every kind. No event is ever removed from it or from the Deletion History.
 
-## How removal works
+**Deactivated records never appear in the Recycle Bin.** Deactivation (Disable) is managed on the record's own page, where it can be switched back on. A record that is deactivated and reactivated leaves two entries in the Deletion History and nothing in the Recycle Bin. A record restored from the Recycle Bin leaves it at once; its "To Recycle Bin" and "Restored" entries stay in the history.
 
-AMC contracts have `deleted_at` (above); no other record type does, and there is no trash table. All 68 foreign keys are `ON DELETE RESTRICT`, so a record in use cannot be deleted and nothing cascades.
+## What can be in the Recycle Bin
 
-| Record | What happens | Kept? | How it comes back |
+| Record | Delete (module page) | Restore | Permanent deletion |
 |---|---|---|---|
-| Contract (cancelled) | Status Cancelled | Yes | Its own page (Cancelled to Active). Visits cancelled with it stay cancelled |
-| Contract (deleted) | Moved to the Recycle Bin (`deleted_at`) | Yes, with everything linked | Restore on this page (Super Admin) |
-| Scheduled visit | Status Cancelled | Yes | Not offered as a recovery; regenerate cannot revive one |
-| Untouched visit outside new terms | Row deleted | Log keeps id, number and period | Generated again if the terms return |
-| Invoice | Status Cancelled | Yes | Not reversible; the number can be entered again |
-| Expense | Voided | Yes | Not reversible; enter a new one |
-| Client, Sales Engineer, System Type, Department | Deactivated | Yes | Their own page |
-| Maintenance Frequency | Disabled or archived | Yes | Its own page (rules apply) |
-| User | Deactivated | Yes | Users & Access |
-| Pending sign-up | Rejected; role links removed | Yes | A new sign-up |
-| Unused System Type | Row deleted | Log keeps its values | Create it again |
-| Holiday, custom role | Row deleted | Log only | Create it again |
+| AMC contract | Super Admin; refused while a renewal of it exists | Super Admin; refused while its client, system type or sales engineer is in the Recycle Bin, or its source has another open renewal | **Never** (D4: it would free the AMC Reference for reuse) |
+| Client | Super Admin; refused while any AMC contract outside the Recycle Bin (any status), any invoice (any status), project or import row uses it (D1, D2) | Super Admin | Super Admin, from the Recycle Bin only, never-used only, code typed to confirm |
+| System type | Super Admin (also refused to roles holding System Types Delete); refused while any AMC contract outside the Recycle Bin uses it | Super Admin | as for clients |
+| Sales engineer | Super Admin; refused while any AMC contract outside the Recycle Bin is linked to it | Super Admin | as for clients; the code is retired for good (`sales_engineer_retired_codes`) |
 
-## Why Restore is not needed now
+AMC contracts in the Recycle Bin never block moving their client, system type or engineer there too. They block their permanent deletion, and a contract cannot be restored before its client, system type and engineer.
 
-Everything with business value is already retained, and the reversible cases already have a checked route on the record's own page. Only small, unused or re-creatable rows are truly deleted, and those are refused when in use.
+Everything else keeps its own route back, and does not appear in the Recycle Bin:
 
-## Why a Restore button would be unsafe today
+| Record | What happens | How it comes back |
+|---|---|---|
+| Contract (cancelled) | Status Cancelled | Its own page (Cancelled to Active) |
+| Scheduled visit | Status Cancelled | Not offered; regenerate cannot revive one |
+| Untouched visit outside new terms | Row deleted; the log keeps id, number and period | Generated again if the terms return |
+| Invoice | Status Cancelled | Not reversible; the number can be entered again |
+| Expense | Voided | Not reversible |
+| Client, sales engineer, system type, department | Disabled (deactivated) | Their own page |
+| Maintenance frequency | Disabled or archived; never deleted (405) | Its own page (rules apply) |
+| User | Deactivated | Users & Access |
+| Holiday, custom role | Row deleted; log only | Create it again |
 
-* **Cancelled contract:** reactivating leaves its cancelled visits cancelled, and may conflict with a renewal that replaced it (the API refuses that). Reviving visits would need a rule for dates already passed.
-* **Cancelled visit:** recovering it changes schedule totals, and reconciliation, and it may overlap a period since regenerated.
-* **Cancelled invoice:** its number may have been reused, and its allocations must still reconcile. The visit's Invoice Tracking state would change underneath completed work.
-* **Deleted rows:** the log is not a full copy. Restored ids and references could not be guaranteed.
-* **Audit:** a log entry is history. Acting on it would make one page both the record of an event and a way of undoing it.
+## How it works (migrations 0101 and 0106)
 
-## If it is ever wanted
+* The tables are `amc_contracts_all`, `amc_visits_all`, `clients_all`, `system_types_all` and `sales_engineers_all`. Views with the old names (`amc_contracts`, `amc_visits`, `clients`, `system_types`, `sales_engineers`) show only the rows not deleted, so every list, picker, schedule, KPI, report, export and endpoint treats a deleted record as not found, without each query being changed.
+* **Nothing is removed** on Delete: `deleted_at` and `deleted_by` are set. Every other value stays, including `updated_at` (for the three master tables, a Recycle Bin move does not touch it; 0106).
+* **Restore** clears `deleted_at` on the same row: same id, code, reference and links. The record comes back active or disabled, as it was.
+* **Names and codes stay reserved** while a record is in the Recycle Bin (D5): the unique indexes cover the `*_all` tables, so a restore can never collide. Adding a duplicate gets "… is in the Recycle Bin. Ask Super Admin to restore it from the Recycle Bin instead." The legacy importer refuses a register naming a client in the Recycle Bin, and imports nothing.
+* **Database guards** (0106), whatever the application does:
+  * `RB001`: a record outside the Recycle Bin may not point at one in it. Guards on `amc_contracts_all` (client, system type, sales engineer, and restoring a contract), `invoices`, `projects` and `legacy_import_rows` (client).
+  * `RB002`: a record still used outside the Recycle Bin may not be moved into it.
+  * Locks: a move takes `FOR UPDATE` on the record; a new link takes `FOR KEY SHARE` on it (through its foreign key and the guard). The two wait for each other, so they can never both succeed.
+* All foreign keys stay `ON DELETE RESTRICT`: the last guard against a permanent deletion of a used record.
 
-1. A business decision on which record types, who may restore, and for how long. This is the Trash and recovery item awaiting approval.
-2. A rule per type for its dependants, conflicts and financial effects, such as restored visits, reused invoice numbers and renewals.
-3. Stored snapshots, or `deleted_at` on chosen tables with every list and total updated to exclude them. Either needs migrations.
-4. A permission of its own, an audited restore action, and tests that totals still reconcile after a restore.
-5. A retention rule, and a decision on permanent removal.
+### "Never used" (permanent deletion)
 
-Roughly a separate module, not a button. The safer first step would be a link from each entry to the record's own page, where the checked actions already exist.
+Permanent deletion is refused, with every reason listed, when any of these holds:
+
+1. Any AMC contract refers to the record, in any status, including Historical, Cancelled, imported and Recycle Bin contracts.
+2. For a client: any invoice (any status), project or historical import row.
+3. Its creation is not in the Audit Log (`<type>.created`): it was imported or seeded, so its past cannot be known.
+4. Any Audit Log entry about another record names it, by any name or code it has had (current, or earlier ones from its own change history), or stores its id under `clientId`, `systemTypeId`, `salesEngineerId` and similar keys. This catches a contract once linked to it and since changed.
+5. For a sales engineer: any contract names it as the responsible engineer in its typed text.
+
+When use cannot be ruled out, the record stays in the Recycle Bin. The check runs again inside the deletion's own transaction, after locking the record.
+
+## API
+
+| Method and path | Effect |
+|---|---|
+| `DELETE /api/clients/:id`, `/api/masters/system-types/:id`, `/api/masters/sales-engineers/:id`, `/api/amc/contracts/:id` | Move to the Recycle Bin |
+| `GET /api/clients/:id/usage`, `/api/masters/system-types/:id/usage`, `/api/masters/sales-engineers/:id/usage` | Counts for the delete dialog: live contracts by status, Recycle Bin contracts apart, and for clients invoices, projects and import rows |
+| `GET /api/security/recycle-bin` | The records in the Recycle Bin: `type`, `search`, `deletedBy`, `from`, `to`, `page`, `pageSize`; counts per type |
+| `GET /api/security/recycle-bin/:type/:id/check` | What restore and permanent deletion would do: blockers, warnings, reasons, the code to type |
+| `POST /api/security/recycle-bin/:type/:id/restore` | Restore |
+| `DELETE /api/security/recycle-bin/:type/:id` with `{ "confirm": "<code>" }` | Permanent deletion |
+| `GET /api/security/deletions`, `/deletions/export` | Deletion History (now with `RESTORED` events, `deletion` and `currentStatus`) |
+
+`:type` is `amc-contracts`, `clients`, `system-types` or `sales-engineers`. `GET /api/security/recycle-bin/amc-contracts` is kept for a frontend released before 0106.
+
+## Audit
+
+| Action | Meaning |
+|---|---|
+| `<type>.deleted` with `metadata.recycleBin = true` | Moved to the Recycle Bin; `metadata.deleted` holds the whole row |
+| `<type>.restored` | Restored from the Recycle Bin |
+| `<type>.purged` | Deleted permanently from the Recycle Bin; `metadata.deleted` holds the whole row |
+| `client.deleted`, `system_type.deleted`, `sales_engineer.deleted` without `recycleBin` | Deleted permanently before 0106; shown as "Deleted permanently" |
+
+A client deleted permanently before 0106 (for example client 86 on the development database) has no row to restore, and none is ever recreated from the log.
+
+## For later migrations
+
+Alter the `*_all` tables, not the views; reference them in new foreign keys; and recreate the matching view afterwards (`CREATE OR REPLACE VIEW … SELECT * …`) so it shows any new column. A new table that refers to a client, system type or sales engineer needs the 0106 guard trigger too, and its references must be added to `recycle_bin_master_guard()` and to the usage and evidence checks (`stslv-api/src/modules/recycle-bin/recycle-bin.service.ts`).
+
+## Decisions (2026-11-04)
+
+* D1: a record used by a contract outside the Recycle Bin cannot be moved there; contracts in the Recycle Bin do not block.
+* D2: a client with any invoice (any status) or project cannot be moved there.
+* D3: permanent deletion only from the Recycle Bin.
+* D4: AMC contracts are never deleted permanently.
+* D5: names and codes stay reserved while in the Recycle Bin.
+* D6: a contract can be restored while its client, system type or engineer is deactivated (with a warning), but not while one is in the Recycle Bin.
+* D7: the Recycle Bin is Super Admin's; Admin keeps the Deletion History.

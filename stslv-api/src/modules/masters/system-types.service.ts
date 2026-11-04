@@ -1,16 +1,15 @@
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
-import { withTransaction } from "../../shared/db";
 import { assertExportSize, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
-import { conflict, notFound } from "../../shared/errors";
 import type { AuthContext } from "../auth/access";
+import { getMasterUsage, moveMasterToRecycleBin } from "../recycle-bin/recycle-bin.service";
 import { getMaster, listAllMasters, SYSTEM_TYPES } from "./masters.service";
 import { SYSTEM_TYPE_STATUS_LABELS, type ExportSystemTypesQuery } from "./system-types.schemas";
 
-// System types only: the AMC contracts that use a type, deletion of an unused
-// type, and the list as a report. A contract refers to its type by id
-// (amc_contracts.system_type_id, ON DELETE RESTRICT), so a type's code and name
-// can change without touching any contract.
+// System types only: the AMC contracts that use a type, moving a type to the
+// Recycle Bin, and the list as a report. A contract refers to its type by id
+// (amc_contracts_all.system_type_id, ON DELETE RESTRICT), so a type's code and
+// name can change without touching any contract.
 
 interface SystemTypeItem {
   id: string;
@@ -64,61 +63,20 @@ export async function listLinkedContracts(id: string, page: number, pageSize: nu
   };
 }
 
-const inUseMessage = (name: string, count: number) =>
-  `"${name}" is used by ${count} AMC ${count === 1 ? "contract" : "contracts"} and cannot be deleted. Disable it instead: ` +
-  "the contracts keep it, and it is no longer offered for new contracts.";
-
-/** True for a PostgreSQL foreign-key violation (23503). */
-function isForeignKeyViolation(error: unknown): boolean {
-  return (error as { code?: unknown } | null)?.code === "23503";
+/**
+ * Moves a system type to the Recycle Bin (migration 0106, approved 2026-11-04). Super Admin only
+ * (403 for everyone else, even with System Types Delete). Refused with 409 while an AMC contract
+ * outside the Recycle Bin uses the type, in any status; contracts in the Recycle Bin do not block it.
+ * The counts come from amc_contracts_all, so the message can never say "used by 0 contracts".
+ * Permanent deletion is only possible from the Recycle Bin, for a type never used.
+ */
+export function deleteSystemType(auth: AuthContext, id: string): Promise<void> {
+  return moveMasterToRecycleBin(auth, "SYSTEM_TYPE", id);
 }
 
-/**
- * Deletes a system type that no AMC contract uses. A type in use is refused
- * with a 409; the database's ON DELETE RESTRICT refuses it again should a
- * contract be linked between the check and the delete.
- */
-export async function deleteSystemType(auth: AuthContext, id: string): Promise<void> {
-  let name = "";
-
-  try {
-    await withTransaction(async (db) => {
-      // Locked, so no contract can be linked to it until this transaction ends.
-      const found = await db.query<Record<string, unknown>>(`SELECT ${SYSTEM_TYPES.select} FROM system_types m WHERE m.id = $1 FOR UPDATE OF m`, [id]);
-      const row = found.rows[0];
-
-      if (!row) {
-        throw notFound(`${SYSTEM_TYPES.label} not found.`);
-      }
-
-      const type = SYSTEM_TYPES.toItem(row) as unknown as SystemTypeItem;
-      name = type.name;
-
-      if (type.contractCount > 0) {
-        throw conflict(inUseMessage(type.name, type.contractCount));
-      }
-
-      await db.query("DELETE FROM system_types WHERE id = $1", [id]);
-      await logActivity(db, {
-        userId: auth.user.id,
-        action: "system_type.deleted",
-        module: SYSTEM_TYPES.module,
-        entityType: SYSTEM_TYPES.entityType,
-        entityId: id,
-        description: `System type "${type.name}" deleted.`,
-        // The record no longer exists; the log keeps what it was.
-        metadata: { deleted: { code: type.code, name: type.name, description: type.description, sortOrder: type.sortOrder, isActive: type.isActive } },
-      });
-    });
-  } catch (error) {
-    if (isForeignKeyViolation(error)) {
-      const count = await pool.query<{ count: number }>("SELECT count(*)::int AS count FROM amc_contracts WHERE system_type_id = $1", [id]);
-
-      throw conflict(inUseMessage(name, count.rows[0]?.count ?? 1));
-    }
-
-    throw error;
-  }
+/** What uses a system type, for the delete dialog. */
+export function getSystemTypeUsage(id: string) {
+  return getMasterUsage("SYSTEM_TYPE", id);
 }
 
 // ---------------------------------------------------------------------------

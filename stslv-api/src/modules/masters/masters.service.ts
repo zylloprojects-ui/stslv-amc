@@ -39,8 +39,19 @@ export interface MasterSpec {
   /** Sort keys the list accepts, mapped to SQL. The first is the default. */
   sorts: Record<string, string>;
   search: string[];
-  /** Unique index name -> the field and message reported when it is violated. */
-  unique: Record<string, { field: string; message: (input: Record<string, unknown>) => string }>;
+  /**
+   * Unique index name -> the field and message reported when it is violated. `binned` finds whether the
+   * holder of the value is in the Recycle Bin (migration 0106: the index covers <table>_all), so the
+   * message can say so instead of naming a record the user cannot see.
+   */
+  unique: Record<
+    string,
+    {
+      field: string;
+      message: (input: Record<string, unknown>) => string;
+      binned?: { sql: string; value: (input: Record<string, unknown>) => unknown; message: (input: Record<string, unknown>) => string };
+    }
+  >;
   toItem: (row: Record<string, unknown>) => Record<string, unknown>;
   /** Extra checks on the values to be stored (for example that a linked record exists). */
   check?: (db: Queryable, values: Record<string, unknown>, before: Record<string, unknown> | null) => Promise<void>;
@@ -94,13 +105,25 @@ export const SYSTEM_TYPES: MasterSpec = {
     { name: "description", column: "description" },
     { name: "sortOrder", column: "sort_order" },
   ],
+  // contract_count: contracts outside the Recycle Bin; recycled_contract_count: those in it (amc_contracts_all).
   select: `m.id, m.code, m.name, m.description, m.sort_order, ${AUDIT_SELECT},
-           (SELECT count(*)::int FROM amc_contracts c WHERE c.system_type_id = m.id) AS contract_count`,
+           (SELECT count(*)::int FROM amc_contracts c WHERE c.system_type_id = m.id) AS contract_count,
+           (SELECT count(*)::int FROM amc_contracts_all c WHERE c.system_type_id = m.id AND c.deleted_at IS NOT NULL) AS recycled_contract_count`,
   joins: "",
   order: "m.sort_order, lower(m.code), m.id",
   sorts: { sortOrder: "m.sort_order", code: "lower(m.code)", name: "lower(m.name)", createdAt: "m.created_at" },
   search: ["m.code", "m.name", "m.description"],
-  unique: { system_types_code_uq: { field: "code", message: (input) => `A system type with code "${String(input.code)}" already exists.` } },
+  unique: {
+    system_types_code_uq: {
+      field: "code",
+      message: (input) => `A system type with code "${String(input.code)}" already exists.`,
+      binned: {
+        sql: "lower(btrim(code)) = lower(btrim($1))",
+        value: (input) => input.code,
+        message: (input) => `A system type with code "${String(input.code)}" is in the Recycle Bin.`,
+      },
+    },
+  },
   toItem: (row) => ({
     id: row.id,
     code: row.code,
@@ -108,6 +131,7 @@ export const SYSTEM_TYPES: MasterSpec = {
     description: row.description,
     sortOrder: row.sort_order,
     contractCount: row.contract_count,
+    recycledContractCount: row.recycled_contract_count,
     isActive: row.is_active,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -152,7 +176,8 @@ export const SALES_ENGINEERS: MasterSpec = {
   select: `m.id, m.code, m.name, m.employee_no, m.email, m.phone, m.department_id, d.code AS department_code, d.name AS department_name,
            m.user_id, u.full_name AS user_name, u.email AS user_email, m.notes, ${AUDIT_SELECT},
            (SELECT count(*)::int FROM amc_contracts c WHERE c.sales_engineer_id = m.id) AS contract_count,
-           (SELECT count(*)::int FROM amc_contracts c WHERE c.sales_engineer_id = m.id AND c.status = 'ACTIVE') AS active_contract_count`,
+           (SELECT count(*)::int FROM amc_contracts c WHERE c.sales_engineer_id = m.id AND c.status = 'ACTIVE') AS active_contract_count,
+           (SELECT count(*)::int FROM amc_contracts_all c WHERE c.sales_engineer_id = m.id AND c.deleted_at IS NOT NULL) AS recycled_contract_count`,
   joins: "LEFT JOIN departments d ON d.id = m.department_id LEFT JOIN users u ON u.id = m.user_id",
   order: "lower(m.name), m.id",
   sorts: {
@@ -173,10 +198,34 @@ export const SALES_ENGINEERS: MasterSpec = {
     return [];
   },
   unique: {
-    sales_engineers_code_uq: { field: "code", message: (input) => `Engineer code "${String(input.code)}" is already used by another engineer.` },
-    sales_engineers_name_uq: { field: "name", message: (input) => `A sales engineer named "${String(input.name)}" already exists.` },
-    sales_engineers_employee_no_uq: { field: "employeeNo", message: (input) => `Employee number "${String(input.employeeNo)}" is already used.` },
-    sales_engineers_user_uq: { field: "userId", message: () => "That user is already linked to another sales engineer." },
+    sales_engineers_code_uq: {
+      field: "code",
+      message: (input) => `Engineer code "${String(input.code)}" is already used by another engineer.`,
+      binned: { sql: "lower(code) = lower($1)", value: (input) => input.code, message: (input) => `Engineer code "${String(input.code)}" belongs to an engineer in the Recycle Bin.` },
+    },
+    sales_engineers_name_uq: {
+      field: "name",
+      message: (input) => `A sales engineer named "${String(input.name)}" already exists.`,
+      binned: {
+        sql: "lower(btrim(name)) = lower(btrim($1))",
+        value: (input) => input.name,
+        message: (input) => `A sales engineer named "${String(input.name)}" is in the Recycle Bin.`,
+      },
+    },
+    sales_engineers_employee_no_uq: {
+      field: "employeeNo",
+      message: (input) => `Employee number "${String(input.employeeNo)}" is already used.`,
+      binned: {
+        sql: "lower(btrim(employee_no)) = lower(btrim($1))",
+        value: (input) => input.employeeNo,
+        message: (input) => `Employee number "${String(input.employeeNo)}" belongs to an engineer in the Recycle Bin.`,
+      },
+    },
+    sales_engineers_user_uq: {
+      field: "userId",
+      message: () => "That user is already linked to another sales engineer.",
+      binned: { sql: "user_id = $1::bigint", value: (input) => input.userId, message: () => "That user is linked to a sales engineer in the Recycle Bin." },
+    },
   },
   toItem: (row) => ({
     id: row.id,
@@ -190,6 +239,7 @@ export const SALES_ENGINEERS: MasterSpec = {
     notes: row.notes,
     contractCount: row.contract_count,
     activeContractCount: row.active_contract_count,
+    recycledContractCount: row.recycled_contract_count,
     isActive: row.is_active,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -232,7 +282,8 @@ export const MAINTENANCE_FREQUENCIES: MasterSpec = {
   label: "Maintenance frequency",
   fields: [{ name: "label", column: "label" }],
   select: `m.id, m.code, m.label, m.sort_order, ${AUDIT_SELECT},
-           (SELECT count(*)::int FROM amc_contracts c WHERE c.maintenance_frequency = m.code) AS contract_count`,
+           (SELECT count(*)::int FROM amc_contracts c WHERE c.maintenance_frequency = m.code) AS contract_count,
+           (SELECT count(*)::int FROM amc_contracts_all c WHERE c.maintenance_frequency = m.code AND c.deleted_at IS NOT NULL) AS recycled_contract_count`,
   joins: "",
   order: "m.sort_order, m.id",
   sorts: { sortOrder: "m.sort_order", label: "lower(m.label)" },
@@ -247,6 +298,7 @@ export const MAINTENANCE_FREQUENCIES: MasterSpec = {
     intervalMonths: FREQUENCY_MONTHS[row.code as MaintenanceFrequency] ?? null,
     sortOrder: row.sort_order,
     contractCount: row.contract_count,
+    recycledContractCount: row.recycled_contract_count,
     isActive: row.is_active,
     createdAt: iso(row.created_at),
     updatedAt: iso(row.updated_at),
@@ -281,9 +333,21 @@ function flatValues(spec: MasterSpec, item: Record<string, unknown>): Record<str
   return values;
 }
 
-function rethrowUnique(spec: MasterSpec, error: unknown, input: Record<string, unknown>): never {
+async function rethrowUnique(spec: MasterSpec, error: unknown, input: Record<string, unknown>): Promise<never> {
   for (const [constraint, info] of Object.entries(spec.unique)) {
     if (isUniqueViolation(error, constraint)) {
+      const value = info.binned?.value(input);
+
+      if (info.binned && value !== undefined && value !== null) {
+        const binned = await pool.query(`SELECT 1 FROM ${spec.table}_all WHERE deleted_at IS NOT NULL AND ${info.binned.sql}`, [value]);
+
+        if ((binned.rowCount ?? 0) > 0) {
+          const text = `${info.binned.message(input)} Ask Super Admin to restore it from the Recycle Bin instead.`;
+
+          throw conflict(text, [{ field: info.field, message: text }]);
+        }
+      }
+
       const message = info.message(input);
 
       throw conflict(message, [{ field: info.field, message }]);
@@ -398,7 +462,7 @@ export async function createMaster(auth: AuthContext, spec: MasterSpec, input: R
       return created;
     });
   } catch (error) {
-    rethrowUnique(spec, error, input);
+    return rethrowUnique(spec, error, input);
   }
 }
 
@@ -438,7 +502,7 @@ export async function updateMaster(auth: AuthContext, spec: MasterSpec, id: stri
       return updated;
     });
   } catch (error) {
-    rethrowUnique(spec, error, input);
+    return rethrowUnique(spec, error, input);
   }
 }
 

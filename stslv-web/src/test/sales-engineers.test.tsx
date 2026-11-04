@@ -234,13 +234,16 @@ describe('delete row action', () => {
     expect(within(row).queryByRole('button', { name: 'Delete Test Engineer' })).not.toBeInTheDocument()
   })
 
-  it('confirms with the name and code, deletes, and refreshes the list', async () => {
+  const FREE = { contracts: { total: 0, byStatus: {} }, recycledContracts: 0, invoices: null, projects: null, importRows: null, canMoveToRecycleBin: true, blockers: [] }
+
+  it('confirms with the name and code, moves the engineer to the Recycle Bin, and refreshes the list', async () => {
     let engineers = [makeEngineer({ contractCount: 0, activeContractCount: 0 })]
     const api = engineersApi(ADMIN, [], (request) => {
       if (request.method === 'GET' && request.path === '/masters/sales-engineers') return ok({ items: engineers, total: engineers.length, page: 1, pageSize: 25 })
+      if (request.path === '/masters/sales-engineers/5/usage') return ok(FREE)
       if (request.method === 'DELETE' && request.path === '/masters/sales-engineers/5') {
         engineers = []
-        return ok({ deleted: true })
+        return ok({ deleted: true, recycleBin: true })
       }
       return undefined
     })
@@ -248,34 +251,53 @@ describe('delete row action', () => {
     const row = within(await table()).getAllByRole('row')[1] as HTMLElement
 
     await userEvent.click(within(row).getByRole('button', { name: 'Delete Test Engineer' }))
-    let dialog = await screen.findByRole('dialog', { name: 'Delete sales engineer' })
-    expect(dialog).toHaveTextContent('Test Engineer')
-    expect(dialog).toHaveTextContent('SE-0005')
-    expect(dialog).toHaveTextContent('cannot be undone')
+    let dialog = await screen.findByRole('dialog', { name: 'Move sales engineer to the Recycle Bin' })
+    expect(dialog).toHaveTextContent('Test Engineer (SE-0005)')
+    expect(await within(dialog).findByText(/Nothing is removed, and Super Admin can restore it/)).toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(api.find('DELETE', '/masters/sales-engineers/5')).toHaveLength(0)
 
     await userEvent.click(within(row).getByRole('button', { name: 'Delete Test Engineer' }))
-    dialog = await screen.findByRole('dialog', { name: 'Delete sales engineer' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete permanently' }))
+    dialog = await screen.findByRole('dialog', { name: 'Move sales engineer to the Recycle Bin' })
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' })).toBeEnabled())
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' }))
 
     await waitFor(() => expect(api.find('DELETE', '/masters/sales-engineers/5')).toHaveLength(1))
-    expect(await screen.findByRole('status')).toHaveTextContent('Test Engineer (SE-0005) was deleted.')
+    expect(await screen.findByRole('status')).toHaveTextContent('Test Engineer (SE-0005) was moved to the Recycle Bin.')
     expect(await screen.findByText('No sales engineers yet')).toBeInTheDocument()
   })
 
-  it('shows the refusal for an engineer linked to contracts and keeps the dialog open', async () => {
-    const message = 'Test Engineer cannot be deleted: the engineer is linked to 3 AMC contracts (including any in the Recycle Bin). Disable the engineer instead; the contracts keep the link.'
-    engineersApi(ADMIN, [makeEngineer()], (request) => (request.method === 'DELETE' ? fail(409, 'CONFLICT', message) : undefined))
+  it('explains, from fresh counts, why an engineer on live contracts cannot be moved, and shows a later refusal from the server', async () => {
+    engineersApi(ADMIN, [makeEngineer()], (request) =>
+      request.path === '/masters/sales-engineers/5/usage'
+        ? ok({ ...FREE, contracts: { total: 3, byStatus: { ACTIVE: 3 } }, canMoveToRecycleBin: false, blockers: ['3 AMC contracts (3 Active)'] })
+        : undefined,
+    )
     renderApp('/master-data/sales-engineers')
     await table()
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Test Engineer' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete sales engineer' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete permanently' }))
+    const dialog = await screen.findByRole('dialog', { name: 'This sales engineer cannot be moved to the Recycle Bin' })
+    expect(within(dialog).getByText(/is used by 3 AMC contracts \(3 Active\)/)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Move to Recycle Bin' })).not.toBeInTheDocument()
+    expect(within(await table()).getAllByRole('row')).toHaveLength(2)
+  })
+
+  it('keeps the dialog open with the API reason when the move is refused', async () => {
+    const message = 'Sales engineer "Test Engineer" cannot be moved to the Recycle Bin: it is used by 1 AMC contract (1 Active). Disable it instead; those records keep it.'
+    engineersApi(ADMIN, [makeEngineer()], (request) => {
+      if (request.path === '/masters/sales-engineers/5/usage') return ok(FREE)
+      return request.method === 'DELETE' ? fail(409, 'CONFLICT', message) : undefined
+    })
+    renderApp('/master-data/sales-engineers')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Test Engineer' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Move sales engineer to the Recycle Bin' })
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' })).toBeEnabled())
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' }))
 
     expect(await within(dialog).findByText(message)).toBeInTheDocument()
-    expect(within(await table()).getAllByRole('row')).toHaveLength(2)
   })
 })
 

@@ -226,6 +226,16 @@ export async function applyImport(config: ImportConfig, pool: Pool, options: App
       let id = name.existingClientId;
 
       if (id === null) {
+        // A client in the Recycle Bin (migration 0106) is not in the plan's snapshot but still holds its name.
+        // Refuse with the reason rather than fail on the unique index; the whole import rolls back.
+        const binned = await client.query("SELECT 1 FROM clients_all WHERE lower(btrim(name)) = lower(btrim($1)) AND deleted_at IS NOT NULL", [name.masterName]);
+
+        if ((binned.rowCount ?? 0) > 0) {
+          throw new Error(
+            `Client "${name.masterName}" (row ${row.source.row}) is in the Recycle Bin. Restore it, or rename the client in the register, and import again. Nothing was imported.`
+          );
+        }
+
         const created = await client.query<{ id: string }>("INSERT INTO clients (name, created_by, updated_by) VALUES ($1, $2, $2) RETURNING id", [name.masterName, createdBy]);
 
         id = (created.rows[0] as { id: string }).id;

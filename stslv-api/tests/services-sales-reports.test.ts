@@ -113,7 +113,7 @@ describe("Service Sales — Service Report view and download", () => {
   });
 
   beforeEach(async () => {
-    await pool.query("TRUNCATE activity_logs, amc_visits_all, amc_contracts_all, clients RESTART IDENTITY CASCADE");
+    await pool.query("TRUNCATE activity_logs, amc_visits_all, amc_contracts_all, clients_all RESTART IDENTITY CASCADE");
     await pool.query("DELETE FROM attachments WHERE entity_type = 'amc_visits'").catch(() => undefined);
     const clientId = await createClient(admin, "Alpha Towers");
     contractA = await activeContract(admin, clientId, { systemDescription: "FIRE", maintenanceFrequency: "MONTHLY" });

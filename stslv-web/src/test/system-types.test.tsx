@@ -204,36 +204,55 @@ describe('linked contracts and deletion', () => {
     expect(within(dialog).queryByRole('button', { name: /Edit|Delete/ })).not.toBeInTheDocument()
   })
 
-  it('explains why a linked type cannot be deleted, without calling delete', async () => {
-    const api = typesApi(ADMIN, [FA])
+  it('explains why a type a live contract uses cannot go to the Recycle Bin, from fresh API counts, without calling delete', async () => {
+    const api = typesApi(ADMIN, [FA], (request) =>
+      request.path === '/masters/system-types/4/usage'
+        ? ok({ contracts: { total: 2, byStatus: { ACTIVE: 1, CANCELLED: 1 } }, recycledContracts: 0, invoices: null, projects: null, importRows: null, canMoveToRecycleBin: false, blockers: ['2 AMC contracts (1 Active, 1 Cancelled)'] })
+        : undefined,
+    )
     renderPage()
     await table()
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete Fire Alarm' }))
-    const dialog = await screen.findByRole('dialog', { name: 'This system type cannot be deleted' })
-    expect(within(dialog).getByText(/is used by 2 AMC contracts/)).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'This system type cannot be moved to the Recycle Bin' })
+    expect(within(dialog).getByText(/is used by 2 AMC contracts \(1 Active, 1 Cancelled\)/)).toBeInTheDocument()
     expect(within(dialog).getByText(/Disable it instead/)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Move to Recycle Bin' })).not.toBeInTheDocument()
     expect(api.find('DELETE', '/masters/system-types/4')).toHaveLength(0)
   })
 
-  it('deletes an unused type after confirmation, and shows a refusal from the server', async () => {
+  it('moves a type used only by a contract in the Recycle Bin, says so, and shows a refusal from the server', async () => {
     let refuse = true
     const api = typesApi(ADMIN, [CCTV], (request) => {
+      if (request.path === '/masters/system-types/2/usage') {
+        return ok({ contracts: { total: 0, byStatus: {} }, recycledContracts: 1, invoices: null, projects: null, importRows: null, canMoveToRecycleBin: true, blockers: [] })
+      }
       if (request.method !== 'DELETE') return undefined
-      return refuse ? fail(409, 'CONFLICT', '"CCTV" is used by 1 AMC contract and cannot be deleted.') : ok({ deleted: true })
+      return refuse ? fail(409, 'CONFLICT', 'System type "CCTV" cannot be moved to the Recycle Bin: it is used by 1 AMC contract (1 Active).') : ok({ deleted: true, recycleBin: true })
     })
     renderPage()
     await table()
 
     await userEvent.click(screen.getByRole('button', { name: 'Delete CCTV' }))
-    const dialog = await screen.findByRole('dialog', { name: 'Delete system type' })
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
-    expect(await within(dialog).findByText('"CCTV" is used by 1 AMC contract and cannot be deleted.')).toBeInTheDocument()
+    const dialog = await screen.findByRole('dialog', { name: 'Move system type to the Recycle Bin' })
+    // Before 0106 this said "used by 0 AMC contracts"; a contract in the Recycle Bin is now counted apart and does not block.
+    expect(await within(dialog).findByText(/1 AMC contract in the Recycle Bin refers to it/)).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' }))
+    expect(await within(dialog).findByText(/cannot be moved to the Recycle Bin: it is used by 1 AMC contract/)).toBeInTheDocument()
 
     refuse = false
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete' }))
-    expect(await screen.findByText('The system type "CCTV" was deleted.')).toBeInTheDocument()
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Move to Recycle Bin' }))
+    expect(await screen.findByText(/CCTV — CCTV was moved to the Recycle Bin/)).toBeInTheDocument()
     expect(api.find('DELETE', '/masters/system-types/2')).toHaveLength(2)
+  })
+
+  it('offers Delete to Super Admin only, even to a role holding System Types Delete', async () => {
+    typesApi({ ...SETTINGS_VIEWER, id: '30', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: [...SETTINGS_VIEWER.permissions, 'SYSTEM_TYPES:EDIT', 'SYSTEM_TYPES:DELETE'] }, [CCTV])
+    renderPage()
+    await table()
+
+    expect(screen.getByRole('button', { name: 'Edit CCTV' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Delete CCTV' })).not.toBeInTheDocument()
   })
 })
 

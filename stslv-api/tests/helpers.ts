@@ -25,7 +25,7 @@ export async function resetData(): Promise<void> {
     throw new Error("Refusing to reset data: not connected to the stslv_test schema.");
   }
 
-  await pool.query("TRUNCATE activity_logs, clients, user_roles, users RESTART IDENTITY CASCADE");
+  await pool.query("TRUNCATE activity_logs, clients_all, user_roles, users RESTART IDENTITY CASCADE");
   await pool.query("DELETE FROM role_permissions");
   await pool.query(
     "DELETE FROM roles WHERE code NOT IN ('ADMIN', 'ADMINISTRATOR', 'FINANCE_EXECUTIVE', 'MASTER_DATA_EXECUTIVE', 'AMC_OPERATIONS_EXECUTIVE', 'VIEWER', 'ACCOUNTANT', 'PROCUREMENT', 'EXECUTION', 'INVOICING')"

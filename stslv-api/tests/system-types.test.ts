@@ -191,28 +191,52 @@ describe("deletion", () => {
 
     expect(refused.status).toBe(409);
     expect(refused.body.error.message).toBe(
-      '"Fire Alarm" is used by 1 AMC contract and cannot be deleted. Disable it instead: the contracts keep it, and it is no longer offered for new contracts.'
+      'System type "Fire Alarm" cannot be moved to the Recycle Bin: it is used by 1 AMC contract (1 Active). Disable it instead; those records keep it.'
     );
     expect((await pool.query("SELECT 1 FROM system_types WHERE id = $1", [ids.get("FA")])).rowCount).toBe(1);
 
-    // Should the API check be bypassed, the foreign key still keeps the contract's type.
+    // Should the API check be bypassed, the database still keeps the contract's type:
+    // the foreign key refuses a physical delete, and the 0106 guard refuses a Recycle Bin move.
     await expect(pool.query("DELETE FROM system_types WHERE id = $1", [ids.get("FA")])).rejects.toMatchObject({ code: "23503" });
+    await expect(pool.query("UPDATE system_types_all SET deleted_at = now(), deleted_by = $2 WHERE id = $1", [ids.get("FA"), admin.id])).rejects.toMatchObject({
+      code: "RB002",
+    });
   });
 
-  it("deletes an unused type and records what it was", async () => {
+  it("moves an unused type to the Recycle Bin, keeps its row and records what it was", async () => {
     const id = ids.get("ACS") as string;
     const deleted = await api().delete(`${PATH}/${id}`).set(admin.headers);
 
     expect(deleted.status).toBe(200);
+    expect(deleted.body.data).toEqual({ deleted: true, recycleBin: true });
     expect((await api().get(`${PATH}/${id}`).set(admin.headers)).status).toBe(404);
     expect((await api().delete(`${PATH}/${id}`).set(admin.headers)).status).toBe(404);
+    expect((await pool.query("SELECT code FROM system_types_all WHERE id = $1 AND deleted_at IS NOT NULL", [id])).rows).toEqual([{ code: "ACS" }]);
 
     const logs = await logsFor("system_types", id);
     expect(logs.at(-1)).toMatchObject({
       action: "system_type.deleted",
       user_id: admin.id,
-      metadata: { deleted: { code: "ACS", name: "Access Control", description: null, sortOrder: 20, isActive: true } },
+      metadata: { recycleBin: true, deleted: { code: "ACS", name: "Access Control", description: null, sort_order: 20, is_active: true } },
     });
+  });
+
+  it("is Super Admin only, even with the System Types Delete permission (approved 2026-11-04)", async () => {
+    await pool.query("INSERT INTO roles (code, name) VALUES ('TYPE_DELETER', 'Type Deleter') ON CONFLICT DO NOTHING");
+    await pool.query(
+      `INSERT INTO role_permissions (role_id, module, action)
+       SELECT r.id, 'SYSTEM_TYPES', a.action FROM roles r CROSS JOIN (VALUES ('VIEW'), ('DELETE')) AS a (action)
+       WHERE r.code IN ('TYPE_DELETER', 'ADMINISTRATOR') ON CONFLICT DO NOTHING`
+    );
+
+    for (const role of ["ADMINISTRATOR", "TYPE_DELETER"]) {
+      const other = await signedIn(`${role.toLowerCase()}-types@example.com`, [role]);
+      const response = await api().delete(`${PATH}/${ids.get("FE")}`).set(other.headers);
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.message).toContain("Only Super Admin");
+    }
+    expect((await pool.query("SELECT 1 FROM system_types WHERE id = $1", [ids.get("FE")])).rowCount).toBe(1);
   });
 
   it("needs the Settings delete permission", async () => {

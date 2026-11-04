@@ -6,7 +6,7 @@ import { forbidden } from "../../shared/errors";
 import { parseIdParam } from "../../shared/validation";
 import { sendExport } from "../../shared/export/send";
 import { canReadMaster, MASTER_MODULE, mayReadMaster, type MasterPath } from "./master-permissions";
-import { buildSalesEngineersExport, deleteSalesEngineer, engineerUserOptions, getEngineerSummary } from "./sales-engineers.service";
+import { buildSalesEngineersExport, deleteSalesEngineer, engineerUserOptions, getEngineerSummary, getSalesEngineerUsage } from "./sales-engineers.service";
 import {
   departmentSchemas,
   exportSalesEngineersSchema,
@@ -141,12 +141,18 @@ mastersRouter.get("/sales-engineers/:id/summary", engineersReady, canReadMaster(
   res.json({ success: true, data: await getEngineerSummary(requireAuth(req), parseIdParam(req.params.id)) });
 });
 
-// Permanent deletion: Super Admin only (403 for everyone else, checked in deleteSalesEngineer, so no
-// permission code grants it), and only an engineer no AMC contract refers to; otherwise 409 with the reason.
+// What uses the engineer, for the delete dialog: counted on request, Recycle Bin contracts apart.
+mastersRouter.get("/sales-engineers/:id/usage", engineersReady, canReadMaster("sales-engineers"), async (req, res) => {
+  res.json({ success: true, data: await getSalesEngineerUsage(parseIdParam(req.params.id)) });
+});
+
+// Moves the engineer to the Recycle Bin (nothing is removed): Super Admin only (403 for everyone else,
+// checked in deleteSalesEngineer, so no permission code grants it), and only an engineer no live AMC
+// contract refers to; otherwise 409 with the reason. Permanent deletion is in the Recycle Bin.
 mastersRouter.delete("/sales-engineers/:id", engineersReady, async (req, res) => {
   await deleteSalesEngineer(requireAuth(req), parseIdParam(req.params.id));
 
-  res.json({ success: true, data: { deleted: true } });
+  res.json({ success: true, data: { deleted: true, recycleBin: true } });
 });
 
 mount("departments", DEPARTMENTS, departmentSchemas, MASTER_DATA);

@@ -1,16 +1,16 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Badge, Button, ConfirmDialog, EmptyState, Modal, Spinner, TableScroll } from '../../components/ui'
+import { Alert, Badge, Button, EmptyState, Modal, Spinner, TableScroll } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { formatDate } from '../../lib/format'
 import { CONTRACT_STATUS_LABELS, type ContractStatus } from '../amc/types'
 import type { MasterList, SystemType } from './masterTypes'
 
-// The dialogs of the System Types page: the AMC contracts that use a type
-// (read only), and the confirmation before an unused type is deleted.
+// The AMC contracts that use a system type (read only). Delete is the shared
+// MoveToRecycleBinDialog (components/MoveToRecycleBinDialog.tsx).
 
 const PAGE_SIZE = 10
 
@@ -94,40 +94,5 @@ export function LinkedContractsModal({ type, onClose }: { type: SystemType; onCl
         </>
       )}
     </Modal>
-  )
-}
-
-/**
- * Confirms deleting an unused type. The page offers it only when no contract
- * uses the type; the API checks again and explains a refusal, which shows here.
- */
-export function DeleteSystemTypeModal({ type, onClose, onDeleted }: { type: SystemType; onClose: () => void; onDeleted: (message: string) => void }) {
-  const queryClient = useQueryClient()
-  const remove = useMutation({
-    mutationFn: () => api.delete(`/masters/system-types/${type.id}`),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ['masters'] })
-      onDeleted(`The system type "${type.name}" was deleted.`)
-    },
-  })
-
-  return (
-    <ConfirmDialog
-      title="Delete system type"
-      message={
-        <>
-          <p>
-            Delete <strong>{type.code} — {type.name}</strong>? No AMC contract uses it. This cannot be undone; the activity log keeps a record of it.
-          </p>
-          <p className="mt-2 text-slate-500">To stop offering it for new contracts but keep it, disable it instead.</p>
-        </>
-      }
-      confirmLabel="Delete"
-      danger
-      loading={remove.isPending}
-      error={remove.isError ? errorMessage(remove.error) : null}
-      onConfirm={() => remove.mutate()}
-      onCancel={onClose}
-    />
   )
 }
