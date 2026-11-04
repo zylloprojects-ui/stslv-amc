@@ -1,22 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/context'
 import { usePageTitle } from '../components/hooks'
-import { Alert, Button, Spinner } from '../components/ui'
+import { Alert, Spinner } from '../components/ui'
 import { api, errorMessage } from '../lib/api'
 import { cx, formatTime } from '../lib/format'
 import type { Module } from '../lib/types'
 import { formatDate } from './amc/amcFormat'
 import { Icon, type IconName } from './dashboard/icons'
-import { DEFAULT_KPI_ORDER } from './dashboard/kpis'
 import { KpiStrip } from './dashboard/KpiStrip'
 import { MaintenanceCalendar } from './dashboard/MaintenanceCalendar'
 import type { OperationsDashboard } from './dashboard/operationsTypes'
 import { RecentInvoices } from './dashboard/RecentInvoices'
 import { ExpiringContracts, PaymentTrend, PortfolioStatus, WorkloadChart } from './dashboard/Widgets'
-import { useKpiCustomization } from './amcManagement/managementPreferences'
-import { useKpiOrder, useStoredFlag } from './dashboard/dashboardPreferences'
+import { useStoredFlag } from './dashboard/dashboardPreferences'
 
 // AMC Portfolio Status, Expiring Contracts and Recent Invoices are hidden on the dashboard by default. Set VITE_SHOW_DASHBOARD_DETAIL_PANELS=true to bring them back.
 // Read on each render (not once at load) so tests can check both settings.
@@ -86,9 +84,6 @@ export function DashboardPage() {
 
   const operations = useQuery({ queryKey: ['dashboard', 'operations'], queryFn: () => api.get<OperationsDashboard>('/dashboard/operations') })
 
-  const kpiOrder = useKpiOrder(userId, DEFAULT_KPI_ORDER)
-  const kpiNames = useKpiCustomization(userId, 'kpis', DEFAULT_KPI_ORDER, 'stslev.dashboard')
-  const [arranging, setArranging] = useState(false)
   const [calendarOpen, setCalendarOpen] = useStoredFlag(userId, 'calendar-open', true)
 
   const data = operations.data
@@ -161,22 +156,9 @@ export function DashboardPage() {
       )}
 
       <section aria-labelledby="dashboard-kpis" className="mb-7">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <SectionHeading id="dashboard-kpis">Key figures</SectionHeading>
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" aria-pressed={arranging} onClick={() => setArranging(!arranging)}>
-              {arranging ? 'Done arranging' : 'Arrange KPIs'}
-            </Button>
-            <Button variant="secondary" size="sm" onClick={kpiOrder.reset}>
-              Reset KPI Layout
-            </Button>
-            <Button variant="secondary" size="sm" onClick={kpiNames.resetNames} disabled={!kpiNames.namesChanged}>
-              Reset KPI Names
-            </Button>
-          </div>
-        </div>
-        {arranging && <p className="mb-2 text-xs text-slate-600">Drag a card, use its arrow buttons, or give it your own name. A renamed card still shows the same figure. Names and order are remembered in this browser for your account.</p>}
-        <KpiStrip data={data} failed={operations.isError} canView={canView} order={kpiOrder.order} arranging={arranging} onReorder={kpiOrder.setOrder} names={kpiNames.names} onRename={kpiNames.rename} />
+        <SectionHeading id="dashboard-kpis">Key figures</SectionHeading>
+        {/* Twelve cards in a fixed order (the client's reference). Cards saved by the old Arrange KPIs are no longer read; nothing stored is deleted. */}
+        <KpiStrip data={data} failed={operations.isError} canView={canView} />
       </section>
 
       {operations.isPending && <Spinner label="Loading dashboard" />}

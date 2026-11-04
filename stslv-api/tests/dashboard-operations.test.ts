@@ -78,7 +78,13 @@ describe("empty database", () => {
       expiringSoonDays: 45,
       expiringSoonWithRenewal: 0,
     });
-    expect(data.kpis.services).toEqual({ thisMonth: 0, completedThisMonth: 0, openThisMonth: 0 });
+    expect(data.kpis.services).toEqual({ thisMonth: 0, completedThisMonth: 0, openThisMonth: 0, overall: 0, openOverall: 0 });
+    expect(data.kpis.payments.scheduledThisMonth).toEqual({
+      withInvoiceNo: 0,
+      withInvoiceNoValue: "0.000",
+      withoutInvoiceNo: 0,
+      withoutInvoiceNoValue: "0.000",
+    });
     expect(data.portfolio.total).toBe(0);
     expect(data.portfolio.statuses.map((s: { status: string }) => s.status)).toEqual(["DRAFT", "ACTIVE", "EXPIRED", "CANCELLED"]);
     expect(data.portfolio.statuses.every((s: { count: number; percent: string | null }) => s.count === 0 && s.percent === null)).toBe(true);
@@ -408,5 +414,158 @@ describe("production readiness", () => {
     expect(JSON.stringify(response.body)).not.toMatch(/score/i);
     // No secret or connection detail leaves the API.
     expect(JSON.stringify(response.body)).not.toMatch(/password|JWT|postgres:\/\//i);
+  });
+});
+
+describe("12-card dashboard: current month and overall figures", () => {
+  // The visits Accounts counts (IN_SCOPE), written independently of the service.
+  const ACCOUNTS_SCOPE = `v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED') AND (v.status = 'COMPLETED' OR c.status <> 'CANCELLED')`;
+  const THIS_MONTH = "date_trunc('month', v.scheduled_date) = date_trunc('month', current_date)";
+  const OPEN = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED')";
+  let deletedContract: string;
+
+  beforeAll(async () => {
+    const client = await createClient(admin, "Twelve Card Client");
+    const bounds = await one<{ first: string; last: string; prev_last: string; next_first: string; last_year: string }>(
+      `SELECT date_trunc('month', current_date)::date::text AS first,
+              (date_trunc('month', current_date) + interval '1 month - 1 day')::date::text AS last,
+              (date_trunc('month', current_date) - interval '1 day')::date::text AS prev_last,
+              (date_trunc('month', current_date) + interval '1 month')::date::text AS next_first,
+              (current_date - interval '1 year')::date::text AS last_year`
+    );
+    // A monthly contract that began over a year ago: visits in earlier years, this month and ahead.
+    const contract = await activeContract(admin, client, {
+      systemDescription: "TWELVE",
+      validFrom: addDays(now, -400),
+      validTo: addDays(now, 200),
+      contractValue: "1200.000",
+      maintenanceFrequency: "MONTHLY",
+      defaultVisitAmount: "40.250",
+    });
+    const visits = await visitsOf(contract);
+    const invoiceNo = (id: string | undefined, no: string) =>
+      pool.query(
+        "UPDATE amc_visits SET manual_invoice_no = $2, manual_invoice_at = now(), manual_invoice_by = (SELECT min(id) FROM users) WHERE id = $1",
+        [id, no]
+      );
+    const set = (id: string | undefined, date: string, status: string) =>
+      pool.query(
+        "UPDATE amc_visits SET scheduled_date = $2::date, status = $3, completed_date = CASE WHEN $3 = 'COMPLETED' THEN $2::date END WHERE id = $1",
+        [id, date, status]
+      );
+
+    // Last year, completed, invoice no. entered today: counts overall only, never in "this month".
+    await set(visits[0]?.id, bounds.last_year, "COMPLETED");
+    await invoiceNo(visits[0]?.id, "INV-OLD-1");
+    // Last day of the previous month, completed, no invoice no.
+    await set(visits[1]?.id, bounds.prev_last, "COMPLETED");
+    // First and last day of this month: one with an invoice no., one pending without.
+    await set(visits[2]?.id, bounds.first, "COMPLETED");
+    await invoiceNo(visits[2]?.id, "INV-MONTH-1");
+    await set(visits[3]?.id, bounds.last, "SCHEDULED");
+    // First day of next month: pending overall only.
+    await set(visits[4]?.id, bounds.next_first, "POSTPONED");
+    // A cancelled visit this month: no figure counts it.
+    await set(visits[5]?.id, bounds.first, "CANCELLED");
+
+    // A contract in the Recycle Bin, with services this month, one with an invoice no.: no figure counts it.
+    deletedContract = await activeContract(admin, client, {
+      systemDescription: "IN RECYCLE BIN",
+      validFrom: addDays(now, -30),
+      validTo: addDays(now, 300),
+      contractValue: "999.000",
+      maintenanceFrequency: "MONTHLY",
+      defaultVisitAmount: "77.000",
+    });
+    const binned = await visitsOf(deletedContract);
+    await pool.query("UPDATE amc_visits SET scheduled_date = $2::date WHERE amc_contract_id = $1", [deletedContract, bounds.first]);
+    await invoiceNo(binned[0]?.id, "INV-BIN-1");
+    await pool.query("UPDATE amc_contracts_all SET deleted_at = now(), deleted_by = (SELECT min(id) FROM users) WHERE id = $1", [deletedContract]);
+  });
+
+  it("counts every service overall and the open ones, independently of the current month", async () => {
+    const expected = await one<{ overall: number; open: number; month: number; month_open: number }>(
+      `SELECT count(*)::int AS overall,
+              count(*) FILTER (WHERE ${OPEN})::int AS open,
+              count(*) FILTER (WHERE ${THIS_MONTH})::int AS month,
+              count(*) FILTER (WHERE ${THIS_MONTH} AND ${OPEN})::int AS month_open
+       FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
+       WHERE ${COUNTED}`
+    );
+    const { services } = (await operations()).body.data.kpis;
+
+    expect(services.overall).toBe(expected.overall);
+    expect(services.openOverall).toBe(expected.open);
+    expect(services.thisMonth).toBe(expected.month);
+    expect(services.openThisMonth).toBe(expected.month_open);
+    // The two rows are different queries: earlier years and later months make overall larger.
+    expect(services.overall).toBeGreaterThan(services.thisMonth);
+    expect(services.openOverall).toBeGreaterThan(services.openThisMonth);
+  });
+
+  it("splits services by Invoice No. for this month (by scheduled date) and overall", async () => {
+    const expected = await one<{ m_with: number; m_with_v: string; m_without: number; m_without_v: string; with_no: number; without_no: number }>(
+      `SELECT count(*) FILTER (WHERE ${THIS_MONTH} AND v.manual_invoice_no IS NOT NULL)::int AS m_with,
+              COALESCE(sum(v.visit_amount) FILTER (WHERE ${THIS_MONTH} AND v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS m_with_v,
+              count(*) FILTER (WHERE ${THIS_MONTH} AND v.manual_invoice_no IS NULL)::int AS m_without,
+              COALESCE(sum(v.visit_amount) FILTER (WHERE ${THIS_MONTH} AND v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS m_without_v,
+              count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS with_no,
+              count(*) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS without_no
+       FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
+       WHERE ${ACCOUNTS_SCOPE}`
+    );
+    const { payments } = (await operations()).body.data.kpis;
+
+    expect(payments.scheduledThisMonth).toEqual({
+      withInvoiceNo: expected.m_with,
+      withInvoiceNoValue: expected.m_with_v,
+      withoutInvoiceNo: expected.m_without,
+      withoutInvoiceNoValue: expected.m_without_v,
+    });
+    // Exactly the one service scheduled this month with a number; the old one counts overall only.
+    expect(payments.scheduledThisMonth.withInvoiceNo).toBe(1);
+    expect(payments.scheduledThisMonth.withInvoiceNoValue).toBe("40.250");
+    expect(payments.paid).toBe(expected.with_no);
+    expect(payments.paid).toBe(2);
+    expect(payments.unpaid).toBe(expected.without_no);
+    expect(payments.unpaid).toBeGreaterThan(payments.scheduledThisMonth.withoutInvoiceNo);
+    // Both numbers were entered today, so "Paid This Month" (by entry date) still counts the old service.
+    expect(payments.paidThisMonth).toBe(2);
+  });
+
+  it("leaves out every service of a contract in the Recycle Bin", async () => {
+    const binned = await one<{ n: number; with_no: number }>(
+      `SELECT count(*)::int AS n, count(*) FILTER (WHERE manual_invoice_no IS NOT NULL)::int AS with_no
+       FROM amc_visits_all WHERE amc_contract_id = $1`,
+      [deletedContract]
+    );
+    const everything = await one<{ n: number; with_no: number }>(
+      `SELECT count(*)::int AS n, count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS with_no
+       FROM amc_visits_all v JOIN amc_contracts_all c ON c.id = v.amc_contract_id WHERE ${COUNTED}`
+    );
+    const activeAll = await one<{ value: string }>(
+      "SELECT sum(contract_value)::numeric(16,3)::text AS value FROM amc_contracts_all WHERE status = 'ACTIVE' AND deleted_at IS NULL"
+    );
+    const { services, payments, contracts } = (await operations()).body.data.kpis;
+
+    expect(binned.n).toBeGreaterThan(0);
+    expect(binned.with_no).toBe(1);
+    expect(services.overall).toBe(everything.n - binned.n);
+    expect(payments.paid).toBe(everything.with_no - binned.with_no);
+    expect(contracts.activeValue).toBe(activeAll.value);
+  });
+
+  it("reads the stored service amounts (excluding VAT) and changes no invoice data", async () => {
+    const snapshot = () =>
+      one(
+        `SELECT (SELECT count(*) FROM invoices)::int AS invoices,
+                string_agg(id || ':' || COALESCE(manual_invoice_no, '-') || ':' || status, ',' ORDER BY id) AS numbers
+         FROM amc_visits_all`
+      );
+    const before = await snapshot();
+
+    await operations();
+
+    expect(await snapshot()).toEqual(before);
   });
 });

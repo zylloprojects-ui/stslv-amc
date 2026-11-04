@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionUser } from '../lib/types'
 import { monthCells } from '../pages/dashboard/calendarCells'
 import { orderedIds } from '../pages/dashboard/dashboardPreferences'
+import { monthName } from '../pages/dashboard/kpis'
 import { MetricCard } from '../pages/dashboard/MetricCard'
 import type { OperationsDashboard } from '../pages/dashboard/operationsTypes'
 import { ACCOUNTANT, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
@@ -27,8 +28,16 @@ const OPERATIONS: OperationsDashboard = {
       expiringSoonDays: 45,
       expiringSoonWithRenewal: 1,
     },
-    services: { thisMonth: 9, completedThisMonth: 4, openThisMonth: 5 },
-    payments: { paid: 3, paidValue: '240.000', unpaid: 8, unpaidValue: '640.500', paidThisMonth: 2, paidThisMonthValue: '160.000' },
+    services: { thisMonth: 9, completedThisMonth: 4, openThisMonth: 5, overall: 140, openOverall: 96 },
+    payments: {
+      paid: 3,
+      paidValue: '240.000',
+      unpaid: 8,
+      unpaidValue: '640.500',
+      paidThisMonth: 2,
+      paidThisMonthValue: '160.000',
+      scheduledThisMonth: { withInvoiceNo: 1, withInvoiceNoValue: '80.000', withoutInvoiceNo: 6, withoutInvoiceNoValue: '480.375' },
+    },
   },
   portfolio: {
     total: 16,
@@ -182,63 +191,153 @@ function dashboardApi(user: SessionUser, overrides: Overrides = {}) {
 
 const withPermissions = (permissions: string[]): SessionUser => ({ ...ACCOUNTANT, permissions })
 
-async function kpiCard(label: string) {
-  const strip = await screen.findByRole('list', { name: 'Key figures' })
-  const heading = await within(strip).findByRole('heading', { name: label })
+const ROW_TITLES = { portfolio: 'AMC Portfolio', month: 'Current Month', overall: 'Overall' } as const
+type RowKey = keyof typeof ROW_TITLES
+
+/** A row of key figures. Rows 2 and 3 share card names, so cards are always found within their row. */
+async function kpiRow(row: RowKey) {
+  return screen.findByRole('list', { name: ROW_TITLES[row] })
+}
+
+async function kpiCard(label: string, row: RowKey = 'portfolio') {
+  const heading = await within(await kpiRow(row)).findByRole('heading', { name: label })
 
   return heading.closest('[data-kpi]') as HTMLElement
 }
 
 const kpiOrder = () => [...document.querySelectorAll('[data-kpi]')].map((card) => card.getAttribute('data-kpi'))
+const labelsOf = (list: HTMLElement) => within(list).getAllByRole('heading').map((heading) => heading.textContent)
+
+const TWELVE_IDS = [
+  'active', 'value', 'credit', 'expiring',
+  'month-services', 'month-pending', 'month-invoiced', 'month-not-invoiced',
+  'overall-services', 'overall-pending', 'overall-invoiced', 'overall-not-invoiced',
+]
 
 describe('KPI cards', () => {
-  it('shows the seven KPIs from the API, formatted, each with its code', async () => {
+  it('shows exactly twelve cards in three rows of four, in the client’s order and wording', async () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const active = await kpiCard('Active AMC')
+    expect(labelsOf(await kpiRow('portfolio'))).toEqual(['Active AMCs', 'Annual AMC Value (Ex VAT)', 'Final Credit (Ex VAT)', 'Expiring ≤45 Days'])
+    expect(labelsOf(await kpiRow('month'))).toEqual(['Services This Month', 'Services Pending', 'Invoices Generated', 'Invoices Not Generated'])
+    expect(labelsOf(await kpiRow('overall'))).toEqual(['Services Overall', 'Services Pending', 'Invoices Generated', 'Invoices Not Generated'])
+    expect(kpiOrder()).toEqual(TWELVE_IDS)
+    // The rows say which period they cover; the month comes from the API's date.
+    expect(screen.getByText('Services scheduled in October 2026')).toBeInTheDocument()
+    expect(screen.getByText(/All service records, earlier years and visits ahead/)).toBeInTheDocument()
+  })
+
+  it('shows the portfolio figures from the API, amounts in OMR with three decimals', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    const active = await kpiCard('Active AMCs')
     expect(await within(active).findByText('12')).toBeInTheDocument()
     expect(within(active).getByText(/2 past validity/)).toBeInTheDocument()
 
-    const value = await kpiCard('Annual AMC Value (OMR)')
+    const value = await kpiCard('Annual AMC Value (Ex VAT)')
     expect(within(value).getByText('8,010.500')).toBeInTheDocument()
+    expect(within(value).getByText('OMR')).toBeInTheDocument()
     expect(within(value).getByTitle(/may be whole-term amounts/)).toBeInTheDocument()
 
-    const credit = await kpiCard('Total Credit (OMR)')
+    const credit = await kpiCard('Final Credit (Ex VAT)')
     expect(within(credit).getByText('300.501')).toBeInTheDocument()
-    expect(within(credit).getByTitle(/Final Credit Value as entered/)).toBeInTheDocument()
-
-    const services = await kpiCard('Services This Month')
-    expect(within(services).getByText('9')).toBeInTheDocument()
-    expect(within(services).getByText(/4 completed, 5 open/)).toBeInTheDocument()
+    expect(within(credit).getByText('Entered on 2 of 12 active contracts')).toBeInTheDocument()
 
     const expiring = await kpiCard('Expiring ≤45 Days')
     expect(within(expiring).getByText('3')).toBeInTheDocument()
     expect(within(expiring).getByText(/within 45 days · 1 with a renewal/)).toBeInTheDocument()
-    expect(kpiOrder()).toEqual(['active', 'value', 'credit', 'services', 'unpaid', 'paid', 'expiring'])
   })
 
-  it('shows Unpaid Invoices and Paid This Month from the reference status, with what Paid means', async () => {
+  it('reads the current-month row and the overall row from different API figures', async () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    const unpaid = await kpiCard('Unpaid Invoices')
-    expect(await within(unpaid).findByText('8')).toBeInTheDocument()
-    expect(within(unpaid).getByText(/640\.500 scheduled value/)).toBeInTheDocument()
+    const figure = async (label: string, row: RowKey) => (await kpiCard(label, row)).querySelector('p')?.textContent
 
-    const paid = await kpiCard('Paid This Month')
-    expect(await within(paid).findByText('2')).toBeInTheDocument()
-    expect(within(paid).getByText(/160\.000 · reference status/)).toBeInTheDocument()
+    expect(await figure('Services This Month', 'month')).toBe('9')
+    expect(await figure('Services Pending', 'month')).toBe('5')
+    expect(await figure('Invoices Generated', 'month')).toBe('1')
+    expect(await figure('Invoices Not Generated', 'month')).toBe('6')
+    expect(within(await kpiCard('Invoices Generated', 'month')).getByText(/OMR 80\.000 · Invoice No\. entered/)).toBeInTheDocument()
+    expect(within(await kpiCard('Invoices Not Generated', 'month')).getByText(/OMR 480\.375 · no Invoice No\./)).toBeInTheDocument()
+
+    expect(await figure('Services Overall', 'overall')).toBe('140')
+    expect(await figure('Services Pending', 'overall')).toBe('96')
+    expect(await figure('Invoices Generated', 'overall')).toBe('3')
+    expect(await figure('Invoices Not Generated', 'overall')).toBe('8')
+    expect(within(await kpiCard('Invoices Generated', 'overall')).getByText(/OMR 240\.000/)).toBeInTheDocument()
+    expect(within(await kpiCard('Invoices Not Generated', 'overall')).getByText(/OMR 640\.500/)).toBeInTheDocument()
   })
 
-  it('shows a role only the KPIs its permissions allow, and only what the API returned', async () => {
+  it('says an entered Invoice No. is a reference status, not verified payment', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    for (const row of ['month', 'overall'] as const) {
+      const card = await kpiCard('Invoices Generated', row)
+      expect(within(card).getByTitle(/does not verify that money was received/)).toBeInTheDocument()
+    }
+  })
+
+  it('shows zeros, not blanks, for an empty database', async () => {
+    dashboardApi(ADMIN, {
+      operations: () =>
+        ok({
+          ...OPERATIONS,
+          kpis: {
+            contracts: { active: 0, activePastValidity: 0, activeValue: '0.000', finalCreditTotal: '0.000', finalCreditRecorded: 0, expiringSoon: 0, expiringSoonDays: 45, expiringSoonWithRenewal: 0 },
+            services: { thisMonth: 0, completedThisMonth: 0, openThisMonth: 0, overall: 0, openOverall: 0 },
+            payments: {
+              paid: 0, paidValue: '0.000', unpaid: 0, unpaidValue: '0.000', paidThisMonth: 0, paidThisMonthValue: '0.000',
+              scheduledThisMonth: { withInvoiceNo: 0, withInvoiceNoValue: '0.000', withoutInvoiceNo: 0, withoutInvoiceNoValue: '0.000' },
+            },
+          },
+        }),
+    })
+    renderApp('/dashboard')
+
+    await kpiCard('Active AMCs')
+    const figures = [...document.querySelectorAll('[data-kpi]')].map((card) => card.querySelector('p')?.textContent)
+    expect(figures).toEqual(['0', 'OMR0.000', 'OMR0.000', '0', '0', '0', '0', '0', '0', '0', '0', '0'])
+  })
+
+  it('has no links or buttons on the cards and no arranging', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    await kpiCard('Active AMCs')
+    for (const card of document.querySelectorAll('[data-kpi]')) {
+      expect(card.querySelector('a, button, input, [role="button"]')).toBeNull()
+      expect(card.getAttribute('draggable')).toBeNull()
+    }
+    expect(screen.queryByRole('button', { name: 'Arrange KPIs' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reset KPI Layout' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Reset KPI Names' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the fixed order whatever the old Arrange KPIs saved, and leaves the saved choice in place', async () => {
+    localStorage.setItem('stslev.dashboard.kpi-order.1', JSON.stringify(['expiring', 'paid', 'unpaid', 'services', 'credit', 'value', 'active']))
+    localStorage.setItem('stslev.dashboard.kpis.kpi-names.1', JSON.stringify({ active: 'My contracts' }))
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    await kpiCard('Active AMCs')
+    expect(kpiOrder()).toEqual(TWELVE_IDS)
+    expect(screen.queryByRole('heading', { name: 'My contracts' })).not.toBeInTheDocument()
+    expect(localStorage.getItem('stslev.dashboard.kpi-order.1')).not.toBeNull()
+  })
+
+  it('shows a role only the cards and rows its permissions allow, and only what the API returned', async () => {
     dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']), {
       operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, payments: null }, portfolio: null, expiring: null, paymentTrend: null }),
     })
     renderApp('/dashboard')
 
-    await kpiCard('Services This Month')
-    expect(kpiOrder()).toEqual(['services'])
+    await kpiCard('Services This Month', 'month')
+    expect(kpiOrder()).toEqual(['month-services', 'month-pending', 'overall-services', 'overall-pending'])
+    expect(screen.queryByRole('list', { name: 'AMC Portfolio' })).not.toBeInTheDocument()
     expect(screen.queryByText('8,010.500')).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'AMC Portfolio Status' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Payment Trend' })).not.toBeInTheDocument()
@@ -248,8 +347,8 @@ describe('KPI cards', () => {
     dashboardApi(ADMIN, { operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null } }) })
     renderApp('/dashboard')
 
-    await kpiCard('Services This Month')
-    expect(kpiOrder()).toEqual(['services', 'unpaid', 'paid'])
+    await kpiCard('Services This Month', 'month')
+    expect(kpiOrder()).toEqual(TWELVE_IDS.slice(4))
   })
 
   it('reports a failure without inventing a figure, and recovers on retry', async () => {
@@ -259,73 +358,30 @@ describe('KPI cards', () => {
 
     expect(await screen.findByText(/The dashboard figures could not be loaded/)).toBeInTheDocument()
     expect(screen.getByText('System unreachable')).toBeInTheDocument()
-    const card = await kpiCard('Active AMC')
+    const card = await kpiCard('Active AMCs')
     expect(within(card).getByText('Could not be loaded')).toBeInTheDocument()
     expect(card.textContent).not.toMatch(/\d/)
 
     failing = false
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
-    expect(await within(await kpiCard('Active AMC')).findByText('12')).toBeInTheDocument()
+    expect(await within(await kpiCard('Active AMCs')).findByText('12')).toBeInTheDocument()
     expect(screen.getByText('System online')).toBeInTheDocument()
   })
 })
 
-describe('KPI layout preferences', () => {
-  it('moves cards, remembers the order for this user and resets it', async () => {
-    dashboardApi(ADMIN)
-    const view = renderApp('/dashboard')
-
-    await kpiCard('Active AMC')
-    await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Move Active AMC later' }))
-    expect(kpiOrder().slice(0, 2)).toEqual(['value', 'active'])
-    expect(screen.getByRole('button', { name: 'Move Annual AMC Value (OMR) earlier' })).toBeDisabled()
-
-    expect(JSON.parse(localStorage.getItem('stslev.dashboard.kpi-order.1') ?? '[]').slice(0, 2)).toEqual(['value', 'active'])
-
-    // The order survives a reload.
-    view.unmount()
-    renderApp('/dashboard')
-    await kpiCard('Active AMC')
-    expect(kpiOrder().slice(0, 2)).toEqual(['value', 'active'])
-
-    await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Layout' }))
-    expect(kpiOrder().slice(0, 2)).toEqual(['active', 'value'])
-    expect(localStorage.getItem('stslev.dashboard.kpi-order.1')).toBeNull()
-  })
-
-  it('renames a card without changing its figure, and resets the name', async () => {
-    dashboardApi(ADMIN)
-    renderApp('/dashboard')
-    const card = await kpiCard('Services This Month')
-    const figure = await within(card).findByText('9')
-
-    await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
-    await userEvent.type(screen.getByLabelText('Display name for Services This Month'), 'Visits Due')
-    expect(await kpiCard('Visits Due')).toContainElement(figure)
-    await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Names' }))
-    expect(await kpiCard('Services This Month')).toBeInTheDocument()
-  })
-
-  it('moves a card past the ones the user cannot see', async () => {
-    // Saved order puts a contract card between two invoice cards; this role sees no contract cards.
-    localStorage.setItem('stslev.dashboard.kpi-order.2', JSON.stringify(['unpaid', 'active', 'paid', 'value', 'credit', 'services', 'expiring']))
-    dashboardApi(withPermissions(['DASHBOARD:VIEW', 'INVOICES:VIEW']), {
-      operations: () => ok({ ...OPERATIONS, kpis: { ...OPERATIONS.kpis, contracts: null, services: null }, portfolio: null, expiring: null, workload: null, schedule: null }),
-    })
-    renderApp('/dashboard')
-
-    await kpiCard('Unpaid Invoices')
-    expect(kpiOrder()).toEqual(['unpaid', 'paid'])
-    await userEvent.click(screen.getByRole('button', { name: 'Arrange KPIs' }))
-    await userEvent.click(screen.getByRole('button', { name: 'Move Unpaid Invoices later' }))
-    expect(kpiOrder()).toEqual(['paid', 'unpaid'])
-  })
-
+describe('KPI preferences helper', () => {
   it('keeps saved ids that still exist and adds new cards at the end', () => {
     expect(orderedIds(['b', 'gone', 'a', 'b'], ['a', 'b', 'c'])).toEqual(['b', 'a', 'c'])
     expect(orderedIds(null, ['a', 'b'])).toEqual(['a', 'b'])
+  })
+})
+
+describe('month name', () => {
+  it('reads the API date as a calendar date across year boundaries', () => {
+    expect(monthName('2026-12-31')).toBe('December 2026')
+    expect(monthName('2027-01-01')).toBe('January 2027')
+    expect(monthName('')).toBe('this month')
   })
 })
 
@@ -560,7 +616,7 @@ describe('dashboard detail panels', () => {
     const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await kpiCard('Active AMC')
+    await kpiCard('Active AMCs')
     for (const name of PANELS) expect(screen.queryByRole('heading', { name })).not.toBeInTheDocument()
     // The recent-invoices list is not requested when its panel is hidden.
     expect(api.find('GET', '/invoices')).toHaveLength(0)
@@ -571,7 +627,7 @@ describe('dashboard detail panels', () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await kpiCard('Active AMC')
+    await kpiCard('Active AMCs')
     for (const name of PANELS) expect(screen.queryByRole('heading', { name })).not.toBeInTheDocument()
   })
 
@@ -590,7 +646,7 @@ describe('production readiness', () => {
     const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await kpiCard('Active AMC')
+    await kpiCard('Active AMCs')
     await screen.findByRole('heading', { name: 'Recent Invoices (Zoho)' })
     expect(screen.queryByRole('heading', { name: 'Production Readiness' })).not.toBeInTheDocument()
     expect(api.find('GET', '/dashboard/readiness')).toHaveLength(0)
@@ -602,7 +658,7 @@ describe('module figures', () => {
     const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await kpiCard('Active AMC')
+    await kpiCard('Active AMCs')
     await screen.findByRole('heading', { name: 'Recent Invoices (Zoho)' })
     expect(screen.queryByRole('region', { name: 'Waiting for an invoice and other figures' })).not.toBeInTheDocument()
     for (const label of ['Active Clients', 'Visits Due', 'Ready for Invoice', 'Tracked Expenses', 'Invoices Recorded', 'Ready-for-Invoice Value']) {
@@ -616,7 +672,7 @@ describe('module figures', () => {
     const api = dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    await kpiCard('Active AMC')
+    await kpiCard('Active AMCs')
     await userEvent.click(screen.getByRole('button', { name: 'Refresh' }))
 
     await screen.findByRole('button', { name: 'Refresh' })

@@ -1,163 +1,105 @@
-import { useState, type CSSProperties, type DragEvent } from 'react'
+import type { CSSProperties } from 'react'
 import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
-import { displayName, KPI_NAME_MAX } from '../amcManagement/managementPreferences'
-import { KPIS, type KpiDefinition, type KpiReading } from './kpis'
-import { Icon, IconTile, type IconName } from './icons'
+import { KPI_ROWS, KPIS, type DashboardReading, type KpiDefinition, type KpiRow } from './kpis'
+import { Icon, IconTile } from './icons'
 import { accentOf, accentStyle, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
 import type { OperationsDashboard } from './operationsTypes'
 
-// The icon of each figure, the same family as the other dashboard figure cards.
-const KPI_ICONS: Record<string, IconName> = {
-  active: 'contract',
-  value: 'wallet',
-  credit: 'chart',
-  services: 'calendar',
-  unpaid: 'invoice',
-  paid: 'invoice',
-  expiring: 'shield',
-}
-
 const FIGURE = 'break-words font-bold tabular-nums text-[#0b3b66]'
 
-type CardState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; reading: KpiReading }
+type CardState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; reading: DashboardReading }
 
 interface KpiStripProps {
   data: OperationsDashboard | undefined
   failed: boolean
   canView: (module: Module) => boolean
-  order: string[]
-  arranging: boolean
-  onReorder: (order: string[]) => void
-  /** The user's own card names. A renamed card still shows the same figure. */
-  names: Record<string, string>
-  onRename: (id: string, name: string) => void
 }
 
-/** The key figures, drawn exactly like the dashboard's other figure cards: label and icon on top, the figure, and one line with its link. */
-export function KpiStrip({ data, failed, canView, order, arranging, onReorder, names, onRename }: KpiStripProps) {
-  const [dragging, setDragging] = useState<string | null>(null)
+/** The cards of one row this user may see, with what each shows now. A card whose section the API left out is not shown. */
+function cardsOf(row: KpiRow, data: OperationsDashboard | undefined, failed: boolean, canView: (module: Module) => boolean) {
+  return KPIS.filter((kpi) => kpi.row === row.id && kpi.visible(canView)).flatMap((kpi): { kpi: KpiDefinition; state: CardState }[] => {
+    if (!data) return [{ kpi, state: failed ? { kind: 'failed' } : { kind: 'loading' } }]
+    const reading = kpi.read(data)
 
-  const cards = order
-    .map((id) => KPIS.find((kpi) => kpi.id === id))
-    .filter((kpi): kpi is KpiDefinition => kpi !== undefined && kpi.visible(canView))
-    .flatMap((kpi) => {
-      if (!data) return [{ kpi, state: (failed ? { kind: 'failed' } : { kind: 'loading' }) as CardState }]
-      const reading = kpi.read(data)
+    return reading ? [{ kpi, state: { kind: 'ready', reading } }] : []
+  })
+}
 
-      return reading ? [{ kpi, state: { kind: 'ready', reading } as CardState }] : []
-    })
-
-  if (cards.length === 0) return null
-
-  // Swaps a card with its visible neighbour, so cards this user cannot see never get in the way.
-  const move = (index: number, by: -1 | 1) => {
-    const a = cards[index]?.kpi.id
-    const b = cards[index + by]?.kpi.id
-
-    if (!a || !b) return
-    onReorder(order.map((id) => (id === a ? b : id === b ? a : id)))
-  }
-
-  const drop = (event: DragEvent, target: string) => {
-    event.preventDefault()
-    if (!dragging || dragging === target) return
-    const next = order.filter((id) => id !== dragging)
-    next.splice(next.indexOf(target), 0, dragging)
-    onReorder(next)
-    setDragging(null)
-  }
+/** One figure card. Not a link and not a button: the dashboard's KPI cards do not navigate. */
+function KpiCard({ kpi, state, column, order }: { kpi: KpiDefinition; state: CardState; column: number; order: number }) {
+  const { from, to } = accentOf(column)
+  const reading = state.kind === 'ready' ? state.reading : null
+  const entrance: CSSProperties = { animationDelay: `${Math.min(order, 11) * 0.04}s`, ...accentStyle(column) }
+  // A long amount takes a smaller size, so it fits a quarter-width card. The "OMR" unit counts towards the length.
+  const length = reading ? reading.value.length + (reading.unit ? reading.unit.length + 1 : 0) : 0
+  const size = length > 16 ? 'text-xl' : length > 12 ? 'text-2xl' : length > 9 ? 'text-3xl' : 'text-4xl'
 
   return (
-    <ul aria-label="Key figures" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 min-[1500px]:grid-cols-4">
-      {cards.map(({ kpi, state }, index) => {
-        const icon = KPI_ICONS[kpi.id] ?? 'pulse'
-        const { from, to } = accentOf(index)
-        const reading = state.kind === 'ready' ? state.reading : null
-        const value = reading?.kind === 'value' ? reading.value : null
-        // A short line on the card; the full wording is on hover.
-        const note = reading ? (reading.kind === 'value' ? reading.detail : (reading.reason.split(/(?<=\.)\s/)[0] ?? reading.reason)) : null
-        const hint = reading ? (reading.kind === 'value' ? reading.hint : reading.reason) : undefined
-        const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s`, ...accentStyle(index) }
-        const name = displayName(names, kpi.id, kpi.label)
+    <li data-kpi={kpi.id} style={entrance} className={cx(DASHBOARD_CARD, 'min-w-0')}>
+      <span className="card-dots" aria-hidden="true" />
+      <Icon name={kpi.icon} className="card-watermark" />
+      <IconTile icon={kpi.icon} from={from} to={to} className="absolute right-5 top-5" />
+      <h4 className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')}>{kpi.label}</h4>
+
+      {state.kind === 'loading' && (
+        <div role="status" className="mt-4">
+          <span className="sr-only">Loading {kpi.label}</span>
+          <span className="skeleton block h-9 w-24 rounded-lg" aria-hidden="true" />
+          <span className="skeleton mt-4 block h-3.5 w-32 rounded" aria-hidden="true" />
+        </div>
+      )}
+      {state.kind === 'failed' && <p className="mt-3 text-sm font-medium text-red-700">Could not be loaded</p>}
+      {reading && (
+        <>
+          <p className={cx(FIGURE, 'mt-3', size)}>
+            {reading.unit && <span className="mr-1.5 align-baseline text-sm font-semibold text-slate-500">{reading.unit}</span>}
+            {/* An amount never breaks inside its digits; on a very narrow card it moves under the unit instead. */}
+            <span className="whitespace-nowrap">{reading.value}</span>
+          </p>
+          <p className="mt-3 break-words text-sm text-slate-600" title={reading.hint}>
+            {reading.detail}
+          </p>
+        </>
+      )}
+    </li>
+  )
+}
+
+/**
+ * The twelve key figures in three fixed rows: AMC Portfolio, Current Month and Overall. Four cards a row on
+ * a wide screen, two on a tablet, one on a phone. Rows 2 and 3 share card names, so each row carries its own
+ * heading. A row with no card this user may see is left out.
+ */
+export function KpiStrip({ data, failed, canView }: KpiStripProps) {
+  let order = 0
+
+  return (
+    <div className="space-y-5">
+      {KPI_ROWS.map((row) => {
+        const cards = cardsOf(row, data, failed, canView)
+        if (cards.length === 0) return null
+        const headingId = `kpi-row-${row.id}`
 
         return (
-          <li
-            key={kpi.id}
-            data-kpi={kpi.id}
-            draggable={arranging}
-            onDragStart={() => setDragging(kpi.id)}
-            onDragOver={(event) => arranging && event.preventDefault()}
-            onDrop={(event) => drop(event, kpi.id)}
-            style={entrance}
-            className={cx(DASHBOARD_CARD, arranging && 'cursor-move ring-2 ring-dashed ring-sky-300', dragging === kpi.id && 'opacity-60')}
-          >
-            <span className="card-dots" aria-hidden="true" />
-            <Icon name={icon} className="card-watermark" />
-            <IconTile icon={icon} from={from} to={to} className="absolute right-5 top-5" />
-            <h3 className={cx(DASHBOARD_LABEL, 'min-h-9 pr-12')} title={name !== kpi.label ? `Standard name: ${kpi.label}` : undefined}>
-              {name}
-            </h3>
+          <section key={row.id} aria-labelledby={headingId} data-kpi-row={row.id}>
+            <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+              <h3 id={headingId} className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#1479BD]">
+                {row.title}
+              </h3>
+              <p className="text-xs text-slate-600">{row.subtitle(data)}</p>
+            </div>
+            <ul aria-labelledby={headingId} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {cards.map(({ kpi, state }) => {
+                // Each column keeps one colour down the rows, so the same figure lines up month against overall.
+                const column = KPIS.filter((other) => other.row === row.id).indexOf(kpi)
 
-            {state.kind === 'loading' && (
-              <div role="status" className="mt-4">
-                <span className="sr-only">Loading {name}</span>
-                <span className="skeleton block h-9 w-24 rounded-lg" aria-hidden="true" />
-                <span className="skeleton mt-4 block h-3.5 w-32 rounded" aria-hidden="true" />
-              </div>
-            )}
-            {state.kind === 'failed' && <p className="mt-3 text-sm font-medium text-red-700">Could not be loaded</p>}
-            {state.kind === 'ready' && (
-              <>
-                {value !== null ? (
-                  <p className={cx(FIGURE, 'mt-3', value.length > 9 ? 'text-3xl' : 'text-4xl')}>{value}</p>
-                ) : (
-                  <p className="mt-3 text-3xl font-bold text-slate-300">Not available</p>
-                )}
-                <p className="mt-3 break-words text-sm text-slate-600" title={hint}>
-                  <span>{note}</span>
-                </p>
-              </>
-            )}
-
-            {arranging && (
-              <label className="relative mt-3 block text-xs font-medium text-slate-700">
-                Display name for {kpi.label}
-                <input
-                  type="text"
-                  value={names[kpi.id] ?? ''}
-                  placeholder={kpi.label}
-                  maxLength={KPI_NAME_MAX}
-                  onChange={(event) => onRename(kpi.id, event.target.value)}
-                  className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-500"
-                />
-              </label>
-            )}
-            {arranging && (
-              <span className="relative mt-3 flex justify-end gap-1">
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-40"
-                  onClick={() => move(index, -1)}
-                  disabled={index === 0}
-                  aria-label={`Move ${name} earlier`}
-                >
-                  ←
-                </button>
-                <button
-                  type="button"
-                  className="rounded border border-slate-300 bg-white px-2 py-0.5 text-xs disabled:opacity-40"
-                  onClick={() => move(index, 1)}
-                  disabled={index === cards.length - 1}
-                  aria-label={`Move ${name} later`}
-                >
-                  →
-                </button>
-              </span>
-            )}
-          </li>
+                return <KpiCard key={kpi.id} kpi={kpi} state={state} column={column} order={order++} />
+              })}
+            </ul>
+          </section>
         )
       })}
-    </ul>
+    </div>
   )
 }

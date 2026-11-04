@@ -11,6 +11,8 @@ export interface PaymentFigures {
   unpaidValue: string
   paidThisMonth: number
   paidThisMonthValue: string
+  /** The same split over the services scheduled in this calendar month. paid / unpaid are the overall figures. */
+  scheduledThisMonth: { withInvoiceNo: number; withInvoiceNoValue: string; withoutInvoiceNo: number; withoutInvoiceNoValue: string }
 }
 
 export interface PaymentTrendMonth {
@@ -61,7 +63,8 @@ export interface OperationsDashboard {
       expiringSoonDays: number
       expiringSoonWithRenewal: number | null
     } | null
-    services: { thisMonth: number; completedThisMonth: number; openThisMonth: number } | null
+    /** overall and openOverall: every counted visit whatever its date, and those still open. */
+    services: { thisMonth: number; completedThisMonth: number; openThisMonth: number; overall: number; openOverall: number } | null
     /** Reference status from the manual Invoice No., over the same services as Accounts. */
     payments: PaymentFigures | null
   }
