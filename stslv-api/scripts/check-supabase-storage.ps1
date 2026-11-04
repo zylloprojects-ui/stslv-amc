@@ -17,7 +17,8 @@ $ref = Read-Host "Supabase project reference [sgzvlmjkhhrwtuuqatve]"
 if (-not $ref) { $ref = "sgzvlmjkhhrwtuuqatve" }
 $bucket = Read-Host "Bucket [stslv-amc-documents]"
 if (-not $bucket) { $bucket = "stslv-amc-documents" }
-$region = Read-Host "Region (from Storage > S3 Connection, e.g. eu-central-1)"
+$region = Read-Host "Region (from Storage > S3 Connection, e.g. ap-southeast-1)"
+$endpoint = Read-Host "Endpoint exactly as shown on Storage > S3 Connection [Enter = https://<project id>.storage.supabase.co/storage/v1/s3]"
 
 $env:SUPABASE_PROJECT_REF = $ref.Trim()
 $env:SUPABASE_S3_BUCKET = $bucket.Trim()
@@ -32,6 +33,8 @@ $env:DOTENV_CONFIG_PATH = "NUL"
 foreach ($name in "ATTACHMENTS_DIR", "SUPABASE_S3_ENDPOINT", "R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT") {
   Remove-Item "Env:$name" -ErrorAction SilentlyContinue
 }
+
+if ($endpoint.Trim()) { $env:SUPABASE_S3_ENDPOINT = $endpoint.Trim() }
 
 try {
   npm run --silent storage:check

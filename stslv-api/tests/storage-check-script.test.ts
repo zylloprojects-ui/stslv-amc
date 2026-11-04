@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -64,6 +65,7 @@ describe("the standalone storage check (npm run storage:check)", () => {
 
     expect(output).not.toMatch(/database|DB_HOST|JWT_SECRET/i);
     expect(output).toContain("Document storage: SUPABASE");
+    expect(output).toContain("Endpoint: custom (from the *_ENDPOINT setting); region: as configured");
     expect(output).toMatch(/OK {3}upload a \d+-byte probe file/);
     expect(output).toContain("OK   download it");
     expect(output).toContain("OK   SHA-256 of the download matches the upload");
@@ -99,9 +101,16 @@ describe("the standalone storage check (npm run storage:check)", () => {
     expect(code).toBe(1);
     expect(output).toContain('FAIL upload a');
     expect(output).toContain('non-S3 response (HTTP 400): "Project not specified."');
-    expect(output).toContain("Check SUPABASE_PROJECT_REF");
+    expect(output).toContain("Set SUPABASE_S3_ENDPOINT to the Endpoint shown on Storage > S3 Connection");
     expect(output).not.toContain("Error (HTTP 400)");
     neverPrinted(output);
+  });
+
+  it("judges the connection only by the real operations: no DNS pre-check of the project's address", () => {
+    // 2026-11-04: a verified project's <ref>.supabase.co did not resolve, and *.storage.supabase.co resolves for any
+    // name, so a DNS look-up wrongly rejected a working configuration and proves nothing either way.
+    const source = readFileSync(path.join(root, "src", "scripts", "storage-check.ts"), "utf8");
+    expect(source).not.toMatch(/node:dns|lookup\(|resolve4|resolveAny/);
   });
 
   it("reports a half-made configuration by variable name, never by value", async () => {

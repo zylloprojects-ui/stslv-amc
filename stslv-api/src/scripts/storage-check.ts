@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { createHash, randomUUID } from "node:crypto";
-import { lookup } from "node:dns/promises";
 import { describeStorage, resolveStorageConfig } from "../config/storage-config";
 import { describeStorageError } from "../shared/object-storage";
 import { StoredFileNotFoundError } from "../shared/storage";
@@ -17,9 +16,10 @@ import { createFileStorage } from "../shared/storage-factory";
  * status and a cleaned one-line message: describeStorageError): never a key, secret, project, account, region,
  * bucket, signed header or address.
  *
- * For Supabase on its default endpoint it first checks that the project reference names a real project: every
- * project has the address <ref>.supabase.co, while the shared storage host answers any unknown reference with a
- * plain-text HTTP 400 "Project not specified." (2026-11-04: a mistyped reference failed as a bare "Error (HTTP 400)").
+ * The verdict comes only from these real operations. There is no DNS pre-check: a verified project's
+ * <ref>.supabase.co address may not resolve (2026-11-04), and *.storage.supabase.co resolves for any name, so neither
+ * proves anything. A plain-text answer such as Supabase's HTTP 400 "Project not specified." is shown as such
+ * (describeStorageError) instead of the SDK's bare "Error".
  * Exit code 0 when every step passed, 1 otherwise.
  */
 
@@ -38,7 +38,7 @@ function hintFor(error: unknown): string | null {
   const body = (error as { $responseBodyText?: unknown } | null)?.$responseBodyText;
 
   if (typeof body === "string" && body.includes("Project not specified")) {
-    return "Supabase did not recognise the project. Check SUPABASE_PROJECT_REF (Project Settings > General > Project ID).";
+    return "Supabase's storage host did not identify a project from the endpoint address. Set SUPABASE_S3_ENDPOINT to the Endpoint shown on Storage > S3 Connection, and check SUPABASE_PROJECT_REF.";
   }
   const name = (error as { name?: string } | null)?.name;
   if (name === "SignatureDoesNotMatch" || name === "InvalidAccessKeyId" || name === "AccessDenied") {
@@ -86,24 +86,10 @@ async function main(): Promise<boolean> {
     }
   };
 
-  const projectRef = process.env.SUPABASE_PROJECT_REF?.trim();
-  if (config.driver === "supabase" && projectRef && !process.env.SUPABASE_S3_ENDPOINT?.trim()) {
-    const known = await step("the Supabase project reference names an existing project", async () => {
-      try {
-        await lookup(`${projectRef}.supabase.co`);
-      } catch (error) {
-        const code = (error as { code?: string }).code;
-        if (code === "ENOTFOUND") {
-          throw Object.assign(new Error("unknown project"), { code: "ENOTFOUND", name: "UnknownProject" });
-        }
-        throw error;
-      }
-    });
-    if (!known) {
-      console.log("     No Supabase project has this reference (its <ref>.supabase.co address does not exist). Check SUPABASE_PROJECT_REF:");
-      console.log("     Supabase dashboard > Project Settings > General > Project ID (20 lowercase letters and digits).");
-      return false;
-    }
+  if (config.driver !== "local") {
+    // Which form of address is used, never the address itself.
+    const custom = Boolean(process.env[config.driver === "supabase" ? "SUPABASE_S3_ENDPOINT" : "R2_ENDPOINT"]?.trim());
+    console.log(`Endpoint: ${custom ? "custom (from the *_ENDPOINT setting)" : "default for the provider"}; region: ${config.driver === "r2" ? "auto" : "as configured"}`);
   }
 
   try {
