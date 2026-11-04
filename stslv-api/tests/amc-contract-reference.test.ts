@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, renewalEngineer, visitsOf } from "./amc-helpers";
+import { activeContract, contractBody, createClient, newContractBody, renewalEngineer, visitsOf } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Manual AMC Reference Number (migration 0105): typed when a contract or renewal is created, never generated,
@@ -20,8 +20,9 @@ beforeAll(async () => {
 });
 afterAll(closePool);
 
-const create = (amcReference: unknown, overrides: Record<string, unknown> = {}) =>
-  api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { amcReference, ...overrides }));
+// A new contract also carries its sales engineer, system type, Final Credit and contract document (0103).
+const create = async (amcReference: unknown, overrides: Record<string, unknown> = {}) =>
+  api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { amcReference, ...overrides }));
 const get = (id: string) => api().get(`/api/amc/contracts/${id}`).set(admin.headers);
 
 describe("creating a contract with a manual AMC Reference Number", () => {
