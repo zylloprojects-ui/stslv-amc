@@ -1,5 +1,6 @@
 import { pool } from "../../config/database";
 import type { ExpiringContractsQuery, WorkloadQuery } from "./amc.schemas";
+import { referenceStaticSql } from "./contract-reference";
 
 // Read-only report figures, computed from the stored contracts and visits on
 // every request. Nothing here changes a contract's status: expiry is set by a
@@ -7,6 +8,8 @@ import type { ExpiringContractsQuery, WorkloadQuery } from "./amc.schemas";
 
 export interface ExpiringContract {
   id: string;
+  /** The AMC Reference Number (stored from migration 0105). */
+  reference: string;
   client: { id: string; name: string };
   systemDescription: string;
   responsibleEngineer: string | null;
@@ -31,6 +34,7 @@ export async function listExpiringContracts(query: ExpiringContractsQuery) {
   );
   const rows = await pool.query<{
     id: string;
+    reference: string;
     client_id: string;
     client_name: string;
     system_description: string;
@@ -40,7 +44,7 @@ export async function listExpiringContracts(query: ExpiringContractsQuery) {
     days_left: number;
     contract_value: string;
   }>(
-    `SELECT c.id, cl.id AS client_id, cl.name AS client_name, c.system_description, c.responsible_engineer,
+    `SELECT c.id, ${referenceStaticSql("c")} AS reference, cl.id AS client_id, cl.name AS client_name, c.system_description, c.responsible_engineer,
             c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
             (c.valid_to - current_date)::int AS days_left, c.contract_value
      FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
@@ -53,6 +57,7 @@ export async function listExpiringContracts(query: ExpiringContractsQuery) {
 
   const items: ExpiringContract[] = rows.rows.map((row) => ({
     id: row.id,
+    reference: row.reference,
     client: { id: row.client_id, name: row.client_name },
     systemDescription: row.system_description,
     responsibleEngineer: row.responsible_engineer,

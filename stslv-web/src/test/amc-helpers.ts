@@ -21,6 +21,14 @@ export const VIEWER: SessionUser = {
   permissions: afterPageSplit(['DASHBOARD:VIEW', 'CLIENTS:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_SCHEDULE:VIEW', 'AMC_EXECUTION:VIEW']),
 }
 
+/** Types the AMC Reference Number every new contract and renewal needs (migration 0105). */
+export async function typeReference(dialog: HTMLElement, value = 'AMC-TEST-001') {
+  const { default: userEvent } = await import('@testing-library/user-event')
+  const { within } = await import('@testing-library/react')
+
+  await userEvent.type(within(dialog).getByLabelText(/AMC Reference Number/), value)
+}
+
 export const CLIENTS = [makeClient({ id: '10', name: 'Test Hotel One' }), makeClient({ id: '11', name: 'Test Hotel Two' })]
 
 /** The active System Types the contract form offers (GET /masters/system-types/options). */
@@ -41,6 +49,7 @@ export function contractPdf(name = 'signed-contract.pdf', size = 2048): File {
 export function makeContract(overrides: Partial<Contract> = {}): Contract {
   return {
     id: '100',
+    amcReference: 'AMC-0100',
     client: { id: '10', name: 'Test Hotel One', isActive: true },
     responsibleEngineer: 'Test Engineer',
     validFrom: '2027-01-01',
@@ -83,7 +92,7 @@ export function makeVisit(overrides: Partial<ScheduleVisit> = {}): ScheduleVisit
     quotationNo: null,
     paymentStatus: 'UNPAID',
     paidAt: null,
-    contract: { id: '100', status: 'ACTIVE', systemDescription: 'FIRE', maintenanceFrequency: 'QUARTERLY' },
+    contract: { id: '100', reference: 'AMC-0100', status: 'ACTIVE', systemDescription: 'FIRE', maintenanceFrequency: 'QUARTERLY' },
     client: { id: '10', name: 'Test Hotel One' },
     sequenceNo: 1,
     periodStart: '2027-01-01',

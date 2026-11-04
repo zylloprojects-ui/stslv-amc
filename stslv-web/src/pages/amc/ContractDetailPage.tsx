@@ -16,7 +16,6 @@ import { InvoiceDialogs, type InvoiceDialog } from '../invoices/InvoiceDialogs'
 import { InvoicesTable } from '../invoices/InvoicesTable'
 import { queryString } from './amcApi'
 import { currentMonth, formatDate, formatMoney, isZeroMoney, todayIso } from './amcFormat'
-import { amcReference } from './calendar/calendarTypes'
 import { ContractStatusPill, EligibilityPill, OrDash, Pager, Pill, PlannedDate, VisitStatusPill } from './components'
 import { ContractFormModal } from './ContractFormModal'
 import { ContractMastersPanel } from './ContractMastersPanel'
@@ -312,7 +311,8 @@ export function ContractDetailPage() {
   const contract = query.data
   const validity = validityState(contract.validFrom, contract.validTo, todayIso())
   const schedule = contract.schedule
-  const reference = amcReference(contract.id)
+  // The AMC Reference Number typed when the contract was created; read-only.
+  const reference = contract.amcReference
   const openRenewal = renewals.data?.renewals.find((renewal) => renewal.status !== 'CANCELLED')
   const servicesThisMonth = visits.data?.items.filter((visit) => visit.status !== 'CANCELLED' && visit.scheduledDate.startsWith(currentMonth())).length
   const openTab = (tab: TabId) => setActiveTab(tab)

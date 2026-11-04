@@ -8,7 +8,7 @@ import { env } from "../src/config/env";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { REPORTS } from "../src/modules/reports/reports.service";
 import { waitForBackups } from "../src/modules/security/backups.service";
-import { activeContract, contractBody, createClient, legacyContract, newContractBody, renewalEngineer, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, legacyContract, newContractBody, renewalEngineer, testReference, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -23,7 +23,7 @@ let contractId: string;
 
 const get = (url: string, query: Record<string, unknown> = {}, session: Session = admin) => api().get(`/api${url}`).query(query).set(session.headers);
 const post = (url: string, body: Record<string, unknown> = {}, session: Session = admin) => api().post(`/api${url}`).set(session.headers).send(body);
-const contract = (overrides: Record<string, unknown>) => ({ clientId, systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "300.000", status: "ACTIVE", ...overrides });
+const contract = (overrides: Record<string, unknown>) => ({ amcReference: testReference("COMPLETION"), clientId, systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "300.000", status: "ACTIVE", ...overrides });
 
 beforeAll(async () => {
   await resetData();

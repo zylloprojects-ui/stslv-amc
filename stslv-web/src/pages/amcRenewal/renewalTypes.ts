@@ -73,6 +73,8 @@ export interface RenewalQueue {
 
 interface ContractSummary {
   id: string
+  /** The AMC Reference Number. */
+  reference: string
   client: { id: string; name: string }
   systemDescription: string
   validFrom: string
@@ -82,7 +84,7 @@ interface ContractSummary {
 }
 
 export interface RenewalHistory {
-  items: { renewal: ContractSummary; createdOn: string; source: { id: string; validFrom: string; validTo: string; status: ContractStatus } }[]
+  items: { renewal: ContractSummary; createdOn: string; source: { id: string; reference: string; validFrom: string; validTo: string; status: ContractStatus } }[]
   total: number
   page: number
   pageSize: number

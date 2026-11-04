@@ -7,7 +7,6 @@ import { RENEWAL_WARNING_DAYS } from "./management.service";
 import type { ExportRenewalHistoryQuery, ExportRenewalQueueQuery, RenewalQueueColumn, RenewalState } from "./renewal-queue.schemas";
 import { listAllRenewalQueue, type RenewalQueueItem } from "./renewal-queue.service";
 import { listAllRenewalHistory, type RenewalHistoryItem } from "./renewals.service";
-import { amcReference } from "./service-status.service";
 
 // The AMC Renewal page's two tabs as reports: the same rows, filters and card
 // figures the page shows. Nothing is calculated here.
@@ -138,10 +137,10 @@ function historyRow(item: RenewalHistoryItem, index: number): ReportRow {
 
   return {
     number: index + 1,
-    source: amcReference(item.source.id),
+    source: item.source.reference,
     clientSystem: `${item.renewal.client.name} · ${item.renewal.systemDescription}`,
     sourceExpiry: item.source.validTo,
-    renewal: amcReference(item.renewal.id),
+    renewal: item.renewal.reference,
     newValidity: `${displayDate(item.renewal.validFrom)} to ${displayDate(item.renewal.validTo)}`,
     status: `${RENEWAL_STATE_LABELS[renewalStateOf(status)]} (${CONTRACT_STATUS_LABELS[status]})`,
     created: item.createdOn,

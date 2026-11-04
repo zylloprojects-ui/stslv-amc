@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { exportFormatSchema } from "../../shared/export/report";
 import { idSchema, optionalText, requiredText } from "../../shared/validation";
+import { amcReferenceSchema } from "./amc-reference.rules";
 import {
   BILLING_STATUSES,
   CONTRACT_STATUSES,
@@ -114,6 +115,7 @@ const contractFields = {
 };
 
 export const createContractSchema = z.strictObject({
+  amcReference: amcReferenceSchema,
   clientId: contractFields.clientId,
   responsibleEngineer: contractFields.responsibleEngineer.optional(),
   validFrom: contractFields.validFrom,
@@ -221,6 +223,8 @@ export const updateContractSchema = z
     salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
     // A new system type link (it cannot be removed here); the contract's system becomes its name.
     systemTypeId: systemTypeLink.optional(),
+    // Read-only after creation: refused with a clear message rather than ignored.
+    amcReference: z.never({ error: "The AMC Reference Number cannot be changed after the contract is created." }).optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), "Provide at least one field to update.");
 

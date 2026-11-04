@@ -12,6 +12,7 @@ import { assertVisitNotInvoiced } from "../invoices/invoice-locks";
 import { assertVisitNotPaid, PAYMENT_STATUS_SQL, type PaymentStatus } from "./manual-invoice.service";
 import { assertServiceReportPresent } from "./service-reports.service";
 import type { ContractStatus, InvoiceEligibility, VisitStatus } from "./amc.constants";
+import { referenceStaticSql } from "./contract-reference";
 import type {
   ListExecutionQuery,
   ListVisitsQuery,
@@ -29,6 +30,7 @@ interface VisitRow {
   first_service: boolean;
   id: string;
   amc_contract_id: string;
+  contract_reference: string;
   contract_status: ContractStatus;
   system_description: string;
   maintenance_frequency: string;
@@ -62,7 +64,8 @@ interface VisitRow {
 /** A visit as the execution screens see it: no amounts and no invoicing state. */
 export interface ExecutionVisit {
   id: string;
-  contract: { id: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: string };
+  /** reference: the contract's AMC Reference Number (stored from migration 0105). */
+  contract: { id: string; reference: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: string };
   client: { id: string; name: string };
   sequenceNo: number;
   /** Contract year and service code taken when the visit was generated ("Year 2 · Q3"); null on visits generated before migration 0076. */
@@ -130,7 +133,7 @@ const BILLING_STATUS_SQL = `CASE
   END`;
 
 const VISIT_SELECT = `
-  SELECT v.id, v.amc_contract_id, c.status AS contract_status, c.system_description, c.maintenance_frequency,
+  SELECT v.id, v.amc_contract_id, ${referenceStaticSql("c")} AS contract_reference, c.status AS contract_status, c.system_description, c.maintenance_frequency,
          c.client_id, cl.name AS client_name, v.sequence_no,
          -- Migration 0076 columns, read so that a database without them still works (they are then null).
          (to_jsonb(v) ->> 'cycle_no')::int AS cycle_no, to_jsonb(v) ->> 'service_code' AS service_code,
@@ -158,6 +161,7 @@ function toExecutionVisit(row: VisitRow): ExecutionVisit {
     id: row.id,
     contract: {
       id: row.amc_contract_id,
+      reference: row.contract_reference,
       status: row.contract_status,
       systemDescription: row.system_description,
       maintenanceFrequency: row.maintenance_frequency,
@@ -244,7 +248,7 @@ function searchCondition(params: unknown[], search: string): string {
   params.push(`%${escapeLike(search)}%`);
   const p = `$${params.length}`;
 
-  return `(cl.name ILIKE ${p} OR c.system_description ILIKE ${p} OR COALESCE(v.assigned_to, c.responsible_engineer) ILIKE ${p})`;
+  return `(${referenceStaticSql("c")} ILIKE ${p} OR cl.name ILIKE ${p} OR c.system_description ILIKE ${p} OR COALESCE(v.assigned_to, c.responsible_engineer) ILIKE ${p})`;
 }
 
 // ---------------------------------------------------------------------------

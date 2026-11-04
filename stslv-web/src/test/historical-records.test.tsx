@@ -15,7 +15,7 @@ const NORMAL_VISIT = makeVisit({ scheduledDate: `${MONTH}-02`, originalScheduled
 const HISTORICAL_VISIT = makeVisit({
   id: '600',
   client: { id: '11', name: 'Test Hotel Two' },
-  contract: { id: '101', status: 'DRAFT', systemDescription: 'CCTV', maintenanceFrequency: 'QUARTERLY' },
+  contract: { id: '101', reference: 'AMC-0101', status: 'DRAFT', systemDescription: 'CCTV', maintenanceFrequency: 'QUARTERLY' },
   sequenceNo: 2,
   periodStart: `${MONTH}-01`,
   periodEnd: `${MONTH}-28`,

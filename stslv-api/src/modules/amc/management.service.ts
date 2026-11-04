@@ -13,7 +13,7 @@ import {
 } from "../dashboard/operations.service";
 import type { ContractStatus } from "./amc.constants";
 import { getWorkload } from "./reports.service";
-import { amcReference } from "./service-status.service";
+import { hasStoredReference, referenceSql } from "./contract-reference";
 
 // AMC Management: the read-only summary behind the AMC Management page. Every
 // figure is an aggregate over the stored contracts, visits and invoices at the
@@ -138,7 +138,7 @@ export async function getExpiryFigures(): Promise<ExpiryFigures> {
 
 export interface RecentContract {
   id: string;
-  /** "AMC-0007", derived from the id (provisional, like Service Status). */
+  /** The contract's AMC Reference Number (stored from migration 0105). */
   reference: string;
   client: { id: string; name: string };
   systemDescription: string;
@@ -148,10 +148,12 @@ export interface RecentContract {
 }
 
 async function recentContracts(): Promise<{ total: number; items: RecentContract[] }> {
+  const storedReference = await hasStoredReference();
   const [total, rows] = await Promise.all([
     pool.query<{ count: number }>("SELECT count(*)::int AS count FROM amc_contracts"),
     pool.query<{
       id: string;
+      reference: string;
       client_id: string;
       client_name: string;
       system_description: string;
@@ -159,7 +161,7 @@ async function recentContracts(): Promise<{ total: number; items: RecentContract
       contract_value: string;
       created_at: Date;
     }>(
-      `SELECT c.id, cl.id AS client_id, cl.name AS client_name, c.system_description, c.status,
+      `SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.id AS client_id, cl.name AS client_name, c.system_description, c.status,
               c.contract_value::text AS contract_value, c.created_at
        FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
        ORDER BY c.created_at DESC, c.id DESC
@@ -172,7 +174,7 @@ async function recentContracts(): Promise<{ total: number; items: RecentContract
     total: total.rows[0]?.count ?? 0,
     items: rows.rows.map((row) => ({
       id: row.id,
-      reference: amcReference(row.id),
+      reference: row.reference,
       client: { id: row.client_id, name: row.client_name },
       systemDescription: row.system_description,
       status: row.status,
@@ -292,7 +294,7 @@ export interface AmcManagementSummary {
   invoices: InvoiceFigures | null;
   expiry: ExpiryFigures & {
     /** Active contracts ending within 90 days or already past validity, soonest first (the dashboard's list), with their band. */
-    list: { days: number; total: number; pastValidity: number; items: (ExpiringRow & { reference: string; band: ExpiryBand | null })[] };
+    list: { days: number; total: number; pastValidity: number; items: (ExpiringRow & { band: ExpiryBand | null })[] };
   };
   recentContracts: { total: number; items: RecentContract[] };
 }
@@ -327,7 +329,7 @@ export async function getAmcManagementSummary(auth: AuthContext): Promise<AmcMan
         days: list.days,
         total: list.total,
         pastValidity: list.pastValidity,
-        items: list.items.map((row) => ({ ...row, reference: amcReference(row.id), band: expiryBand(row.daysLeft) })),
+        items: list.items.map((row) => ({ ...row, band: expiryBand(row.daysLeft) })),
       },
     },
     recentContracts: recent,

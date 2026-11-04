@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { frequencyLabel, visitNumberLabel } from '../pages/amc/types'
-import { amcApi, contractPdf, makeContract } from './amc-helpers'
+import { amcApi, contractPdf, makeContract, typeReference } from './amc-helpers'
 import { ADMIN, ok, renderApp, type MockRequest } from './helpers'
 
 // The AMC contract form with the maintenance frequency master (migration 0076):
@@ -37,6 +37,7 @@ const frequencyChoices = (dialog: HTMLElement) =>
     .map((item) => item.getAttribute('value'))
 
 async function fillRequired(dialog: HTMLElement) {
+  await typeReference(dialog)
   await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '11')
   // System, sales engineer, Final Credit and the contract document are required on a new contract (2026-11-03).
   await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())

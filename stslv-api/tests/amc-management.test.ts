@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { expiryBand } from "../src/modules/amc/management.service";
-import { activeContract, contractBody, createClient, createContract, renewalEngineer, today } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, referenceOf, renewalEngineer, today } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { executeVisit, invoiceBody, postInvoice } from "./invoices-helpers";
 import { resetProjectData } from "./projects-helpers";
@@ -219,7 +219,12 @@ describe("with contracts, renewals, visits and invoices", () => {
     expect(list.days).toBe(90);
     expect(list.pastValidity).toBe(1);
     expect(list.items[0]).toMatchObject({ id: ids.past, daysLeft: -1, band: null });
-    expect(d45).toMatchObject({ reference: `AMC-${String(ids.d45).padStart(4, "0")}`, band: 45, daysLeft: 45, renewal: { id: ids.renewal45, status: "DRAFT" } });
+    expect(d45).toMatchObject({
+      reference: await referenceOf(ids.d45),
+      band: 45,
+      daysLeft: 45,
+      renewal: { id: ids.renewal45, reference: await referenceOf(ids.renewal45), status: "DRAFT" },
+    });
   });
 
   it("returns the contract KPIs of the dashboard", async () => {
@@ -269,7 +274,7 @@ describe("with contracts, renewals, visits and invoices", () => {
     expect(recentContracts.total).toBe(total.count);
     expect(recentContracts.items.map((row: { id: string }) => row.id)).toEqual(expected.rows.map((row) => row.id));
     expect(recentContracts.items[0]).toMatchObject({
-      reference: `AMC-${String(expected.rows[0]?.id).padStart(4, "0")}`,
+      reference: await referenceOf(expected.rows[0]!.id),
       client: { id: clientId, name: "Management Client" },
       contractValue: expect.stringMatching(/^\d+\.\d{3}$/),
     });

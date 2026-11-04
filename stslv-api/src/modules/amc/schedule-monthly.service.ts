@@ -5,7 +5,8 @@ import { assertExportSize, exportFormatSchema, type ReportColumn, type ReportDef
 import { escapeLike, idSchema } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { PAID_STATUS_NOTE } from "./manual-invoice.service";
-import { amcReference, IN_SCOPE } from "./service-status.service";
+import { IN_SCOPE } from "./service-status.service";
+import { hasStoredReference, referenceSql } from "./contract-reference";
 
 // The consolidated monthly schedule: one row per AMC contract with its services
 // of that month. A read-only grouping of amc_visits; the visit records and the
@@ -40,7 +41,7 @@ export interface MonthlyService {
   invoiceNumbers: string[];
 }
 
-function filterSql(query: MonthlyFilters) {
+function filterSql(query: MonthlyFilters, storedReference: boolean) {
   const params: unknown[] = [`${query.month}-01`];
   const conditions = [IN_SCOPE, "v.scheduled_date >= $1::date", "v.scheduled_date < $1::date + interval '1 month'"];
   const add = (value: unknown) => {
@@ -53,7 +54,7 @@ function filterSql(query: MonthlyFilters) {
   if (query.system) conditions.push(`lower(btrim(c.system_description)) = lower(btrim(${add(query.system)}))`);
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
-    conditions.push(`(cl.name ILIKE ${p} OR c.system_description ILIKE ${p} OR ('AMC-' || lpad(c.id::text, 4, '0')) ILIKE ${p})`);
+    conditions.push(`(cl.name ILIKE ${p} OR c.system_description ILIKE ${p} OR ${referenceSql("c", storedReference)} ILIKE ${p})`);
   }
 
   return { where: conditions.join(" AND "), params };
@@ -65,7 +66,8 @@ const FROM = `
   JOIN clients cl ON cl.id = c.client_id`;
 
 async function load(query: MonthlyFilters, limit: number | null, offset: number) {
-  const { where, params } = filterSql(query);
+  const storedReference = await hasStoredReference();
+  const { where, params } = filterSql(query, storedReference);
   const totals = await pool.query<{ contracts: number; services: number; completed: number; total_value: string }>(
     `SELECT count(DISTINCT c.id)::int AS contracts, count(*)::int AS services,
             count(*) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
@@ -74,10 +76,10 @@ async function load(query: MonthlyFilters, limit: number | null, offset: number)
     params
   );
   const rows = await pool.query<{
-    id: string; client_id: string; client_name: string; system_description: string; frequency: string; engineer: string | null;
+    id: string; reference: string; client_id: string; client_name: string; system_description: string; frequency: string; engineer: string | null;
     services: MonthlyService[]; total_value: string;
   }>(
-    `SELECT c.id, cl.id AS client_id, cl.name AS client_name, c.system_description,
+    `SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.id AS client_id, cl.name AS client_name, c.system_description,
             COALESCE(mf.label, c.maintenance_frequency) AS frequency, se.name AS engineer,
             COALESCE(sum(v.visit_amount), 0)::numeric(16,3)::text AS total_value,
             json_agg(json_build_object(
@@ -93,7 +95,7 @@ async function load(query: MonthlyFilters, limit: number | null, offset: number)
      LEFT JOIN maintenance_frequencies mf ON mf.code = c.maintenance_frequency
      LEFT JOIN sales_engineers se ON se.id = c.sales_engineer_id
      WHERE ${where}
-     GROUP BY c.id, cl.id, cl.name, c.system_description, mf.label, c.maintenance_frequency, se.name
+     GROUP BY c.id, ${referenceSql("c", storedReference)}, cl.id, cl.name, c.system_description, mf.label, c.maintenance_frequency, se.name
      ORDER BY lower(cl.name), c.id
      ${limit === null ? "" : `LIMIT ${limit} OFFSET ${offset}`}`,
     params
@@ -103,7 +105,7 @@ async function load(query: MonthlyFilters, limit: number | null, offset: number)
   return {
     items: rows.rows.map((row) => ({
       id: row.id,
-      reference: amcReference(row.id),
+      reference: row.reference,
       client: { id: row.client_id, name: row.client_name },
       systemDescription: row.system_description,
       frequency: row.frequency,

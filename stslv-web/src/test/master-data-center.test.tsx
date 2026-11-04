@@ -242,6 +242,7 @@ describe('sales engineers', () => {
     await userEvent.selectOptions(picker, '5')
     expect(within(dialog).getByLabelText('Responsible engineer')).toHaveValue('Test Engineer')
 
+    await userEvent.type(within(dialog).getByLabelText(/AMC Reference Number/), 'AMC-2027-005')
     await userEvent.selectOptions(within(dialog).getByLabelText(/^Client/), '10')
     await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
     await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '21')

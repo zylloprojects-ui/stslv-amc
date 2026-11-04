@@ -206,7 +206,7 @@ describe("disabled frequencies", () => {
     const renewal = await api()
       .post(`${CONTRACTS}/${kept}/renewals`)
       .set(admin.headers)
-      .send({ clientId, validFrom: "2029-01-01", validTo: "2029-12-31", systemDescription: "KEPT", contractValue: "100.000", maintenanceFrequency: "HALF_YEARLY", salesEngineerId: await renewalEngineer() });
+      .send({ amcReference: "KEPT-RENEWAL-001", clientId, validFrom: "2029-01-01", validTo: "2029-12-31", systemDescription: "KEPT", contractValue: "100.000", maintenanceFrequency: "HALF_YEARLY", salesEngineerId: await renewalEngineer() });
     expect(renewal.status).toBe(400);
     expect(renewal.body.error.details[0].field).toBe("maintenanceFrequency");
 

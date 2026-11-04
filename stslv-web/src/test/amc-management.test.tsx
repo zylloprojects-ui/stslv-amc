@@ -48,7 +48,7 @@ const SUMMARY: AmcManagementSummary = {
       pastValidity: 0,
       items: [
         { id: '41', reference: 'AMC-0041', client: { id: '1', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', validTo: '2026-11-05', daysLeft: 8, renewal: null, band: 15 },
-        { id: '42', reference: 'AMC-0042', client: { id: '2', name: 'City Tower' }, systemDescription: 'CCTV', validTo: '2026-12-11', daysLeft: 44, renewal: { id: '77', status: 'DRAFT' }, band: 45 },
+        { id: '42', reference: 'AMC-0042', client: { id: '2', name: 'City Tower' }, systemDescription: 'CCTV', validTo: '2026-12-11', daysLeft: 44, renewal: { id: '77', reference: 'AMC-0077', status: 'DRAFT' }, band: 45 },
       ],
     },
   },

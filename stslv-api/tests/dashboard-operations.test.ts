@@ -160,8 +160,8 @@ describe("with contracts and visits", () => {
     // A renewal of the 45-day contract: the KPI still counts the source once and reports the renewal beside it.
     renewedSource = expiringIn45;
     await pool.query(
-      `INSERT INTO amc_contracts (client_id, valid_from, valid_to, system_description, contract_value, maintenance_frequency, status, renewed_from_id)
-       VALUES ($1, $2, $3, 'EDGE45 RENEWAL', 1000.000, 'ANNUALLY', 'DRAFT', $4)`,
+      `INSERT INTO amc_contracts (client_id, valid_from, valid_to, system_description, contract_value, maintenance_frequency, status, renewed_from_id, amc_reference)
+       VALUES ($1, $2, $3, 'EDGE45 RENEWAL', 1000.000, 'ANNUALLY', 'DRAFT', $4, 'EDGE45-RENEWAL')`,
       [client, addDays(now, 46), addDays(now, 410), renewedSource]
     );
 

@@ -9,7 +9,6 @@ import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import type { DashboardSummary } from '../dashboard/metrics'
 import { fetchClients, queryString } from './amcApi'
-import { amcReference } from './calendar/calendarTypes'
 import { currentMonth, formatDate, formatMoney, monthLabel, monthRange, shiftMonth } from './amcFormat'
 import { EligibilityPill, Filter, FilterPanel, Pager, PlannedDate, RestrictedFilter, VisitStatusPill } from './components'
 import {
@@ -320,7 +319,7 @@ export function AmcSchedulePage() {
                   type="search"
                   value={searchInput}
                   onChange={(event) => setSearchInput(event.target.value)}
-                  placeholder="Client, system or assigned person"
+                  placeholder="AMC reference, client, system or assigned person"
                   className="block w-full rounded-full border-[1.5px] border-sky-200 bg-white py-2.5 pl-10 pr-4 text-sm font-medium shadow-sm transition-all placeholder:text-slate-400 hover:border-[#1479BD]/60 focus:border-[#1479BD] focus:outline-none focus:ring-4 focus:ring-sky-100"
                 />
               </div>
@@ -329,7 +328,8 @@ export function AmcSchedulePage() {
             {contractId && (
               <p className="flex flex-wrap items-center gap-2 text-sm text-slate-700">
                 <span>
-                  Showing contract <strong className="font-mono">{amcReference(contractId)}</strong> only.
+                  {/* The reference comes with the contract's visits; before they load, or when it has none, the contract is named generically. */}
+                  Showing {visits.data?.items[0]?.contract.reference ? <>contract <strong className="font-mono">{visits.data.items[0].contract.reference}</strong></> : 'the selected contract'} only.
                 </span>
                 <button
                   type="button"
@@ -500,10 +500,10 @@ export function AmcSchedulePage() {
                       <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
                         {canViewContracts ? (
                           <Link to={`/amc/contracts/${visit.contract.id}`} className="hover:underline">
-                            {amcReference(visit.contract.id)}
+                            {visit.contract.reference}
                           </Link>
                         ) : (
-                          amcReference(visit.contract.id)
+                          visit.contract.reference
                         )}
                       </td>
                       <td className={`${TABLE.td} min-w-40 font-semibold text-slate-900`}>

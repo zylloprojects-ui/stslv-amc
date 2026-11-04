@@ -2,6 +2,7 @@ import { pool } from "../../config/database";
 import { CONTRACT_STATUSES, type ContractStatus, type VisitStatus } from "../amc/amc.constants";
 import { getWorkload, type WorkloadMonth } from "../amc/reports.service";
 import { IN_SCOPE } from "../amc/service-status.service";
+import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import type { AuthContext } from "../auth/access";
 import { schemaHas } from "../../shared/schema-features";
 
@@ -99,13 +100,15 @@ export interface PortfolioStatus {
 
 export interface ExpiringRow {
   id: string;
+  /** The contract's AMC Reference Number (stored from migration 0105). */
+  reference: string;
   client: { id: string; name: string };
   systemDescription: string;
   validTo: string;
   /** Negative once validity has ended. */
   daysLeft: number;
   /** The renewal that is not cancelled, if any; null when there is none or renewals are not installed. */
-  renewal: { id: string; status: ContractStatus } | null;
+  renewal: { id: string; reference: string; status: ContractStatus } | null;
 }
 
 export interface ScheduleItem {
@@ -209,8 +212,9 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
   // Same contract dates as the KPI, a wider window. Active contracts already past
   // validity are listed first: they are the most urgent and are still marked Active.
   const window = "c.status = 'ACTIVE' AND c.valid_to <= current_date + $1::int";
+  const storedReference = await hasStoredReference();
   const renewalSelect = renewals
-    ? `(SELECT json_build_object('id', r.id::text, 'status', r.status) FROM amc_contracts r
+    ? `(SELECT json_build_object('id', r.id::text, 'reference', ${referenceSql("r", storedReference)}, 'status', r.status) FROM amc_contracts r
         WHERE r.renewed_from_id = c.id AND r.status <> 'CANCELLED' ORDER BY r.id LIMIT 1)`
     : "NULL::json";
   const [totals, rows] = await Promise.all([
@@ -221,14 +225,15 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
     ),
     pool.query<{
       id: string;
+      reference: string;
       client_id: string;
       client_name: string;
       system_description: string;
       valid_to: string;
       days_left: number;
-      renewal: { id: string; status: ContractStatus } | null;
+      renewal: { id: string; reference: string; status: ContractStatus } | null;
     }>(
-      `SELECT c.id, cl.id AS client_id, cl.name AS client_name, c.system_description,
+      `SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.id AS client_id, cl.name AS client_name, c.system_description,
               c.valid_to::text AS valid_to, (c.valid_to - current_date)::int AS days_left,
               ${renewalSelect} AS renewal
        FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
@@ -246,6 +251,7 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
     renewalsInstalled: renewals,
     items: rows.rows.map((row) => ({
       id: row.id,
+      reference: row.reference,
       client: { id: row.client_id, name: row.client_name },
       systemDescription: row.system_description,
       validTo: row.valid_to,

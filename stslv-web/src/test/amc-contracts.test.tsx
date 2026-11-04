@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ACCOUNTANT, ADMIN, fail, renderApp } from './helpers'
-import { amcApi, contractPdf, makeContract, makeVisit, VIEWER } from './amc-helpers'
+import { amcApi, contractPdf, makeContract, makeVisit, typeReference, VIEWER } from './amc-helpers'
 
 const FIRE = makeContract()
 const DRAFT = makeContract({
@@ -38,8 +38,13 @@ function documentInput(dialog: HTMLElement): HTMLInputElement {
   return dialog.querySelector('input[type="file"]') as HTMLInputElement
 }
 
-/** Fills every field a new contract needs, with the system, sales engineer and contract document. */
+/**
+ * Fills every field a new contract needs, with the system, sales engineer and contract document, and an AMC
+ * Reference Number unless one was already typed.
+ */
 async function fillRequired(dialog: HTMLElement, system = '21') {
+  const reference = within(dialog).queryByLabelText(/AMC Reference Number/) as HTMLInputElement | null
+  if (reference && !reference.readOnly && reference.value === '') await typeReference(dialog)
   await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '10')
   await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), system)
   await userEvent.selectOptions(within(dialog).getByLabelText(/Sales engineer \(master list\)/), '5')
@@ -210,6 +215,7 @@ describe('add contract', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     expect(await within(dialog).findByText('Select a client.')).toBeInTheDocument()
+    expect(within(dialog).getByText('AMC Reference Number is required.')).toBeInTheDocument()
     expect(within(dialog).getByText('Select a system.')).toBeInTheDocument()
     expect(within(dialog).getByText('Select a sales engineer.')).toBeInTheDocument()
     expect(within(dialog).getByText('Attach the contract document.')).toBeInTheDocument()
@@ -237,6 +243,8 @@ describe('add contract', () => {
     renderApp('/amc/contracts')
     const dialog = await openAddForm()
 
+    // Typed by hand, kept as typed apart from the outer spaces.
+    await typeReference(dialog, '  STSLV-AMC-2026-015 ')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '11')
     await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '22')
     await userEvent.type(within(dialog).getByLabelText('Responsible engineer'), 'Second Engineer')
@@ -252,6 +260,7 @@ describe('add contract', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('POST', '/amc/contracts')[0]?.body).toEqual({
+      amcReference: 'STSLV-AMC-2026-015',
       clientId: '11',
       billingBasis: null,
       systemTypeId: '22',
@@ -288,8 +297,46 @@ describe('add contract', () => {
     expect(system).toHaveAttribute('aria-required', 'true')
     expect(dialog.querySelector('datalist')).toBeNull()
     expect(within(system).getAllByRole('option').map((option) => option.textContent)).toEqual(['Select a system...', 'FIRE', 'Automation (AUTO)', 'CCTV'])
-    // There is no contract number or client code to fill in.
-    expect(within(dialog).queryByLabelText(/number|code/i)).not.toBeInTheDocument()
+    // The AMC Reference Number comes first, is required, and starts empty: nothing is generated or prefilled.
+    const reference = within(dialog).getByLabelText(/AMC Reference Number/)
+    expect(reference).toHaveValue('')
+    expect(reference).toHaveAttribute('aria-required', 'true')
+    expect(within(dialog).getAllByRole('textbox')[0]).toBe(reference)
+    // There is no client code to fill in.
+    expect(within(dialog).queryByLabelText(/client code/i)).not.toBeInTheDocument()
+  })
+
+  it.each([
+    ['  ', 'AMC Reference Number is required.'],
+    ['AMC#001', 'AMC Reference Number may use letters, digits, spaces and - _ . / & only, and must start with a letter or digit.'],
+  ])('refuses the AMC Reference Number %j before calling the API', async (value, message) => {
+    const api = amcApi(ADMIN)
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    await typeReference(dialog, value)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
+
+    expect(await within(dialog).findByText(message)).toBeInTheDocument()
+    expect(api.find('POST', '/amc/contracts')).toHaveLength(0)
+  })
+
+  it('shows a duplicate AMC Reference Number on its field and keeps what was typed', async () => {
+    const DUPLICATE = 'AMC Reference Number already exists. Please enter a different number.'
+    amcApi(ADMIN, {
+      override: (request) =>
+        request.method === 'POST' && request.path === '/amc/contracts' ? fail(409, 'CONFLICT', DUPLICATE, [{ field: 'amcReference', message: DUPLICATE }]) : undefined,
+    })
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    await typeReference(dialog, 'AMC-0100')
+    await fillRequired(dialog)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
+
+    expect(await within(dialog).findByText(DUPLICATE)).toBeInTheDocument()
+    expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveValue('AMC-0100')
+    expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveAttribute('aria-invalid', 'true')
   })
 
   it('shows a field error returned by the API on that field', async () => {
@@ -501,9 +548,24 @@ describe('edit contract', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).toMatchObject({ contractValue: '1800', validFrom: '2027-01-01', validTo: '2027-12-31' })
     expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).not.toHaveProperty('status')
+    // The AMC Reference Number is read-only after creation and never sent with an edit.
+    expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).not.toHaveProperty('amcReference')
     expect(api.find('GET', '/amc/contracts/100/schedule/preview')).toHaveLength(0)
     // In the register (the Total AMC Value figure above it shows the same amount).
     expect(await within(screen.getByRole('table', { name: 'AMC contracts' })).findByText('1,800.000')).toBeInTheDocument()
+  })
+
+  it('shows the AMC Reference Number read-only', async () => {
+    amcApi(ADMIN, { contracts: [FIRE] })
+    renderApp('/amc/contracts')
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Edit Test Hotel One FIRE' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit AMC Contract' })
+    const reference = await within(dialog).findByLabelText(/AMC Reference Number/)
+
+    expect(reference).toHaveValue('AMC-0100')
+    expect(reference).toHaveAttribute('readonly')
+    expect(within(dialog).getByText('Set when the contract was created. It cannot be changed.')).toBeInTheDocument()
   })
 
   it('asks for confirmation, showing the effect on the schedule, before changing the terms of an active contract', async () => {

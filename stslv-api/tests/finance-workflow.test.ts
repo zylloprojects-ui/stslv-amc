@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, createContract, logsFor, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
+import { activeContract, createClient, createContract, logsFor, referenceOf, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -34,7 +34,7 @@ const complete = async (id: string) => {
 };
 const accountsRow = async (id: string, reference: string) =>
   ((await get("/accounts", { search: reference, pageSize: 200 })).body.data.items as { id: string; manualInvoiceNo: string | null; paymentStatus: string; colour: string; invoiceNumbers: string[] }[]).find((item) => item.id === id);
-const reference = (contractId: string) => `AMC-${contractId.padStart(4, "0")}`;
+const reference = (contractId: string) => referenceOf(contractId);
 /**
  * A number entered before the 2026-11-04 completion rule, on a service that is still not completed.
  * The API no longer accepts this, but such records exist and must keep working, so it is written
@@ -241,7 +241,7 @@ describe("manual Invoice No.", () => {
   it("can be entered only on a completed service; completing never makes a service Paid", async () => {
     const id = await activeContract(admin, clientId, terms("COMPLETE-FIRST", { maintenanceFrequency: "QUARTERLY", billingBasis: "CONTRACT_VALUE" }));
     const [open, doneNotPaid, postponed, inProgress] = await visitsOf(id);
-    const ref = reference(id);
+    const ref = await reference(id);
 
     // A direct request for a service that is not completed is refused, whatever the client claims.
     const refused = await patch(`/amc/visits/${open!.id}/manual-invoice`, { invoiceNo: "EARLY-1", expectedUpdatedAt: await updatedAt(open!.id) });
@@ -273,7 +273,7 @@ describe("manual Invoice No.", () => {
     const id = await activeContract(admin, clientId, terms("LEGACY-NO", { billingBasis: "CONTRACT_VALUE" }));
     const [visit] = await visitsOf(id);
     await legacyInvoiceNo(visit!.id, "OLD-1");
-    const ref = reference(id);
+    const ref = await reference(id);
 
     expect(await accountsRow(visit!.id, ref)).toMatchObject({ manualInvoiceNo: "OLD-1", paymentStatus: "PAID", colour: "RED" });
     // Saving the same number again changes nothing and is not refused.
@@ -307,7 +307,7 @@ describe("manual Invoice No.", () => {
     await complete(visit!.id);
 
     const zoho = (await newInvoice(admin, invoiceBody(clientId, [{ amcVisitId: visit!.id, amount: "250.000" }], { amountExclVat: "250.000", vatAmount: "12.500" }))).id as string;
-    const row = await accountsRow(visit!.id, reference(id));
+    const row = await accountsRow(visit!.id, await reference(id));
 
     expect(row).toMatchObject({ paymentStatus: "UNPAID", manualInvoiceNo: null, colour: "BLUE" });
     expect(row?.invoiceNumbers).toHaveLength(1);

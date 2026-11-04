@@ -54,8 +54,8 @@ const OPERATIONS: OperationsDashboard = {
     pastValidity: 1,
     renewalsInstalled: true,
     items: [
-      { id: '41', client: { id: '1', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', validTo: '2026-10-26', daysLeft: -1, renewal: null },
-      { id: '42', client: { id: '2', name: 'City Tower' }, systemDescription: 'CCTV', validTo: '2026-12-11', daysLeft: 45, renewal: { id: '77', status: 'DRAFT' } },
+      { id: '41', reference: 'AMC-0041', client: { id: '1', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', validTo: '2026-10-26', daysLeft: -1, renewal: null },
+      { id: '42', reference: 'AMC-0042', client: { id: '2', name: 'City Tower' }, systemDescription: 'CCTV', validTo: '2026-12-11', daysLeft: 45, renewal: { id: '77', reference: 'AMC-0077', status: 'DRAFT' } },
     ],
   },
   workload: {
@@ -109,7 +109,7 @@ const SUMMARY = {
 
 const VISIT = {
   id: '501',
-  contract: { id: '41', status: 'ACTIVE', systemDescription: 'FIRE ALARM', maintenanceFrequency: 'QUARTERLY' },
+  contract: { id: '41', reference: 'AMC-0041', status: 'ACTIVE', systemDescription: 'FIRE ALARM', maintenanceFrequency: 'QUARTERLY' },
   client: { id: '1', name: 'Harbour Hotel' },
   sequenceNo: 3,
   periodStart: '2026-10-01',

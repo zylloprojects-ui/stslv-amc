@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, logsFor, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
+import { activeContract, createClient, logsFor, referenceOf, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Services Sales: migrations 0078 (quotation number, module) and 0079 (grants).
@@ -99,7 +99,7 @@ describe("Services Sales", () => {
       expect(items).toHaveLength(4);
       expect(new Set(items.map((item: { id: string }) => item.id)).size).toBe(4);
       expect(items[0]).toMatchObject({
-        reference: `AMC-${fx.alphaContract.padStart(4, "0")}`,
+        reference: await referenceOf(fx.alphaContract),
         client: { id: fx.alphaId, name: "Alpha Towers" },
         system: { description: "FIRE", typeName: "Fire Alarm" },
         frequency: { code: "QUARTERLY", label: "Quarterly" },
@@ -294,7 +294,7 @@ describe("Services Sales", () => {
       await quote(alpha[0]!.id, "QT-777");
 
       expect(ids(await list({ search: "QT-777" }))).toEqual([alpha[0]!.id]);
-      expect(ids(await list({ search: `AMC-${fx.alphaContract.padStart(4, "0")}` }))).toEqual(alpha.map((v) => v.id).sort());
+      expect(ids(await list({ search: await referenceOf(fx.alphaContract) }))).toEqual(alpha.map((v) => v.id).sort());
       expect(ids(await list({ search: "beta" }))).toHaveLength(beta.length + 4);
       expect(ids(await list({ search: "cctv" }))).toEqual(beta.map((v) => v.id).sort());
       expect(ids(await list({ salesEngineerId: fx.esha }))).toEqual(alpha.map((v) => v.id).sort());
