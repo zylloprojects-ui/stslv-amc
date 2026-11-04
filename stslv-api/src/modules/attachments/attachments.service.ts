@@ -91,7 +91,7 @@ export function setStorageForTests(storage: FileStorage | null): void {
   storageOverride = storage;
 }
 
-function storage(): FileStorage {
+export function storage(): FileStorage {
   if (storageOverride) return storageOverride;
   if (!env.attachmentsDir) {
     throw new AppError(503, "STORAGE_UNAVAILABLE", "File storage is not configured on this server, so attachments cannot be uploaded or opened yet.");
@@ -115,7 +115,10 @@ export function contractDocumentStorageUnavailable(): AppError {
 }
 
 export function canAccess(auth: AuthContext, entityType: EntityType, action: Action): boolean {
-  return auth.permissions.has(`${ENTITY[entityType].module}:${action}`);
+  // A record type not listed here (a visit's service report, 0104) is never reached through these routes: it has its own.
+  const entity = ENTITY[entityType] as (typeof ENTITY)[EntityType] | undefined;
+
+  return entity !== undefined && auth.permissions.has(`${entity.module}:${action}`);
 }
 
 function assertCan(auth: AuthContext, entityType: EntityType, action: Action): void {

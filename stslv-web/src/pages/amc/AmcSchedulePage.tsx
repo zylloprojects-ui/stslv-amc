@@ -173,7 +173,6 @@ export function AmcSchedulePage() {
   const canEdit = auth.can('AMC_SCHEDULE', 'EDIT')
   // Start, complete, postpone or cancel: the execution permissions, checked again by the API.
   const canAct = auth.can('AMC_EXECUTION', 'VIEW') && auth.can('AMC_EXECUTION', 'EDIT')
-  const canReopen = auth.can('AMC_EXECUTION', 'APPROVE')
   const canExport = auth.can('AMC_SCHEDULE', 'EXPORT')
 
   const clients = useQuery({ queryKey: ['clients', 'all'], queryFn: () => fetchClients('all'), enabled: canViewClients })
@@ -573,7 +572,6 @@ export function AmcSchedulePage() {
       {dialog.kind === 'actions' && (
         <VisitActionsDialog
           visitId={dialog.visitId}
-          canReopen={canReopen}
           onClose={closeDialog}
           onSaved={(saved) => {
             setNotice(`Visit ${saved.sequenceNo} for ${saved.client.name} (${saved.contract.systemDescription}) is now ${VISIT_STATUS_LABELS[saved.status].toLowerCase()}.`)

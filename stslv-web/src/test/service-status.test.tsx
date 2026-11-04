@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { todayIso } from '../pages/amc/amcFormat'
-import type { ServiceStatusItem, ServiceStatusList, ServiceStatusOptions } from '../pages/amc/serviceStatusTypes'
+import type { ServiceReport, ServiceStatusItem, ServiceStatusList, ServiceStatusOptions } from '../pages/amc/serviceStatusTypes'
 import type { SessionUser } from '../lib/types'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 import { EXECUTION, makeVisit, VIEWER } from './amc-helpers'
@@ -30,9 +30,22 @@ function makeItem(overrides: Partial<ServiceStatusItem> = {}): ServiceStatusItem
     completedDate: null,
     salesEngineer: { id: '7', name: 'Sara Sales' },
     reportNumber: null,
+    serviceReport: null,
+    locked: false,
     updatedAt: '2026-10-01T08:00:00.000Z',
     ...overrides,
   }
+}
+
+const REPORT: ServiceReport = {
+  id: '900',
+  documentId: '900',
+  version: 1,
+  originalName: 'service-report-q1.pdf',
+  mimeType: 'application/pdf',
+  sizeBytes: 2048,
+  uploadedBy: { id: '3', fullName: 'Esa Execution' },
+  uploadedAt: '2026-10-01T09:00:00.000Z',
 }
 
 const OPEN = makeItem()
@@ -50,6 +63,7 @@ const DONE = makeItem({
   completedDate: day('10'),
   salesEngineer: null,
   reportNumber: 'SR-77',
+  locked: true,
 })
 const WAITING = makeItem({ id: '502', reference: 'AMC-0102', contract: { id: '102', status: 'EXPIRED', validTo: '2020-01-31' }, serviceStatus: 'WAITING_FOR_RENEWAL' })
 
@@ -66,6 +80,7 @@ const OPTIONS: ServiceStatusOptions = {
   ],
   years: [Number(YEAR)],
   reportNumberAvailable: true,
+  serviceReportsAvailable: true,
 }
 
 interface Options {
@@ -99,9 +114,24 @@ function serviceApi(user: SessionUser, options: Options = {}) {
         pageSize: 50,
         kpis: { total: items.length, completed: count('COMPLETED'), notCompleted: count('NOT_COMPLETED'), waitingForRenewal: count('WAITING_FOR_RENEWAL') },
         reportNumberAvailable: available,
+        serviceReportsAvailable: true,
+        serviceReportLimits: { maxMb: 12, allowedTypes: 'PDF, DOC and DOCX' },
       }
 
       return ok(list)
+    }
+    const report = /^\/amc\/service-status\/(\d+)\/report$/.exec(request.path)
+    if (report && (request.method === 'POST' || request.method === 'DELETE')) {
+      const index = items.findIndex((item) => item.id === report[1])
+      const uploaded = request.method === 'POST' ? { ...REPORT, id: `9${report[1]}`, originalName: 'uploaded-report.pdf' } : null
+      items[index] = { ...(items[index] as ServiceStatusItem), serviceReport: uploaded }
+
+      return ok(uploaded, request.method === 'POST' ? 201 : 200)
+    }
+    const one = /^\/amc\/service-status\/(\d+)$/.exec(request.path)
+    if (request.method === 'GET' && one) {
+      const found = items.find((item) => item.id === one[1])
+      return found ? ok(found) : fail(404, 'NOT_FOUND', 'AMC visit not found.')
     }
     const saving = /^\/amc\/service-status\/(\d+)$/.exec(request.path)
     if (request.method === 'PATCH' && saving) {
@@ -113,7 +143,8 @@ function serviceApi(user: SessionUser, options: Options = {}) {
         ...current,
         serviceStatus: status,
         visitStatus: status === 'COMPLETED' ? 'COMPLETED' : current.visitStatus,
-        completedDate: status === 'COMPLETED' ? (body.completedDate ?? current.completedDate) : null,
+        completedDate: status === 'COMPLETED' ? (body.completedDate ?? current.completedDate ?? TODAY) : null,
+        locked: status === 'COMPLETED',
         reportNumber: 'reportNumber' in body ? body.reportNumber || null : current.reportNumber,
         updatedAt: '2026-10-02T08:00:00.000Z',
       }
@@ -210,13 +241,14 @@ describe('service status page', () => {
     expect(screen.getByLabelText('Search')).toHaveValue('')
   })
 
-  it('saves one service: completed today with its report number, and nothing else', async () => {
-    const api = serviceApi(EXECUTION)
+  it('saves one service with its report: completed with its report number, no date asked or sent, and then locked', async () => {
+    const api = serviceApi(EXECUTION, { items: [{ ...OPEN, serviceReport: REPORT }, DONE, WAITING] })
     renderApp('/amc/service-status')
     const row = within(await rowOf('AMC-0100'))
 
     await userEvent.selectOptions(row.getByLabelText(/^Service status of AMC-0100/), 'COMPLETED')
-    expect(row.getByLabelText(/^Completion date of AMC-0100/)).toHaveValue(TODAY)
+    expect(row.queryByLabelText(/^Completion date of AMC-0100/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('dialog', { name: 'Service report required' })).not.toBeInTheDocument()
     await userEvent.type(row.getByLabelText(/^Service report number of AMC-0100/), 'SR-100')
     expect(row.getByText('Unsaved changes')).toBeInTheDocument()
     await userEvent.click(row.getByRole('button', { name: /^Save AMC-0100/ }))
@@ -225,12 +257,98 @@ describe('service status page', () => {
     const saves = api.requests.filter((request) => request.method === 'PATCH')
     expect(saves).toHaveLength(1)
     expect(saves[0]?.path).toBe('/amc/service-status/500')
-    expect(saves[0]?.body).toEqual({ status: 'COMPLETED', completedDate: TODAY, reportNumber: 'SR-100', expectedUpdatedAt: OPEN.updatedAt })
+    expect(saves[0]?.body).toEqual({ status: 'COMPLETED', reportNumber: 'SR-100', expectedUpdatedAt: OPEN.updatedAt })
     await waitFor(async () => expect((await rowOf('AMC-0100')).dataset.status).toBe('COMPLETED'))
+    // Locked once saved: no dropdown, no upload, no replace or remove.
+    const saved = within(await rowOf('AMC-0100'))
+    await waitFor(() => expect(saved.queryByLabelText(/^Service status of AMC-0100/)).not.toBeInTheDocument())
+    expect(saved.getByLabelText('Completed, locked')).toBeInTheDocument()
+    expect(saved.queryByRole('button', { name: /^(Replace|Remove|Upload) the service report/ })).not.toBeInTheDocument()
+    expect(saved.getByRole('button', { name: /^Open the service report of AMC-0100/ })).toHaveTextContent(REPORT.originalName)
+  })
+
+  it('refuses Completed without a report: the popup, nothing saved, the edits kept and Upload Report highlighted', async () => {
+    const api = serviceApi(EXECUTION)
+    renderApp('/amc/service-status')
+    const row = within(await rowOf('AMC-0100'))
+
+    await userEvent.type(row.getByLabelText(/^Service report number of AMC-0100/), 'SR-5')
+    await userEvent.selectOptions(row.getByLabelText(/^Service status of AMC-0100/), 'COMPLETED')
+
+    const popup = await screen.findByRole('dialog', { name: 'Service report required' })
+    expect(within(popup).getByRole('alert')).toHaveTextContent(/^Please upload service report\.$/)
+    expect(row.getByLabelText(/^Service status of AMC-0100/)).toHaveValue('NOT_COMPLETED')
+    expect(row.getByLabelText(/^Service report number of AMC-0100/)).toHaveValue('SR-5')
+    await userEvent.click(within(popup).getByRole('button', { name: 'OK' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Service report required' })).not.toBeInTheDocument()
+    expect(row.getByRole('button', { name: /^Upload the service report of AMC-0100/ })).toHaveClass('ring-amber-500')
+    expect(api.requests.filter((request) => request.method === 'PATCH')).toHaveLength(0)
+  })
+
+  it('shows the same popup when the server refuses a completion for a missing report', async () => {
+    serviceApi(EXECUTION, {
+      items: [{ ...OPEN, serviceReport: REPORT }],
+      override: (request) => (request.method === 'PATCH' ? fail(409, 'SERVICE_REPORT_REQUIRED', 'Please upload service report.') : undefined),
+    })
+    renderApp('/amc/service-status')
+    const row = within(await rowOf('AMC-0100'))
+
+    await userEvent.selectOptions(row.getByLabelText(/^Service status of AMC-0100/), 'COMPLETED')
+    await userEvent.click(row.getByRole('button', { name: /^Save AMC-0100/ }))
+
+    expect(await screen.findByRole('dialog', { name: 'Service report required' })).toHaveTextContent('Please upload service report.')
+    expect(row.getByLabelText(/^Service status of AMC-0100/)).toHaveValue('COMPLETED')
+  })
+
+  it('uploads a report for exactly this service, shows its name, then allows completion', async () => {
+    const api = serviceApi(EXECUTION)
+    renderApp('/amc/service-status')
+    const row = within(await rowOf('AMC-0100'))
+    const input = (await rowOf('AMC-0100')).querySelector('input[type="file"]') as HTMLInputElement
+
+    await userEvent.upload(input, new File(['%PDF-1.4 report'], 'q1-report.pdf', { type: 'application/pdf' }))
+
+    expect(await row.findByRole('button', { name: /^Open the service report of AMC-0100/ })).toHaveTextContent('uploaded-report.pdf')
+    expect(api.find('POST', '/amc/service-status/500/report')).toHaveLength(1)
+    expect(api.requests.filter((request) => request.method === 'POST' && request.path !== '/amc/service-status/500/report')).toHaveLength(0)
+    expect(row.getByRole('button', { name: /^Replace the service report of AMC-0100/ })).toBeInTheDocument()
+
+    await userEvent.selectOptions(row.getByLabelText(/^Service status of AMC-0100/), 'COMPLETED')
+    expect(screen.queryByRole('dialog', { name: 'Service report required' })).not.toBeInTheDocument()
+    await userEvent.click(row.getByRole('button', { name: /^Save AMC-0100/ }))
+    expect(await row.findByText('Saved')).toBeInTheDocument()
+  })
+
+  it('refuses a file that is not PDF, DOC or DOCX, or too large, before sending it', async () => {
+    const api = serviceApi(EXECUTION)
+    renderApp('/amc/service-status')
+    const row = within(await rowOf('AMC-0100'))
+    const input = (await rowOf('AMC-0100')).querySelector('input[type="file"]') as HTMLInputElement
+
+    await userEvent.upload(input, new File(['x'], 'photo.png', { type: 'image/png' }), { applyAccept: false })
+    expect(await row.findByRole('alert')).toHaveTextContent('Only PDF, DOC and DOCX files can be uploaded as a service report.')
+
+    const big = new File(['x'], 'big.pdf', { type: 'application/pdf' })
+    Object.defineProperty(big, 'size', { value: 13 * 1024 * 1024 })
+    await userEvent.upload(input, big)
+    expect(await row.findByRole('alert')).toHaveTextContent('Service reports can be at most 12 MB.')
+    expect(api.find('POST', '/amc/service-status/500/report')).toHaveLength(0)
+  })
+
+  it('removes a report before completion', async () => {
+    const api = serviceApi(EXECUTION, { items: [{ ...OPEN, serviceReport: REPORT }] })
+    renderApp('/amc/service-status')
+    const row = within(await rowOf('AMC-0100'))
+
+    await userEvent.click(row.getByRole('button', { name: /^Remove the service report of AMC-0100/ }))
+    expect(await row.findByRole('button', { name: /^Upload the service report of AMC-0100/ })).toBeInTheDocument()
+    expect(api.find('DELETE', '/amc/service-status/500/report')).toHaveLength(1)
   })
 
   it('keeps the edits and shows why when a save fails', async () => {
     serviceApi(EXECUTION, {
+      items: [{ ...OPEN, serviceReport: REPORT }],
       override: (request) =>
         request.method === 'PATCH' ? fail(409, 'CONFLICT', 'This service was changed by someone else after the page was loaded. Reload to see the latest values, then save again.') : undefined,
     })
@@ -247,19 +365,6 @@ describe('service status page', () => {
     expect(row.getByRole('button', { name: /^Save AMC-0100/ })).toBeEnabled()
   })
 
-  it('checks the completion date before sending', async () => {
-    const api = serviceApi(EXECUTION)
-    renderApp('/amc/service-status')
-    const row = within(await rowOf('AMC-0100'))
-
-    await userEvent.selectOptions(row.getByLabelText(/^Service status of AMC-0100/), 'COMPLETED')
-    await userEvent.clear(row.getByLabelText(/^Completion date of AMC-0100/))
-    await userEvent.click(row.getByRole('button', { name: /^Save AMC-0100/ }))
-
-    expect(await row.findByRole('alert')).toHaveTextContent('Enter the date the service was completed.')
-    expect(api.requests.filter((request) => request.method === 'PATCH')).toHaveLength(0)
-  })
-
   it('offers Waiting for Renewal only as the current state of a derived row', async () => {
     serviceApi(EXECUTION)
     renderApp('/amc/service-status')
@@ -270,13 +375,16 @@ describe('service status page', () => {
     expect(within(open).getAllByRole('option').map((option) => option.textContent)).toEqual(['Not Completed', 'Completed'])
   })
 
-  it('does not offer reopening completed work without approval', async () => {
-    serviceApi(EXECUTION)
+  it('locks a completed service for every role, Admin included, and keeps a service completed without a report as it is', async () => {
+    serviceApi(ADMIN)
     renderApp('/amc/service-status')
     const done = within(await rowOf('AMC-0101'))
 
     expect(done.queryByLabelText(/^Service status of AMC-0101/)).not.toBeInTheDocument()
-    expect(done.getByText('Completed')).toBeInTheDocument()
+    expect(done.getByLabelText('Completed, locked')).toBeInTheDocument()
+    // Completed before reports were required: no report, and none can be added now.
+    expect(done.queryByRole('button', { name: /service report of AMC-0101/ })).not.toBeInTheDocument()
+    expect(done.queryByLabelText(/^Completion date of AMC-0101/)).not.toBeInTheDocument()
   })
 
   it('shows a read-only page to a role that may not save or export', async () => {
@@ -284,7 +392,9 @@ describe('service status page', () => {
     renderApp('/amc/service-status')
     await table()
 
-    expect(screen.queryByRole('columnheader', { name: 'Save' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Save / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Upload the service report/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^View AMC-0100/ })).toBeInTheDocument()
     expect(screen.queryByLabelText(/^Service status of/)).not.toBeInTheDocument()
     expect(screen.queryByRole('group', { name: 'Export service status' })).not.toBeInTheDocument()
     expect(within(await rowOf('AMC-0101')).getByText('SR-77')).toBeInTheDocument()
@@ -305,8 +415,8 @@ describe('service status page', () => {
     const { unmount } = renderApp('/amc/service-status')
     await table()
 
-    const button = screen.getByRole('button', { name: 'Hide Columns: 8 of 8 columns shown' })
-    expect(button).toHaveTextContent('Hide Columns· 8 of 8 shown')
+    const button = screen.getByRole('button', { name: 'Hide Columns: 9 of 9 columns shown' })
+    expect(button).toHaveTextContent('Hide Columns· 9 of 9 shown')
     await userEvent.click(button)
     const dialog = screen.getByRole('dialog', { name: 'Hide columns' })
     await userEvent.click(within(dialog).getByLabelText('Sales Engineer'))
@@ -314,7 +424,7 @@ describe('service status page', () => {
 
     expect(screen.queryByRole('columnheader', { name: 'Sales Engineer' })).not.toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'AMC Reference' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Hide Columns: 7 of 8 columns shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns: 8 of 9 columns shown' })).toBeInTheDocument()
 
     unmount()
     renderApp('/amc/service-status')
@@ -421,7 +531,7 @@ describe('service status visit actions and figure scope', () => {
 })
 
 describe('service status filter lists', () => {
-  const EMPTY: ServiceStatusOptions = { clients: [], salesEngineers: [], systemTypes: [], frequencies: [], years: [], reportNumberAvailable: true }
+  const EMPTY: ServiceStatusOptions = { clients: [], salesEngineers: [], systemTypes: [], frequencies: [], years: [], reportNumberAvailable: true, serviceReportsAvailable: true }
   const entries = (label: string) => [...(screen.getByLabelText(label) as HTMLSelectElement).options].map((option) => ({ text: option.textContent, disabled: option.disabled }))
 
   it('says why a list is empty when no contract has current visits, and keeps every filter', async () => {
@@ -484,5 +594,48 @@ describe('service status download', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Export service status to Excel' }))
     await waitFor(() => expect(api.find('GET', '/amc/service-status/export').length).toBe(1))
     expect(api.find('GET', '/amc/service-status/export')[0]?.query.get('hidden')).toBe('engineer')
+  })
+})
+
+describe('service status view', () => {
+  it('opens the read-only details of the chosen service, by its id, with its report', async () => {
+    const api = serviceApi(VIEWER, { items: [{ ...OPEN, serviceReport: REPORT, reportNumber: 'SR-9' }, DONE] })
+    renderApp('/amc/service-status')
+
+    await userEvent.click(within(await rowOf('AMC-0100')).getByRole('button', { name: /^View AMC-0100/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Service · AMC-0100' })
+
+    expect(api.find('GET', '/amc/service-status/500')).toHaveLength(1)
+    for (const text of ['Test Hotel One', 'Quarterly', 'Year 1 · Q1', 'Not Completed', 'Sara Sales', 'SR-9', REPORT.originalName]) {
+      expect(within(dialog).getAllByText(new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))).length).toBeGreaterThan(0)
+    }
+    expect(within(dialog).getByRole('button', { name: 'Download Report' })).toBeInTheDocument()
+    expect(within(dialog).queryByRole('combobox')).not.toBeInTheDocument()
+  })
+
+  it('shows the completion date and the lock of a completed service, and says when it has no report', async () => {
+    serviceApi(ADMIN)
+    renderApp('/amc/service-status')
+
+    await userEvent.click(within(await rowOf('AMC-0101')).getByRole('button', { name: /^View AMC-0101/ }))
+    const dialog = await screen.findByRole('dialog', { name: 'Service · AMC-0101' })
+
+    expect(within(dialog).getByText('· locked')).toBeInTheDocument()
+    expect(within(dialog).getByText(/completed before service reports were required/)).toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: 'Download Report' })).not.toBeInTheDocument()
+  })
+
+  it('downloads the report through the API', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const api = serviceApi(ADMIN, {
+      items: [{ ...OPEN, serviceReport: REPORT }],
+      override: (request) => (request.path === '/amc/service-status/500/report/download' ? ok(null) : undefined),
+    })
+    renderApp('/amc/service-status')
+
+    await userEvent.click(within(await rowOf('AMC-0100')).getByRole('button', { name: /^View AMC-0100/ }))
+    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Service · AMC-0100' })).getByRole('button', { name: 'Download Report' }))
+    await waitFor(() => expect(api.find('GET', '/amc/service-status/500/report/download')).toHaveLength(1))
   })
 })

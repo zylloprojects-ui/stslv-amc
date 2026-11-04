@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { activeContract, createClient, logsFor, today, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
+import { activeContract, createClient, logsFor, today, visitsOf, withServiceReport, type Session, type VisitRecord } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 let admin: Session;
@@ -115,6 +115,7 @@ describe("execution status", () => {
     expect(started.status).toBe(200);
     expect(started.body.data).toMatchObject({ status: "IN_PROGRESS", executionNotes: "On site", completedDate: null, isOverdue: false });
 
+    await withServiceReport(id);
     const completed = await update(id, {
       status: "COMPLETED",
       completedDate: addDays(now, -1),
@@ -190,31 +191,36 @@ describe("execution status", () => {
     expect(restored.body.data).toMatchObject({ status: "SCHEDULED", statusReason: null });
   });
 
-  it("lets work notes be corrected on a completed visit without reopening it", async () => {
+  it("lets work notes be corrected on a completed visit, but never its completion date", async () => {
     const id = visits[0]?.id as string;
-    const response = await update(id, { workPerformed: "Panel tested, three detectors replaced", completedDate: addDays(now, -2) });
+    const response = await update(id, { workPerformed: "Panel tested, three detectors replaced" });
 
     expect(response.status).toBe(200);
     expect(response.body.data).toMatchObject({
       status: "COMPLETED",
       workPerformed: "Panel tested, three detectors replaced",
-      completedDate: addDays(now, -2),
+      completedDate: addDays(now, -1),
       completedBy: { id: execution.id },
     });
     expect((await logsFor("amc_visits", id)).at(-1)?.action).toBe("amc_visit.execution_updated");
+
+    // Completion lock (2026-11-04): the completion date of completed work cannot change.
+    const redated = await update(id, { completedDate: addDays(now, -2) });
+    expect(redated.status).toBe(409);
+    expect(redated.body.error.code).toBe("COMPLETION_LOCKED");
+    expect(await stored(id)).toMatchObject({ status: "COMPLETED", completed_date: addDays(now, -1) });
   });
 
-  it("reopens a completed visit only with approval permission, and clears the completion", async () => {
+  it("never reopens a completed visit, not even with approval permission", async () => {
     const id = visits[0]?.id as string;
 
-    const refused = await update(id, { status: "IN_PROGRESS" });
-    expect(refused.status).toBe(403);
-    expect(await stored(id)).toMatchObject({ status: "COMPLETED" });
-
-    const reopened = await update(id, { status: "IN_PROGRESS" }, admin);
-    expect(reopened.status).toBe(200);
-    expect(reopened.body.data).toMatchObject({ status: "IN_PROGRESS", completedDate: null, completedBy: null });
-    expect(await stored(id)).toMatchObject({ status: "IN_PROGRESS", completed_date: null, completed_by: null });
+    // Completion lock (2026-11-04): completed work cannot be reopened.
+    for (const session of [execution, admin]) {
+      const refused = await update(id, { status: "IN_PROGRESS" }, session);
+      expect(refused.status).toBe(409);
+      expect(refused.body.error.code).toBe("COMPLETION_LOCKED");
+    }
+    expect(await stored(id)).toMatchObject({ status: "COMPLETED", completed_date: addDays(now, -1), completed_by: execution.id });
   });
 
   it("writes nothing when an update changes nothing", async () => {
@@ -262,6 +268,20 @@ describe("execution constraints in the database", () => {
       code: "23514",
       constraint: "amc_visits_status_ck",
     });
+  });
+
+  it("refuses reopening or re-dating a completed visit, whoever writes it (migration 0104)", async () => {
+    const id = visits[0]?.id as string;
+
+    await expect(pool.query("UPDATE amc_visits SET status = 'SCHEDULED', completed_date = NULL WHERE id = $1", [id])).rejects.toMatchObject({
+      code: "23514",
+      constraint: "amc_visits_completion_lock",
+    });
+    await expect(pool.query("UPDATE amc_visits SET completed_date = completed_date - 1 WHERE id = $1", [id])).rejects.toMatchObject({
+      code: "23514",
+      constraint: "amc_visits_completion_lock",
+    });
+    expect(await stored(id)).toMatchObject({ status: "COMPLETED", completed_date: addDays(now, -1) });
   });
 });
 

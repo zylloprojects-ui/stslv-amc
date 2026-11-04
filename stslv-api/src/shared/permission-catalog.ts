@@ -191,8 +191,10 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         pages: [],
         actions: {
           VIEW: "See visits as work to carry out",
-          EDIT: "Record execution: start, postpone and complete visits, service report numbers",
-          APPROVE: "Reopen a completed visit",
+          EDIT: "Record execution: start, postpone and complete visits, upload service reports, service report numbers",
+          // Until 2026-11-04 this allowed reopening a completed visit. Completed visits are now locked for everyone, so it
+          // has no effect. Kept (not retired) because seeded roles hold it (0087); retiring it awaits a decision.
+          APPROVE: "No effect at present: completed visits are locked and cannot be reopened",
         },
       },
       {

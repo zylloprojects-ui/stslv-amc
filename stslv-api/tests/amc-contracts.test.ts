@@ -13,6 +13,7 @@ import {
   systemTypeNamed,
   visitsOf,
   type Session,
+  withServiceReport,
 } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
@@ -41,8 +42,10 @@ const setStatus = (id: string, body: Record<string, unknown>, session: Session =
   api().post(`/api/amc/contracts/${id}/status`).set(session.headers).send(body);
 // Adding a contract also records its master links and its contract document (2026-11-03).
 const CREATED = ["amc_contract.created", "amc_contract.masters_linked", "attachment.uploaded"];
-const complete = (visitId: string) =>
-  api().patch(`/api/amc/execution/visits/${visitId}`).set(admin.headers).send({ status: "COMPLETED", completedDate: "2026-01-05" });
+const complete = async (visitId: string) => {
+  await withServiceReport(visitId);
+  return api().patch(`/api/amc/execution/visits/${visitId}`).set(admin.headers).send({ status: "COMPLETED", completedDate: "2026-01-05" });
+};
 
 describe("create contract", () => {
   it("saves a draft contract against an existing client and records who created it", async () => {

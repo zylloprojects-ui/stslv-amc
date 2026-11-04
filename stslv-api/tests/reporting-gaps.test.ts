@@ -5,7 +5,7 @@ import type { AuthContext } from "../src/modules/auth/access";
 import { buildServiceStatusExport } from "../src/modules/amc/service-status.export";
 import { serviceStatusHiddenSchema } from "../src/modules/amc/service-status.schemas";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Service Sales' Service Report No. and Quote filter, Accounts' contract filter, hidden columns in exports,
@@ -55,6 +55,7 @@ beforeAll(async () => {
   renewalId = renewal.body.data.id;
 
   const [first, second, third] = await visitsOf(quarterly);
+  await withServiceReport(first!.id);
   await api().patch(`/api/amc/execution/visits/${first!.id}`).set(admin.headers).send({ status: "COMPLETED", completedDate: now });
   await pool.query("UPDATE amc_visits SET service_report_no = 'SR-GAP-1', quotation_no = 'QT-1' WHERE id = $1", [first!.id]);
   // A number on a visit that is not completed: Submitted, though not "Quoted".

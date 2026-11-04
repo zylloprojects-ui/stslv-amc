@@ -100,7 +100,8 @@ The contract row is locked for the whole operation, the removal re-checks "still
 
 ## 4. Execution
 
-- Any status can follow any other, with two exceptions: leaving `COMPLETED` (reopening) requires `AMC_EXECUTION:APPROVE`; and a completion date is required to complete.
+- Any open status can follow any other. Completing needs the visit's own uploaded **Service Report** (migration 0104) and a completion date; on Service Status the date is recorded automatically (today).
+- **Completion lock (2026-11-04):** a completed visit can never leave `COMPLETED` and its completion date cannot change, for any user and on every route; the database enforces it too (trigger `amc_visits_completion_lock`). There is no reopening. See `docs/SERVICE_REPORT_COMPLETION_LOCK.md`.
 - Completing records the completion date (not in the future) and the user who completed it.
 - Postponing keeps the visit on the list of outstanding work; a new planned date and a reason can be recorded. The original date is kept.
 - A cancelled visit can be restored to `SCHEDULED`.
@@ -122,7 +123,7 @@ Invoice eligibility is **derived** by the view `v_amc_visit_billing` from the vi
 Consequences:
 
 - Completing a visit with an amount makes it ready for invoice at once. No separate "release" step exists (none is confirmed).
-- Reopening a completed visit returns it to `NOT_COMPLETED`.
+- A completed visit stays completed (completion lock), so it never returns to `NOT_COMPLETED`.
 - The amount used is the visit's own amount, including any override.
 
 ### Zero-value and missing amounts
@@ -143,8 +144,9 @@ Uses the existing role-permission tables. Nothing was added to the seeded matrix
 | List / view schedule (with amounts and eligibility) | `AMC_SCHEDULE:VIEW` |
 | Edit a visit's amount, date, assignment, notes | `AMC_SCHEDULE:EDIT` |
 | Execution work list | `AMC_EXECUTION:VIEW` |
-| Update execution status and notes | `AMC_EXECUTION:EDIT` |
-| Reopen a completed visit | `AMC_EXECUTION:EDIT` **and** `AMC_EXECUTION:APPROVE` |
+| Update execution status and notes; upload, replace or remove a service report before completion | `AMC_EXECUTION:EDIT` |
+| View a service and download its report | `SERVICE_STATUS:VIEW` |
+| Reopen a completed visit | Not possible (completion lock, 2026-11-04). `AMC_EXECUTION:APPROVE` has no effect at present. |
 | AMC summary | Any of the three `VIEW` permissions; each section is filled only if permitted |
 
 With the seeded (provisional) matrix, only Admin can create or edit contracts and edit visit amounts; Execution can update execution; Accountant and Invoicing can view. An Admin changes this in Users & Access.
@@ -210,7 +212,7 @@ The web pages invalidate the `['dashboard']` query after every AMC change, so a 
 | Q4 Renewal | A renewal is a new contract, or an extension of `valid_to` (which adds visits). No automatic roll-over. |
 | Contract expiry | Never automatic. |
 | Cancelling a contract | Visits are cancelled only on explicit request. |
-| Reopening completed visits | Allowed with `AMC_EXECUTION:APPROVE` (Admin only in the seeded matrix). |
+| Reopening completed visits | Not allowed for anyone (completion lock, approved 2026-11-04). An unlock needs a separately approved change. |
 | Q13 Site execution fields | Status, completion date, work performed, execution notes only. |
 | Q15 Several systems per contract | One system text per contract. |
 | Q20 Engineers as users | Engineer and assignee are names; visits are not filtered per user. |

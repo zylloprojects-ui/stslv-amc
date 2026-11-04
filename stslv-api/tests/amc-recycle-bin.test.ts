@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, renewalEngineer, visitsOf } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer, visitsOf, withServiceReport } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // AMC Recycle Bin (migration 0101, approved 2026-11-03): moving a contract to the Recycle Bin
@@ -39,6 +39,7 @@ async function workedContract(system: string) {
   const id = await activeContract(superAdmin, clientId, { systemDescription: system, validFrom: "2026-01-01", validTo: "2026-12-31" });
   const visits = await visitsOf(id);
   const first = visits[0]!;
+  await withServiceReport(first.id);
   expect((await api().patch(`/api/amc/execution/visits/${first.id}`).set(superAdmin.headers).send({ status: "COMPLETED", completedDate: "2026-02-01" })).status).toBe(200);
   await pool.query("UPDATE amc_visits SET notes = 'Service report RB-1' WHERE id = $1", [visits[1]!.id]);
   const invoice = await api()

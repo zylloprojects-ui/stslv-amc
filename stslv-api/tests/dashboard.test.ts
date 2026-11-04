@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { activeContract, createClient, createContract, today, visitsOf } from "./amc-helpers";
+import { activeContract, createClient, createContract, reportIfCompleting, today, visitsOf } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { insertHistoricalProject, insertHistoricalVisit, insertImportedContract } from "./historical-helpers";
 import { categoryId, insertClient, newProject, postExpense, resetProjectData, setStatus, type Session } from "./projects-helpers";
@@ -38,8 +38,10 @@ beforeAll(async () => {
   admin = await signedIn("admin@example.com", ["ADMIN"]);
 
   const now = await today();
-  const execute = (id: string, body: Record<string, unknown>) =>
-    api().patch(`/api/amc/execution/visits/${id}`).set(admin.headers).send(body);
+  const execute = async (id: string, body: Record<string, unknown>) => {
+    await reportIfCompleting(id, body);
+    return api().patch(`/api/amc/execution/visits/${id}`).set(admin.headers).send(body);
+  };
   const setAmount = (id: string, visitAmount: string) =>
     api().patch(`/api/amc/visits/${id}`).set(admin.headers).send({ visitAmount });
 

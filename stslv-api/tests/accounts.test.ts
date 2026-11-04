@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { cancelInvoice, invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -44,6 +44,7 @@ const list = (query: Record<string, unknown> = {}, session: Session = admin) => 
 const exportFile = (query: Record<string, unknown>, session: Session = admin) => api().get("/api/accounts/export").query(query).set(session.headers).responseType("blob");
 
 async function complete(visitId: string): Promise<void> {
+  await withServiceReport(visitId);
   const response = await api().patch(`/api/amc/execution/visits/${visitId}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() });
   if (response.status !== 200) throw new Error(`Could not complete visit ${visitId}: ${response.status} ${JSON.stringify(response.body)}`);
 }

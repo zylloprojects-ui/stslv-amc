@@ -35,7 +35,23 @@ export interface ServiceStatusItem {
   completedDate: string | null
   salesEngineer: { id: string; name: string } | null
   reportNumber: string | null
+  /** The uploaded Service Report document (database update 0104), or null. */
+  serviceReport: ServiceReport | null
+  /** Completed and saved: the status and completion date can no longer change. */
+  locked: boolean
   updatedAt: string
+}
+
+/** The current Service Report document of one service. */
+export interface ServiceReport {
+  id: string
+  documentId: string
+  version: number
+  originalName: string
+  mimeType: string
+  sizeBytes: number
+  uploadedBy: { id: string; fullName: string }
+  uploadedAt: string
 }
 
 export interface ServiceStatusKpis {
@@ -54,6 +70,9 @@ export interface ServiceStatusList {
   kpis: ServiceStatusKpis
   /** False until database update 0077 adds the report number. */
   reportNumberAvailable: boolean
+  /** False until database update 0104: reports cannot be uploaded, so services cannot be completed. */
+  serviceReportsAvailable: boolean
+  serviceReportLimits: { maxMb: number; allowedTypes: string }
 }
 
 export interface ServiceStatusOptions {
@@ -64,6 +83,7 @@ export interface ServiceStatusOptions {
   frequencies: { code: string; label: string }[]
   years: number[]
   reportNumberAvailable: boolean
+  serviceReportsAvailable: boolean
 }
 
 /** "Year 2 · Q3" for a visit labelled at generation, otherwise "Visit 7". */
@@ -72,3 +92,22 @@ export function serviceLabel(service: ServiceStatusItem['service']): string {
 }
 
 export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** The message shown when Completed is chosen without a report. The API refuses with the same words. */
+export const SERVICE_REPORT_REQUIRED_MESSAGE = 'Please upload service report.'
+
+/** The report files accepted (checked again, by content, on the server). */
+export const SERVICE_REPORT_EXTENSIONS = ['pdf', 'doc', 'docx'] as const
+export const SERVICE_REPORT_ACCEPT = '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const SERVICE_REPORT_MIME_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+
+/** Why a chosen file cannot be a service report, or null. An empty browser-stated type is allowed: the server checks the content. */
+export function serviceReportFileProblem(file: File, maxMb: number): string | null {
+  const extension = file.name.includes('.') ? (file.name.split('.').pop() ?? '').toLowerCase() : ''
+
+  if (!(SERVICE_REPORT_EXTENSIONS as readonly string[]).includes(extension)) return 'Only PDF, DOC and DOCX files can be uploaded as a service report.'
+  if (file.type !== '' && !SERVICE_REPORT_MIME_TYPES.includes(file.type)) return 'This file type is not accepted. Choose a PDF, DOC or DOCX file.'
+  if (file.size === 0) return 'The chosen file is empty. Choose another file.'
+  if (file.size > maxMb * 1024 * 1024) return `Service reports can be at most ${maxMb} MB.`
+  return null
+}

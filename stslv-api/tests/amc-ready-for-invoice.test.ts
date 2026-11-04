@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
+import { activeContract, createClient, reportIfCompleting, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // How a completed visit becomes "ready for invoice". The state is derived by
@@ -33,8 +33,10 @@ const visit = async (index: number, session: Session = admin) =>
   (await api().get(`/api/amc/visits/${visits[index]?.id}`).set(session.headers)).body.data;
 const setAmount = (index: number, visitAmount: string | null) =>
   api().patch(`/api/amc/visits/${visits[index]?.id}`).set(admin.headers).send({ visitAmount });
-const execute = (index: number, body: Record<string, unknown>) =>
-  api().patch(`/api/amc/execution/visits/${visits[index]?.id}`).set(admin.headers).send(body);
+const execute = async (index: number, body: Record<string, unknown>) => {
+  await reportIfCompleting(visits[index]?.id, body);
+  return api().patch(`/api/amc/execution/visits/${visits[index]?.id}`).set(admin.headers).send(body);
+};
 const complete = (index: number) => execute(index, { status: "COMPLETED", completedDate: "2025-12-15" });
 const ready = (session: Session = admin) =>
   api().get("/api/amc/visits").query({ invoiceEligibility: "READY_FOR_INVOICE" }).set(session.headers);
@@ -85,14 +87,17 @@ describe("invoice eligibility", () => {
     expect(list.body.data.totals.visitAmount).toBe("905.000");
   });
 
-  it("returns to NOT_COMPLETED when a completed visit is reopened", async () => {
+  it("stays READY_FOR_INVOICE when reopening a completed visit is refused", async () => {
     await complete(5);
     expect((await visit(5)).invoiceEligibility).toBe("READY_FOR_INVOICE");
 
-    await execute(5, { status: "SCHEDULED" });
+    // Completion lock (2026-11-04): completed work cannot be reopened.
+    const reopened = await execute(5, { status: "SCHEDULED" });
 
-    expect((await visit(5)).invoiceEligibility).toBe("NOT_COMPLETED");
-    expect((await ready()).body.data.total).toBe(2);
+    expect(reopened.status).toBe(409);
+    expect(reopened.body.error.code).toBe("COMPLETION_LOCKED");
+    expect((await visit(5)).invoiceEligibility).toBe("READY_FOR_INVOICE");
+    expect((await ready()).body.data.total).toBe(3);
   });
 });
 

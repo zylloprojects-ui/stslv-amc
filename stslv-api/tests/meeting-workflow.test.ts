@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { createClient, newContractBody, today, visitsOf, type Session } from "./amc-helpers";
+import { createClient, newContractBody, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -158,6 +158,7 @@ describe("meeting workflow", () => {
     const row = await serviceRow(first!.id);
 
     expect(row?.serviceStatus).toBe("NOT_COMPLETED");
+    await withServiceReport(first!.id);
 
     // A stale screen cannot overwrite a newer change.
     expect((await patch(`/amc/service-status/${first!.id}`, { status: "COMPLETED", completedDate: await today(), expectedUpdatedAt: "2000-01-01T00:00:00.000Z" })).status).toBe(409);

@@ -1,5 +1,5 @@
 import { pool } from "../src/config/database";
-import { activeContract, createClient, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
+import { activeContract, createClient, reportIfCompleting, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
 import { api } from "./helpers";
 import { newProject, setStatus } from "./projects-helpers";
 
@@ -28,8 +28,10 @@ export async function invoiceFixture(admin: Session): Promise<Fixture> {
   return { clientId, otherClientId, contractId, visits: await visitsOf(contractId) };
 }
 
-export const executeVisit = (session: Session, visitId: string, body: Record<string, unknown>) =>
-  api().patch(`/api/amc/execution/visits/${visitId}`).set(session.headers).send(body);
+export const executeVisit = async (session: Session, visitId: string, body: Record<string, unknown>) => {
+  await reportIfCompleting(visitId, body);
+  return api().patch(`/api/amc/execution/visits/${visitId}`).set(session.headers).send(body);
+};
 
 export async function completeVisit(session: Session, visitId: string): Promise<void> {
   const response = await executeVisit(session, visitId, { status: "COMPLETED", completedDate: "2025-12-15" });
