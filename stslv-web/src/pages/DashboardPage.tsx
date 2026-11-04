@@ -14,7 +14,6 @@ import { MaintenanceCalendar } from './dashboard/MaintenanceCalendar'
 import type { OperationsDashboard } from './dashboard/operationsTypes'
 import { RecentInvoices } from './dashboard/RecentInvoices'
 import { ExpiringContracts, PaymentTrend, PortfolioStatus, WorkloadChart } from './dashboard/Widgets'
-import { useStoredFlag } from './dashboard/dashboardPreferences'
 
 // AMC Portfolio Status, Expiring Contracts and Recent Invoices are hidden on the dashboard by default. Set VITE_SHOW_DASHBOARD_DETAIL_PANELS=true to bring them back.
 // Read on each render (not once at load) so tests can check both settings.
@@ -83,8 +82,6 @@ export function DashboardPage() {
   usePageTitle('Dashboard')
 
   const operations = useQuery({ queryKey: ['dashboard', 'operations'], queryFn: () => api.get<OperationsDashboard>('/dashboard/operations') })
-
-  const [calendarOpen, setCalendarOpen] = useStoredFlag(userId, 'calendar-open', true)
 
   const data = operations.data
   const refreshing = operations.isFetching
@@ -177,8 +174,6 @@ export function DashboardPage() {
             asOf={data.asOf}
             canSchedule={canSchedule}
             canInvoices={canView('INVOICES')}
-            expanded={calendarOpen}
-            onToggle={setCalendarOpen}
           />
         </Panel>
       )}
