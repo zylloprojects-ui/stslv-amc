@@ -16,12 +16,73 @@ const ENTITY: Record<EntityType, { module: Module; table: string; logModule: str
   project_expenses: { module: "EXPENSES", table: "project_expenses", logModule: "EXPENSES", label: "expense" },
 };
 
-/** The file types accepted, recognised by their content, and the file name extensions allowed for each. */
-const TYPES: { mime: string; ext: "pdf" | "png" | "jpg"; extensions: string[]; magic: number[] }[] = [
-  { mime: "application/pdf", ext: "pdf", extensions: ["pdf"], magic: [0x25, 0x50, 0x44, 0x46, 0x2d] },
-  { mime: "image/png", ext: "png", extensions: ["png"], magic: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
-  { mime: "image/jpeg", ext: "jpg", extensions: ["jpg", "jpeg"], magic: [0xff, 0xd8, 0xff] },
+type FileKind = "PDF" | "PNG" | "JPEG" | "DOC" | "DOCX";
+
+interface FileType {
+  kind: FileKind;
+  mime: string;
+  ext: "pdf" | "png" | "jpg" | "doc" | "docx";
+  extensions: string[];
+  magic: number[];
+  /** A further check of the content, after the leading bytes match. Returns why the file is refused, or null. */
+  inspect?: (data: Buffer) => string | null;
+}
+
+const has = (data: Buffer, text: string, encoding: BufferEncoding = "latin1") => data.includes(Buffer.from(text, encoding));
+
+/**
+ * The file types accepted, recognised by their content, and the file name extensions allowed for each.
+ * Word files (migration 0103): a .docx is a ZIP package with a Word body; a .doc is an OLE compound file with a
+ * WordDocument stream. Either is refused when it carries macros (a VBA project), so no macro-enabled file is stored.
+ * The names inside both formats are stored uncompressed, so they can be found without unpacking the file.
+ */
+const TYPES: FileType[] = [
+  { kind: "PDF", mime: "application/pdf", ext: "pdf", extensions: ["pdf"], magic: [0x25, 0x50, 0x44, 0x46, 0x2d] },
+  { kind: "PNG", mime: "image/png", ext: "png", extensions: ["png"], magic: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] },
+  { kind: "JPEG", mime: "image/jpeg", ext: "jpg", extensions: ["jpg", "jpeg"], magic: [0xff, 0xd8, 0xff] },
+  {
+    kind: "DOCX",
+    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ext: "docx",
+    extensions: ["docx"],
+    magic: [0x50, 0x4b, 0x03, 0x04],
+    inspect: (data) =>
+      !has(data, "[Content_Types].xml") || !has(data, "word/document.xml")
+        ? "This file is not a Word document."
+        : has(data, "vbaProject.bin")
+          ? "Word documents with macros cannot be uploaded."
+          : null,
+  },
+  {
+    kind: "DOC",
+    mime: "application/msword",
+    ext: "doc",
+    extensions: ["doc"],
+    magic: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
+    inspect: (data) =>
+      !has(data, "WordDocument", "utf16le")
+        ? "This file is not a Word document."
+        : has(data, "Macros", "utf16le") || has(data, "_VBA_PROJECT", "utf16le")
+          ? "Word documents with macros cannot be uploaded."
+          : null,
+  },
 ];
+
+/** The kinds each record type may hold. Word files only on AMC contracts (the contract document, 0103). */
+const KINDS_BY_ENTITY: Record<EntityType, FileKind[]> = {
+  amc_contracts: ["PDF", "PNG", "JPEG", "DOC", "DOCX"],
+  procurement_requests: ["PDF", "PNG", "JPEG"],
+  project_expenses: ["PDF", "PNG", "JPEG"],
+};
+
+/** The kinds a new contract's mandatory contract document may be (Add AMC Contract). */
+export const CONTRACT_DOCUMENT_KINDS: FileKind[] = ["PDF", "DOC", "DOCX"];
+
+function kindList(kinds: FileKind[]): string {
+  const names = kinds.map((kind) => (kind === "DOC" || kind === "DOCX" ? `Word (.${kind.toLowerCase()})` : kind));
+
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : (names[0] ?? "");
+}
 
 let storageOverride: FileStorage | null = null;
 
@@ -37,6 +98,20 @@ function storage(): FileStorage {
   }
 
   return new LocalDiskStorage(env.attachmentsDir);
+}
+
+/** Whether this server can store files at all (ATTACHMENTS_DIR, or a test storage). */
+export function storageConfigured(): boolean {
+  return storageOverride !== null || env.attachmentsDir !== null;
+}
+
+/** The refusal for a new AMC contract on a server that cannot store its mandatory contract document. */
+export function contractDocumentStorageUnavailable(): AppError {
+  return new AppError(
+    503,
+    "STORAGE_UNAVAILABLE",
+    "No contract was created: a new AMC contract needs its contract document, and this server has no file storage configured (ATTACHMENTS_DIR). Ask the system administrator to configure durable document storage."
+  );
 }
 
 export function canAccess(auth: AuthContext, entityType: EntityType, action: Action): boolean {
@@ -73,32 +148,48 @@ export function cleanFileName(raw: string): string {
   return clean || "file";
 }
 
-/** Recognises the file by its content and checks that its name agrees. */
-export function detectType(data: Buffer, fileName: string) {
-  const type = TYPES.find((candidate) => candidate.magic.every((byte, index) => data[index] === byte));
+/**
+ * Recognises the file by its content and checks that its name agrees. `kinds` are the types allowed here (by default
+ * PDF, PNG and JPEG, as before 0103); `field` names the form field an error belongs to.
+ */
+export function detectType(data: Buffer, fileName: string, kinds: FileKind[] = ["PDF", "PNG", "JPEG"], field = "file") {
+  const allowed = TYPES.filter((candidate) => kinds.includes(candidate.kind));
+  const type = allowed.find((candidate) => candidate.magic.every((byte, index) => data[index] === byte));
+  const onlyMessage = `Only ${kindList(kinds)} files can be uploaded.`;
 
   if (!type) {
-    throw validationError("Only PDF, PNG and JPEG files can be uploaded.", [{ field: "file", message: "Only PDF, PNG and JPEG files can be uploaded." }]);
+    throw validationError(onlyMessage, [{ field, message: onlyMessage }]);
+  }
+
+  const refused = type.inspect?.(data) ?? null;
+
+  if (refused) {
+    throw validationError(refused, [{ field, message: refused }]);
   }
 
   const extension = fileName.includes(".") ? (fileName.split(".").pop() ?? "").toLowerCase() : "";
 
   if (!type.extensions.includes(extension)) {
     throw validationError("The file name does not match the file's content.", [
-      { field: "file", message: `This file is a ${type.ext.toUpperCase()}; its name must end in ${type.extensions.map((item) => `.${item}`).join(" or ")}.` },
+      { field, message: `This file is a ${type.kind === "DOC" || type.kind === "DOCX" ? "Word document" : type.ext.toUpperCase()}; its name must end in ${type.extensions.map((item) => `.${item}`).join(" or ")}.` },
     ]);
   }
 
   return type;
 }
 
-function checkSize(data: Buffer): void {
+function checkSize(data: Buffer, field = "file"): void {
   if (data.length === 0) {
-    throw validationError("The file is empty.", [{ field: "file", message: "Choose a file to upload." }]);
+    throw validationError("The file is empty.", [{ field, message: field === "file" ? "Choose a file to upload." : "The chosen file is empty. Choose another file." }]);
   }
   if (data.length > env.attachmentMaxMb * 1024 * 1024) {
-    throw validationError("The file is too large.", [{ field: "file", message: `Files can be at most ${env.attachmentMaxMb} MB.` }]);
+    throw validationError("The file is too large.", [{ field, message: `Files can be at most ${env.attachmentMaxMb} MB.` }]);
   }
+}
+
+/** The upload rules for a record type, as the pages state them. */
+export function uploadLimits(entityType: EntityType) {
+  return { maxMb: env.attachmentMaxMb, allowedTypes: KINDS_BY_ENTITY[entityType].map((kind) => (kind === "DOC" || kind === "DOCX" ? `Word (.${kind.toLowerCase()})` : kind)) };
 }
 
 export interface Attachment {
@@ -237,7 +328,7 @@ export async function listRecordVersions(auth: AuthContext, entityType: EntityTy
 
   return {
     items: await withIntegrity(result.rows),
-    limits: { maxMb: env.attachmentMaxMb, allowedTypes: ["PDF", "PNG", "JPEG"] },
+    limits: uploadLimits(entityType),
   };
 }
 
@@ -252,10 +343,10 @@ export async function listVersions(auth: AuthContext, id: string): Promise<Attac
   return result.rows.map(toAttachment);
 }
 
-async function storeFile(data: Buffer, fileName: string) {
+async function storeFile(data: Buffer, fileName: string, kinds: FileKind[]) {
   checkSize(data);
 
-  const type = detectType(data, fileName);
+  const type = detectType(data, fileName, kinds);
   const key = `${randomUUID()}.${type.ext}`;
   const sha256 = createHash("sha256").update(data).digest("hex");
 
@@ -264,34 +355,119 @@ async function storeFile(data: Buffer, fileName: string) {
   return { key, sha256, mime: type.mime };
 }
 
+/** Best effort: removes a stored file that no attachment row records (its save failed). Never throws. */
+export async function discardStoredFile(key: string): Promise<void> {
+  try {
+    await storage().remove?.(key);
+  } catch {
+    // The file stays behind; with no row it is never listed or served.
+  }
+}
+
+/** The database refuses a Word file until migration 0103 widens the type check: say so instead of failing with a 500. */
+function wordNeedsMigration(error: unknown): never {
+  if (typeof error === "object" && error !== null && (error as { code?: string; constraint?: string }).code === "23514" && (error as { constraint?: string }).constraint === "attachments_mime_ck") {
+    throw new AppError(503, "FEATURE_UNAVAILABLE", "Word documents cannot be stored until the database is updated (migration 0103). Upload a PDF instead.");
+  }
+
+  throw error;
+}
+
+interface StoredFile {
+  key: string;
+  sha256: string;
+  mime: string;
+  originalName: string;
+  sizeBytes: number;
+}
+
+/** Within the caller's transaction: records a stored file as the first version of a new document, and logs it. */
+async function recordAttachment(db: Queryable, auth: AuthContext, input: { entityType: EntityType; entityId: string; category: string; title: string; notes: string | null }, file: StoredFile): Promise<string> {
+  const inserted = await db
+    .query<{ id: string }>(
+      `INSERT INTO attachments (entity_type, entity_id, category, title, original_name, mime_type, size_bytes, sha256, storage_key, notes, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
+      [input.entityType, input.entityId, input.category, input.title, file.originalName, file.mime, file.sizeBytes, file.sha256, file.key, input.notes, auth.user.id]
+    )
+    .catch(wordNeedsMigration);
+  const id = (inserted.rows[0] as { id: string }).id;
+
+  await db.query("UPDATE attachments SET document_id = id WHERE id = $1", [id]);
+  await logActivity(db, {
+    userId: auth.user.id,
+    action: "attachment.uploaded",
+    module: ENTITY[input.entityType].logModule,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    description: `Document "${input.title}" (${file.originalName}) attached to the ${ENTITY[input.entityType].label}.`,
+    metadata: { attachmentId: id, sha256: file.sha256, sizeBytes: file.sizeBytes },
+  });
+
+  return id;
+}
+
 export async function uploadAttachment(auth: AuthContext, input: UploadInput, rawName: string, data: Buffer): Promise<Attachment> {
   assertCan(auth, input.entityType, "EDIT");
   await assertRecordExists(pool, input.entityType, input.entityId);
 
   const originalName = cleanFileName(rawName);
-  const file = await storeFile(data, originalName);
+  const file = await storeFile(data, originalName, KINDS_BY_ENTITY[input.entityType]);
 
-  return withTransaction(async (db) => {
-    const inserted = await db.query<{ id: string }>(
-      `INSERT INTO attachments (entity_type, entity_id, category, title, original_name, mime_type, size_bytes, sha256, storage_key, notes, uploaded_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
-      [input.entityType, input.entityId, input.category, input.title, originalName, file.mime, data.length, file.sha256, file.key, input.notes ?? null, auth.user.id]
-    );
-    const id = (inserted.rows[0] as { id: string }).id;
+  try {
+    return await withTransaction(async (db) => {
+      const id = await recordAttachment(db, auth, { entityType: input.entityType, entityId: input.entityId, category: input.category, title: input.title, notes: input.notes ?? null }, { ...file, originalName, sizeBytes: data.length });
 
-    await db.query("UPDATE attachments SET document_id = id WHERE id = $1", [id]);
-    await logActivity(db, {
-      userId: auth.user.id,
-      action: "attachment.uploaded",
-      module: ENTITY[input.entityType].logModule,
-      entityType: input.entityType,
-      entityId: input.entityId,
-      description: `Document "${input.title}" (${originalName}) attached to the ${ENTITY[input.entityType].label}.`,
-      metadata: { attachmentId: id, sha256: file.sha256, sizeBytes: data.length },
+      return toAttachment(await findRow(db, id));
     });
+  } catch (error) {
+    await discardStoredFile(file.key);
+    throw error;
+  }
+}
 
-    return toAttachment(await findRow(db, id));
-  });
+// ---------------------------------------------------------------------------
+// The contract document of a new AMC contract (Add AMC Contract, 2026-11-03)
+// ---------------------------------------------------------------------------
+
+/** The title and document type the mandatory contract document is recorded under. */
+export const CONTRACT_DOCUMENT = { category: "SIGNED_CONTRACT", title: "Contract document" } as const;
+
+export interface PreparedDocument {
+  originalName: string;
+  data: Buffer;
+  mime: string;
+  ext: string;
+}
+
+/**
+ * Checks a new contract's contract document before anything is saved: its name, size and content (PDF or Word,
+ * recognised by content, never by the name or the browser's stated type alone). Errors belong to "contractDocument".
+ */
+export function prepareContractDocument(rawName: string, data: Buffer): PreparedDocument {
+  const originalName = cleanFileName(rawName);
+
+  checkSize(data, "contractDocument");
+  const type = detectType(data, originalName, CONTRACT_DOCUMENT_KINDS, "contractDocument");
+
+  return { originalName, data, mime: type.mime, ext: type.ext };
+}
+
+/** Writes a prepared document to storage under a new key. Nothing records it until attachStoredDocument. */
+export async function storePreparedDocument(document: PreparedDocument): Promise<StoredFile> {
+  if (!storageConfigured()) {
+    throw contractDocumentStorageUnavailable();
+  }
+
+  const key = `${randomUUID()}.${document.ext}`;
+
+  await storage().put(key, document.data);
+
+  return { key, sha256: createHash("sha256").update(document.data).digest("hex"), mime: document.mime, originalName: document.originalName, sizeBytes: document.data.length };
+}
+
+/** Within the contract's own transaction: records the stored contract document against the new contract. */
+export function attachStoredDocument(db: Queryable, auth: AuthContext, contractId: string, file: StoredFile): Promise<string> {
+  return recordAttachment(db, auth, { entityType: "amc_contracts", entityId: contractId, category: CONTRACT_DOCUMENT.category, title: CONTRACT_DOCUMENT.title, notes: null }, file);
 }
 
 /** A replacement file for a document: becomes its current version; earlier versions are kept. */
@@ -301,9 +477,10 @@ export async function uploadVersion(auth: AuthContext, id: string, notes: string
   assertCan(auth, current.entity_type, "EDIT");
 
   const originalName = cleanFileName(rawName);
-  const file = await storeFile(data, originalName);
+  const file = await storeFile(data, originalName, KINDS_BY_ENTITY[current.entity_type]);
 
-  return withTransaction(async (db) => {
+  try {
+    return await withTransaction(async (db) => {
     // Lock the document's versions so two replacements cannot take the same number.
     const versions = await db.query<{ version: number; is_current: boolean }>(
       "SELECT version, is_current FROM attachments WHERE document_id = $1 ORDER BY version DESC FOR UPDATE",
@@ -323,7 +500,7 @@ export async function uploadVersion(auth: AuthContext, id: string, notes: string
       `INSERT INTO attachments (document_id, version, entity_type, entity_id, category, title, original_name, mime_type, size_bytes, sha256, storage_key, notes, uploaded_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING id`,
       [current.document_id, latest.version + 1, current.entity_type, current.entity_id, current.category, current.title, originalName, file.mime, data.length, file.sha256, file.key, notes, auth.user.id]
-    );
+    ).catch(wordNeedsMigration);
     const newId = (inserted.rows[0] as { id: string }).id;
 
     await logActivity(db, {
@@ -337,7 +514,11 @@ export async function uploadVersion(auth: AuthContext, id: string, notes: string
     });
 
     return toAttachment(await findRow(db, newId));
-  });
+    });
+  } catch (error) {
+    await discardStoredFile(file.key);
+    throw error;
+  }
 }
 
 /** The stored file, after checking it against the checksum recorded at upload. */

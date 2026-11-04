@@ -72,7 +72,8 @@ describe("moving an AMC contract to the Recycle Bin", () => {
     expect(keptVisits.rows.map((row) => row.id)).toEqual(visits.map((visit) => visit.id));
     expect(keptVisits.rows[0]?.status).toBe("COMPLETED");
     expect(keptVisits.rows[1]?.notes).toBe("Service report RB-1");
-    expect((await pool.query("SELECT 1 FROM attachments WHERE entity_type = 'amc_contracts' AND entity_id = $1", [id])).rowCount).toBe(1);
+    // The document uploaded here and the contract document the contract was added with.
+    expect((await pool.query("SELECT 1 FROM attachments WHERE entity_type = 'amc_contracts' AND entity_id = $1", [id])).rowCount).toBe(2);
 
     // The invoice stays, still showing what it covers.
     const invoice = await api().get(`/api/invoices/${invoiceId}`).set(superAdmin.headers);
@@ -93,7 +94,7 @@ describe("moving an AMC contract to the Recycle Bin", () => {
     const entries = await logs(id);
     expect(entries.at(-1)).toMatchObject({ action: "amc_contract.deleted", metadata: { recycleBin: true } });
     const listed = (await bin()).body.data.find((row: { id: string }) => row.id === id);
-    expect(listed).toMatchObject({ systemDescription: "RB-KEEP", services: visits.length, invoices: 1, documents: 1, deletedBy: "superadmin@example.com" });
+    expect(listed).toMatchObject({ systemDescription: "RB-KEEP", services: visits.length, invoices: 1, documents: 2, deletedBy: "superadmin@example.com" });
     const deletionLog = await api().get("/api/security/deletions").set(superAdmin.headers);
     expect(deletionLog.body.data.items.some((item: { action: string; entityId: string }) => item.action === "amc_contract.deleted" && item.entityId === id)).toBe(true);
 

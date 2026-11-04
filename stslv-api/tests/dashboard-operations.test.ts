@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { percentOf } from "../src/modules/dashboard/operations.service";
-import { activeContract, createClient, createContract, today, visitsOf } from "./amc-helpers";
+import { activeContract, createClient, createContract, legacyContract, today, visitsOf } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData, type Session } from "./projects-helpers";
 
@@ -103,8 +103,8 @@ describe("with contracts and visits", () => {
       contractValue: "1000.125",
       finalCredit: "300.500",
     });
-    // Ends 46 days ahead: outside the KPI, inside the 90-day list.
-    await activeContract(admin, client, {
+    // Ends 46 days ahead: outside the KPI, inside the 90-day list. An older contract, with no Final Credit recorded.
+    await legacyContract(admin, client, {
       ...annual,
       systemDescription: "EDGE46",
       validFrom: addDays(now, -300),
@@ -201,7 +201,8 @@ describe("with contracts and visits", () => {
 
     // 300.500 + 0.001; the draft's credit (if any) is not included.
     expect(contracts.finalCreditTotal).toBe("300.501");
-    expect(contracts.finalCreditRecorded).toBe(2);
+    // Every active contract records one except EDGE46, an older contract without it; a recorded 0.000 adds nothing.
+    expect(contracts.finalCreditRecorded).toBe(4);
   });
 
   it("counts contracts expiring within 45 days with both boundaries included, each contract once", async () => {

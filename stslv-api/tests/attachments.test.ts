@@ -93,8 +93,12 @@ describe("uploading", () => {
     expect(files.some((file) => /^[0-9a-f-]{36}\.pdf$/.test(file))).toBe(true);
     expect(files.some((file) => file.includes("Signed"))).toBe(false);
 
-    const log = await pool.query("SELECT action, module FROM activity_logs WHERE action = 'attachment.uploaded' AND entity_id = $1", [contractId]);
-    expect(log.rows).toEqual([{ action: "attachment.uploaded", module: "AMC_CONTRACTS" }]);
+    // One entry for this upload, after the one for the contract document the contract was added with.
+    const log = await pool.query("SELECT action, module FROM activity_logs WHERE action = 'attachment.uploaded' AND entity_id = $1 ORDER BY id", [contractId]);
+    expect(log.rows).toEqual([
+      { action: "attachment.uploaded", module: "AMC_CONTRACTS" },
+      { action: "attachment.uploaded", module: "AMC_CONTRACTS" },
+    ]);
   });
 
   it("accepts PNG and JPEG and keeps only a safe display name", async () => {
@@ -106,11 +110,12 @@ describe("uploading", () => {
     expect(jpeg.body.data.mimeType).toBe("image/jpeg");
   });
 
-  it("refuses a file whose content is not PDF, PNG or JPEG, whatever its name", async () => {
+  it("refuses a file whose content is not an allowed type, whatever its name", async () => {
     const response = await contractDoc(admin, EXE, "invoice.pdf");
 
     expect(response.status).toBe(400);
-    expect(response.body.error.details).toEqual([{ field: "file", message: "Only PDF, PNG and JPEG files can be uploaded." }]);
+    // AMC contracts may also hold Word files (migration 0103); other records keep PDF, PNG and JPEG.
+    expect(response.body.error.details).toEqual([{ field: "file", message: "Only PDF, PNG, JPEG, Word (.doc) and Word (.docx) files can be uploaded." }]);
   });
 
   it("refuses a name that does not match the content", async () => {

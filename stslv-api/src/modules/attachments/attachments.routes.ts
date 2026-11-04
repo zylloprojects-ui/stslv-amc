@@ -1,11 +1,12 @@
 import express, { Router } from "express";
+import { z } from "zod";
 import { env } from "../../config/env";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { requireSchema } from "../../middleware/require-schema";
-import { validationError } from "../../shared/errors";
+import { forbidden, validationError } from "../../shared/errors";
 import { parseIdParam } from "../../shared/validation";
-import { listAttachmentsSchema, uploadSchema, versionSchema } from "./attachments.schemas";
-import { listAttachments, listRecordVersions, listVersions, readAttachment, uploadAttachment, uploadVersion } from "./attachments.service";
+import { ENTITY_TYPES, listAttachmentsSchema, uploadSchema, versionSchema } from "./attachments.schemas";
+import { canAccess, listAttachments, storageConfigured, listRecordVersions, listVersions, readAttachment, uploadAttachment, uploadLimits, uploadVersion } from "./attachments.service";
 
 // Mounted at /api/attachments. Permissions follow the record the file belongs
 // to (checked in the service). There is no delete: a document is replaced by a
@@ -32,6 +33,20 @@ function fileName(header: unknown): string {
 function body(value: unknown): Buffer {
   return Buffer.isBuffer(value) ? value : Buffer.alloc(0);
 }
+
+// The upload rules (size limit, file types) for one record type, for forms that state them before a file is chosen.
+// Declared before "/:id". Open to whoever may view that record type's documents or add its records.
+const limitsSchema = z.object({ entityType: z.enum(ENTITY_TYPES, { error: "Select a record type." }) });
+
+attachmentsRouter.get("/limits", async (req, res) => {
+  const auth = requireAuth(req);
+  const { entityType } = limitsSchema.parse(req.query);
+
+  if (!canAccess(auth, entityType, "VIEW") && !canAccess(auth, entityType, "CREATE")) throw forbidden();
+
+  // storageAvailable: false when this server cannot store files (no ATTACHMENTS_DIR), so a form can say so first.
+  res.json({ success: true, data: { ...uploadLimits(entityType), storageAvailable: storageConfigured() } });
+});
 
 attachmentsRouter.get("/", async (req, res) => {
   const { entityType, entityId } = listAttachmentsSchema.parse(req.query);

@@ -91,6 +91,9 @@ const CATEGORIES: Record<AttachmentEntity, string[]> = {
 }
 
 const ACCEPT = '.pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg'
+// AMC contracts may also hold Word documents (the contract document, migration 0103). The API checks the content.
+const WORD_ACCEPT = '.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+const acceptFor = (entityType: AttachmentEntity) => (entityType === 'amc_contracts' ? `${ACCEPT},${WORD_ACCEPT}` : ACCEPT)
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -129,7 +132,7 @@ export function AttachmentsPanel({ entityType, entityId, canUpload, label = 'Doc
     enabled: query.isSuccess,
   })
   const limits = versions.data?.limits
-  const rules = limits ? `Allowed types: ${limits.allowedTypes.join(', ')}. Size limit: ${limits.maxMb} MB per file.` : 'PDF, PNG or JPEG.'
+  const rules = limits ? `Allowed types: ${limits.allowedTypes.join(', ')}. Size limit: ${limits.maxMb} MB per file.` : entityType === 'amc_contracts' ? 'PDF, PNG, JPEG or Word (.doc, .docx).' : 'PDF, PNG or JPEG.'
   const versionTotal = (query.data ?? []).reduce((sum, attachment) => sum + (attachment.versionCount ?? 1), 0)
   const latestUpload = (query.data ?? []).reduce<string | null>((latest, attachment) => (latest === null || attachment.uploadedAt > latest ? attachment.uploadedAt : latest), null)
   const unavailable = unavailableMessage(query.error)
@@ -371,7 +374,7 @@ function UploadModal({ entityType, entityId, replacing, rules, onClose }: { enti
           <input
             id="attachment-file"
             type="file"
-            accept={ACCEPT}
+            accept={acceptFor(entityType)}
             onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             aria-invalid={fileMessage ? true : undefined}
             aria-describedby={fileMessage ? 'attachment-file-error' : undefined}

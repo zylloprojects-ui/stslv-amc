@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { createClient, today, visitsOf, type Session } from "./amc-helpers";
+import { createClient, newContractBody, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -34,17 +34,19 @@ async function frequencies(): Promise<FrequencyRow[]> {
 }
 
 async function newContract(overrides: Record<string, unknown>): Promise<string> {
-  const response = await post("/amc/contracts", {
-    clientId,
-    systemDescription: "FIRE",
-    validFrom: "2027-01-01",
-    validTo: "2027-12-31",
-    contractValue: "1200.000",
-    maintenanceFrequency: "QUARTERLY",
-    defaultVisitAmount: "100.000",
-    status: "ACTIVE",
-    ...overrides,
-  });
+  const response = await post(
+    "/amc/contracts",
+    await newContractBody(clientId, {
+      systemDescription: "FIRE",
+      validFrom: "2027-01-01",
+      validTo: "2027-12-31",
+      contractValue: "1200.000",
+      maintenanceFrequency: "QUARTERLY",
+      defaultVisitAmount: "100.000",
+      status: "ACTIVE",
+      ...overrides,
+    })
+  );
 
   if (response.status !== 201) throw new Error(`Contract refused: ${response.status} ${JSON.stringify(response.body)}`);
   return response.body.data.id as string;
@@ -90,8 +92,9 @@ describe("meeting workflow", () => {
     expect(shape("EVERY_4_MONTHS")).toEqual([3, 4, "T"]);
     expect(rows.find((item) => item.code === "CUSTOM")?.codePrefix).toBe("C");
 
-    const before = await post("/amc/contracts", { clientId, systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "600.000", maintenanceFrequency: "BI_MONTHLY", status: "ACTIVE" });
+    const before = await post("/amc/contracts", await newContractBody(clientId, { systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "600.000", maintenanceFrequency: "BI_MONTHLY", status: "ACTIVE" }));
     expect(before.status).toBe(400);
+    expect(before.body.error.details.map((detail: { field: string }) => detail.field)).toEqual(["maintenanceFrequency"]);
 
     for (const code of ["BI_MONTHLY", "EVERY_4_MONTHS", "CUSTOM"]) {
       const id = rows.find((item) => item.code === code)?.id as string;

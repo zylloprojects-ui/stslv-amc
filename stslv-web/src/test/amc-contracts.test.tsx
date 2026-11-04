@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { ACCOUNTANT, ADMIN, fail, renderApp } from './helpers'
-import { amcApi, makeContract, makeVisit, VIEWER } from './amc-helpers'
+import { amcApi, contractPdf, makeContract, makeVisit, VIEWER } from './amc-helpers'
 
 const FIRE = makeContract()
 const DRAFT = makeContract({
@@ -26,8 +26,29 @@ async function openAddForm() {
   await userEvent.click(await screen.findByRole('button', { name: 'Add Contract' }))
   const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
   await within(dialog).findByLabelText(/Client/)
+  // The System and Sales engineer lists come from the master data.
+  await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
+  await within(dialog).findByLabelText(/Sales engineer \(master list\)/)
 
   return dialog
+}
+
+/** The hidden file input behind the "Attach file" button. */
+function documentInput(dialog: HTMLElement): HTMLInputElement {
+  return dialog.querySelector('input[type="file"]') as HTMLInputElement
+}
+
+/** Fills every field a new contract needs, with the system, sales engineer and contract document. */
+async function fillRequired(dialog: HTMLElement, system = '21') {
+  await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '10')
+  await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), system)
+  await userEvent.selectOptions(within(dialog).getByLabelText(/Sales engineer \(master list\)/), '5')
+  await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'MONTHLY')
+  await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
+  await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
+  await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '100')
+  await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0')
+  await userEvent.upload(documentInput(dialog), contractPdf())
 }
 
 describe('contract list', () => {
@@ -185,11 +206,13 @@ describe('add contract', () => {
     const dialog = await openAddForm()
 
     await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '1620.1234')
-    await userEvent.type(within(dialog).getByLabelText('Final credit'), '-5')
+    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '-5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     expect(await within(dialog).findByText('Select a client.')).toBeInTheDocument()
-    expect(within(dialog).getByText('System is required.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Select a system.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Select a sales engineer.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Attach the contract document.')).toBeInTheDocument()
     expect(within(dialog).getByText('Valid from is required.')).toBeInTheDocument()
     expect(within(dialog).getByText('Select a maintenance frequency.')).toBeInTheDocument()
     expect(within(dialog).getAllByText('Enter an amount of zero or more with at most 3 decimal places.')).toHaveLength(2)
@@ -215,21 +238,25 @@ describe('add contract', () => {
     const dialog = await openAddForm()
 
     await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '11')
-    await userEvent.type(within(dialog).getByLabelText(/System/), ' Automation ')
+    await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '22')
     await userEvent.type(within(dialog).getByLabelText('Responsible engineer'), 'Second Engineer')
+    await userEvent.selectOptions(within(dialog).getByLabelText(/Sales engineer \(master list\)/), '5')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'HALF_YEARLY')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-03-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-02-29')
     await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '9000')
     await userEvent.type(within(dialog).getByLabelText('Default visit amount'), '4500.000')
-    await userEvent.type(within(dialog).getByLabelText('Final credit'), '8000.5')
+    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '8000.5')
+    await userEvent.upload(documentInput(dialog), new File(['%PDF-1.4'], 'signed.pdf', { type: 'application/pdf' }))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('POST', '/amc/contracts')[0]?.body).toEqual({
       clientId: '11',
       billingBasis: null,
+      systemTypeId: '22',
       systemDescription: 'Automation',
+      salesEngineerId: '5',
       responsibleEngineer: 'Second Engineer',
       validFrom: '2027-03-01',
       validTo: '2028-02-29',
@@ -240,20 +267,27 @@ describe('add contract', () => {
       description: '',
       notes: '',
       status: 'ACTIVE',
+      // The file travels with the contract, as base64 ("%PDF-1.4").
+      contractDocument: { fileName: 'signed.pdf', contentBase64: 'JVBERi0xLjQ=' },
     })
     expect(screen.getByRole('status')).toHaveTextContent('The contract for Test Hotel Two Automation was added. 4 visit(s) added to the schedule.')
     // The list is read again from the API.
     expect(await screen.findByRole('link', { name: 'View Test Hotel Two Automation' })).toBeInTheDocument()
   })
 
-  it('offers only clients from the Client Master and suggests systems already in use', async () => {
+  it('offers only clients from the Client Master, and systems only from the System Types master', async () => {
     amcApi(ADMIN, { contracts: [FIRE] })
     renderApp('/amc/contracts')
     const dialog = await openAddForm()
 
     const options = within(within(dialog).getByLabelText(/Client/)).getAllByRole('option')
     expect(options.map((option) => option.textContent)).toEqual(['Select a client…', 'Test Hotel One', 'Test Hotel Two'])
-    await waitFor(() => expect(dialog.querySelector('datalist option')?.getAttribute('value')).toBe('FIRE'))
+    // A dropdown, not free text: no text box and no list of suggestions.
+    const system = within(dialog).getByLabelText(/^System/)
+    expect(system.tagName).toBe('SELECT')
+    expect(system).toHaveAttribute('aria-required', 'true')
+    expect(dialog.querySelector('datalist')).toBeNull()
+    expect(within(system).getAllByRole('option').map((option) => option.textContent)).toEqual(['Select a system...', 'FIRE', 'Automation (AUTO)', 'CCTV'])
     // There is no contract number or client code to fill in.
     expect(within(dialog).queryByLabelText(/number|code/i)).not.toBeInTheDocument()
   })
@@ -270,16 +304,146 @@ describe('add contract', () => {
     renderApp('/amc/contracts')
     const dialog = await openAddForm()
 
-    await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '10')
-    await userEvent.type(within(dialog).getByLabelText(/System/), 'FIRE')
-    await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'MONTHLY')
-    await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
-    await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
-    await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '100')
+    await fillRequired(dialog)
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     expect(await within(dialog).findByText('An inactive client cannot be selected. Reactivate the client first.')).toBeInTheDocument()
     expect(screen.getByRole('dialog', { name: 'Add AMC Contract' })).toBeInTheDocument()
+  })
+
+  it('requires an active sales engineer and offers no "Not linked"', async () => {
+    amcApi(ADMIN)
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    const engineer = within(dialog).getByLabelText(/Sales engineer \(master list\)/)
+    expect(engineer).toHaveAttribute('aria-required', 'true')
+    expect(within(engineer).queryByRole('option', { name: 'Not linked' })).not.toBeInTheDocument()
+    expect(within(engineer).getByRole('option', { name: 'Select a sales engineer…' })).toBeDisabled()
+
+    await fillRequired(dialog)
+    expect(within(engineer).getAllByRole('option').map((option) => option.textContent)).toEqual(['Select a sales engineer…', 'Test Sales Engineer'])
+  })
+
+  it('requires Final Credit and accepts zero', async () => {
+    const api = amcApi(ADMIN)
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    await fillRequired(dialog)
+    await userEvent.clear(within(dialog).getByLabelText(/Final credit/))
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
+
+    expect(await within(dialog).findByText('Final credit is required.')).toBeInTheDocument()
+    expect(api.find('POST', '/amc/contracts')).toHaveLength(0)
+
+    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0.000')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
+
+    await waitFor(() => expect(api.find('POST', '/amc/contracts')).toHaveLength(1))
+    expect(api.find('POST', '/amc/contracts')[0]?.body).toMatchObject({ finalCredit: '0.000', systemTypeId: '21', systemDescription: 'FIRE', salesEngineerId: '5' })
+  })
+
+  it('shows the chosen document with its size, and lets it be removed or replaced', async () => {
+    amcApi(ADMIN)
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    expect(within(dialog).getByText('No file chosen')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: /Contract document.*Attach file/ })).toBeInTheDocument()
+
+    await userEvent.upload(documentInput(dialog), contractPdf('first.pdf', 2048))
+    expect(within(dialog).getByText('first.pdf')).toBeInTheDocument()
+    expect(within(dialog).getByText('2.0 KB')).toBeInTheDocument()
+
+    await userEvent.upload(documentInput(dialog), new File([new Uint8Array(10)], 'second.docx', { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }))
+    expect(within(dialog).queryByText('first.pdf')).not.toBeInTheDocument()
+    expect(within(dialog).getByText('second.docx')).toBeInTheDocument()
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Remove second.docx' }))
+    expect(within(dialog).getByText('No file chosen')).toBeInTheDocument()
+  })
+
+  it('refuses a document of another type, or one that is too large, before anything is sent', async () => {
+    const api = amcApi(ADMIN)
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    // The picker offers only PDF and Word files; one chosen anyway is refused.
+    await userEvent.upload(documentInput(dialog), new File(['x'], 'photo.png', { type: 'image/png' }), { applyAccept: false })
+    expect(within(dialog).getByText('Choose a PDF or Word document (.pdf, .doc or .docx).')).toBeInTheDocument()
+
+    await userEvent.upload(documentInput(dialog), contractPdf('huge.pdf', 12 * 1024 * 1024 + 1))
+    expect(within(dialog).getByText('The file is 12.0 MB. Contract documents can be at most 12 MB.')).toBeInTheDocument()
+    expect(within(dialog).getByText('No file chosen')).toBeInTheDocument()
+    expect(api.find('POST', '/amc/contracts')).toHaveLength(0)
+  })
+
+  it('shows a server refusal of the document on the document field, and creates nothing', async () => {
+    const api = amcApi(ADMIN, {
+      override: (request) =>
+        request.method === 'POST' && request.path === '/amc/contracts'
+          ? fail(400, 'VALIDATION_ERROR', 'Word documents with macros cannot be uploaded.', [{ field: 'contractDocument', message: 'Word documents with macros cannot be uploaded.' }])
+          : undefined,
+    })
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    await fillRequired(dialog)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
+
+    expect(await within(dialog).findByText('Word documents with macros cannot be uploaded.')).toBeInTheDocument()
+    expect(api.find('POST', '/amc/contracts')).toHaveLength(1)
+    expect(screen.getByRole('dialog', { name: 'Add AMC Contract' })).toBeInTheDocument()
+  })
+
+  it('cannot add a contract while the System Types list cannot be loaded', async () => {
+    amcApi(ADMIN, { override: (request) => (request.path === '/masters/system-types/options' ? fail(500, 'INTERNAL_ERROR', 'Something went wrong.') : undefined) })
+    renderApp('/amc/contracts')
+    await userEvent.click(await screen.findByRole('button', { name: 'Add Contract' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
+
+    expect(await within(dialog).findByText('The System Types list could not be loaded, and a contract needs a system. Close this form and try again.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Add contract' })).toBeDisabled()
+  })
+
+  it('says so when there are no active system types', async () => {
+    amcApi(ADMIN, { override: (request) => (request.path === '/masters/system-types/options' ? { status: 200, body: { success: true, data: [] } } : undefined) })
+    renderApp('/amc/contracts')
+    const dialog = await openAddForm()
+
+    expect(within(dialog).getByText('No active system types. Add one in Master Data → System Types first.')).toBeInTheDocument()
+    expect(within(within(dialog).getByLabelText(/^System/)).getAllByRole('option')).toHaveLength(1)
+  })
+})
+
+describe('contract figures', () => {
+  it('shows exactly four figures, in order, over every contract outside the Recycle Bin', async () => {
+    amcApi(ADMIN, {
+      contracts: [
+        FIRE,
+        DRAFT,
+        makeContract({ id: '102', status: 'CANCELLED', contractValue: '100.500', finalCredit: '50.250' }),
+        makeContract({ id: '103', status: 'EXPIRED', contractValue: '0.000', finalCredit: null }),
+        makeContract({ id: '104', status: 'ACTIVE', isPastValidity: true, contractValue: '1000.000', finalCredit: '0.000' }),
+      ],
+    })
+    renderApp('/amc/contracts')
+
+    const strip = await screen.findByRole('group', { name: 'AMC contract figures' })
+    const labels = within(strip).getAllByText(/^(All AMC Contracts|Total AMC Value|Total Final Credit|Expired)$/)
+    expect(labels.map((label) => label.textContent)).toEqual(['All AMC Contracts', 'Total AMC Value', 'Total Final Credit', 'Expired'])
+    // The count rises to its value over 800 ms when the strip appears; allow for a busy test run.
+    await waitFor(() => expect(within(strip).getByText('Expired').parentElement).toHaveTextContent('Expired2'), { timeout: 5000 })
+    // Draft and cancelled contracts count; an Active contract past its end date counts as expired, once.
+    await waitFor(() => expect(within(strip).getByText('Total AMC Value').parentElement).toHaveTextContent('Total AMC Value11,720.500OMR'))
+    expect(within(strip).getByText('Total Final Credit').parentElement).toHaveTextContent('Total Final Credit8,050.250OMR')
+    expect(within(strip).getByText('2 contracts have no Final Credit recorded.', { exact: false })).toBeInTheDocument()
+    // The strip no longer has Active, Draft or Cancelled figures, and its tiles are figures, not filters.
+    expect(within(strip).queryByText('Active')).not.toBeInTheDocument()
+    expect(within(strip).queryByText('Draft')).not.toBeInTheDocument()
+    expect(within(strip).queryByText('Cancelled')).not.toBeInTheDocument()
+    expect(within(strip).queryAllByRole('button')).toHaveLength(0)
   })
 })
 
@@ -338,7 +502,8 @@ describe('edit contract', () => {
     expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).toMatchObject({ contractValue: '1800', validFrom: '2027-01-01', validTo: '2027-12-31' })
     expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).not.toHaveProperty('status')
     expect(api.find('GET', '/amc/contracts/100/schedule/preview')).toHaveLength(0)
-    expect(await screen.findByText('1,800.000')).toBeInTheDocument()
+    // In the register (the Total AMC Value figure above it shows the same amount).
+    expect(await within(screen.getByRole('table', { name: 'AMC contracts' })).findByText('1,800.000')).toBeInTheDocument()
   })
 
   it('asks for confirmation, showing the effect on the schedule, before changing the terms of an active contract', async () => {

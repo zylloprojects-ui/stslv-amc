@@ -144,7 +144,8 @@ describe('contract master links', () => {
     await userEvent.selectOptions(within(dialog).getByLabelText('Sales engineer'), '5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save links' }))
 
-    await waitFor(() => expect(api.find('PUT', '/amc/contracts/100/masters')[0]?.body).toEqual({ salesEngineerId: '5', systemTypeId: null }))
+    // Only the link that changed is sent (2026-11-03).
+    await waitFor(() => expect(api.find('PUT', '/amc/contracts/100/masters')[0]?.body).toEqual({ salesEngineerId: '5' }))
     expect(await overview.findByText(/Test Engineer \(E-001\)/)).toBeInTheDocument()
   })
 

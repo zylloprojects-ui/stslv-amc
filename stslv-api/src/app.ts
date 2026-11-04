@@ -3,7 +3,7 @@ import cors from "cors";
 import { checkDatabaseHealth } from "./config/database";
 import { env } from "./config/env";
 import { accountsRouter } from "./modules/accounts/accounts.routes";
-import { amcRouter } from "./modules/amc/amc.routes";
+import { amcRouter, CONTRACT_CREATE_PATH } from "./modules/amc/amc.routes";
 import { attachmentsRouter } from "./modules/attachments/attachments.routes";
 import { auditRouter } from "./modules/audit/audit.routes";
 import { reportsRouter } from "./modules/reports/reports.routes";
@@ -53,7 +53,10 @@ export function createApp() {
   // Only the configured web origins may call the API from a browser (CORS_ORIGIN in .env).
   // Content-Disposition carries the file name of an export; a browser on another origin may read it only when it is exposed.
   app.use(cors({ origin: env.corsOrigins, exposedHeaders: ["Content-Disposition"] }));
-  app.use(express.json());
+  // Every JSON body keeps the default 100 kB limit, except Add AMC Contract: it carries its contract document and is
+  // read by its own route after sign-in and permission checks (amc.routes.ts, contractWithDocument).
+  const json = express.json();
+  app.use((req, res, next) => (req.method === "POST" && req.path.replace(/\/+$/, "") === CONTRACT_CREATE_PATH ? next() : json(req, res, next)));
 
   app.get("/api/health", (_req, res) => {
     res.json({
