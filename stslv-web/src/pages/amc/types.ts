@@ -191,6 +191,8 @@ export interface ScheduleVisit extends ExecutionVisit {
   manualInvoiceNo: string | null
   paymentStatus: 'PAID' | 'UNPAID'
   paidAt: string | null
+  /** The quotation number recorded for this visit on Service Sales; read-only everywhere else. Null when none. */
+  quotationNo: string | null
   colorState?: 'MANUAL' | 'CANCELLED' | 'INVOICE_PENDING' | 'FIRST_SERVICE' | 'NORMAL'
 }
 

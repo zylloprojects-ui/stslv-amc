@@ -378,4 +378,76 @@ describe("Services Sales", () => {
       expect((await api().get("/api/amc/execution/visits").set(admin.headers)).status).toBe(200);
     });
   });
+  // Contract 360 → Service Schedule reads /api/amc/visits?contractId=… and shows each visit's own quotation number.
+  describe("Contract 360 Service Schedule", () => {
+    const schedule = (contractId: string, session: Session = admin) =>
+      api().get("/api/amc/visits").query({ contractId, pageSize: 200 }).set(session.headers);
+    const quotationsOf = async (contractId: string) => {
+      const response = await schedule(contractId);
+      expect(response.status).toBe(200);
+      return new Map((response.body.data.items as { id: string; quotationNo: string | null }[]).map((item) => [item.id, item.quotationNo]));
+    };
+
+    it("shows the quotation saved on Service Sales on that visit only, and null on the others", async () => {
+      const [q1, q2, q3, q4] = await visitsOf(fx.alphaContract);
+      await complete(q1!.id);
+      await complete(q2!.id);
+      expect((await quote(q1!.id, "QT-2026-001")).status).toBe(200);
+      expect((await quote(q2!.id, "QT-2026-002")).status).toBe(200);
+
+      const alpha = await quotationsOf(fx.alphaContract);
+      expect(alpha.size).toBe(4);
+      expect(alpha.get(q1!.id)).toBe("QT-2026-001");
+      expect(alpha.get(q2!.id)).toBe("QT-2026-002");
+      expect(alpha.get(q3!.id)).toBeNull();
+      expect(alpha.get(q4!.id)).toBeNull();
+
+      // Another contract's visits are neither listed with alpha's nor given its numbers.
+      const beta = await quotationsOf(fx.betaContract);
+      expect(beta.size).toBe(2);
+      expect([...beta.values()].every((value) => value === null)).toBe(true);
+      expect([...beta.keys()].some((id) => alpha.has(id))).toBe(false);
+
+      // The single-visit read carries the same value.
+      expect((await api().get(`/api/amc/visits/${q1!.id}`).set(admin.headers)).body.data.quotationNo).toBe("QT-2026-001");
+    });
+
+    it("reflects a changed and a cleared quotation on the next read", async () => {
+      const [q1] = await visitsOf(fx.alphaContract);
+      await complete(q1!.id);
+      await quote(q1!.id, "QT-OLD");
+      expect((await quotationsOf(fx.alphaContract)).get(q1!.id)).toBe("QT-OLD");
+
+      expect((await quote(q1!.id, "QT-NEW")).status).toBe(200);
+      expect((await quotationsOf(fx.alphaContract)).get(q1!.id)).toBe("QT-NEW");
+
+      expect((await quote(q1!.id, null)).status).toBe(200);
+      expect((await quotationsOf(fx.alphaContract)).get(q1!.id)).toBeNull();
+    });
+
+    it("leaves the manual Invoice No. and payment status independent of the quotation", async () => {
+      const [q1] = await visitsOf(fx.alphaContract);
+      await complete(q1!.id);
+      await quote(q1!.id, "QT-9");
+
+      const item = (await schedule(fx.alphaContract)).body.data.items.find((row: { id: string }) => row.id === q1!.id);
+      expect(item).toMatchObject({ quotationNo: "QT-9", manualInvoiceNo: null, paymentStatus: "UNPAID", paidAt: null });
+    });
+
+    it("is not readable without schedule access, and the schedule offers no way to change it", async () => {
+      const [q1] = await visitsOf(fx.alphaContract);
+      await complete(q1!.id);
+      await quote(q1!.id, "QT-5");
+
+      expect((await api().get("/api/amc/visits").query({ contractId: fx.alphaContract })).status).toBe(401);
+      expect((await schedule(fx.alphaContract, procurement)).status).toBe(403);
+      expect((await api().get(`/api/amc/visits/${q1!.id}`).set(procurement.headers)).status).toBe(403);
+
+      // The schedule's own edit route rejects a quotation field (it is entered only on Service Sales).
+      const { updatedAt } = (await api().get(`/api/amc/visits/${q1!.id}`).set(admin.headers)).body.data;
+      const attempt = await api().patch(`/api/amc/visits/${q1!.id}`).set(admin.headers).send({ quotationNo: "QT-HACK", expectedUpdatedAt: updatedAt });
+      expect(attempt.status).toBe(400);
+      expect((await quotationsOf(fx.alphaContract)).get(q1!.id)).toBe("QT-5");
+    });
+  });
 });
