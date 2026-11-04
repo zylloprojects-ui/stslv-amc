@@ -6,7 +6,7 @@ import { sendExport } from "../../shared/export/send";
 import { parseIdParam } from "../../shared/validation";
 import { buildServicesSalesExport } from "./services-sales.export";
 import { exportServicesSalesSchema, listServicesSalesSchema, saveQuotationSchema } from "./services-sales.schemas";
-import { getServicesSalesOptions, listServicesSales, saveQuotation } from "./services-sales.service";
+import { getServicesSalesOptions, listServicesSales, readServicesSalesReport, saveQuotation } from "./services-sales.service";
 
 export const servicesSalesRouter = Router();
 
@@ -28,6 +28,23 @@ servicesSalesRouter.get("/export", authorize("SERVICES_SALES", "VIEW"), authoriz
   const { report, recordExport } = await buildServicesSalesExport(requireAuth(req), query);
 
   await sendExport(res, report, query.format, recordExport);
+});
+
+// The Service Report uploaded on Service Status for ONE visit (the visit id), for View and Download. Read only:
+// this page never uploads, replaces or removes a report. Viewing it needs only this page's VIEW permission.
+servicesSalesRouter.get("/:id/report", authorize("SERVICES_SALES", "VIEW"), quotationReady, async (req, res) => {
+  const file = await readServicesSalesReport(parseIdParam(req.params.id));
+  // The stored name is already cleaned at upload; the ASCII fallback keeps only safe characters.
+  const ascii = file.fileName.replace(/[^A-Za-z0-9._ -]/g, "_");
+
+  res.set({
+    "Content-Type": file.mimeType,
+    "Content-Length": String(file.data.length),
+    "Content-Disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.send(file.data);
 });
 
 // The quotation number of one visit. Completion is not changed here: it belongs to Service Status.

@@ -125,7 +125,12 @@ export function HideColumnsDialog({ hidden, onSave, onClose }: HideColumnsProps)
         </div>
       }
     >
-      <p className="mb-3 text-sm text-slate-600">AMC Reference is always shown. Downloads include only the columns shown here, plus the sales status.</p>
+      <p className="mb-1 text-sm text-slate-600">
+        AMC Reference is always shown. Downloads include only the columns shown here, plus the sales status. Service Report files are viewed on the page and are not part of downloads.
+      </p>
+      <p className="mb-3 text-sm font-medium text-slate-700" aria-live="polite">
+        {COLUMN_IDS.length - draft.size} of {COLUMN_IDS.length} columns shown
+      </p>
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">

@@ -4,6 +4,8 @@ import { useCallback, useState } from 'react'
 // user. They change only how the page looks: a renamed or moved card still
 // counts the same business status, a hidden column is left out of the page and
 // its downloads only, and a blocked browser store gives the default layout.
+// Saved choices are the HIDDEN columns, so a column added later (Service Report)
+// is shown to everyone at first and earlier choices stay as they were.
 
 const PREFIX = 'stslev.services-sales'
 
@@ -19,8 +21,11 @@ export const DEFAULT_KPI_LABELS: Record<KpiId, string> = {
 
 export const KPI_LABEL_MAX = 40
 
-export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'dueDate', 'serviceStatus', 'serviceReportNo', 'quotation', 'salesEngineer'] as const
+export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'dueDate', 'serviceStatus', 'serviceReportNo', 'serviceReport', 'quotation', 'salesEngineer'] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
+
+/** Page-only columns: the downloads have no such column, so they are never sent as hidden to the export. */
+export const PAGE_ONLY_COLUMNS: ReadonlySet<ColumnId> = new Set<ColumnId>(['serviceReport'])
 
 export const COLUMN_LABELS: Record<ColumnId, string> = {
   client: 'Client',
@@ -30,6 +35,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   dueDate: 'Scheduled Month / Due Date',
   serviceStatus: 'Service Status',
   serviceReportNo: 'Service Report No.',
+  serviceReport: 'Service Report',
   quotation: 'Quote No.',
   salesEngineer: 'Sales Engineer',
 }
