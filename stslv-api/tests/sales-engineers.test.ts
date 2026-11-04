@@ -15,7 +15,10 @@ let execution: Session;
 let procurement: Session;
 
 const list = (query: Record<string, string | number> = {}, session: Session = admin) => api().get("/api/masters/sales-engineers").query(query).set(session.headers);
-const create = (body: Record<string, unknown>, session: Session = admin) => api().post("/api/masters/sales-engineers").set(session.headers).send(body);
+// Supplies a unique code unless the body names one ("code" in body, even as undefined, means the test chooses).
+let codeSeq = 0;
+const create = (body: Record<string, unknown>, session: Session = admin) =>
+  api().post("/api/masters/sales-engineers").set(session.headers).send("code" in body ? body : { code: `T-${++codeSeq}`, ...body });
 const setActive = (id: string, isActive: boolean) => api().post(`/api/masters/sales-engineers/${id}/status`).set(admin.headers).send({ isActive });
 const names = (response: { body: { data: { items: { name: string }[] } } }) => response.body.data.items.map((item) => item.name);
 
@@ -49,12 +52,12 @@ describe("create and edit", () => {
     expect((await create({ name: "Bad Department", departmentId: "abc" })).status).toBe(400);
   });
 
-  it("derives an SE- code from the id that stays the same after an edit", async () => {
-    const created = await create({ name: "Code Engineer", employeeNo: "EMP-100", email: "code.engineer@example.com", phone: "+968 1111" });
+  it("stores the code entered, which an edit leaves alone unless it changes it", async () => {
+    const created = await create({ code: "SE-0100", name: "Code Engineer", employeeNo: "EMP-100", email: "code.engineer@example.com", phone: "+968 1111" });
 
     expect(created.status).toBe(201);
     const id = created.body.data.id as string;
-    expect(created.body.data.code).toBe(`SE-${id.padStart(4, "0")}`);
+    expect(created.body.data.code).toBe("SE-0100");
     expect(created.body.data).toMatchObject({ activeContractCount: 0, contractCount: 0, isActive: true, user: null, department: null });
 
     const edited = await api().patch(`/api/masters/sales-engineers/${id}`).set(admin.headers).send({ phone: "+968 2222" });
@@ -83,9 +86,9 @@ describe("search, filters, sort and paging", () => {
 
   beforeAll(async () => {
     amcDepartment = (await api().post("/api/masters/departments").set(admin.headers).send({ code: "AMC", name: "AMC Operations" })).body.data.id as string;
-    await create({ name: "Alpha Field", employeeNo: "EMP-201", email: "alpha@example.com", departmentId: amcDepartment });
-    await create({ name: "Bravo Field", employeeNo: "EMP-202", email: "bravo@example.com", departmentId: amcDepartment });
-    const charlie = await create({ name: "Charlie Field", employeeNo: "EMP-203", email: "charlie@example.com" });
+    await create({ code: "SE-A01", name: "Alpha Field", employeeNo: "EMP-201", email: "alpha@example.com", departmentId: amcDepartment });
+    await create({ code: "SE-B02", name: "Bravo Field", employeeNo: "EMP-202", email: "bravo@example.com", departmentId: amcDepartment });
+    const charlie = await create({ code: "SE-C03", name: "Charlie Field", employeeNo: "EMP-203", email: "charlie@example.com" });
     await setActive(charlie.body.data.id as string, false);
   });
 
@@ -94,8 +97,7 @@ describe("search, filters, sort and paging", () => {
     expect(names(await list({ search: "EMP-201" }))).toEqual(["Alpha Field"]);
     expect(names(await list({ search: "charlie@example" }))).toEqual(["Charlie Field"]);
 
-    const alpha = (await list({ search: "Alpha" })).body.data.items[0];
-    expect(names(await list({ search: alpha.code }))).toEqual(["Alpha Field"]);
+    expect(names(await list({ search: "se-a01" }))).toEqual(["Alpha Field"]);
     // A LIKE wildcard is searched for as a character.
     expect((await list({ search: "%" })).body.data.total).toBe(0);
   });
@@ -233,8 +235,141 @@ describe("status and AMC assignment", () => {
     expect(options.map((option) => option.id)).toContain(engineer);
   });
 
-  it("has no delete route", async () => {
-    expect((await api().delete(`/api/masters/sales-engineers/${engineer}`).set(admin.headers)).status).toBe(404);
+  it("keeps the contract linked to the same engineer when the code changes", async () => {
+    const renamed = await api().patch(`/api/masters/sales-engineers/${engineer}`).set(admin.headers).send({ code: "SE-RENAMED" });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.data).toMatchObject({ id: engineer, code: "SE-RENAMED", contractCount: 1 });
+
+    const links = await api().get(`/api/amc/contracts/${contract}/masters`).set(admin.headers);
+    expect(links.body.data.salesEngineer).toMatchObject({ id: engineer });
+    expect((await pool.query("SELECT sales_engineer_id FROM amc_contracts_all WHERE id = $1", [contract])).rows[0]?.sales_engineer_id).toBe(engineer);
+
+    const logs = await logsFor("sales_engineers", engineer);
+    expect(logs.at(-1)?.action).toBe("sales_engineer.updated");
+  });
+
+  it("refuses to delete an engineer linked to an AMC contract and suggests disabling", async () => {
+    const refused = await api().delete(`/api/masters/sales-engineers/${engineer}`).set(admin.headers);
+
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toContain("1 AMC contract");
+    expect(refused.body.error.message).toContain("Disable the engineer instead");
+    expect((await pool.query("SELECT 1 FROM sales_engineers WHERE id = $1", [engineer])).rowCount).toBe(1);
+  });
+});
+
+describe("manual engineer code", () => {
+  it("requires a code and validates it", async () => {
+    const missing = await create({ code: undefined, name: "No Code" });
+    expect(missing.status).toBe(400);
+    expect(missing.body.error.details[0].field).toBe("code");
+
+    expect((await create({ code: "   ", name: "Blank Code" })).status).toBe(400);
+    expect((await create({ code: "BAD<code>", name: "Bad Code" })).status).toBe(400);
+    expect((await create({ code: "X".repeat(21), name: "Long Code" })).status).toBe(400);
+    expect((await pool.query("SELECT 1 FROM sales_engineers WHERE name IN ('No Code', 'Blank Code', 'Bad Code', 'Long Code')")).rowCount).toBe(0);
+  });
+
+  it("trims the code and refuses a duplicate in any letter case, also against a disabled engineer", async () => {
+    const created = await create({ code: "  Mx-77 ", name: "Manual Code Engineer" });
+    expect(created.status).toBe(201);
+    expect(created.body.data.code).toBe("Mx-77");
+
+    const duplicate = await create({ code: "MX-77", name: "Duplicate Code Engineer" });
+    expect(duplicate.status).toBe(409);
+    expect(duplicate.body.error.details).toEqual([{ field: "code", message: 'Engineer code "MX-77" is already used by another engineer.' }]);
+
+    await setActive(created.body.data.id as string, false);
+    expect((await create({ code: "mx-77", name: "Duplicate Code Engineer" })).status).toBe(409);
+
+    // An edit cannot take another engineer's code, but may change only the letter case of its own.
+    const other = (await create({ code: "MX-78", name: "Other Code Engineer" })).body.data.id as string;
+    expect((await api().patch(`/api/masters/sales-engineers/${other}`).set(admin.headers).send({ code: "mx-77" })).status).toBe(409);
+    const recased = await api().patch(`/api/masters/sales-engineers/${created.body.data.id}`).set(admin.headers).send({ code: "MX-77" });
+    expect(recased.status).toBe(200);
+    expect(recased.body.data.code).toBe("MX-77");
+  });
+
+  it("gives a row inserted without a code the former SE- form (migration 0102 fallback)", async () => {
+    const inserted = await pool.query<{ id: string; code: string }>("INSERT INTO sales_engineers (name) VALUES ('Script Engineer') RETURNING id, code");
+    const row = inserted.rows[0]!;
+
+    expect(row.code).toBe(`SE-${row.id.padStart(4, "0")}`);
+  });
+});
+
+describe("permanent delete", () => {
+  let administrator: Session;
+
+  beforeAll(async () => {
+    administrator = await signedIn("administrator@example.com", ["ADMINISTRATOR"]);
+  });
+
+  it("answers 401 without a session and 404 for an unknown engineer", async () => {
+    const id = (await create({ code: "DEL-401", name: "Delete Auth Check" })).body.data.id as string;
+
+    expect((await api().delete(`/api/masters/sales-engineers/${id}`)).status).toBe(401);
+    expect((await api().delete("/api/masters/sales-engineers/999999").set(admin.headers)).status).toBe(404);
+  });
+
+  it("is Super Admin only: Admin and Execution get 403, and Admin can still disable and re-enable", async () => {
+    const id = (await create({ code: "DEL-403", name: "Not Theirs To Delete" })).body.data.id as string;
+
+    for (const other of [administrator, execution]) {
+      const response = await api().delete(`/api/masters/sales-engineers/${id}`).set(other.headers);
+
+      expect(response.status).toBe(403);
+      expect(response.body.error.message).toContain("Only Super Admin");
+      expect((await pool.query("SELECT 1 FROM sales_engineers WHERE id = $1", [id])).rowCount).toBe(1);
+    }
+
+    const disabled = await api().post(`/api/masters/sales-engineers/${id}/status`).set(administrator.headers).send({ isActive: false });
+    expect(disabled.body.data.isActive).toBe(false);
+    const enabled = await api().post(`/api/masters/sales-engineers/${id}/status`).set(administrator.headers).send({ isActive: true });
+    expect(enabled.body.data.isActive).toBe(true);
+  });
+
+  it("refuses an engineer whose only contract is cancelled and in the Recycle Bin, and keeps every record", async () => {
+    const id = (await create({ code: "DEL-HIST", name: "Historical Engineer" })).body.data.id as string;
+    const clientId = await createClient(admin, "Historical Client");
+    const contract = await activeContract(admin, clientId, { salesEngineerId: id });
+    const countVisits = async () =>
+      (await pool.query<{ count: number }>("SELECT count(*)::int AS count FROM amc_visits_all WHERE amc_contract_id = $1", [contract])).rows[0]?.count;
+    const visitsBefore = await countVisits();
+
+    await pool.query("UPDATE amc_contracts_all SET status = 'CANCELLED', deleted_at = now(), deleted_by = $2 WHERE id = $1", [contract, admin.id]);
+
+    const refused = await api().delete(`/api/masters/sales-engineers/${id}`).set(admin.headers);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toContain("Recycle Bin");
+    expect((await pool.query("SELECT 1 FROM sales_engineers WHERE id = $1", [id])).rowCount).toBe(1);
+    expect((await pool.query("SELECT sales_engineer_id FROM amc_contracts_all WHERE id = $1", [contract])).rows[0]?.sales_engineer_id).toBe(id);
+    expect(await countVisits()).toBe(visitsBefore);
+  });
+
+  it("deletes an unused engineer, records it in the Deletion Log and never reuses the code", async () => {
+    const id = (await create({ code: "DEL-OK", name: "Unused Engineer" })).body.data.id as string;
+
+    const deleted = await api().delete(`/api/masters/sales-engineers/${id}`).set(admin.headers);
+    expect(deleted.status).toBe(200);
+    expect(deleted.body.data).toEqual({ deleted: true });
+    expect((await api().get(`/api/masters/sales-engineers/${id}`).set(admin.headers)).status).toBe(404);
+    expect((await api().delete(`/api/masters/sales-engineers/${id}`).set(admin.headers)).status).toBe(404);
+
+    const logs = await logsFor("sales_engineers", id);
+    expect(logs.at(-1)?.action).toBe("sales_engineer.deleted");
+
+    const log = await api().get("/api/security/deletions").set(admin.headers);
+    const item = log.body.data.items.find((entry: { action: string; entityId: string }) => entry.action === "sales_engineer.deleted" && entry.entityId === id);
+    expect(item).toMatchObject({ kind: "DELETED", entityType: "sales_engineers", description: 'Sales engineer "Unused Engineer" (DEL-OK) deleted.' });
+
+    const reused = await create({ code: "del-ok", name: "Code Reuser" });
+    expect(reused.status).toBe(409);
+    expect(reused.body.error.details[0]).toMatchObject({ field: "code" });
+    expect(reused.body.error.message).toContain("deleted engineer");
+
+    const other = (await create({ code: "DEL-OTHER", name: "Other Engineer" })).body.data.id as string;
+    expect((await api().patch(`/api/masters/sales-engineers/${other}`).set(admin.headers).send({ code: "DEL-OK" })).status).toBe(409);
   });
 });
 

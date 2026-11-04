@@ -214,6 +214,71 @@ describe('status row action', () => {
   })
 })
 
+// Holds every Sales Engineers permission but is not Super Admin.
+const ENGINEER_MANAGER: SessionUser = {
+  ...ADMIN,
+  id: '7',
+  roles: [{ id: '7', code: 'ADMINISTRATOR', name: 'Admin' }],
+  permissions: afterPageSplit(['DASHBOARD:VIEW', 'SALES_ENGINEERS:VIEW', 'SALES_ENGINEERS:CREATE', 'SALES_ENGINEERS:EDIT', 'SALES_ENGINEERS:EXPORT']),
+}
+
+describe('delete row action', () => {
+  it('offers Delete to Super Admin only, beside View, Edit and Disable', async () => {
+    engineersApi(ENGINEER_MANAGER, [makeEngineer()])
+    renderApp('/master-data/sales-engineers')
+    const row = within(await table()).getAllByRole('row')[1] as HTMLElement
+
+    expect(within(row).getByRole('link', { name: 'View Test Engineer' })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Edit Test Engineer' })).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Deactivate Test Engineer' })).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: 'Delete Test Engineer' })).not.toBeInTheDocument()
+  })
+
+  it('confirms with the name and code, deletes, and refreshes the list', async () => {
+    let engineers = [makeEngineer({ contractCount: 0, activeContractCount: 0 })]
+    const api = engineersApi(ADMIN, [], (request) => {
+      if (request.method === 'GET' && request.path === '/masters/sales-engineers') return ok({ items: engineers, total: engineers.length, page: 1, pageSize: 25 })
+      if (request.method === 'DELETE' && request.path === '/masters/sales-engineers/5') {
+        engineers = []
+        return ok({ deleted: true })
+      }
+      return undefined
+    })
+    renderApp('/master-data/sales-engineers')
+    const row = within(await table()).getAllByRole('row')[1] as HTMLElement
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete Test Engineer' }))
+    let dialog = await screen.findByRole('dialog', { name: 'Delete sales engineer' })
+    expect(dialog).toHaveTextContent('Test Engineer')
+    expect(dialog).toHaveTextContent('SE-0005')
+    expect(dialog).toHaveTextContent('cannot be undone')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    expect(api.find('DELETE', '/masters/sales-engineers/5')).toHaveLength(0)
+
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete Test Engineer' }))
+    dialog = await screen.findByRole('dialog', { name: 'Delete sales engineer' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete permanently' }))
+
+    await waitFor(() => expect(api.find('DELETE', '/masters/sales-engineers/5')).toHaveLength(1))
+    expect(await screen.findByRole('status')).toHaveTextContent('Test Engineer (SE-0005) was deleted.')
+    expect(await screen.findByText('No sales engineers yet')).toBeInTheDocument()
+  })
+
+  it('shows the refusal for an engineer linked to contracts and keeps the dialog open', async () => {
+    const message = 'Test Engineer cannot be deleted: the engineer is linked to 3 AMC contracts (including any in the Recycle Bin). Disable the engineer instead; the contracts keep the link.'
+    engineersApi(ADMIN, [makeEngineer()], (request) => (request.method === 'DELETE' ? fail(409, 'CONFLICT', message) : undefined))
+    renderApp('/master-data/sales-engineers')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete Test Engineer' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Delete sales engineer' })
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Delete permanently' }))
+
+    expect(await within(dialog).findByText(message)).toBeInTheDocument()
+    expect(within(await table()).getAllByRole('row')).toHaveLength(2)
+  })
+})
+
 describe('create and edit form', () => {
   it('requires a name, checks the email and sends the chosen account and status', async () => {
     const api = engineersApi(ADMIN, [])
@@ -222,12 +287,23 @@ describe('create and edit form', () => {
     await userEvent.click((await screen.findAllByRole('button', { name: 'Add sales engineer' }))[0] as HTMLElement)
     const dialog = await screen.findByRole('dialog', { name: 'Add sales engineer' })
 
+    const code = within(dialog).getByLabelText(/Engineer code/)
+    expect(code).not.toHaveAttribute('readonly')
+    expect(code).toBeEnabled()
+
     await userEvent.type(within(dialog).getByLabelText('Email'), 'not-an-email')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add sales engineer' }))
-    expect(await within(dialog).findByText('Engineer name is required.')).toBeInTheDocument()
+    expect(await within(dialog).findByText('Engineer code is required.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Engineer name is required.')).toBeInTheDocument()
     expect(within(dialog).getByText('Enter a valid email address.')).toBeInTheDocument()
+
+    await userEvent.type(code, 'BAD<code>')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add sales engineer' }))
+    expect(await within(dialog).findByText(/Engineer code may use letters, digits/)).toBeInTheDocument()
     expect(api.find('POST', '/masters/sales-engineers')).toHaveLength(0)
 
+    await userEvent.clear(code)
+    await userEvent.type(code, '  SE-0006 ')
     await userEvent.type(within(dialog).getByLabelText(/Engineer name/), 'New Engineer')
     await userEvent.clear(within(dialog).getByLabelText('Email'))
     await userEvent.type(within(dialog).getByLabelText('Email'), 'new@example.com')
@@ -237,7 +313,7 @@ describe('create and edit form', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add sales engineer' }))
 
     await waitFor(() => expect(api.find('POST', '/masters/sales-engineers')).toHaveLength(1))
-    expect(api.find('POST', '/masters/sales-engineers')[0]?.body).toMatchObject({ name: 'New Engineer', email: 'new@example.com', departmentId: '1', userId: '21', isActive: false })
+    expect(api.find('POST', '/masters/sales-engineers')[0]?.body).toMatchObject({ code: 'SE-0006', name: 'New Engineer', email: 'new@example.com', departmentId: '1', userId: '21', isActive: false })
     expect(await screen.findByRole('status')).toHaveTextContent('New Engineer was added as SE-0006.')
   })
 
@@ -264,6 +340,7 @@ describe('create and edit form', () => {
 
     await userEvent.click((await screen.findAllByRole('button', { name: 'Add sales engineer' }))[0] as HTMLElement)
     const dialog = await screen.findByRole('dialog', { name: 'Add sales engineer' })
+    await userEvent.type(within(dialog).getByLabelText(/Engineer code/), 'SE-0100')
     await userEvent.type(within(dialog).getByLabelText(/Engineer name/), 'Duplicate Link')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add sales engineer' }))
 
@@ -278,7 +355,7 @@ describe('create and edit form', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Edit Test Engineer' }))
     const dialog = await screen.findByRole('dialog', { name: 'Edit Test Engineer' })
-    expect(dialog).toHaveTextContent('Engineer code SE-0005')
+    expect(within(dialog).getByLabelText(/Engineer code/)).toHaveValue('SE-0005')
     await waitFor(() => expect(within(dialog).getByLabelText('User account')).toHaveValue('30'))
 
     await userEvent.clear(within(dialog).getByLabelText('Phone'))
@@ -288,6 +365,48 @@ describe('create and edit form', () => {
     await waitFor(() => expect(api.find('PATCH', '/masters/sales-engineers/5')).toHaveLength(1))
     expect(api.find('PATCH', '/masters/sales-engineers/5')[0]?.body).toEqual({ phone: '+968 9999' })
     expect(api.find('GET', '/masters/sales-engineers/user-options')[0]?.query.get('engineerId')).toBe('5')
+  })
+
+  it('edits the code, sends it trimmed and shows the updated code in the table', async () => {
+    let engineers = [makeEngineer()]
+    const api = engineersApi(ADMIN, [], (request) => {
+      if (request.method === 'GET' && request.path === '/masters/sales-engineers') return ok({ items: engineers, total: engineers.length, page: 1, pageSize: 25 })
+      if (request.method === 'PATCH' && request.path === '/masters/sales-engineers/5') {
+        engineers = [makeEngineer(request.body as Partial<EngineerRecord>)]
+        return ok(engineers[0])
+      }
+      return undefined
+    })
+    renderApp('/master-data/sales-engineers')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Test Engineer' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Test Engineer' })
+    const code = within(dialog).getByLabelText(/Engineer code/)
+    await userEvent.clear(code)
+    await userEvent.type(code, ' FIELD-07 ')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(api.find('PATCH', '/masters/sales-engineers/5')[0]?.body).toEqual({ code: 'FIELD-07' }))
+    await waitFor(async () => expect(within(await table()).getAllByRole('row')[1]).toHaveTextContent('FIELD-07'))
+  })
+
+  it('shows a refused duplicate code on the code field', async () => {
+    engineersApi(ADMIN, [makeEngineer()], (request) =>
+      request.method === 'PATCH'
+        ? fail(409, 'CONFLICT', 'Engineer code "SE-0008" is already used by another engineer.', [{ field: 'code', message: 'Engineer code "SE-0008" is already used by another engineer.' }])
+        : undefined,
+    )
+    renderApp('/master-data/sales-engineers')
+    await table()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Edit Test Engineer' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Edit Test Engineer' })
+    await userEvent.clear(within(dialog).getByLabelText(/Engineer code/))
+    await userEvent.type(within(dialog).getByLabelText(/Engineer code/), 'se-0008')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(await within(dialog).findByText('Engineer code "SE-0008" is already used by another engineer.')).toBeInTheDocument()
   })
 
   it('warns in the form before disabling an engineer with active contracts', async () => {

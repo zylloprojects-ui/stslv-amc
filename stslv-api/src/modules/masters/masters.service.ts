@@ -11,8 +11,10 @@ import type { Module } from "../../shared/permissions";
 import type { ListMastersQuery } from "./masters.schemas";
 
 // Master lists (departments, sales engineers, system types, maintenance
-// frequencies). Records are deactivated, never deleted, so contracts that refer
-// to them stay intact.
+// frequencies). Records are normally deactivated, so contracts that refer to
+// them stay intact. Only an unused system type, and (Super Admin only) an
+// unused sales engineer, can be deleted: see system-types.service.ts and
+// sales-engineers.service.ts.
 
 interface Field {
   /** Name in the API. */
@@ -112,19 +114,24 @@ export const SYSTEM_TYPES: MasterSpec = {
   }),
 };
 
-// The engineer code is derived from the id, which never changes, so an
-// engineer keeps their code for good. It is not stored (that would need a
-// migration); ids are never reused but are not gapless, so neither are codes.
-const ENGINEER_CODE_PREFIX = "SE-";
-const ENGINEER_CODE_DIGITS = 4;
+// The engineer code is entered by hand and stored (migration 0102), unique
+// ignoring case. Engineers added before 0102 keep the SE-0001 code they had,
+// which was derived from the id. Contracts refer to the id, never the code, so
+// changing a code keeps every link. The code of a permanently deleted engineer
+// is kept in sales_engineer_retired_codes and never given out again.
 
-/** "SE-0042" for id 42. Ids beyond four digits keep every digit: "SE-12345". */
-export function engineerCode(id: string): string {
-  return `${ENGINEER_CODE_PREFIX}${id.padStart(ENGINEER_CODE_DIGITS, "0")}`;
+/** Refuses a code already retired by a permanent deletion (checked in the same transaction as the save). */
+async function refuseRetiredCode(db: Queryable, code: unknown) {
+  if (typeof code !== "string") return;
+
+  const retired = await db.query("SELECT 1 FROM sales_engineer_retired_codes WHERE code_key = lower($1)", [code]);
+
+  if ((retired.rowCount ?? 0) > 0) {
+    const message = `Engineer code "${code}" belonged to a deleted engineer and cannot be reused.`;
+
+    throw conflict(message, [{ field: "code", message }]);
+  }
 }
-
-/** The same code in SQL, for search. lpad would cut a longer id, so the width grows with it. */
-const ENGINEER_CODE_SQL = `('${ENGINEER_CODE_PREFIX}' || lpad(m.id::text, greatest(${ENGINEER_CODE_DIGITS}, length(m.id::text)), '0'))`;
 
 export const SALES_ENGINEERS: MasterSpec = {
   module: "SALES_ENGINEERS",
@@ -133,6 +140,7 @@ export const SALES_ENGINEERS: MasterSpec = {
   actionPrefix: "sales_engineer",
   label: "Sales engineer",
   fields: [
+    { name: "code", column: "code" },
     { name: "name", column: "name" },
     { name: "employeeNo", column: "employee_no" },
     { name: "email", column: "email" },
@@ -141,7 +149,7 @@ export const SALES_ENGINEERS: MasterSpec = {
     { name: "userId", column: "user_id" },
     { name: "notes", column: "notes" },
   ],
-  select: `m.id, m.name, m.employee_no, m.email, m.phone, m.department_id, d.code AS department_code, d.name AS department_name,
+  select: `m.id, m.code, m.name, m.employee_no, m.email, m.phone, m.department_id, d.code AS department_code, d.name AS department_name,
            m.user_id, u.full_name AS user_name, u.email AS user_email, m.notes, ${AUDIT_SELECT},
            (SELECT count(*)::int FROM amc_contracts c WHERE c.sales_engineer_id = m.id) AS contract_count,
            (SELECT count(*)::int FROM amc_contracts c WHERE c.sales_engineer_id = m.id AND c.status = 'ACTIVE') AS active_contract_count`,
@@ -149,13 +157,13 @@ export const SALES_ENGINEERS: MasterSpec = {
   order: "lower(m.name), m.id",
   sorts: {
     name: "lower(m.name)",
-    code: "m.id",
+    code: "lower(m.code)",
     employeeNo: "lower(m.employee_no)",
     department: "lower(d.code)",
     createdAt: "m.created_at",
     updatedAt: "m.updated_at",
   },
-  search: ["m.name", ENGINEER_CODE_SQL, "m.employee_no", "m.email", "m.phone"],
+  search: ["m.name", "m.code", "m.employee_no", "m.email", "m.phone"],
   conditions: (query, params) => {
     if (query.departmentId === "none") return ["m.department_id IS NULL"];
     if (query.departmentId) {
@@ -165,13 +173,14 @@ export const SALES_ENGINEERS: MasterSpec = {
     return [];
   },
   unique: {
+    sales_engineers_code_uq: { field: "code", message: (input) => `Engineer code "${String(input.code)}" is already used by another engineer.` },
     sales_engineers_name_uq: { field: "name", message: (input) => `A sales engineer named "${String(input.name)}" already exists.` },
     sales_engineers_employee_no_uq: { field: "employeeNo", message: (input) => `Employee number "${String(input.employeeNo)}" is already used.` },
     sales_engineers_user_uq: { field: "userId", message: () => "That user is already linked to another sales engineer." },
   },
   toItem: (row) => ({
     id: row.id,
-    code: engineerCode(String(row.id)),
+    code: row.code,
     name: row.name,
     employeeNo: row.employee_no,
     email: row.email,
@@ -186,6 +195,8 @@ export const SALES_ENGINEERS: MasterSpec = {
     updatedAt: iso(row.updated_at),
   }),
   check: async (db, values, before) => {
+    // A new or changed code must not be one retired by a deletion. A duplicate of a current code is refused by sales_engineers_code_uq.
+    if (values.code !== before?.code) await refuseRetiredCode(db, values.code);
     // A new link must be to an active department; an unchanged link to a since-deactivated one is kept.
     if (values.departmentId && values.departmentId !== before?.departmentId) {
       const department = await db.query<{ is_active: boolean }>("SELECT is_active FROM departments WHERE id = $1", [values.departmentId]);

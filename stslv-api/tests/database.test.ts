@@ -42,6 +42,7 @@ describe("migrations", () => {
       "projects",
       "role_permissions",
       "roles",
+      "sales_engineer_retired_codes",
       "sales_engineers",
       "schema_migrations",
       "suggestion_events",

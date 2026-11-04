@@ -118,8 +118,8 @@ describe("sales engineers in the Master Data Center", () => {
   let engineerB: string;
 
   beforeAll(async () => {
-    engineerA = (await postEngineer({ name: "Zed Engineer", employeeNo: "E-200" })).body.data.id as string;
-    engineerB = (await postEngineer({ name: "Amy Engineer", employeeNo: "E-100" })).body.data.id as string;
+    engineerA = (await postEngineer({ code: "SE-ZED", name: "Zed Engineer", employeeNo: "E-200" })).body.data.id as string;
+    engineerB = (await postEngineer({ code: "SE-AMY", name: "Amy Engineer", employeeNo: "E-100" })).body.data.id as string;
   });
 
   it("sorts by the columns the list offers and refuses others", async () => {

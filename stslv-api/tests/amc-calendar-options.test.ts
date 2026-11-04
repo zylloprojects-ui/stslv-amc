@@ -20,7 +20,7 @@ beforeAll(async () => {
   procurement = await signedIn("procurement@example.com", ["PROCUREMENT"]);
   const year = Number((await today()).slice(0, 4));
   const client = await createClient(admin, "Calendar Options Hotel");
-  const engineer = async (name: string) => (await api().post("/api/masters/sales-engineers").set(admin.headers).send({ name })).body.data.id as string;
+  const engineer = async (name: string) => (await api().post("/api/masters/sales-engineers").set(admin.headers).send({ code: name.slice(0, 20), name })).body.data.id as string;
   const kept = await engineer("Kept Engineer");
   const cancelled = await engineer("Cancelled Engineer");
 

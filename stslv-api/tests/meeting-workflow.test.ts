@@ -67,7 +67,7 @@ describe("meeting workflow", () => {
     clientId = await createClient(admin, "Workflow Hotel LLC");
     expect((await post("/clients", { name: "Workflow Hotel LLC", clientType: "COMPANY" })).status).toBe(409);
 
-    const engineer = await post("/masters/sales-engineers", { name: "Workflow Engineer", employeeNo: "6744" });
+    const engineer = await post("/masters/sales-engineers", { code: "SE-6744", name: "Workflow Engineer", employeeNo: "6744" });
     expect(engineer.status).toBe(201);
     engineerId = engineer.body.data.id;
 

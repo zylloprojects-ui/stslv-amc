@@ -51,8 +51,10 @@ export const systemTypeSchemas = shapes(
   ["code", "name"]
 );
 
+// The engineer code is entered by hand (migration 0102). Trimmed here; unique ignoring case in the database.
 const salesEngineerShapes = shapes(
   {
+    code: code("Engineer code"),
     name: requiredText("Name", 150),
     employeeNo: optionalText("Employee number", 50),
     email: optionalEmail,
@@ -61,7 +63,7 @@ const salesEngineerShapes = shapes(
     userId: optionalId("user"),
     notes: optionalText("Notes", 2000),
   },
-  ["name"]
+  ["code", "name"]
 );
 
 // A new engineer may be added already disabled. Later status changes go through the status route, which records them.

@@ -54,7 +54,7 @@ beforeAll(async () => {
   year = Number((await today()).slice(0, 4));
   hotelOne = await createClient(admin, "Service Hotel One");
   hotelTwo = await createClient(admin, "Service Hotel Two");
-  engineerId = (await api().post("/api/masters/sales-engineers").set(admin.headers).send({ name: "Sara Sales" })).body.data.id;
+  engineerId = (await api().post("/api/masters/sales-engineers").set(admin.headers).send({ code: "SE-SARA", name: "Sara Sales" })).body.data.id;
   systemTypeId = (await api().post("/api/masters/system-types").set(admin.headers).send({ code: "FA", name: "Fire Alarm" })).body.data.id;
 
   fire = await activeContract(admin, hotelOne, {
