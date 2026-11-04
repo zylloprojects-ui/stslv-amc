@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, referenceOf, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { cancelInvoice, invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -120,7 +120,7 @@ describe("Accounts", () => {
       const alphaRows = items.filter((item) => item.contract.id === fx.alphaContract);
       expect(alphaRows.map((item) => item.id).sort()).toEqual(alpha.map((visit) => visit.id).sort());
       expect(alphaRows[0]).toMatchObject({
-        reference: `AMC-${fx.alphaContract.padStart(4, "0")}`,
+        reference: await referenceOf(fx.alphaContract),
         client: { id: fx.alphaId, name: "Alpha Towers" },
         system: { description: "FIRE" },
         frequency: { code: "QUARTERLY", label: "Quarterly" },
@@ -268,7 +268,7 @@ describe("Accounts", () => {
       expect((await list({ invoiceStatus: "NOT_RECORDED" })).body.data.kpis.rows).toBe(9);
       expect(((await list({ search: "inv-alpha" })).body.data.items as Item[]).map((item) => item.invoiceNumbers)).toEqual([[recorded.invoiceNumber]]);
       expect(((await list({ search: "man-alpha" })).body.data.items as Item[]).map((item) => item.id)).toEqual([alpha[0]!.id]);
-      expect((await list({ search: `AMC-${fx.alphaContract.padStart(4, "0")}` })).body.data.kpis.rows).toBe(4);
+      expect((await list({ search: await referenceOf(fx.alphaContract) })).body.data.kpis.rows).toBe(4);
       expect((await list({ search: "beta mall" })).body.data.kpis.rows).toBe(6);
 
       const combined = await list({ clientId: fx.alphaId, salesEngineerId: fx.esha, year: 2027, serviceStatus: "COMPLETED", invoiceStatus: "NOT_RECORDED" });

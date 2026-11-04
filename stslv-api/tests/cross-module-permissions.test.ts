@@ -453,7 +453,7 @@ describe("the contract form's client list", () => {
 
     // A contract can be created with it, with no client permission at all.
     const created = await api().post("/api/amc/contracts").set(master.headers).send({
-      clientId: lookup.body.data[0].id, responsibleEngineer: "Engineer", validFrom: "2027-01-01", validTo: "2027-12-31",
+      amcReference: "LOOKUP-AMC-001", clientId: lookup.body.data[0].id, responsibleEngineer: "Engineer", validFrom: "2027-01-01", validTo: "2027-12-31",
       systemDescription: "FIRE", contractValue: "1620.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "405.000",
     });
     expect(created.status).toBe(201);

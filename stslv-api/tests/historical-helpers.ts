@@ -1,4 +1,5 @@
 import { pool } from "../src/config/database";
+import { testReference } from "./amc-helpers";
 
 // Historical records are created only by the controlled import, which writes
 // to the database directly. These helpers stand in for it: they insert the
@@ -65,8 +66,8 @@ export async function insertImportedContract(clientId: string, input: ImportedCo
   const result = await pool.query<{ id: string }>(
     `INSERT INTO amc_contracts
        (client_id, valid_from, valid_to, system_description, contract_value, maintenance_frequency,
-        default_visit_amount, status, schedule_cutover_date)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'DRAFT', $8)
+        default_visit_amount, status, schedule_cutover_date, amc_reference)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'DRAFT', $8, $9)
      RETURNING id`,
     [
       clientId,
@@ -77,6 +78,7 @@ export async function insertImportedContract(clientId: string, input: ImportedCo
       input.frequency ?? "QUARTERLY",
       input.defaultVisitAmount === undefined ? "405.000" : input.defaultVisitAmount,
       input.cutoverDate,
+      testReference("IMPORTED"),
     ]
   );
 

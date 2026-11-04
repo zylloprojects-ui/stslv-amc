@@ -46,6 +46,8 @@ export function contract(row: number, overrides: Partial<ContractSource> & { amo
     ref: { workbook: "Contracts.xlsx", sheet: "Contracts", row, cell: "" },
     raw: {},
     serial: String(row),
+    // The optional "AMC Reference" column (migration 0105), which the import requires for every contract.
+    amcReference: `LEGACY-${row}`,
     engineer: "ENGINEER",
     validFrom: "2025-07-01",
     validTo: "2026-06-30",
@@ -262,6 +264,8 @@ export function writeFixtureWorkbooks(): { config: ImportConfig; directory: stri
     // Uneven amounts, a trailing space, and a final credit below the value.
     { ref: "A7", value: 3 }, { ref: "B7", value: "ENGINEER" }, { ref: "C7", value: serial("2026-03-01") }, { ref: "D7", value: serial("2027-02-28") },
     { ref: "E7", value: "GAMMA " }, { ref: "F7", value: "Automation" }, { ref: "G7", value: 12000 }, { ref: "H7", value: 10000 },
+    // The optional AMC Reference column (migration 0105): the import requires one per contract and never generates it.
+    { ref: "I4", value: "AMC Reference" }, { ref: "I5", value: "HIST-AMC-001" }, { ref: "I6", value: "HIST-AMC-002" }, { ref: "I7", value: "HIST-AMC-003" },
     // Formatted, empty rows inside the table.
     { ref: "A8", style: 1 }, { ref: "G8", style: 1 },
     { ref: "A12", value: "TOTAL" }, { ref: "G12", value: 16700, formula: "SUM(G5:G11)" }, { ref: "H12", value: 14700, formula: "SUM(H5:H11)" },

@@ -9,6 +9,7 @@ import type { AuthContext } from "../auth/access";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants";
 import type { ListServiceStatusQuery, SaveServiceStatusInput } from "./amc.schemas";
 import { applyExecution } from "./visits.service";
+import { hasStoredReference, referenceSql } from "./contract-reference";
 
 // The Service Status page: one row per scheduled maintenance visit (amc_visits),
 // never one per contract. It reads the same visit records as the AMC Schedule
@@ -25,22 +26,20 @@ interface Features {
   frequencies: boolean;
   /** 0077: the service report number. */
   reportNumber: boolean;
+  /** 0105: the stored AMC Reference Number. */
+  storedReference: boolean;
 }
 
 async function features(): Promise<Features> {
-  const [masters, renewals, frequencies, reportNumber] = await Promise.all([
+  const [masters, renewals, frequencies, reportNumber, storedReference] = await Promise.all([
     schemaHas(["amc_contracts.sales_engineer_id", "amc_contracts.system_type_id", "sales_engineers", "system_types"]),
     schemaHas(["amc_contracts.renewed_from_id"]),
     schemaHas(["maintenance_frequencies"]),
     schemaHas(["amc_visits.service_report_no"]),
+    hasStoredReference(),
   ]);
 
-  return { masters, renewals, frequencies, reportNumber };
-}
-
-/** "AMC-0007" for contract 7: derived from the id, never stored. PROVISIONAL until the client confirms a contract numbering rule. */
-export function amcReference(contractId: string): string {
-  return `AMC-${contractId.padStart(4, "0")}`;
+  return { masters, renewals, frequencies, reportNumber, storedReference };
 }
 
 /** Names of the four built-in frequencies, for a database without the frequency master. */
@@ -79,7 +78,7 @@ function fromSql(f: Features): string {
 
 function selectSql(f: Features): string {
   return `
-  SELECT v.id, c.id AS contract_id, c.status AS contract_status, c.valid_to::text AS valid_to,
+  SELECT v.id, c.id AS contract_id, ${referenceSql("c", f.storedReference)} AS contract_reference, c.status AS contract_status, c.valid_to::text AS valid_to,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          ${f.masters ? "st.id AS system_type_id, st.name AS system_type_name" : "NULL::bigint AS system_type_id, NULL::text AS system_type_name"},
          c.maintenance_frequency, ${f.frequencies ? "mf.label" : "NULL::text"} AS frequency_label,
@@ -98,6 +97,7 @@ function selectSql(f: Features): string {
 interface ServiceRow {
   id: string;
   contract_id: string;
+  contract_reference: string;
   contract_status: ContractStatus;
   valid_to: string;
   client_id: string;
@@ -148,7 +148,7 @@ export interface ServiceStatusItem {
 function toItem(row: ServiceRow): ServiceStatusItem {
   return {
     id: row.id,
-    reference: amcReference(row.contract_id),
+    reference: row.contract_reference,
     contract: { id: row.contract_id, status: row.contract_status, validTo: row.valid_to },
     client: { id: row.client_id, name: row.client_name },
     system: { description: row.system_description, typeId: row.system_type_id, typeName: row.system_type_name },
@@ -171,9 +171,6 @@ function toItem(row: ServiceRow): ServiceStatusItem {
 }
 
 export type ServiceStatusFilters = Omit<ListServiceStatusQuery, "page" | "pageSize">;
-
-/** "AMC-0007", "amc7" or "7" names contract 7. */
-const REFERENCE_PATTERN = /^(?:amc-?)?0*(\d{1,15})$/i;
 
 /** The WHERE clause, with and without the service status filter: the cards count every status of the other filters. */
 function filterSql(query: ServiceStatusFilters, f: Features) {
@@ -202,15 +199,14 @@ function filterSql(query: ServiceStatusFilters, f: Features) {
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
     const matches = [
+      `${referenceSql("c", f.storedReference)} ILIKE ${p}`,
       `cl.name ILIKE ${p}`,
       `c.system_description ILIKE ${p}`,
       `(to_jsonb(v) ->> 'service_code') ILIKE ${p}`,
       ...(f.masters ? [`st.name ILIKE ${p}`] : []),
       ...(f.reportNumber ? [`v.service_report_no ILIKE ${p}`] : []),
     ];
-    const reference = REFERENCE_PATTERN.exec(query.search);
 
-    if (reference) matches.push(`c.id = ${add(reference[1])}::bigint`);
     conditions.push(`(${matches.join(" OR ")})`);
   }
 

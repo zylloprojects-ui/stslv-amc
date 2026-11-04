@@ -22,8 +22,20 @@ const optionalMoney = z
   .trim()
   .refine((value) => value === '' || MONEY_PATTERN.test(value), MONEY_MESSAGE)
 
-const contractSchema = z
+/** The API's AMC Reference Number rule (migration 0105): typed, never generated; read-only after creation. */
+const AMC_REFERENCE_MAX = 50
+const amcReferenceRule = z
+  .string()
+  .trim()
+  .min(1, 'AMC Reference Number is required.')
+  .max(AMC_REFERENCE_MAX, `AMC Reference Number must be at most ${AMC_REFERENCE_MAX} characters.`)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9 _./&-]*$/, 'AMC Reference Number may use letters, digits, spaces and - _ . / & only, and must start with a letter or digit.')
+
+/** `creating`: a new contract or renewal, which must be given its AMC Reference Number. An edit never sends it. */
+const buildContractSchema = (creating: boolean) =>
+  z
   .object({
+    amcReference: creating ? amcReferenceRule : z.string(),
     clientId: z.string().min(1, 'Select a client.'),
     systemDescription: z.string().trim().min(1, 'System is required.').max(200, 'System must be at most 200 characters.'),
     responsibleEngineer: z.string().trim().max(200, 'Responsible engineer must be at most 200 characters.'),
@@ -49,9 +61,13 @@ const contractSchema = z
     when: () => true,
   })
 
-type ContractForm = z.infer<typeof contractSchema>
+const CREATE_SCHEMA = buildContractSchema(true)
+const EDIT_SCHEMA = buildContractSchema(false)
+
+type ContractForm = z.infer<typeof CREATE_SCHEMA>
 
 const FIELDS = [
+  'amcReference',
   'clientId',
   'systemDescription',
   'responsibleEngineer',
@@ -109,8 +125,10 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     control,
     formState: { errors },
   } = useForm<ContractForm>({
-    resolver: zodResolver(contractSchema),
+    resolver: zodResolver(contract ? EDIT_SCHEMA : CREATE_SCHEMA),
     defaultValues: {
+      // Never prefilled: a new contract or renewal gets the number the user types. An edit shows the stored one, read-only.
+      amcReference: contract?.amcReference ?? '',
       clientId: start?.client.id ?? '',
       systemDescription: start?.systemDescription ?? '',
       responsibleEngineer: start?.responsibleEngineer ?? '',
@@ -192,7 +210,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
 
   const save = useMutation({
     mutationFn: (values: ContractForm) => {
-      const { status, customMonths, billingBasis, customBillingValue, renewalNotes, ...rest } = values
+      // The AMC Reference Number is sent only when creating; it cannot be changed afterwards.
+      const { status, customMonths, billingBasis, customBillingValue, renewalNotes, amcReference, ...rest } = values
       // Months are sent only for a custom frequency; for a fixed one the API clears them.
       const fields = { ...(isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest), billingBasis: billingBasis === '' ? null : billingBasis, ...(billingBasis === 'CUSTOM' ? { customBillingValue } : {}) }
 
@@ -202,8 +221,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       return contract
         ? api.patch<SavedContract>(`/amc/contracts/${contract.id}`, { ...fields, ...link })
         : renewalOf
-          ? api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, { ...fields, status, ...link, ...(renewalNotes ? { renewalNotes } : {}) })
-          : api.post<SavedContract>('/amc/contracts', { ...fields, status, ...link })
+          ? api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, { amcReference, ...fields, status, ...link, ...(renewalNotes ? { renewalNotes } : {}) })
+          : api.post<SavedContract>('/amc/contracts', { amcReference, ...fields, status, ...link })
     },
     onSuccess: async (saved) => {
       await refreshOperationalData(queryClient)
@@ -358,6 +377,36 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       {clients.data && (
         <form id="amc-contract-form" onSubmit={onSubmit} noValidate hidden={review !== null} className="space-y-4">
           {failure && <Alert>{failure}</Alert>}
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {contract ? (
+              <TextField
+                label="AMC Reference Number"
+                value={contract.amcReference}
+                readOnly
+                aria-readonly="true"
+                hint="Set when the contract was created. It cannot be changed."
+                className="bg-slate-50 font-mono font-semibold text-slate-800"
+              />
+            ) : (
+              <TextField
+                label="AMC Reference Number"
+                required
+                autoComplete="off"
+                spellCheck={false}
+                maxLength={AMC_REFERENCE_MAX}
+                placeholder="For example AMC-2026-001"
+                hint={
+                  renewalOf
+                    ? `A renewal needs its own new number; ${renewalOf.amcReference} stays with the contract being renewed. It cannot be changed later.`
+                    : 'Enter the contract number. Each number can be used only once and cannot be changed later.'
+                }
+                error={errors.amcReference?.message}
+                className="font-mono"
+                {...register('amcReference')}
+              />
+            )}
+          </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectField

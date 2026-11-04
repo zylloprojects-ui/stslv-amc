@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, createContract, logsFor, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, createContract, logsFor, referenceOf, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -32,7 +32,7 @@ const complete = async (id: string) =>
   expect((await patch(`/amc/execution/visits/${id}`, { status: "COMPLETED", completedDate: await today() })).status).toBe(200);
 const accountsRow = async (id: string, reference: string) =>
   ((await get("/accounts", { search: reference, pageSize: 200 })).body.data.items as { id: string; manualInvoiceNo: string | null; paymentStatus: string; colour: string; invoiceNumbers: string[] }[]).find((item) => item.id === id);
-const reference = (contractId: string) => `AMC-${contractId.padStart(4, "0")}`;
+const reference = (contractId: string) => referenceOf(contractId);
 
 beforeAll(async () => {
   await resetData();
@@ -233,7 +233,7 @@ describe("manual Invoice No.", () => {
     await setInvoiceNo(paidNotDone!.id, "EARLY-1");
     await complete(doneNotPaid!.id);
 
-    const ref = reference(id);
+    const ref = await reference(id);
     expect(await accountsRow(paidNotDone!.id, ref)).toMatchObject({ paymentStatus: "PAID", colour: "RED" });
     expect(await accountsRow(doneNotPaid!.id, ref)).toMatchObject({ paymentStatus: "UNPAID", colour: "BLUE" });
     expect((await get(`/amc/visits/${paidNotDone!.id}`)).body.data.status).toBe("SCHEDULED");
@@ -255,7 +255,7 @@ describe("manual Invoice No.", () => {
     await complete(visit!.id);
 
     const zoho = (await newInvoice(admin, invoiceBody(clientId, [{ amcVisitId: visit!.id, amount: "250.000" }], { amountExclVat: "250.000", vatAmount: "12.500" }))).id as string;
-    const row = await accountsRow(visit!.id, reference(id));
+    const row = await accountsRow(visit!.id, await reference(id));
 
     expect(row).toMatchObject({ paymentStatus: "UNPAID", manualInvoiceNo: null, colour: "BLUE" });
     expect(row?.invoiceNumbers).toHaveLength(1);

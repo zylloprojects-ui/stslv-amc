@@ -13,7 +13,7 @@ const day = (month: string, date: string) => `${month}-${date}`
 const FIRST = makeVisit({ scheduledDate: day(MONTH, '01'), originalScheduledDate: day(MONTH, '01') })
 const SECOND = makeVisit({
   id: '501',
-  contract: { id: '101', status: 'ACTIVE', systemDescription: 'CCTV', maintenanceFrequency: 'MONTHLY' },
+  contract: { id: '101', reference: 'AMC-0101', status: 'ACTIVE', systemDescription: 'CCTV', maintenanceFrequency: 'MONTHLY' },
   client: { id: '11', name: 'Test Hotel Two' },
   sequenceNo: 3,
   scheduledDate: day(MONTH, '15'),

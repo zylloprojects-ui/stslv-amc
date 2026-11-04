@@ -3,7 +3,7 @@ import { escapeLike } from "../../shared/validation";
 import type { ContractStatus } from "./amc.constants";
 import { RENEWAL_WARNING_DAYS } from "./management.service";
 import type { ListRenewalQueueQuery, RenewalState } from "./renewal-queue.schemas";
-import { amcReference } from "./service-status.service";
+import { hasStoredReference, referenceSql } from "./contract-reference";
 
 // The AMC Renewal queue: one row per contract that is due for renewal or has a
 // renewal (migration 0072). Read-only. Eligibility is worked out from
@@ -14,18 +14,18 @@ import { amcReference } from "./service-status.service";
 // The routes require migrations 0070, 0072 and 0075.
 
 /** The contract's renewal that is not cancelled (at most one, by 0072's unique index), and its latest cancelled one. */
-const FROM = `
+const fromSql = (storedReference: boolean) => `
   FROM amc_contracts c
   JOIN clients cl ON cl.id = c.client_id
   LEFT JOIN system_types st ON st.id = c.system_type_id
   LEFT JOIN maintenance_frequencies mf ON mf.code = c.maintenance_frequency
   LEFT JOIN LATERAL (
-    SELECT r.id, r.status, r.valid_from, r.valid_to, r.notes
+    SELECT r.id, ${referenceSql("r", storedReference)} AS reference, r.status, r.valid_from, r.valid_to, r.notes
     FROM amc_contracts r WHERE r.renewed_from_id = c.id AND r.status <> 'CANCELLED'
     ORDER BY r.id LIMIT 1
   ) o ON true
   LEFT JOIN LATERAL (
-    SELECT r.id, r.status, r.valid_from, r.valid_to
+    SELECT r.id, ${referenceSql("r", storedReference)} AS reference, r.status, r.valid_from, r.valid_to
     FROM amc_contracts r WHERE r.renewed_from_id = c.id AND r.status = 'CANCELLED'
     ORDER BY r.updated_at DESC, r.id DESC LIMIT 1
   ) x ON true`;
@@ -42,20 +42,23 @@ const ORDER = `ORDER BY CASE renewal_state WHEN 'DUE' THEN 0 WHEN 'UNDER_APPROVA
   valid_to, lower(client_name), id`;
 
 // Every row of the queue with its state, so filters and counts read one column.
-const BASE = `(
-  SELECT c.id, cl.id AS client_id, cl.name AS client_name, c.system_description, st.name AS system_type_name,
+const baseSql = (storedReference: boolean) => `(
+  SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.id AS client_id, cl.name AS client_name, c.system_description, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
          c.valid_from::text AS valid_from, c.valid_to::text AS valid_to, (c.valid_to - current_date)::int AS days_left,
          c.status, c.contract_value::text AS contract_value,
          CASE WHEN o.id IS NOT NULL THEN o.notes ELSE c.notes END AS remarks,
-         COALESCE(o.id, x.id) AS renewal_id, COALESCE(o.status, x.status) AS renewal_status,
+         COALESCE(o.id, x.id) AS renewal_id, CASE WHEN o.id IS NOT NULL THEN o.reference ELSE x.reference END AS renewal_reference,
+         COALESCE(o.status, x.status) AS renewal_status,
          COALESCE(o.valid_from, x.valid_from)::text AS renewal_valid_from, COALESCE(o.valid_to, x.valid_to)::text AS renewal_valid_to,
          ${STATE_SQL} AS renewal_state
-  ${FROM}
+  ${fromSql(storedReference)}
 ) q`;
 
-/** The queue as a subquery with alias q, for the AMC Renewal report. */
-export const RENEWAL_QUEUE_SQL = BASE;
+/** The queue as a subquery with alias q (columns include reference and renewal_reference), for the AMC Renewal report. */
+export async function renewalQueueSql(): Promise<string> {
+  return baseSql(await hasStoredReference());
+}
 
 // Service progress of each listed contract, read only for the rows on the page.
 const SERVICES = `
@@ -67,6 +70,7 @@ const SERVICES = `
 
 interface QueueRow {
   id: string;
+  reference: string;
   client_id: string;
   client_name: string;
   system_description: string;
@@ -80,6 +84,7 @@ interface QueueRow {
   contract_value: string;
   remarks: string | null;
   renewal_id: string | null;
+  renewal_reference: string | null;
   renewal_status: ContractStatus | null;
   renewal_valid_from: string | null;
   renewal_valid_to: string | null;
@@ -115,7 +120,7 @@ export interface RenewalQueueItem {
 function toItem(row: QueueRow): RenewalQueueItem {
   return {
     id: row.id,
-    reference: amcReference(row.id),
+    reference: row.reference,
     client: { id: row.client_id, name: row.client_name },
     system: { description: row.system_description, typeName: row.system_type_name },
     frequency: { code: row.maintenance_frequency, label: row.frequency_label ?? row.maintenance_frequency },
@@ -128,29 +133,21 @@ function toItem(row: QueueRow): RenewalQueueItem {
     remarks: row.remarks,
     renewalState: row.renewal_state,
     renewal:
-      row.renewal_id && row.renewal_status && row.renewal_valid_from && row.renewal_valid_to
-        ? { id: row.renewal_id, reference: amcReference(row.renewal_id), status: row.renewal_status, validFrom: row.renewal_valid_from, validTo: row.renewal_valid_to }
+      row.renewal_id && row.renewal_reference && row.renewal_status && row.renewal_valid_from && row.renewal_valid_to
+        ? { id: row.renewal_id, reference: row.renewal_reference, status: row.renewal_status, validFrom: row.renewal_valid_from, validTo: row.renewal_valid_to }
         : null,
   };
 }
 
 export type RenewalQueueFilters = Omit<ListRenewalQueueQuery, "page" | "pageSize">;
 
-/** "AMC-0007", "amc7" or "7" names contract 7. */
-const REFERENCE_PATTERN = /^(?:amc-?)?0*(\d{1,15})$/i;
-
 /** The search condition, shared by the rows and the cards. The state filter is applied to the rows only. */
 function searchSql(search: string | undefined, params: unknown[]): string {
   if (!search) return "";
   params.push(`%${escapeLike(search)}%`);
   const p = `$${params.length}`;
-  const matches = [`q.client_name ILIKE ${p}`, `q.system_description ILIKE ${p}`, `q.system_type_name ILIKE ${p}`];
-  const reference = REFERENCE_PATTERN.exec(search);
+  const matches = [`q.reference ILIKE ${p}`, `q.client_name ILIKE ${p}`, `q.system_description ILIKE ${p}`, `q.system_type_name ILIKE ${p}`];
 
-  if (reference) {
-    params.push(reference[1]);
-    matches.push(`q.id = $${params.length}::bigint`);
-  }
   return ` AND (${matches.join(" OR ")})`;
 }
 
@@ -175,13 +172,13 @@ export interface RenewalQueueKpis {
 }
 
 /** The card figures: every state, for the search applied (not the state filter, so each card keeps its own count). */
-async function kpis(cardWhere: string, params: unknown[], paramCount: number): Promise<RenewalQueueKpis> {
+async function kpis(base: string, cardWhere: string, params: unknown[], paramCount: number): Promise<RenewalQueueKpis> {
   const result = await pool.query<{ due: number; under_approval: number; renewed: number; cancelled: number }>(
     `SELECT count(*) FILTER (WHERE q.renewal_state = 'DUE')::int AS due,
             count(*) FILTER (WHERE q.renewal_state = 'UNDER_APPROVAL')::int AS under_approval,
             count(*) FILTER (WHERE q.renewal_state = 'RENEWED')::int AS renewed,
             count(*) FILTER (WHERE q.renewal_state = 'CANCELLED')::int AS cancelled
-     FROM ${BASE} ${cardWhere}`,
+     FROM ${base} ${cardWhere}`,
     params.slice(0, paramCount)
   );
   const row = result.rows[0];
@@ -189,8 +186,8 @@ async function kpis(cardWhere: string, params: unknown[], paramCount: number): P
   return { due: row?.due ?? 0, underApproval: row?.under_approval ?? 0, renewed: row?.renewed ?? 0, cancelled: row?.cancelled ?? 0 };
 }
 
-async function count(where: string, params: unknown[]): Promise<number> {
-  const result = await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM ${BASE} ${where}`, params);
+async function count(base: string, where: string, params: unknown[]): Promise<number> {
+  const result = await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM ${base} ${where}`, params);
 
   return result.rows[0]?.count ?? 0;
 }
@@ -199,12 +196,13 @@ async function count(where: string, params: unknown[]): Promise<number> {
 const searchParamCount = (filters: RenewalQueueFilters, params: unknown[]) => params.length - (filters.renewalStatus ? 1 : 0);
 
 export async function listRenewalQueue(query: ListRenewalQueueQuery) {
+  const base = await renewalQueueSql();
   const { where, cardWhere, params } = filterSql(query);
   const [figures, total, today, rows] = await Promise.all([
-    kpis(cardWhere, params, searchParamCount(query, params)),
-    count(where, params),
+    kpis(base, cardWhere, params, searchParamCount(query, params)),
+    count(base, where, params),
     pool.query<{ today: string }>("SELECT current_date::text AS today"),
-    pool.query<QueueRow>(`SELECT q.*, s.scheduled, s.completed FROM ${BASE} ${SERVICES} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<QueueRow>(`SELECT q.*, s.scheduled, s.completed FROM ${base} ${SERVICES} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,
@@ -228,12 +226,13 @@ export async function listRenewalQueue(query: ListRenewalQueueQuery) {
  * export cannot hold that many.
  */
 export async function listAllRenewalQueue(filters: RenewalQueueFilters, checkSize: (count: number) => void) {
+  const base = await renewalQueueSql();
   const { where, cardWhere, params } = filterSql(filters);
-  const [figures, total] = await Promise.all([kpis(cardWhere, params, searchParamCount(filters, params)), count(where, params)]);
+  const [figures, total] = await Promise.all([kpis(base, cardWhere, params, searchParamCount(filters, params)), count(base, where, params)]);
 
   checkSize(total);
 
-  const rows = await pool.query<QueueRow>(`SELECT q.*, s.scheduled, s.completed FROM ${BASE} ${SERVICES} ${where} ${ORDER}`, params);
+  const rows = await pool.query<QueueRow>(`SELECT q.*, s.scheduled, s.completed FROM ${base} ${SERVICES} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map(toItem), kpis: figures, total };
 }

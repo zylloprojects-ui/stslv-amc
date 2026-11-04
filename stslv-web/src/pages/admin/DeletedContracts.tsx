@@ -6,10 +6,11 @@ import { Alert, Button, Card, ConfirmDialog, Spinner } from '../../components/ui
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
 import { refreshOperationalData } from '../../lib/refreshOperationalData'
-import { amcReference } from '../amc/calendar/calendarTypes'
 
 export interface DeletedContract {
   id: string
+  /** The AMC Reference Number, kept while the contract is in the Recycle Bin and never reusable. */
+  amcReference: string
   client: { id: string; name: string }
   systemDescription: string
   validFrom: string
@@ -42,7 +43,7 @@ export function DeletedContracts() {
     onSuccess: async (_result, contract) => {
       setConfirming(null)
       await Promise.all([refreshOperationalData(queryClient), queryClient.invalidateQueries({ queryKey: ['security'] })])
-      setNotice(`${amcReference(contract.id)} (${contract.client.name}, ${contract.systemDescription}) was restored.`)
+      setNotice(`${contract.amcReference} (${contract.client.name}, ${contract.systemDescription}) was restored.`)
     },
   })
   const items = list.data ?? []
@@ -71,7 +72,7 @@ export function DeletedContracts() {
               <caption className="sr-only">Deleted AMC contracts</caption>
               <thead>
                 <tr>
-                  {['AMC No.', 'Client and system', 'Validity', 'Status', 'Kept', 'Deleted', 'Action'].map((heading) => (
+                  {['AMC Reference', 'Client and system', 'Validity', 'Status', 'Kept', 'Deleted', 'Action'].map((heading) => (
                     <th key={heading} scope="col" className={TABLE.th}>
                       {heading}
                     </th>
@@ -81,7 +82,7 @@ export function DeletedContracts() {
               <tbody className="divide-y divide-slate-100">
                 {items.map((contract) => (
                   <tr key={contract.id} className={TABLE.row}>
-                    <td className={cx(TABLE.td, 'whitespace-nowrap font-mono text-xs font-bold text-slate-700')}>{amcReference(contract.id)}</td>
+                    <td className={cx(TABLE.td, 'whitespace-nowrap font-mono text-xs font-bold text-slate-700')}>{contract.amcReference}</td>
                     <td className={TABLE.td}>
                       <span className="block font-semibold text-[#0b3b66]">{contract.client.name}</span>
                       <span className="text-xs text-slate-600">{contract.systemDescription}</span>
@@ -100,7 +101,7 @@ export function DeletedContracts() {
                     <td className={TABLE.td}>
                       <Button
                         variant="secondary"
-                        aria-label={`Restore ${amcReference(contract.id)} ${contract.client.name} ${contract.systemDescription}`}
+                        aria-label={`Restore ${contract.amcReference} ${contract.client.name} ${contract.systemDescription}`}
                         onClick={() => {
                           restore.reset()
                           setConfirming(contract)
@@ -121,7 +122,7 @@ export function DeletedContracts() {
           title="Restore AMC contract"
           message={
             <>
-              Restore <strong>{amcReference(confirming.id)}</strong> for <strong>{confirming.client.name}</strong> ({confirming.systemDescription})?
+              Restore <strong>{confirming.amcReference}</strong> for <strong>{confirming.client.name}</strong> ({confirming.systemDescription})?
               <span className="mt-2 block text-sm">
                 It returns to AMC Contracts, schedules, the calendar, Accounts and the dashboard figures with the same number, services and history.
               </span>

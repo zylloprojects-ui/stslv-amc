@@ -66,6 +66,8 @@ export interface ClientProposal {
 }
 
 export interface ContractProposal {
+  /** The AMC Reference Number from the workbook's optional "AMC Reference" column; never generated. */
+  amcReference: string | null;
   clientRaw: string | null;
   clientName: string | null;
   systemDescription: string | null;
@@ -595,6 +597,7 @@ export function buildPlan(source: SourceData, database: DatabaseState, options: 
       identifier: `${normalizeName(contract.clientRaw ?? "(no client)")} / ${contract.system ?? "(no system)"}`,
       raw: contract.raw,
       proposed: {
+        amcReference: contract.amcReference,
         clientRaw: contract.clientRaw,
         clientName: clientOf(contract.clientRaw)?.masterName ?? null,
         systemDescription: contract.system === null ? null : normalizeName(contract.system),

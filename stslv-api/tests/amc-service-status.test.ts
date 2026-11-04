@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { HEADER_ROW } from "../src/shared/export/excel";
-import { activeContract, contractBody, createClient, grant, logsFor, today, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
+import { activeContract, contractBody, createClient, grant, logsFor, referenceOf, today, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The Service Status page (/api/amc/service-status): one row per scheduled
@@ -99,7 +99,7 @@ describe("listing", () => {
 
     const first = response.body.data.items.find((item: { id: string }) => item.id === fireVisits[0]?.id);
     expect(first).toMatchObject({
-      reference: `AMC-${fire.padStart(4, "0")}`,
+      reference: await referenceOf(fire),
       client: { id: hotelOne, name: "Service Hotel One" },
       system: { description: "FIRE", typeId: systemTypeId, typeName: "Fire Alarm" },
       frequency: { code: "QUARTERLY", label: "Quarterly" },
@@ -142,10 +142,11 @@ describe("listing", () => {
   });
 
   it("searches the AMC reference, client, system and service", async () => {
-    expect((await list({ search: `AMC-${cctv.padStart(4, "0")}` })).body.data.total).toBe(5);
-    // A bare number names the contract, and also matches service codes such as "Q2".
-    const byNumber = (await list({ search: cctv, pageSize: 200 })).body.data.items.map((item: { contract: { id: string } }) => item.contract.id);
-    expect(byNumber.filter((id: string) => id === cctv)).toHaveLength(5);
+    const reference = await referenceOf(cctv);
+    expect((await list({ search: reference })).body.data.total).toBe(5);
+    // The stored reference is matched as text, without regard to case, in part as well as in full.
+    const byPart = (await list({ search: reference.slice(-9).toLowerCase(), pageSize: 200 })).body.data.items.map((item: { contract: { id: string } }) => item.contract.id);
+    expect(byPart.filter((id: string) => id === cctv)).toHaveLength(5);
     expect((await list({ search: "hotel two" })).body.data.total).toBe(5);
     expect((await list({ search: "pumps" })).body.data.total).toBe(3);
     expect((await list({ search: "fire alarm" })).body.data.total).toBe(4);
@@ -327,7 +328,9 @@ describe("exports", () => {
     for (let index = 1; index <= 8; index += 1) {
       references.push(String(sheet.getRow(HEADER_ROW + index).getCell(2).value));
     }
-    expect(references.filter((value) => value.startsWith("AMC-"))).toHaveLength(8);
+    // Each row carries its contract's stored AMC Reference Number.
+    const stored = new Set((await pool.query<{ amc_reference: string }>("SELECT amc_reference FROM amc_contracts")).rows.map((row) => row.amc_reference));
+    expect(references.filter((value) => stored.has(value))).toHaveLength(8);
   });
 
   it("exports the same filters to PDF", async () => {

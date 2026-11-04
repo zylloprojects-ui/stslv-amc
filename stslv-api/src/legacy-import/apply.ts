@@ -1,5 +1,7 @@
 import type { Pool, PoolClient } from "pg";
 import { logActivity } from "../shared/activity-log";
+import { isUniqueViolation } from "../shared/errors";
+import { AMC_REFERENCE_UNIQUE_INDEX, checkAmcReference } from "../modules/amc/amc-reference.rules";
 import type { ImportConfig } from "./config";
 import { readSnapshot, type DatabaseSnapshot } from "./database";
 import { loadSource, planRows, stagedRow, type SourceFile, type StagedRow } from "./dry-run";
@@ -64,6 +66,51 @@ function required<T>(value: T | null | undefined, what: string, row: PlanRow<unk
   }
 
   return value;
+}
+
+/** Whether the database stores the AMC Reference Number (migration 0105), read on the import's own connection. */
+async function hasReferenceColumn(client: PoolClient): Promise<boolean> {
+  const result = await client.query<{ present: boolean }>(
+    `SELECT EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = 'amc_contracts_all' AND column_name = 'amc_reference') AS present`
+  );
+
+  return result.rows[0]?.present === true;
+}
+
+/**
+ * Every importable contract must carry a valid AMC Reference Number from the workbook's "AMC Reference" column,
+ * each used once. None is ever generated: without them the import stops before writing anything.
+ */
+function assertContractReferences(contracts: PlanRow<ContractProposal>[]): void {
+  const problems: string[] = [];
+  const seen = new Map<string, number>();
+
+  for (const row of contracts) {
+    const checked = checkAmcReference(row.proposed.amcReference);
+
+    if (!checked.ok) {
+      problems.push(`row ${row.source.row}: ${row.proposed.amcReference === null ? "no AMC Reference Number" : checked.message}`);
+      continue;
+    }
+
+    const key = checked.value.toLowerCase();
+    const first = seen.get(key);
+    if (first !== undefined) {
+      problems.push(`row ${row.source.row}: AMC Reference Number "${checked.value}" is also on row ${first}`);
+    } else {
+      seen.set(key, row.source.row);
+    }
+  }
+
+  if (problems.length > 0) {
+    const shown = problems.slice(0, 10).join("; ");
+    const more = problems.length > 10 ? `; and ${problems.length - 10} more` : "";
+
+    throw new Error(
+      `AMC contracts cannot be imported without a unique AMC Reference Number for each (add an "AMC Reference" column to the contract register): ${shown}${more}. Nothing was imported.`
+    );
+  }
 }
 
 interface Links {
@@ -153,6 +200,12 @@ export async function applyImport(config: ImportConfig, pool: Pool, options: App
       return result;
     }
 
+    // Migration 0105: every contract has a typed AMC Reference Number, never generated. Checked before anything is written.
+    const storedReference = await hasReferenceColumn(client);
+    if (storedReference) {
+      assertContractReferences(pending.filter(({ row }) => row.kind === "AMC_CONTRACT" && row.disposition === "IMPORTABLE").map(({ row }) => row as PlanRow<ContractProposal>));
+    }
+
     const batch = await client.query<{ id: string }>(
       "INSERT INTO legacy_import_batches (label, cutover_date, source_files, created_by) VALUES ($1, $2, $3::jsonb, $4) RETURNING id",
       [options.label ?? "Historical Excel import", plan.asOf, JSON.stringify(files.map((file) => ({ name: file.file, sheet: file.sheet, sha256: file.sha256 }))), createdBy]
@@ -212,11 +265,12 @@ export async function applyImport(config: ImportConfig, pool: Pool, options: App
       }
 
       const proposed = row.proposed as ContractProposal;
+      const reference = storedReference ? (checkAmcReference(proposed.amcReference) as { ok: true; value: string }).value : null;
       const created = await client.query<{ id: string }>(
         `INSERT INTO amc_contracts
            (client_id, responsible_engineer, valid_from, valid_to, system_description, contract_value, final_credit,
-            maintenance_frequency, default_visit_amount, status, schedule_cutover_date, created_by, updated_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'DRAFT', $10, $11, $11)
+            maintenance_frequency, default_visit_amount, status, schedule_cutover_date, created_by, updated_by${storedReference ? ", amc_reference" : ""})
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'DRAFT', $10, $11, $11${storedReference ? ", $12" : ""})
          RETURNING id`,
         [
           await clientIdOf(proposed.clientRaw, row),
@@ -230,8 +284,14 @@ export async function applyImport(config: ImportConfig, pool: Pool, options: App
           proposed.defaultVisitAmount,
           plan.asOf,
           createdBy,
+          ...(storedReference ? [reference] : []),
         ]
-      );
+      ).catch((error: unknown) => {
+        if (isUniqueViolation(error, AMC_REFERENCE_UNIQUE_INDEX)) {
+          throw new Error(`AMC Reference Number "${reference}" (row ${row.source.row}) already exists in the database. Nothing was imported.`);
+        }
+        throw error;
+      });
       const id = (created.rows[0] as { id: string }).id;
 
       contractIds.set(row.source.row, id);

@@ -33,8 +33,28 @@ export async function renewalEngineer(name = "Renewal Test Engineer"): Promise<s
   return (result.rows[0] as { id: string }).id;
 }
 
+let referenceCount = 0;
+
+/** A unique AMC Reference Number for a test contract (migration 0105 makes it required and unique for ever). */
+export function testReference(prefix = "TEST"): string {
+  referenceCount += 1;
+
+  // Fixed width, so a search for one reference never matches another as a substring.
+  return `${prefix}-${process.pid}-${Date.now().toString(36)}-${String(referenceCount).padStart(4, "0")}`;
+}
+
+/** The stored AMC Reference Number of a contract (Recycle Bin included). */
+export async function referenceOf(contractId: string | number): Promise<string> {
+  const result = await pool.query<{ amc_reference: string }>("SELECT amc_reference FROM amc_contracts_all WHERE id = $1", [String(contractId)]);
+  const row = result.rows[0];
+
+  if (!row) throw new Error(`No contract ${contractId}.`);
+  return row.amc_reference;
+}
+
 export function contractBody(clientId: string, overrides: Record<string, unknown> = {}) {
   return {
+    amcReference: testReference(),
     clientId,
     responsibleEngineer: "Test Engineer",
     validFrom: "2027-01-01",

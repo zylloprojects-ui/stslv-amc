@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../../../lib/api'
 import { queryString } from '../amcApi'
 import { formatDate } from '../amcFormat'
-import { amcReference, RENEWAL_WARNING_DAYS, type ExpiringContracts } from './calendarTypes'
+import { RENEWAL_WARNING_DAYS, type ExpiringContracts } from './calendarTypes'
 
 // At most this many warnings are read; the panel says when there are more.
 const LIMIT = 100
@@ -52,14 +52,14 @@ export function RenewalWarnings({ clientId }: { clientId: string }) {
         {items.map((item) => (
           <li key={item.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 py-1.5 text-sm">
             <span className="min-w-0 text-amber-950">
-              <strong className="font-semibold">{amcReference(item.id)}</strong> · {item.client.name} — {item.systemDescription}
+              <strong className="font-semibold">{item.reference}</strong> · {item.client.name} — {item.systemDescription}
               <span className={item.daysLeft < 0 ? 'block text-red-800' : 'block text-amber-900'}>
                 Valid to {formatDate(item.validTo)} · {when(item.daysLeft)}
               </span>
             </span>
             <Link
               to={`/amc/contracts/${item.id}`}
-              aria-label={`Open contract ${amcReference(item.id)}`}
+              aria-label={`Open contract ${item.reference}`}
               className="shrink-0 font-semibold text-[#0b3b66] underline-offset-2 hover:underline"
             >
               Open contract

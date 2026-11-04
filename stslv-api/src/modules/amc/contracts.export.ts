@@ -5,7 +5,6 @@ import type { AuthContext } from "../auth/access";
 import type { ContractStatus } from "./amc.constants";
 import type { ContractColumn, ExportContractsQuery } from "./amc.schemas";
 import { listContracts, type Contract } from "./contracts.service";
-import { amcReference } from "./service-status.service";
 
 // The AMC contract register as a report: the contracts the page lists for the
 // same filters, in the same order. Every amount is as stored; nothing is calculated here.
@@ -53,7 +52,7 @@ const HIDDEN_KEYS: Record<ContractColumn, string[]> = {
 function toRow(contract: Contract, index: number, labels: Map<string, string>): ReportRow {
   return {
     number: index + 1,
-    reference: amcReference(contract.id),
+    reference: contract.amcReference,
     client: contract.client.name,
     system: contract.systemDescription,
     frequency: labels.get(contract.maintenanceFrequency) ?? contract.maintenanceFrequency,

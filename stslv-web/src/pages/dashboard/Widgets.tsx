@@ -5,7 +5,6 @@ import { TABLE } from '../../components/table'
 import { cx, formatCount } from '../../lib/format'
 import { formatDate, monthLabel } from '../amc/amcFormat'
 import { ContractStatusPill } from '../amc/components'
-import { amcReference } from '../amc/calendar/calendarTypes'
 import { CONTRACT_STATUS_LABELS } from '../amc/types'
 import type { OperationsDashboard, PaymentTrendMonth, WorkloadMonth } from './operationsTypes'
 
@@ -277,7 +276,7 @@ export function ExpiringContracts({ expiring }: { expiring: NonNullable<Operatio
               <tr key={row.id} className={TABLE.row}>
                 <td className={TABLE.td}>
                   <Link to={`/amc/contracts/${row.id}`} className="font-medium text-[#1479BD] hover:underline">
-                    {amcReference(row.id)}
+                    {row.reference}
                   </Link>
                 </td>
                 <td className={cx(TABLE.td, TABLE.text)}>{row.client.name}</td>

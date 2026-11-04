@@ -40,11 +40,13 @@ export interface ScheduleItem {
 
 export interface ExpiringRow {
   id: string
+  /** The contract's AMC Reference Number. */
+  reference: string
   client: { id: string; name: string }
   systemDescription: string
   validTo: string
   daysLeft: number
-  renewal: { id: string; status: ContractStatus } | null
+  renewal: { id: string; reference: string; status: ContractStatus } | null
 }
 
 export interface OperationsDashboard {

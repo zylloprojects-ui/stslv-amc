@@ -5,6 +5,7 @@ import { conflict, notFound } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import type { ContractStatus, VisitStatus } from "../amc/amc.constants";
+import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import type { ListServicesSalesQuery, SalesStatus, SaveQuotationInput, ServiceStatus } from "./services-sales.schemas";
 
 // The Services Sales page: one row per scheduled maintenance visit (amc_visits),
@@ -16,10 +17,6 @@ import type { ListServicesSalesQuery, SalesStatus, SaveQuotationInput, ServiceSt
 // 0070 (sales engineer and system type links), 0075 (frequency master) and
 // 0076 (service codes), so this module reads those without checking.
 
-/** "AMC-0007" for contract 7: derived from the id, never stored. The same reference Service Status shows. PROVISIONAL until the client confirms a contract numbering rule. */
-export function amcReference(contractId: string): string {
-  return `AMC-${contractId.padStart(4, "0")}`;
-}
 
 // The visits on the page, the same as on Service Status: cancelled and
 // historical visits are left out, and so is outstanding work of a cancelled
@@ -44,8 +41,9 @@ const FROM = `
   LEFT JOIN maintenance_frequencies mf ON mf.code = c.maintenance_frequency
   LEFT JOIN users qu ON qu.id = v.quotation_updated_by`;
 
-const SELECT = `
-  SELECT v.id, c.id AS contract_id, c.status AS contract_status,
+/** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
+const selectSql = (storedReference: boolean) => `
+  SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
@@ -61,6 +59,7 @@ const SELECT = `
 interface SalesRow {
   id: string;
   contract_id: string;
+  contract_reference: string;
   contract_status: ContractStatus;
   client_id: string;
   client_name: string;
@@ -120,7 +119,7 @@ export interface ServicesSalesItem {
 function toItem(row: SalesRow): ServicesSalesItem {
   return {
     id: row.id,
-    reference: amcReference(row.contract_id),
+    reference: row.contract_reference,
     contract: { id: row.contract_id, status: row.contract_status },
     client: { id: row.client_id, name: row.client_name },
     system: { description: row.system_description, typeId: row.system_type_id, typeName: row.system_type_name },
@@ -145,11 +144,8 @@ function toItem(row: SalesRow): ServicesSalesItem {
 
 export type ServicesSalesFilters = Omit<ListServicesSalesQuery, "page" | "pageSize">;
 
-/** "AMC-0007", "amc7" or "7" names contract 7. */
-const REFERENCE_PATTERN = /^(?:amc-?)?0*(\d{1,15})$/i;
-
 /** One WHERE clause for the rows, the cards and the export, so the three always agree. */
-function filterSql(query: ServicesSalesFilters) {
+function filterSql(query: ServicesSalesFilters, storedReference: boolean) {
   const conditions: string[] = [IN_SCOPE];
   const params: unknown[] = [];
   const add = (value: unknown) => {
@@ -174,6 +170,7 @@ function filterSql(query: ServicesSalesFilters) {
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
     const matches = [
+      `${referenceSql("c", storedReference)} ILIKE ${p}`,
       `cl.name ILIKE ${p}`,
       `c.system_description ILIKE ${p}`,
       `st.name ILIKE ${p}`,
@@ -181,9 +178,7 @@ function filterSql(query: ServicesSalesFilters) {
       `v.service_report_no ILIKE ${p}`,
       `v.quotation_no ILIKE ${p}`,
     ];
-    const reference = REFERENCE_PATTERN.exec(query.search);
 
-    if (reference) matches.push(`c.id = ${add(reference[1])}::bigint`);
     conditions.push(`(${matches.join(" OR ")})`);
   }
 
@@ -224,10 +219,11 @@ async function kpis(where: string, params: unknown[]): Promise<ServicesSalesKpis
 }
 
 export async function listServicesSales(query: ListServicesSalesQuery) {
-  const { where, params } = filterSql(query);
+  const storedReference = await hasStoredReference();
+  const { where, params } = filterSql(query, storedReference);
   const figures = await kpis(where, params);
   const rows = await pool.query<SalesRow>(
-    `${SELECT} ${FROM} ${where} ${ORDER}
+    `${selectSql(storedReference)} ${FROM} ${where} ${ORDER}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
@@ -241,12 +237,13 @@ export async function listServicesSales(query: ListServicesSalesQuery) {
  * the export cannot hold that many.
  */
 export async function listAllServicesSales(filters: ServicesSalesFilters, checkSize: (count: number) => void) {
-  const { where, params } = filterSql(filters);
+  const storedReference = await hasStoredReference();
+  const { where, params } = filterSql(filters, storedReference);
   const figures = await kpis(where, params);
 
   checkSize(figures.total);
 
-  const rows = await pool.query<SalesRow>(`${SELECT} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<SalesRow>(`${selectSql(storedReference)} ${FROM} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map(toItem), kpis: figures };
 }
@@ -279,7 +276,7 @@ export async function getServicesSalesOptions() {
 }
 
 async function findSalesRow(db: Queryable, id: string): Promise<SalesRow> {
-  const result = await db.query<SalesRow>(`${SELECT} ${FROM} WHERE v.id = $1`, [id]);
+  const result = await db.query<SalesRow>(`${selectSql(await hasStoredReference())} ${FROM} WHERE v.id = $1`, [id]);
   const row = result.rows[0];
 
   if (!row) throw notFound("AMC visit not found.");
@@ -338,7 +335,7 @@ export async function saveQuotation(auth: AuthContext, id: string, input: SaveQu
       description: `Quotation number of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
         input.quotationNo ? `set to ${input.quotationNo}` : "cleared"
       }.`,
-      metadata: { changes, reference: amcReference(row.contract_id) },
+      metadata: { changes, reference: row.contract_reference },
     });
 
     return toItem(await findSalesRow(client, id));

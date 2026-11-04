@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { frequencyLabel, visitNumberLabel } from '../pages/amc/types'
-import { amcApi, makeContract } from './amc-helpers'
+import { amcApi, makeContract, typeReference } from './amc-helpers'
 import { ADMIN, ok, renderApp, type MockRequest } from './helpers'
 
 // The AMC contract form with the maintenance frequency master (migration 0076):
@@ -37,6 +37,7 @@ const frequencyChoices = (dialog: HTMLElement) =>
     .map((item) => item.getAttribute('value'))
 
 async function fillRequired(dialog: HTMLElement) {
+  await typeReference(dialog)
   await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '11')
   await userEvent.type(within(dialog).getByLabelText(/System/), 'CCTV')
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-15')

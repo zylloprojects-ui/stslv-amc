@@ -9,8 +9,8 @@ import { afterPageSplit, ADMIN, fail, ok, renderApp } from './helpers'
 // AMC Renewal. The API is mocked: every record here is invented, and each test
 // checks that the page shows what the API sent and calls the contract routes.
 
-const SOURCE = makeContract({ id: '41', validFrom: '2025-11-06', validTo: '2026-11-05' })
-const DRAFT_RENEWAL = makeContract({ id: '77', status: 'DRAFT', validFrom: '2026-12-12', validTo: '2027-12-11', schedule: { ...SOURCE.schedule, visitCount: 0, openCount: 0, completedCount: 0 } })
+const SOURCE = makeContract({ id: '41', amcReference: 'AMC-0041', validFrom: '2025-11-06', validTo: '2026-11-05' })
+const DRAFT_RENEWAL = makeContract({ id: '77', amcReference: 'AMC-0077', status: 'DRAFT', validFrom: '2026-12-12', validTo: '2027-12-11', schedule: { ...SOURCE.schedule, visitCount: 0, openCount: 0, completedCount: 0 } })
 
 function item(overrides: Partial<RenewalQueueItem>): RenewalQueueItem {
   return {
@@ -57,14 +57,14 @@ const QUEUE: RenewalQueue = {
 const HISTORY: RenewalHistory = {
   items: [
     {
-      renewal: { id: '79', client: { id: '10', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', validFrom: '2026-12-01', validTo: '2027-11-30', status: 'CANCELLED', createdAt: '2026-10-27T20:30:00.000Z' },
+      renewal: { id: '79', reference: 'AMC-0079', client: { id: '10', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', validFrom: '2026-12-01', validTo: '2027-11-30', status: 'CANCELLED', createdAt: '2026-10-27T20:30:00.000Z' },
       createdOn: '2026-10-28',
-      source: { id: '45', validFrom: '2025-12-01', validTo: '2026-11-30', status: 'ACTIVE' },
+      source: { id: '45', reference: 'AMC-0045', validFrom: '2025-12-01', validTo: '2026-11-30', status: 'ACTIVE' },
     },
     {
-      renewal: { id: '77', client: { id: '10', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', validFrom: '2026-12-12', validTo: '2027-12-11', status: 'DRAFT', createdAt: '2026-10-20T08:00:00.000Z' },
+      renewal: { id: '77', reference: 'AMC-0077', client: { id: '10', name: 'Harbour Hotel' }, systemDescription: 'FIRE ALARM', validFrom: '2026-12-12', validTo: '2027-12-11', status: 'DRAFT', createdAt: '2026-10-20T08:00:00.000Z' },
       createdOn: '2026-10-20',
-      source: { id: '43', validFrom: '2025-12-12', validTo: '2026-12-11', status: 'ACTIVE' },
+      source: { id: '43', reference: 'AMC-0043', validFrom: '2025-12-12', validTo: '2026-12-11', status: 'ACTIVE' },
     },
   ],
   total: 2,
@@ -89,7 +89,7 @@ function renewalApi(user: SessionUser = ADMIN, queue: () => ReturnType<typeof ok
       if (request.path === '/amc/reports/renewals') return ok(HISTORY)
       if (request.path === '/masters/sales-engineers/options') return ok([{ id: '7', name: 'Sara Sales', employeeNo: null }])
       if (request.path === '/masters/maintenance-frequencies/options') return ok([])
-      if (request.method === 'POST' && request.path === '/amc/contracts/41/renewals') return ok({ ...DRAFT_RENEWAL, id: '80', scheduleChange: null }, 201)
+      if (request.method === 'POST' && request.path === '/amc/contracts/41/renewals') return ok({ ...DRAFT_RENEWAL, id: '80', amcReference: (request.body as { amcReference: string }).amcReference, scheduleChange: null }, 201)
       return undefined
     },
   })
@@ -186,6 +186,7 @@ describe('AMC Renewal page', () => {
     expect(within(dialog).queryByLabelText(/^Status/)).not.toBeInTheDocument()
     expect(within(dialog).getByText(/Saved as a draft, under client approval/)).toBeInTheDocument()
 
+    await userEvent.type(within(dialog).getByLabelText(/AMC Reference Number/), 'AMC-2026-080')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2026-11-06')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-11-05')
     // Every renewal names an active sales engineer.
@@ -193,8 +194,8 @@ describe('AMC Renewal page', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/41/renewals')).toHaveLength(1))
-    expect(api.find('POST', '/amc/contracts/41/renewals')[0]?.body).toMatchObject({ clientId: '10', validFrom: '2026-11-06', validTo: '2027-11-05', status: 'DRAFT', salesEngineerId: '7' })
-    expect(await screen.findByText(/Renewal AMC-0080 created for AMC-0041/)).toBeInTheDocument()
+    expect(api.find('POST', '/amc/contracts/41/renewals')[0]?.body).toMatchObject({ amcReference: 'AMC-2026-080', clientId: '10', validFrom: '2026-11-06', validTo: '2027-11-05', status: 'DRAFT', salesEngineerId: '7' })
+    expect(await screen.findByText(/Renewal AMC-2026-080 created for AMC-0041/)).toBeInTheDocument()
   })
 
   it('approves a renewal by activating the renewal contract, never the source', async () => {

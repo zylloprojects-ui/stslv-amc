@@ -69,6 +69,8 @@ export const INVOICE_ELIGIBILITY_LABELS: Record<InvoiceEligibility, string> = {
 
 export interface Contract {
   id: string
+  /** The AMC Reference Number typed when the contract was created (migration 0105). Read-only afterwards. */
+  amcReference: string
   client: { id: string; name: string; isActive: boolean }
   responsibleEngineer: string | null
   validFrom: string
@@ -158,7 +160,8 @@ export interface SchedulePreview {
 /** A visit as the execution screens receive it: no amount and no invoicing state. */
 export interface ExecutionVisit {
   id: string
-  contract: { id: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: MaintenanceFrequency }
+  /** reference: the contract's AMC Reference Number. */
+  contract: { id: string; reference: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: MaintenanceFrequency }
   client: { id: string; name: string }
   sequenceNo: number
   /** Taken when the visit was generated (migration 0076); null on older visits. */

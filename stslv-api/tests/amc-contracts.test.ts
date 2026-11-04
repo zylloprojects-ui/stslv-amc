@@ -75,8 +75,9 @@ describe("create contract", () => {
     ]);
   });
 
-  it("requires only the client, validity, system, contract value and frequency", async () => {
+  it("requires only the AMC Reference Number, client, validity, system, contract value and frequency", async () => {
     const response = await api().post("/api/amc/contracts").set(admin.headers).send({
+      amcReference: "MIN-FIELDS-001",
       clientId: hotelOne,
       validFrom: "2027-01-01",
       validTo: "2027-12-31",
@@ -87,6 +88,7 @@ describe("create contract", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.data).toMatchObject({
+      amcReference: "MIN-FIELDS-001",
       responsibleEngineer: null,
       description: null,
       finalCredit: null,
@@ -186,6 +188,7 @@ describe("validation", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.details.map((detail: { field: string }) => detail.field).sort()).toEqual([
+      "amcReference",
       "contractValue",
       "maintenanceFrequency",
       "systemDescription",
@@ -229,11 +232,12 @@ describe("validation", () => {
   });
 
   it("is also enforced by the database", async () => {
+    let n = 0;
     const insert = (values: string) =>
       pool.query(
-        `INSERT INTO amc_contracts (client_id, valid_from, valid_to, system_description, contract_value, maintenance_frequency)
-         VALUES ($1, ${values})`,
-        [hotelOne]
+        `INSERT INTO amc_contracts (client_id, valid_from, valid_to, system_description, contract_value, maintenance_frequency, amc_reference)
+         VALUES ($1, ${values}, $2)`,
+        [hotelOne, `DB-CHECK-${(n += 1)}`]
       );
 
     await expect(insert("'2027-06-01', '2027-05-31', 'FIRE', 100, 'QUARTERLY'")).rejects.toMatchObject({ code: "23514" });
@@ -243,7 +247,7 @@ describe("validation", () => {
     await expect(insert("'2027-01-01', '2027-12-31', '  ', 100, 'QUARTERLY'")).rejects.toMatchObject({ code: "23514" });
     await expect(
       pool.query(
-        "INSERT INTO amc_contracts (client_id, valid_from, valid_to, system_description, contract_value, maintenance_frequency) VALUES (999999, '2027-01-01', '2027-12-31', 'FIRE', 100, 'QUARTERLY')"
+        "INSERT INTO amc_contracts (client_id, valid_from, valid_to, system_description, contract_value, maintenance_frequency, amc_reference) VALUES (999999, '2027-01-01', '2027-12-31', 'FIRE', 100, 'QUARTERLY', 'DB-CHECK-FK')"
       )
     ).rejects.toMatchObject({ code: "23503" });
   });

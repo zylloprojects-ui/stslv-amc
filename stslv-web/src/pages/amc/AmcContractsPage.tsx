@@ -13,7 +13,6 @@ import type { Paged } from '../../lib/types'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import type { DashboardSummary } from '../dashboard/metrics'
 import { queryString } from './amcApi'
-import { amcReference } from './calendar/calendarTypes'
 import { formatDate, formatMoney } from './amcFormat'
 import { ContractStatusPill, Filter, FilterPanel, Pager, Pill } from './components'
 import { ContractFormModal } from './ContractFormModal'
@@ -358,7 +357,7 @@ export function AmcContractsPage() {
                 type="search"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                placeholder="Client, system or engineer"
+                placeholder="AMC reference, client, system or engineer"
                 className={className}
               />
             )}
@@ -565,7 +564,7 @@ export function AmcContractsPage() {
                       {show('reference') && (
                         <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
                           <Link to={`/amc/contracts/${contract.id}`} className="hover:underline">
-                            {amcReference(contract.id)}
+                            {contract.amcReference}
                           </Link>
                         </td>
                       )}
