@@ -5,8 +5,8 @@ import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { AppError, conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import type { Action, Module } from "../../shared/permissions";
-import { S3ObjectStorage } from "../../shared/object-storage";
-import { LocalDiskStorage, StoredFileNotFoundError, type FileStorage } from "../../shared/storage";
+import { StoredFileNotFoundError, type FileStorage } from "../../shared/storage";
+import { createFileStorage } from "../../shared/storage-factory";
 import type { AuthContext } from "../auth/access";
 import type { EntityType, UploadInput } from "./attachments.schemas";
 
@@ -104,7 +104,7 @@ export function storage(): FileStorage {
     throw new AppError(503, "STORAGE_UNAVAILABLE", "File storage is not configured on this server, so attachments cannot be uploaded or opened yet.");
   }
 
-  configuredStorage ??= config.driver === "local" ? new LocalDiskStorage(config.dir) : new S3ObjectStorage(config);
+  configuredStorage ??= createFileStorage(config);
 
   return configuredStorage;
 }
