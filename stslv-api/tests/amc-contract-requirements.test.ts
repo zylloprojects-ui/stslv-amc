@@ -269,16 +269,19 @@ describe("contract document", () => {
 
     const response = await post(await newContractBody(clientId));
 
-    expect(response.status).toBe(500);
+    // An unreachable store is a 503 with a plain message, never the store's own error text.
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("STORAGE_ERROR");
+    expect(response.body.error.message).toContain("no contract was created");
     expect(JSON.stringify(response.body)).not.toContain("disk full");
     expect(await contractCount()).toBe(before);
   });
 
   it("refuses with a clear message, and creates nothing, on a server without file storage (as production today)", async () => {
-    const settings = env as { attachmentsDir: string | null };
-    const configured = settings.attachmentsDir;
+    const settings = env as { fileStorage: typeof env.fileStorage };
+    const configured = settings.fileStorage;
     setStorageForTests(null);
-    settings.attachmentsDir = null;
+    settings.fileStorage = null;
 
     try {
       const before = { contracts: await contractCount(), attachments: await attachmentCount() };
@@ -293,7 +296,7 @@ describe("contract document", () => {
       expect(response.body.error.message).toContain("ATTACHMENTS_DIR");
       expect({ contracts: await contractCount(), attachments: await attachmentCount() }).toEqual(before);
     } finally {
-      settings.attachmentsDir = configured;
+      settings.fileStorage = configured;
       setStorageForTests(disk);
     }
     expect((await api().get("/api/attachments/limits").query({ entityType: "amc_contracts" }).set(admin.headers)).body.data.storageAvailable).toBe(true);

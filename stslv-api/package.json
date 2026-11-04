@@ -14,13 +14,15 @@
     "admin:create": "tsx src/scripts/create-admin.ts",
     "legacy-import:dry-run": "tsx src/scripts/legacy-import.ts",
     "legacy-import:apply": "tsx src/scripts/legacy-import-apply.ts",
-    "export:sample": "tsx src/scripts/export-sample.ts"
+    "export:sample": "tsx src/scripts/export-sample.ts",
+    "storage:check": "tsx src/scripts/storage-check.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1161.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^18.0.4",

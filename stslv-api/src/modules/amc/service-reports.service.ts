@@ -6,7 +6,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { AppError, conflict, notFound, validationError } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
 import type { AuthContext } from "../auth/access";
-import { cleanFileName, recogniseFile, storage, type FileKind } from "../attachments/attachments.service";
+import { cleanFileName, putStoredFile, readStoredFile, recogniseFile, storage, type FileKind } from "../attachments/attachments.service";
 
 // The Service Report of one scheduled AMC service (visit), migration 0104.
 //
@@ -210,7 +210,7 @@ export async function uploadServiceReport(auth: AuthContext, visitId: string, ra
   const key = `${randomUUID()}.${file.ext}`;
   const sha256 = createHash("sha256").update(data).digest("hex");
 
-  await storage().put(key, data);
+  await putStoredFile(key, data, "no service report was saved");
 
   try {
     return await withTransaction(async (db) => {
@@ -295,15 +295,7 @@ export async function readServiceReport(visitId: string) {
 
   if (!row) throw notFound("This service has no service report.");
 
-  const data = await storage()
-    .get(row.storage_key)
-    .catch(() => {
-      throw new AppError(404, "FILE_MISSING", "The stored file could not be found.");
-    });
-
-  if (createHash("sha256").update(data).digest("hex") !== row.sha256) {
-    throw new AppError(409, "INTEGRITY_FAILED", "The stored file does not match its recorded checksum, so it is not served.");
-  }
+  const data = await readStoredFile(row.storage_key, row.sha256, "The stored file could not be found.");
 
   return { data, mimeType: row.mime_type, fileName: row.original_name };
 }

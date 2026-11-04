@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { pool } from "../../config/database";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
@@ -6,7 +5,7 @@ import { AppError, conflict, notFound } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
-import { storage } from "../attachments/attachments.service";
+import { readStoredFile } from "../attachments/attachments.service";
 import type { ContractStatus, VisitStatus } from "../amc/amc.constants";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import type { ListServicesSalesQuery, SalesStatus, SaveQuotationInput, ServiceStatus } from "./services-sales.schemas";
@@ -411,15 +410,7 @@ export async function readServicesSalesReport(visitId: string) {
 
   if (!row) throw new AppError(404, "SERVICE_REPORT_NOT_FOUND", "No service report has been uploaded for this service.");
 
-  const data = await storage()
-    .get(row.storage_key)
-    .catch(() => {
-      throw new AppError(404, "FILE_MISSING", "The service report file could not be found. Ask for it to be uploaded again on Service Status.");
-    });
-
-  if (createHash("sha256").update(data).digest("hex") !== row.sha256) {
-    throw new AppError(409, "INTEGRITY_FAILED", "The stored file does not match its recorded checksum, so it is not served.");
-  }
+  const data = await readStoredFile(row.storage_key, row.sha256, "The service report file could not be found. Ask for it to be uploaded again on Service Status.");
 
   return { data, mimeType: row.mime_type, fileName: row.original_name };
 }

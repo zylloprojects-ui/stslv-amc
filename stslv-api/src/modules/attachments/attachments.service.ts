@@ -5,7 +5,8 @@ import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { AppError, conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import type { Action, Module } from "../../shared/permissions";
-import { LocalDiskStorage, type FileStorage } from "../../shared/storage";
+import { R2Storage } from "../../shared/r2-storage";
+import { LocalDiskStorage, StoredFileNotFoundError, type FileStorage } from "../../shared/storage";
 import type { AuthContext } from "../auth/access";
 import type { EntityType, UploadInput } from "./attachments.schemas";
 
@@ -91,18 +92,26 @@ export function setStorageForTests(storage: FileStorage | null): void {
   storageOverride = storage;
 }
 
+// One store per process, built on first use from env.fileStorage (an R2 client keeps its connections open).
+let configuredStorage: FileStorage | null = null;
+
 export function storage(): FileStorage {
   if (storageOverride) return storageOverride;
-  if (!env.attachmentsDir) {
+
+  const config = env.fileStorage;
+
+  if (!config) {
     throw new AppError(503, "STORAGE_UNAVAILABLE", "File storage is not configured on this server, so attachments cannot be uploaded or opened yet.");
   }
 
-  return new LocalDiskStorage(env.attachmentsDir);
+  configuredStorage ??= config.driver === "r2" ? new R2Storage(config) : new LocalDiskStorage(config.dir);
+
+  return configuredStorage;
 }
 
-/** Whether this server can store files at all (ATTACHMENTS_DIR, or a test storage). */
+/** Whether this server can store files at all (an R2 bucket, a local folder, or a test storage). */
 export function storageConfigured(): boolean {
-  return storageOverride !== null || env.attachmentsDir !== null;
+  return storageOverride !== null || env.fileStorage !== null;
 }
 
 /** The refusal for a new AMC contract on a server that cannot store its mandatory contract document. */
@@ -110,8 +119,48 @@ export function contractDocumentStorageUnavailable(): AppError {
   return new AppError(
     503,
     "STORAGE_UNAVAILABLE",
-    "No contract was created: a new AMC contract needs its contract document, and this server has no file storage configured (ATTACHMENTS_DIR). Ask the system administrator to configure durable document storage."
+    "No contract was created: a new AMC contract needs its contract document, and this server has no document storage configured (Cloudflare R2 or ATTACHMENTS_DIR). Ask the system administrator to configure durable document storage."
   );
+}
+
+/**
+ * Writes a file to the store. A store that cannot be reached (R2 down, a wrong key, a full disk) becomes a 503
+ * with a plain message; the cause is logged on the server without the file or any credential.
+ */
+export async function putStoredFile(key: string, data: Buffer, nothingSaved: string): Promise<void> {
+  try {
+    await storage().put(key, data);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    console.error(`[storage] could not store file ${key}: ${error instanceof Error ? error.name : "unknown error"}`);
+    throw new AppError(503, "STORAGE_ERROR", `The document could not be saved to file storage, so ${nothingSaved}. Try again in a moment; if it keeps failing, ask the system administrator to check document storage.`);
+  }
+}
+
+/**
+ * Reads a recorded file from the store and checks it against the SHA-256 recorded at upload. A file the store does
+ * not have is a 404 (missingMessage); a store that cannot be reached is a 503, so an outage is never reported as a
+ * lost file.
+ */
+export async function readStoredFile(key: string, sha256: string, missingMessage: string): Promise<Buffer> {
+  let data: Buffer;
+
+  try {
+    data = await storage().get(key);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    if (error instanceof StoredFileNotFoundError) {
+      throw new AppError(404, "FILE_MISSING", missingMessage);
+    }
+    console.error(`[storage] could not read file ${key}: ${error instanceof Error ? error.name : "unknown error"}`);
+    throw new AppError(503, "STORAGE_ERROR", "File storage could not be reached, so the document cannot be opened right now. Try again in a moment.");
+  }
+
+  if (createHash("sha256").update(data).digest("hex") !== sha256) {
+    throw new AppError(409, "INTEGRITY_FAILED", "The stored file does not match its recorded checksum, so it is not served.");
+  }
+
+  return data;
 }
 
 export function canAccess(auth: AuthContext, entityType: EntityType, action: Action): boolean {
@@ -227,7 +276,7 @@ export interface Attachment {
   integrity?: IntegrityState;
 }
 
-/** VERIFIED: the file matches its checksum. FAILED: it does not. MISSING: no stored file. UNAVAILABLE: no storage to check on this server. */
+/** VERIFIED: the file matches its checksum. FAILED: it does not. MISSING: no stored file. UNAVAILABLE: no storage on this server, or it could not be reached. */
 export type IntegrityState = "VERIFIED" | "FAILED" | "MISSING" | "UNAVAILABLE";
 
 const SELECT = `
@@ -303,8 +352,8 @@ async function checkIntegrity(row: Row): Promise<IntegrityState> {
     const data = await files.get(row.storage_key);
 
     return createHash("sha256").update(data).digest("hex") === row.sha256 ? "VERIFIED" : "FAILED";
-  } catch {
-    return "MISSING";
+  } catch (error) {
+    return error instanceof StoredFileNotFoundError ? "MISSING" : "UNAVAILABLE";
   }
 }
 
@@ -363,7 +412,7 @@ async function storeFile(data: Buffer, fileName: string, kinds: FileKind[]) {
   const key = `${randomUUID()}.${type.ext}`;
   const sha256 = createHash("sha256").update(data).digest("hex");
 
-  await storage().put(key, data);
+  await putStoredFile(key, data, "nothing was saved");
 
   return { key, sha256, mime: type.mime };
 }
@@ -473,7 +522,7 @@ export async function storePreparedDocument(document: PreparedDocument): Promise
 
   const key = `${randomUUID()}.${document.ext}`;
 
-  await storage().put(key, document.data);
+  await putStoredFile(key, document.data, "no contract was created");
 
   return { key, sha256: createHash("sha256").update(document.data).digest("hex"), mime: document.mime, originalName: document.originalName, sizeBytes: document.data.length };
 }
@@ -540,15 +589,7 @@ export async function readAttachment(auth: AuthContext, id: string) {
 
   assertCan(auth, row.entity_type, "VIEW");
 
-  const data = await storage()
-    .get(row.storage_key)
-    .catch(() => {
-      throw new AppError(404, "FILE_MISSING", "The stored file could not be found.");
-    });
-
-  if (createHash("sha256").update(data).digest("hex") !== row.sha256) {
-    throw new AppError(409, "INTEGRITY_FAILED", "The stored file does not match its recorded checksum, so it is not served.");
-  }
+  const data = await readStoredFile(row.storage_key, row.sha256, "The stored file could not be found.");
 
   return { data, mimeType: row.mime_type, fileName: row.original_name };
 }

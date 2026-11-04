@@ -58,3 +58,14 @@ services:
       # Render's load balancer is the one proxy in front of the API.
       - key: TRUST_PROXY
         value: "1"
+      # Document storage: a private Cloudflare R2 bucket (see docs/DOCUMENT_STORAGE.md).
+      # All four are entered in the Render dashboard; set all of them or none.
+      # Without them the API runs, but contracts cannot be added (no place for the contract document).
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
