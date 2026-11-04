@@ -215,6 +215,23 @@ describe('Master AMC Status page', () => {
     expect(await screen.findByText('AMC-0007')).toBeInTheDocument()
   })
 
+  it('shows one Hide Columns control, beside Apply and Reset in the Filters section', async () => {
+    statusApi(VIEWER, [GREEN])
+    renderPage()
+    await screen.findByText('AMC-0010')
+
+    const buttons = screen.getAllByRole('button', { name: /Hide Columns/ })
+    expect(buttons).toHaveLength(1)
+    const filters = within(screen.getByRole('form', { name: 'Filters' }))
+    expect(filters.getByRole('button', { name: 'Hide Columns · 10 of 10 shown' })).toBe(buttons[0])
+    expect(filters.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
+    expect(filters.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
+
+    // Opening the column chooser does not submit the filters.
+    await userEvent.click(buttons[0])
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+  })
+
   it('hides columns, keeps AMC Reference and View, remembers the choice and resets to default', async () => {
     statusApi(VIEWER, [GREEN])
     const view = renderPage()
