@@ -11,7 +11,10 @@ import type { AddressInfo } from "node:net";
 export class FakeS3 {
   readonly objects = new Map<string, Buffer>();
   readonly requests: { method: string; key: string }[] = [];
-  mode: "ok" | "down" | "denied" = "ok";
+  /** "unknown-project": what Supabase's storage host answers for a project reference that does not exist (2026-11-04). */
+  mode: "ok" | "down" | "denied" | "unknown-project" = "ok";
+  /** The header names of every request, in order. */
+  readonly headerNames: string[][] = [];
   private server: Server | null = null;
 
   constructor(
@@ -52,7 +55,9 @@ export class FakeS3 {
     const error = (status: number, code: string, message: string) => ({ status, body: xml(code, message), headers: { "Content-Type": "application/xml" } });
 
     this.requests.push({ method: req.method ?? "", key });
+    this.headerNames.push(Object.keys(req.headers).sort());
 
+    if (this.mode === "unknown-project") return { status: 400, body: "Project not specified.", headers: { "Content-Type": "text/plain;charset=UTF-8" } };
     if (this.mode === "down") return error(500, "InternalError", "We encountered an internal error. Please try again.");
     if (this.mode === "denied") return error(403, "AccessDenied", "Access Denied");
 

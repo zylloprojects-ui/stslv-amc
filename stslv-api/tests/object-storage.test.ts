@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
+import { Readable } from "node:stream";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { describeStorage, resolveStorageConfig, type ObjectStorageConfig } from "../src/config/storage-config";
 import { setStorageForTests } from "../src/modules/attachments/attachments.service";
-import { OBJECT_KEY_PREFIX, S3ObjectStorage } from "../src/shared/object-storage";
+import { createS3Client, describeStorageError, OBJECT_KEY_PREFIX, S3ObjectStorage } from "../src/shared/object-storage";
 import { StoredFileNotFoundError } from "../src/shared/storage";
 import { activeContract, createClient, newContractBody, TEST_PDF, visitsOf, type Session } from "./amc-helpers";
 import { FakeS3 } from "./fake-s3";
@@ -131,6 +133,72 @@ describe("S3ObjectStorage against a Supabase-style S3 endpoint", () => {
     s3.mode = "denied";
     const denied = await store.get(KEY).catch((error: unknown) => error);
     expect(denied).not.toBeInstanceOf(StoredFileNotFoundError);
+  });
+});
+
+describe("Supabase S3 compatibility and error reporting (2026-11-04: a bare \"Error (HTTP 400)\")", () => {
+  const s3 = fakeSupabase();
+  const KEY = "22222222-3333-4444-5555-666666666666.pdf";
+
+  beforeAll(() => s3.start());
+  afterAll(() => s3.stop());
+
+  it("reports Supabase's plain-text answer for an unknown project with its body, not as the SDK's bare Error", async () => {
+    s3.mode = "unknown-project";
+    const error = await new S3ObjectStorage(configFor(s3)).put(KEY, TEST_PDF).catch((caught: unknown) => caught);
+    s3.mode = "ok";
+
+    // What the SDK gives on its own: a plain Error named "Error" (the body is not S3 XML).
+    expect((error as Error).name).toBe("Error");
+    expect(describeStorageError(error)).toBe('non-S3 response (HTTP 400): "Project not specified."');
+  });
+
+  it("reports a real S3 error by its code, status and message", async () => {
+    s3.mode = "denied";
+    const error = await new S3ObjectStorage(configFor(s3)).put(KEY, TEST_PDF).catch((caught: unknown) => caught);
+    s3.mode = "ok";
+
+    expect(describeStorageError(error)).toBe("S3 error AccessDenied (HTTP 403): Access Denied");
+  });
+
+  it("never shows a key, secret, signature, token, address or configured value", () => {
+    const leaky = Object.assign(new Error("x"), {
+      $metadata: { httpStatusCode: 400 },
+      $responseBodyText: `Bad request to https://${REF}.storage.supabase.co/storage/v1/s3/${BUCKET} Credential=${KEY_ID}/20261104/${REGION}/s3 Signature=0123456789abcdef0123456789abcdef secret ${SECRET} token eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9xx\nsecond line`,
+    });
+    const text = describeStorageError(leaky, [KEY_ID, SECRET, REF, BUCKET, REGION]);
+
+    for (const secret of [KEY_ID, SECRET, REF, BUCKET, REGION, "storage.supabase.co", "0123456789abcdef", "eyJhbGci", "second line"]) expect(text).not.toContain(secret);
+    expect(text).toMatch(/^non-S3 response \(HTTP 400\): "Bad request to <url>/);
+    expect(describeStorageError(Object.assign(new Error("getaddrinfo ENOTFOUND host"), { code: "ENOTFOUND" }))).toBe("network error ENOTFOUND");
+  });
+
+  it("sends Supabase a plain SigV4 PUT over https: path-style, signed for the project's region, no checksum or streaming headers", async () => {
+    type Sent = { protocol: string; hostname: string; path: string; method: string; headers: Record<string, string> };
+    const sent: { request?: Sent } = {};
+    const recorder = {
+      handle: async (request: Sent) => {
+        sent.request = request;
+        return { response: { statusCode: 200, headers: {}, body: Readable.from([]) } };
+      },
+    };
+    const config = resolveStorageConfig(supabaseVars({ SUPABASE_S3_REGION: "ap-southeast-1" }), "production", "/app") as ObjectStorageConfig;
+
+    await new S3ObjectStorage(config, createS3Client(config, recorder as never)).put(KEY, TEST_PDF);
+
+    const request = sent.request as Sent;
+    const headers = Object.fromEntries(Object.entries(request.headers).map(([name, value]) => [name.toLowerCase(), value]));
+    expect(request.protocol).toBe("https:");
+    expect(request.hostname).toBe(`${REF}.storage.supabase.co`);
+    expect(request.method).toBe("PUT");
+    expect(request.path).toBe(`/storage/v1/s3/${BUCKET}/${OBJECT_KEY_PREFIX}${KEY}`);
+    expect(headers.authorization).toMatch(new RegExp(`^AWS4-HMAC-SHA256 Credential=${KEY_ID}/[0-9]{8}/ap-southeast-1/s3/aws4_request, SignedHeaders=`));
+    expect(headers["x-amz-content-sha256"]).toBe(createHash("sha256").update(TEST_PDF).digest("hex"));
+    expect(headers["content-length"]).toBe(String(TEST_PDF.length));
+    expect(headers["content-type"]).toBe("application/pdf");
+    // None of the newer SDK defaults that S3-compatible stores may reject.
+    expect(Object.keys(headers).filter((name) => /checksum|decoded-content-length|trailer|^expect$/.test(name))).toEqual([]);
+    expect(headers["content-encoding"] ?? "").not.toContain("aws-chunked");
   });
 });
 

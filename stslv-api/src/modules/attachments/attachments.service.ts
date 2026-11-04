@@ -5,6 +5,7 @@ import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
 import { AppError, conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import type { Action, Module } from "../../shared/permissions";
+import { describeStorageError } from "../../shared/object-storage";
 import { StoredFileNotFoundError, type FileStorage } from "../../shared/storage";
 import { createFileStorage } from "../../shared/storage-factory";
 import type { AuthContext } from "../auth/access";
@@ -123,6 +124,14 @@ export function contractDocumentStorageUnavailable(): AppError {
   );
 }
 
+/** A storage failure for the server log: provider code, HTTP status and a cleaned message, with every configured storage value blanked. */
+function safeStorageError(error: unknown): string {
+  const config = env.fileStorage;
+  const sensitive = config && config.driver !== "local" ? [config.accessKeyId, config.secretAccessKey, config.bucket, config.endpoint, new URL(config.endpoint).host] : [];
+
+  return describeStorageError(error, sensitive);
+}
+
 /**
  * Writes a file to the store. A store that cannot be reached (bucket down, a wrong key, a full disk) becomes a 503
  * with a plain message; the cause is logged on the server without the file or any credential.
@@ -132,7 +141,7 @@ export async function putStoredFile(key: string, data: Buffer, nothingSaved: str
     await storage().put(key, data);
   } catch (error) {
     if (error instanceof AppError) throw error;
-    console.error(`[storage] could not store file ${key}: ${error instanceof Error ? error.name : "unknown error"}`);
+    console.error(`[storage] could not store file ${key}: ${safeStorageError(error)}`);
     throw new AppError(503, "STORAGE_ERROR", `The document could not be saved to file storage, so ${nothingSaved}. Try again in a moment; if it keeps failing, ask the system administrator to check document storage.`);
   }
 }
@@ -152,7 +161,7 @@ export async function readStoredFile(key: string, sha256: string, missingMessage
     if (error instanceof StoredFileNotFoundError) {
       throw new AppError(404, "FILE_MISSING", missingMessage);
     }
-    console.error(`[storage] could not read file ${key}: ${error instanceof Error ? error.name : "unknown error"}`);
+    console.error(`[storage] could not read file ${key}: ${safeStorageError(error)}`);
     throw new AppError(503, "STORAGE_ERROR", "File storage could not be reached, so the document cannot be opened right now. Try again in a moment.");
   }
 

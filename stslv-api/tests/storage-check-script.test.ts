@@ -84,9 +84,23 @@ describe("the standalone storage check (npm run storage:check)", () => {
 
     expect(code).toBe(1);
     expect(output).toContain("FAIL upload a");
-    expect(output).toContain("(HTTP 403)");
+    expect(output).toContain("S3 error AccessDenied (HTTP 403)");
+    expect(output).toContain("Check SUPABASE_S3_REGION");
     expect(output).toContain("Storage check FAILED.");
-    expect(output).not.toContain("Access Denied");
+    neverPrinted(output);
+  });
+
+  it("explains Supabase's plain-text 400 for an unknown project instead of a bare \"Error (HTTP 400)\"", async () => {
+    s3.mode = "unknown-project";
+
+    const { code, output } = await check(settings());
+    s3.mode = "ok";
+
+    expect(code).toBe(1);
+    expect(output).toContain('FAIL upload a');
+    expect(output).toContain('non-S3 response (HTTP 400): "Project not specified."');
+    expect(output).toContain("Check SUPABASE_PROJECT_REF");
+    expect(output).not.toContain("Error (HTTP 400)");
     neverPrinted(output);
   });
 

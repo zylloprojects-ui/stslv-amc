@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { createHash, randomUUID } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { describeStorage, resolveStorageConfig } from "../config/storage-config";
+import { describeStorageError } from "../shared/object-storage";
 import { StoredFileNotFoundError } from "../shared/storage";
 import { createFileStorage } from "../shared/storage-factory";
 
@@ -11,18 +13,40 @@ import { createFileStorage } from "../shared/storage-factory";
  *
  * Standalone on purpose: it reads only the storage settings (storage-config.ts) and never loads the database
  * configuration, the session secret or any API module, so it needs no DB_* or JWT_SECRET variable and touches no
- * database. It prints only the kind of store and each step's outcome (with an error's name and HTTP status on
- * failure): never a key, secret, project, account, region, bucket or address.
+ * database. It prints only the kind of store and each step's outcome (on failure, the provider's error code, HTTP
+ * status and a cleaned one-line message: describeStorageError): never a key, secret, project, account, region,
+ * bucket, signed header or address.
+ *
+ * For Supabase on its default endpoint it first checks that the project reference names a real project: every
+ * project has the address <ref>.supabase.co, while the shared storage host answers any unknown reference with a
+ * plain-text HTTP 400 "Project not specified." (2026-11-04: a mistyped reference failed as a bare "Error (HTTP 400)").
  * Exit code 0 when every step passed, 1 otherwise.
  */
 
 const sha256 = (data: Buffer) => createHash("sha256").update(data).digest("hex");
 
-/** An error reduced to what is safe to print: its name and, for an S3 error, its HTTP status. */
-function describeError(error: unknown): string {
-  const { name, $metadata } = (error ?? {}) as { name?: string; $metadata?: { httpStatusCode?: number } };
+/** Every configured value that must never be printed, so describeStorageError can blank it out of a message. */
+const SENSITIVE_VARIABLES = [
+  "SUPABASE_PROJECT_REF", "SUPABASE_S3_REGION", "SUPABASE_S3_BUCKET", "SUPABASE_S3_ACCESS_KEY_ID", "SUPABASE_S3_SECRET_ACCESS_KEY", "SUPABASE_S3_ENDPOINT",
+  "R2_ACCOUNT_ID", "R2_BUCKET", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT", "ATTACHMENTS_DIR",
+];
+const sensitive = () => SENSITIVE_VARIABLES.map((name) => process.env[name]?.trim() ?? "").filter((value) => value !== "");
+const describeError = (error: unknown) => describeStorageError(error, sensitive());
 
-  return `${name ?? "error"}${$metadata?.httpStatusCode ? ` (HTTP ${$metadata.httpStatusCode})` : ""}`;
+/** A hint for the failures whose cause is known, named by variable only. */
+function hintFor(error: unknown): string | null {
+  const body = (error as { $responseBodyText?: unknown } | null)?.$responseBodyText;
+
+  if (typeof body === "string" && body.includes("Project not specified")) {
+    return "Supabase did not recognise the project. Check SUPABASE_PROJECT_REF (Project Settings > General > Project ID).";
+  }
+  const name = (error as { name?: string } | null)?.name;
+  if (name === "SignatureDoesNotMatch" || name === "InvalidAccessKeyId" || name === "AccessDenied") {
+    return "The keys or the region were not accepted. Check SUPABASE_S3_REGION, SUPABASE_S3_ACCESS_KEY_ID and SUPABASE_S3_SECRET_ACCESS_KEY (Storage > S3 Connection).";
+  }
+  if (name === "NoSuchBucket") return "The bucket was not found. Check SUPABASE_S3_BUCKET (the name is case-sensitive).";
+
+  return null;
 }
 
 async function main(): Promise<boolean> {
@@ -56,9 +80,31 @@ async function main(): Promise<boolean> {
       return true;
     } catch (error) {
       console.log(`FAIL ${name}: ${describeError(error)}`);
+      const hint = hintFor(error);
+      if (hint) console.log(`     ${hint}`);
       return false;
     }
   };
+
+  const projectRef = process.env.SUPABASE_PROJECT_REF?.trim();
+  if (config.driver === "supabase" && projectRef && !process.env.SUPABASE_S3_ENDPOINT?.trim()) {
+    const known = await step("the Supabase project reference names an existing project", async () => {
+      try {
+        await lookup(`${projectRef}.supabase.co`);
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code === "ENOTFOUND") {
+          throw Object.assign(new Error("unknown project"), { code: "ENOTFOUND", name: "UnknownProject" });
+        }
+        throw error;
+      }
+    });
+    if (!known) {
+      console.log("     No Supabase project has this reference (its <ref>.supabase.co address does not exist). Check SUPABASE_PROJECT_REF:");
+      console.log("     Supabase dashboard > Project Settings > General > Project ID (20 lowercase letters and digits).");
+      return false;
+    }
+  }
 
   try {
     if (!(await step(`upload a ${probe.length}-byte probe file`, () => files.put(key, probe)))) return false;
