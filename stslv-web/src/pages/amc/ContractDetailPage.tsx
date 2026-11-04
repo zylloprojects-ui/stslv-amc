@@ -602,6 +602,9 @@ export function ContractDetailPage() {
                                   Amount
                                 </th>
                                 <th scope="col" className={TABLE.th}>
+                                  Quotation No.
+                                </th>
+                                <th scope="col" className={TABLE.th}>
                                   Invoice No.
                                 </th>
                                 <th scope="col" className={TABLE.th}>
@@ -633,6 +636,10 @@ export function ContractDetailPage() {
                                   </td>
                                   <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(visit.completedDate)}</td>
                                   <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(visit.visitAmount)}</td>
+                                  {/* Read-only: the quotation number is entered on Service Sales, against this visit only. */}
+                                  <td className={`${TABLE.td} whitespace-nowrap`}>
+                                    {visit.quotationNo ? <span className="font-mono text-sm font-semibold text-slate-900">{visit.quotationNo}</span> : '—'}
+                                  </td>
                                   <td className={TABLE.td}>
                                     <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} completed={visit.status === 'COMPLETED'} label={visitNumberLabel(visit)} />
                                   </td>

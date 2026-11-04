@@ -24,6 +24,7 @@ interface VisitRow {
   color_override: string | null;
   manual_invoice_no: string | null;
   manual_invoice_at: Date | null;
+  quotation_no: string | null;
   invoice_recorded: boolean;
   first_service: boolean;
   id: string;
@@ -101,6 +102,11 @@ export interface ScheduleVisit extends ExecutionVisit {
   paymentStatus: PaymentStatus;
   /** When the manual Invoice No. was entered; null while Unpaid. */
   paidAt: string | null;
+  /**
+   * The quotation number recorded for THIS visit on Service Sales (amc_visits.quotation_no, migration 0078).
+   * Read-only here: Service Sales is the only place it is entered. Null when none is recorded.
+   */
+  quotationNo: string | null;
   /** The manual colour of the service (Color Priority level 1); null when none is set. */
   colorOverride: string | null;
   /** The Color Priority state that wins for this service. Derived, never stored. */
@@ -136,6 +142,8 @@ const VISIT_SELECT = `
          v.work_performed, v.execution_notes, v.status_reason, v.notes,
          b.invoice_eligibility, v.created_at, v.updated_at, v.color_override,
          v.manual_invoice_no, v.manual_invoice_at,
+         -- Migration 0078 column, read the same way so a database without it still lists visits (null).
+         to_jsonb(v) ->> 'quotation_no' AS quotation_no,
          NOT EXISTS (SELECT 1 FROM amc_visits e WHERE e.amc_contract_id = v.amc_contract_id AND e.sequence_no < v.sequence_no AND e.status <> 'HISTORICAL') AS first_service`;
 
 const VISIT_FROM = `
@@ -187,6 +195,7 @@ function toScheduleVisit(row: VisitRow): ScheduleVisit {
     manualInvoiceNo: row.manual_invoice_no,
     paymentStatus: row.manual_invoice_no ? "PAID" : "UNPAID",
     paidAt: row.manual_invoice_at?.toISOString() ?? null,
+    quotationNo: row.quotation_no,
     colorOverride: row.color_override,
     colorState: colorState({
       override: row.color_override,

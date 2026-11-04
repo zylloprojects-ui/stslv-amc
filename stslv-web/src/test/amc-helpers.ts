@@ -80,6 +80,7 @@ export function makeVisit(overrides: Partial<ScheduleVisit> = {}): ScheduleVisit
   return {
     id: '500',
     manualInvoiceNo: null,
+    quotationNo: null,
     paymentStatus: 'UNPAID',
     paidAt: null,
     contract: { id: '100', status: 'ACTIVE', systemDescription: 'FIRE', maintenanceFrequency: 'QUARTERLY' },
