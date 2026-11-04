@@ -32,9 +32,14 @@
 ALTER TABLE sales_engineers ADD COLUMN code text;
 
 -- The code each engineer shows today (the former derivation in masters.service.ts).
+-- The backfill runs with the updated_at trigger disabled, so no engineer looks edited by this migration
+-- (the same approach as 0105; added during the Sessions 1-12 integration rehearsal, before 0102 was
+-- applied to any shared database).
+ALTER TABLE sales_engineers DISABLE TRIGGER sales_engineers_set_updated_at;
 UPDATE sales_engineers
 SET code = 'SE-' || lpad(id::text, greatest(4, length(id::text)), '0')
 WHERE code IS NULL;
+ALTER TABLE sales_engineers ENABLE TRIGGER sales_engineers_set_updated_at;
 
 ALTER TABLE sales_engineers
   ALTER COLUMN code SET NOT NULL,
