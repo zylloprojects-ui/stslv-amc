@@ -8,18 +8,19 @@ import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
-import { api, ApiError, errorMessage } from '../../lib/api'
+import { api, ApiError, download, errorMessage, saveFile } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
 import { Filter, FilterPanel, Pager } from '../amc/components'
 import { CustomizeKpisDialog, HideColumnsDialog } from './ServicesSalesDialogs'
-import { COLUMN_IDS, COLUMN_LABELS, useHiddenColumns, useKpiLayout, type ColumnId, type KpiId } from './servicesSalesPreferences'
+import { COLUMN_IDS, COLUMN_LABELS, PAGE_ONLY_COLUMNS, useHiddenColumns, useKpiLayout, type ColumnId, type KpiId } from './servicesSalesPreferences'
 import {
   QUOTE_SUBMISSION_FILTERS,
   QUOTATION_MAX_LENGTH,
   SALES_STATUS_LABELS,
   SERVICE_STATUSES,
   SERVICE_STATUS_LABELS,
+  isBrowserViewable,
   serviceCodeLabel,
   type SalesStatus,
   type ServicesSalesItem,
@@ -187,6 +188,100 @@ function QuotationCell({ item, canEdit, onSaved }: { item: ServicesSalesItem; ca
   )
 }
 
+type ReportState = { kind: 'idle' } | { kind: 'busy'; action: 'view' | 'download' } | { kind: 'failed'; message: string }
+
+/** How long a viewed report stays readable in its tab before the browser may free it. The tab keeps what it loaded. */
+const VIEW_URL_LIFETIME_MS = 60_000
+
+/**
+ * The Service Report uploaded on Service Status for THIS visit: View and Download only, never upload or change. The
+ * file is fetched with the signed-in user's token from /services-sales/:visitId/report, so it is always this
+ * service's own report, and no storage path or unauthenticated link ever reaches the browser.
+ */
+function ServiceReportCell({ item }: { item: ServicesSalesItem }) {
+  const report = item.serviceReport
+  const [state, setState] = useState<ReportState>({ kind: 'idle' })
+
+  if (!report) {
+    return (
+      <span className="whitespace-nowrap text-slate-400" title="No service report has been uploaded on Service Status for this service">
+        Not uploaded
+      </span>
+    )
+  }
+
+  const subject = `service report for ${item.reference} ${serviceCodeLabel(item.service)}`
+  const viewable = isBrowserViewable(report.mimeType)
+  const fetchFile = async () => {
+    const file = await download(`/services-sales/${item.id}/report`)
+    // The original name as uploaded (already cleaned by the API), never the server's ASCII fallback.
+    return { blob: new Blob([file.blob], { type: report.mimeType }), filename: report.originalName }
+  }
+
+  const save = async () => {
+    setState({ kind: 'busy', action: 'download' })
+    try {
+      saveFile(await fetchFile(), report.originalName)
+      setState({ kind: 'idle' })
+    } catch (error) {
+      setState({ kind: 'failed', message: errorMessage(error) })
+    }
+  }
+
+  const view = async () => {
+    // Word documents have no in-browser viewer: they are downloaded, with the same permission check.
+    if (!viewable) return save()
+    // Opened before the file is fetched, while the click still counts, so pop-up blockers allow it.
+    const tab = window.open('', '_blank')
+
+    if (!tab) {
+      setState({ kind: 'failed', message: 'The browser blocked the new tab. Allow pop-ups for this site, or use Download.' })
+      return
+    }
+    tab.opener = null
+    setState({ kind: 'busy', action: 'view' })
+    try {
+      const url = URL.createObjectURL((await fetchFile()).blob)
+      tab.location.href = url
+      setTimeout(() => URL.revokeObjectURL(url), VIEW_URL_LIFETIME_MS)
+      setState({ kind: 'idle' })
+    } catch (error) {
+      tab.close()
+      setState({ kind: 'failed', message: errorMessage(error) })
+    }
+  }
+
+  return (
+    <div className="min-w-36" title={report.originalName}>
+      <div className="flex items-center gap-1.5">
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void view()}
+          loading={state.kind === 'busy' && state.action === 'view'}
+          disabled={state.kind === 'busy'}
+          aria-label={`View ${subject}${viewable ? '' : ' (Word document: downloads)'}`}
+        >
+          View
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void save()}
+          loading={state.kind === 'busy' && state.action === 'download'}
+          disabled={state.kind === 'busy'}
+          aria-label={`Download ${subject}`}
+        >
+          Download
+        </Button>
+      </div>
+      <p aria-live="polite" className="text-xs">
+        {state.kind === 'failed' && <span className="mt-1 block max-w-56 font-medium text-red-700">{state.message}</span>}
+      </p>
+    </div>
+  )
+}
+
 type Dialog = 'none' | 'kpis' | 'columns'
 
 export function ServicesSalesPage() {
@@ -274,7 +369,7 @@ export function ServicesSalesPage() {
               <ExportButtons
                 what="Service Sales"
                 fileStem="service-sales"
-                path={(format) => `/services-sales/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
+                path={(format) => `/services-sales/export${queryString({ ...filters, hidden: [...hidden].filter((id) => !PAGE_ONLY_COLUMNS.has(id)).join(','), format })}`}
                 onError={setExportError}
               />
             )}
@@ -537,6 +632,11 @@ export function ServicesSalesPage() {
                       {shown('serviceReportNo') && (
                         <td className={`${TABLE.td} whitespace-nowrap`}>
                           {item.serviceReportNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.serviceReportNo}</span> : <span className="text-slate-400" title="No service report number recorded">—<span className="sr-only">No service report number recorded</span></span>}
+                        </td>
+                      )}
+                      {shown('serviceReport') && (
+                        <td className={TABLE.td}>
+                          <ServiceReportCell item={item} />
                         </td>
                       )}
                       {shown('quotation') && (

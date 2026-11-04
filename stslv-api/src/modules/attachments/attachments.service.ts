@@ -30,7 +30,7 @@ export function setStorageForTests(storage: FileStorage | null): void {
   storageOverride = storage;
 }
 
-function storage(): FileStorage {
+export function storage(): FileStorage {
   if (storageOverride) return storageOverride;
   if (!env.attachmentsDir) {
     throw new AppError(503, "STORAGE_UNAVAILABLE", "File storage is not configured on this server, so attachments cannot be uploaded or opened yet.");

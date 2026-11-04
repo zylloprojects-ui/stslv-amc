@@ -44,8 +44,21 @@ Admin: every action. Invoicing: view and edit. Accountant and Execution: view on
 | `GET /api/services-sales/options` | SERVICES_SALES:VIEW |
 | `GET /api/services-sales/export?format=xlsx\|pdf` | SERVICES_SALES:VIEW + EXPORT |
 | `PATCH /api/services-sales/:id` `{ quotationNo, expectedUpdatedAt }` | SERVICES_SALES:EDIT |
+| `GET /api/services-sales/:id/report` (the visit's Service Report file) | SERVICES_SALES:VIEW |
 
 Filters: `search` (AMC reference, client, system, service code, quote no.), `clientId`, `salesEngineerId`, `systemTypeId`, `frequency`, `month`, `year`, `serviceStatus` (`NOT_COMPLETED` / `COMPLETED`), `quoteSubmission` (`SUBMITTED` / `NOT_SUBMITTED`). The cards, rows and export all follow them, and the export's header names them. Search also matches the service report number. The export takes `hidden` (the page's hidden columns) and leaves those columns out; AMC Reference and Sales status always stay.
+
+## Service Report column (view and download only, 2026-11-04)
+
+The **Service Report** column, right after **Service Report No.**, shows the document uploaded on Service Status for that service: **View** and **Download**, or *Not uploaded*. Service Sales never uploads, replaces or removes a report, and keeps no copy of it.
+
+- **Source.** The attachment rows of migration 0104 (feature/service-status-report-completion-lock): `entity_type = 'amc_visits'`, `category = 'SERVICE_REPORT'`, `entity_id` = the visit id, `is_current`. At most one current report per visit, so a replacement on Service Status is what the page shows on its next read. Each list item carries `serviceReport` (`id`, `originalName`, `mimeType`, `sizeBytes`, `uploadedAt`) or `null`; the response says `serviceReportsAvailable`. The storage key and checksum never leave the API.
+- **Linkage.** Always the visit id. Never the AMC reference, client, month or report number, so two services of one contract each show their own report.
+- **File.** `GET /api/services-sales/:id/report` serves the current report of that visit only when the visit is on this page (not cancelled, historical or in the Recycle Bin), after checking the checksum recorded at upload. Errors: `SERVICE_REPORT_NOT_FOUND` (404), `FILE_MISSING` (404), `INTEGRITY_FAILED` (409), `FEATURE_UNAVAILABLE` (503, before 0104).
+- **View** fetches the file with the signed-in user's token and opens it in a new tab from a temporary in-browser address (PDF, PNG, JPEG). Word files cannot be shown by browsers, so View downloads them. **Download** saves the file under its original name.
+- **Permission.** Viewing the report needs SERVICES_SALES:VIEW, the same as the page (decided 2026-11-04). Service Status' own download route keeps SERVICE_STATUS:VIEW.
+- **Columns and export.** The column is in Hide Columns (with the shown-column count). Saved choices list hidden columns, so earlier choices are kept and the new column is shown at first. The export has no Service Report column; the page does not send it as hidden.
+- **Before 0104** every row shows *Not uploaded* and the file route answers 503.
 
 ## Applying 0078 and 0079
 

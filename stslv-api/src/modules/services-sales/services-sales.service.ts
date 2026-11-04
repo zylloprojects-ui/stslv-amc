@@ -1,9 +1,12 @@
+import { createHash } from "node:crypto";
 import { pool } from "../../config/database";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
-import { conflict, notFound } from "../../shared/errors";
+import { AppError, conflict, notFound } from "../../shared/errors";
+import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
+import { storage } from "../attachments/attachments.service";
 import type { ContractStatus, VisitStatus } from "../amc/amc.constants";
 import type { ListServicesSalesQuery, SalesStatus, SaveQuotationInput, ServiceStatus } from "./services-sales.schemas";
 
@@ -44,7 +47,24 @@ const FROM = `
   LEFT JOIN maintenance_frequencies mf ON mf.code = c.maintenance_frequency
   LEFT JOIN users qu ON qu.id = v.quotation_updated_by`;
 
-const SELECT = `
+// The Service Report document of a visit is uploaded on Service Status (migration 0104): an attachments row with
+// entity_type 'amc_visits', category 'SERVICE_REPORT' and entity_id = the visit id, at most one current per visit.
+// This page only reads it, always by the visit id, never by contract, client, month or report number. Replacing a
+// report on Service Status makes the new version the current row, so the page shows it on its next read.
+const REPORT_WHERE = "a.entity_type = 'amc_visits' AND a.category = 'SERVICE_REPORT' AND a.is_current";
+
+/** Whether this database holds service reports (the unique index of migration 0104). Before it, every row shows none. */
+export function serviceReportsAvailable(): Promise<boolean> {
+  return schemaHas(["attachments_service_report_uq"]);
+}
+
+/** The current report's metadata as JSON ("v" is the visit). The storage key and checksum never leave the API. */
+const SERVICE_REPORT_SQL = `(
+  SELECT jsonb_build_object('id', a.id::text, 'originalName', a.original_name, 'mimeType', a.mime_type,
+                            'sizeBytes', a.size_bytes, 'uploadedAt', a.uploaded_at)
+  FROM attachments a WHERE ${REPORT_WHERE} AND a.entity_id = v.id)`;
+
+const select = (reports: boolean) => `
   SELECT v.id, c.id AS contract_id, c.status AS contract_status,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
@@ -56,6 +76,7 @@ const SELECT = `
          v.quotation_no, v.quotation_updated_at, qu.full_name AS quotation_updated_by_name,
          ${SERVICE_STATUS_SQL} AS service_status,
          ${SALES_STATUS_SQL} AS sales_status,
+         ${reports ? SERVICE_REPORT_SQL : "NULL::jsonb"} AS service_report,
          v.updated_at`;
 
 interface SalesRow {
@@ -85,7 +106,17 @@ interface SalesRow {
   quotation_updated_by_name: string | null;
   service_status: ServiceStatus;
   sales_status: SalesStatus;
+  service_report: { id: string; originalName: string; mimeType: string; sizeBytes: number | string; uploadedAt: string } | null;
   updated_at: Date;
+}
+
+/** The Service Report uploaded on Service Status for this visit. Read only on this page. */
+export interface ServicesSalesReport {
+  id: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
 }
 
 export interface ServicesSalesItem {
@@ -114,6 +145,8 @@ export interface ServicesSalesItem {
   quotationUpdatedBy: string | null;
   /** A quotation number is recorded but the visit is not completed (for example, reopened after quoting). Kept, and reported. */
   quotationBeforeCompletion: boolean;
+  /** The current Service Report of this visit (0104), or null when none is uploaded or the database has no reports yet. */
+  serviceReport: ServicesSalesReport | null;
   updatedAt: string;
 }
 
@@ -139,6 +172,15 @@ function toItem(row: SalesRow): ServicesSalesItem {
     quotationUpdatedAt: row.quotation_updated_at ? row.quotation_updated_at.toISOString() : null,
     quotationUpdatedBy: row.quotation_updated_by_name,
     quotationBeforeCompletion: row.quotation_no !== null && row.status !== "COMPLETED",
+    serviceReport: row.service_report
+      ? {
+          id: row.service_report.id,
+          originalName: row.service_report.originalName,
+          mimeType: row.service_report.mimeType,
+          sizeBytes: Number(row.service_report.sizeBytes),
+          uploadedAt: new Date(row.service_report.uploadedAt).toISOString(),
+        }
+      : null,
     updatedAt: row.updated_at.toISOString(),
   };
 }
@@ -225,14 +267,15 @@ async function kpis(where: string, params: unknown[]): Promise<ServicesSalesKpis
 
 export async function listServicesSales(query: ListServicesSalesQuery) {
   const { where, params } = filterSql(query);
+  const reports = await serviceReportsAvailable();
   const figures = await kpis(where, params);
   const rows = await pool.query<SalesRow>(
-    `${SELECT} ${FROM} ${where} ${ORDER}
+    `${select(reports)} ${FROM} ${where} ${ORDER}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
 
-  return { items: rows.rows.map(toItem), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures };
+  return { items: rows.rows.map(toItem), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures, serviceReportsAvailable: reports };
 }
 
 /**
@@ -246,7 +289,7 @@ export async function listAllServicesSales(filters: ServicesSalesFilters, checkS
 
   checkSize(figures.total);
 
-  const rows = await pool.query<SalesRow>(`${SELECT} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<SalesRow>(`${select(await serviceReportsAvailable())} ${FROM} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map(toItem), kpis: figures };
 }
@@ -279,7 +322,7 @@ export async function getServicesSalesOptions() {
 }
 
 async function findSalesRow(db: Queryable, id: string): Promise<SalesRow> {
-  const result = await db.query<SalesRow>(`${SELECT} ${FROM} WHERE v.id = $1`, [id]);
+  const result = await db.query<SalesRow>(`${select(await serviceReportsAvailable())} ${FROM} WHERE v.id = $1`, [id]);
   const row = result.rows[0];
 
   if (!row) throw notFound("AMC visit not found.");
@@ -343,4 +386,40 @@ export async function saveQuotation(auth: AuthContext, id: string, input: SaveQu
 
     return toItem(await findSalesRow(client, id));
   });
+}
+
+/**
+ * The file of the Service Report uploaded on Service Status for ONE visit on this page, for View and Download.
+ * Read only: nothing is stored, copied or changed. The visit must be on the page (cancelled, historical and
+ * recycled work is not), and the report is looked up by that visit's id alone, so a report of another service or
+ * contract is never served. The file is checked against the checksum recorded at upload.
+ */
+export async function readServicesSalesReport(visitId: string) {
+  if (!(await serviceReportsAvailable())) {
+    throw new AppError(503, "FEATURE_UNAVAILABLE", "Service reports are not available until the database is updated (migration 0104).");
+  }
+
+  const visit = await pool.query(`SELECT 1 FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id WHERE v.id = $1 AND ${IN_SCOPE}`, [visitId]);
+
+  if (visit.rowCount === 0) throw notFound("AMC visit not found.");
+
+  const result = await pool.query<{ original_name: string; mime_type: string; sha256: string; storage_key: string }>(
+    `SELECT a.original_name, a.mime_type, a.sha256, a.storage_key FROM attachments a WHERE ${REPORT_WHERE} AND a.entity_id = $1`,
+    [visitId]
+  );
+  const row = result.rows[0];
+
+  if (!row) throw new AppError(404, "SERVICE_REPORT_NOT_FOUND", "No service report has been uploaded for this service.");
+
+  const data = await storage()
+    .get(row.storage_key)
+    .catch(() => {
+      throw new AppError(404, "FILE_MISSING", "The service report file could not be found. Ask for it to be uploaded again on Service Status.");
+    });
+
+  if (createHash("sha256").update(data).digest("hex") !== row.sha256) {
+    throw new AppError(409, "INTEGRITY_FAILED", "The stored file does not match its recorded checksum, so it is not served.");
+  }
+
+  return { data, mimeType: row.mime_type, fileName: row.original_name };
 }
