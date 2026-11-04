@@ -9,7 +9,7 @@ import { env } from "../src/config/env";
 import { setStorageForTests } from "../src/modules/attachments/attachments.service";
 import { HEADER_ROW } from "../src/shared/export/excel";
 import { LocalDiskStorage } from "../src/shared/storage";
-import { activeContract, contractBody, createClient, createContract, renewalEngineer, today, visitsOf } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, renewalEngineer, today, visitsOf, withServiceReport } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -216,7 +216,8 @@ describe("schedule exports", () => {
 
   beforeAll(async () => {
     paidVisit = (await visitsOf(second))[0]!.id;
-    // A manual Invoice No. needs a completed service (2026-11-04).
+    // A manual Invoice No. needs a completed service (2026-11-04), and completing needs its service report (0104).
+    await withServiceReport(paidVisit);
     expect((await api().patch(`/api/amc/execution/visits/${paidVisit}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() })).status).toBe(200);
     expect((await setInvoice(paidVisit, "MAN-777")).status).toBe(200);
   });
