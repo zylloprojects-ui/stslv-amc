@@ -261,25 +261,39 @@ describe("official header and footer artwork", () => {
     expect([footerArtwork().width, footerArtwork().height]).toEqual([1318, 180]);
   });
 
-  it("is drawn in a PDF on every page, edge to edge, in its own proportions, clear of the content", () => {
+  it("is never drawn in a PDF: every PDF is plain A4 landscape, whatever the report declares", async () => {
     for (const orientation of ["portrait", "landscape"] as const) {
       const definition = pdfDefinition(report(ROWS, { orientation, disclaimer: "Internal tracking report. Not an official tax invoice." }));
-      const layout = pageLayout(orientation);
-      const background = (definition.background as () => unknown)();
-      const [, top, , bottom] = definition.pageMargins as number[];
+      const layout = pageLayout();
 
-      expect(layout.headerHeight).toBeCloseTo((layout.page.width * 223) / 1325, 5);
-      expect(layout.footerHeight).toBeCloseTo((layout.page.width * 180) / 1318, 5);
-      // Only a width is given, so the proportions are the artwork's own.
-      expect(background).toEqual([
-        { image: "header", width: layout.page.width, absolutePosition: { x: 0, y: 0 } },
-        { image: "footer", width: layout.page.width, absolutePosition: { x: 0, y: layout.page.height - layout.footerHeight } },
-      ]);
-      // The content starts below the header artwork and its title band, and ends above the footer band and artwork.
-      expect(top).toBeGreaterThanOrEqual(layout.headerHeight + 28);
-      expect(bottom).toBeGreaterThanOrEqual(layout.footerHeight + 26);
-      expect(Object.keys(definition.images ?? {})).toEqual(["header", "footer"]);
+      expect(definition.pageSize).toBe("A4");
+      expect(definition.pageOrientation).toBe("landscape");
+      expect(definition.pageMargins).toEqual(layout.margins);
+      // No letterhead: no artwork, no background, no images of any kind.
+      expect(definition.images).toBeUndefined();
+      expect(definition.background).toBeUndefined();
+      expect(JSON.stringify(definition)).not.toContain("image");
+
+      // The file itself: every page is 297 × 210 mm, and it embeds no picture.
+      const pdf = (await renderPdf(report(ROWS, { orientation }))).toString("latin1");
+      const boxes = pdf.match(/\/MediaBox \[[^\]]*\]/g) ?? [];
+
+      expect(boxes.length).toBeGreaterThan(0);
+      for (const box of boxes) {
+        const [, , width, height] = (box.match(/[\d.]+/g) ?? []).map(Number);
+        expect(width).toBeCloseTo(841.89, 1);
+        expect(height).toBeCloseTo(595.28, 1);
+      }
+      expect(pdf).not.toMatch(/\/Subtype \/Image/);
     }
+  });
+
+  it("leaves room in a PDF's margins for the report lines, clear of the content", () => {
+    const [left, top, right, bottom] = pageLayout().margins;
+
+    expect(left).toBe(right);
+    expect(top).toBeGreaterThanOrEqual(48);
+    expect(bottom).toBeGreaterThanOrEqual(36);
   });
 
   it("is the page header and footer of every printed Excel page, and is not printed twice", async () => {
