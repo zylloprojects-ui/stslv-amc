@@ -61,9 +61,13 @@ message naming the missing variable (never a value).
 | none, production | none: uploads and new contracts refused (unchanged) |
 
 `SUPABASE_S3_ENDPOINT` is the **Endpoint exactly as shown on Storage → S3 Connection**. It is
-technically optional (default `https://<project ref>.storage.supabase.co/storage/v1/s3`), but
-**set it in production**: on 2026-11-04 the default host answered HTTP 400 "Project not
-specified.", and the real bucket check passed only with the dashboard's Endpoint.
+optional (default `https://<project ref>.storage.supabase.co/storage/v1/s3`). Production sets it
+to the dashboard's Endpoint, `https://sgzvlmjkhnrwtuuqatve.storage.supabase.co/storage/v1/s3`,
+which is the same address as that default for the verified Project ID.
+
+On 2026-11-04 an earlier check failed with HTTP 400 "Project not specified." because the Project
+ID had been mistyped (`sgzvlmjkhhrwtuuqatve`, with `h` as the 10th character, instead of
+`sgzvlmjkhnrwtuuqatve`). The storage host answers any unknown project reference that way.
 
 The project reference and the endpoint are separate settings. The reference stays required and
 validated; it is not derived from, or replaced by, the endpoint. When a custom endpoint is set,
@@ -80,13 +84,13 @@ never a secret or address). It needs no database settings. Against the real buck
 powershell -ExecutionPolicy Bypass -File scripts\check-supabase-storage.ps1
 ```
 
-Real check passed 2026-11-04 (region ap-southeast-1, custom endpoint).
+Real check passed 2026-11-04 (Project ID sgzvlmjkhnrwtuuqatve, region ap-southeast-1, dashboard Endpoint).
 
 The Security page shows "Document storage: Supabase Storage (private)" when it is in use.
 
 ## Supabase setup (owner, in the Supabase dashboard)
 
-Project `sgzvlmjkhhrwtuuqatve`, bucket `stslv-amc-documents` (already created, public off).
+Project `sgzvlmjkhnrwtuuqatve`, bucket `stslv-amc-documents` (already created, public off).
 
 1. **Storage → Buckets → stslv-amc-documents → Edit bucket**: Public bucket **off**. Restrict file
    size: off, or 15 MB or more. Allowed MIME types: leave empty (the API already restricts types).
@@ -105,7 +109,7 @@ Project `sgzvlmjkhhrwtuuqatve`, bucket `stslv-amc-documents` (already created, p
 
 | Key | Value |
 |---|---|
-| `SUPABASE_PROJECT_REF` | `sgzvlmjkhhrwtuuqatve` |
+| `SUPABASE_PROJECT_REF` | `sgzvlmjkhnrwtuuqatve` |
 | `SUPABASE_S3_REGION` | the region from the S3 Connection page |
 | `SUPABASE_S3_BUCKET` | `stslv-amc-documents` |
 | `SUPABASE_S3_ACCESS_KEY_ID` | the access key ID (mark as secret) |

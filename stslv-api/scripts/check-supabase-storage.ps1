@@ -13,8 +13,8 @@ function Read-Secret([string]$prompt) {
   try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr) } finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
 }
 
-$ref = Read-Host "Supabase project reference [sgzvlmjkhhrwtuuqatve]"
-if (-not $ref) { $ref = "sgzvlmjkhhrwtuuqatve" }
+$ref = Read-Host "Supabase project reference [sgzvlmjkhnrwtuuqatve]"
+if (-not $ref) { $ref = "sgzvlmjkhnrwtuuqatve" }
 $bucket = Read-Host "Bucket [stslv-amc-documents]"
 if (-not $bucket) { $bucket = "stslv-amc-documents" }
 $region = Read-Host "Region (from Storage > S3 Connection, e.g. ap-southeast-1)"
