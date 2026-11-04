@@ -91,7 +91,11 @@ describe("uploading a service report", () => {
     expect(response.body.data).toMatchObject({ originalName: "Report Q1.pdf", mimeType: "application/pdf", version: 1, uploadedBy: { id: execution.id } });
     expect(await reportRows(v(0))).toEqual([expect.objectContaining({ is_current: true, original_name: "Report Q1.pdf" })]);
     expect(await reportRows(v(1))).toEqual([]);
-    expect((await pool.query("SELECT count(*)::int AS n FROM attachments WHERE entity_type = 'amc_contracts'")).rows[0].n).toBe(0);
+    // Contracts carry their own mandatory contract document (0103); the report is stored against nothing but this visit.
+    expect(
+      (await pool.query("SELECT count(*)::int AS n FROM attachments WHERE original_name = 'Report Q1.pdf' AND NOT (entity_type = 'amc_visits' AND entity_id = $1)", [v(0)])).rows[0].n
+    ).toBe(0);
+    expect((await pool.query("SELECT count(*)::int AS n FROM attachments WHERE entity_type = 'amc_contracts' AND category = 'SERVICE_REPORT'")).rows[0].n).toBe(0);
 
     const listed = (await item(v(0))).body.data;
     expect(listed.serviceReport).toMatchObject({ originalName: "Report Q1.pdf" });
