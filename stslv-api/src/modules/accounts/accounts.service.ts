@@ -3,7 +3,8 @@ import { escapeLike } from "../../shared/validation";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "../amc/amc.constants";
 import type { PaymentStatus } from "../amc/manual-invoice.service";
 import { getMasterStatusOptions } from "../amc/master-status.service";
-import { amcReference, IN_SCOPE, serviceStatusSql } from "../amc/service-status.service";
+import { IN_SCOPE, serviceStatusSql } from "../amc/service-status.service";
+import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import type { AccountsColour, ListAccountsQuery } from "./accounts.schemas";
 
 // Accounts: a billing reconciliation with one row per scheduled maintenance visit
@@ -45,8 +46,9 @@ const FROM = `
     WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
   ) inv ON true`;
 
-const SELECT = `
-  SELECT v.id, c.id AS contract_id, c.status AS contract_status,
+/** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
+const selectSql = (storedReference: boolean) => `
+  SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
@@ -62,6 +64,7 @@ const SELECT = `
 interface AccountsRow {
   id: string;
   contract_id: string;
+  contract_reference: string;
   contract_status: ContractStatus;
   client_id: string;
   client_name: string;
@@ -121,7 +124,7 @@ export interface AccountsItem {
 function toItem(row: AccountsRow): AccountsItem {
   return {
     id: row.id,
-    reference: amcReference(row.contract_id),
+    reference: row.contract_reference,
     contract: { id: row.contract_id, status: row.contract_status },
     client: { id: row.client_id, name: row.client_name },
     system: { description: row.system_description, typeId: row.system_type_id, typeName: row.system_type_name },
@@ -145,11 +148,8 @@ function toItem(row: AccountsRow): AccountsItem {
 
 export type AccountsFilters = Omit<ListAccountsQuery, "page" | "pageSize">;
 
-/** "AMC-0007", "amc7" or "7" names contract 7. */
-const REFERENCE_PATTERN = /^(?:amc-?)?0*(\d{1,15})$/i;
-
 /** One WHERE clause for the rows, the cards and the export, so the three always agree. */
-function filterSql(query: AccountsFilters) {
+function filterSql(query: AccountsFilters, storedReference: boolean) {
   const conditions: string[] = [IN_SCOPE];
   const params: unknown[] = [];
   const add = (value: unknown) => {
@@ -173,10 +173,14 @@ function filterSql(query: AccountsFilters) {
   if (query.invoiceStatus === "NOT_RECORDED") conditions.push("v.manual_invoice_no IS NULL");
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
-    const matches = [`cl.name ILIKE ${p}`, `v.service_report_no ILIKE ${p}`, `v.manual_invoice_no ILIKE ${p}`, `EXISTS (SELECT 1 FROM unnest(inv.numbers) AS n (number) WHERE n.number ILIKE ${p})`];
-    const reference = REFERENCE_PATTERN.exec(query.search);
+    const matches = [
+      `${referenceSql("c", storedReference)} ILIKE ${p}`,
+      `cl.name ILIKE ${p}`,
+      `v.service_report_no ILIKE ${p}`,
+      `v.manual_invoice_no ILIKE ${p}`,
+      `EXISTS (SELECT 1 FROM unnest(inv.numbers) AS n (number) WHERE n.number ILIKE ${p})`,
+    ];
 
-    if (reference) matches.push(`c.id = ${add(reference[1])}::bigint`);
     conditions.push(`(${matches.join(" OR ")})`);
   }
 
@@ -242,10 +246,11 @@ async function kpis(where: string, params: unknown[]): Promise<AccountsKpis> {
 }
 
 export async function listAccounts(query: ListAccountsQuery) {
-  const { where, params } = filterSql(query);
+  const storedReference = await hasStoredReference();
+  const { where, params } = filterSql(query, storedReference);
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<AccountsRow>(`${SELECT} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<AccountsRow>(`${selectSql(storedReference)} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,
@@ -261,22 +266,24 @@ export async function listAccounts(query: ListAccountsQuery) {
  * the export cannot hold that many.
  */
 export async function listAllAccounts(filters: AccountsFilters, checkSize: (count: number) => void) {
-  const { where, params } = filterSql(filters);
+  const storedReference = await hasStoredReference();
+  const { where, params } = filterSql(filters, storedReference);
   const figures = await kpis(where, params);
 
   checkSize(figures.rows);
 
-  const rows = await pool.query<AccountsRow>(`${SELECT} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<AccountsRow>(`${selectSql(storedReference)} ${FROM} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map(toItem), kpis: figures };
 }
 
 /** The filter lists are those of Master AMC Status (the same visits, so the same clients, engineers and years), plus the contracts with visits on the page. */
 export async function getAccountsOptions() {
+  const storedReference = await hasStoredReference();
   const [shared, contracts] = await Promise.all([
     getMasterStatusOptions(),
-    pool.query<{ id: string; client_name: string; system_description: string }>(
-      `SELECT c.id, cl.name AS client_name, c.system_description
+    pool.query<{ id: string; reference: string; client_name: string; system_description: string }>(
+      `SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.name AS client_name, c.system_description
        FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
        WHERE EXISTS (SELECT 1 FROM amc_visits v WHERE v.amc_contract_id = c.id AND ${IN_SCOPE})
        ORDER BY c.id`
@@ -285,6 +292,6 @@ export async function getAccountsOptions() {
 
   return {
     ...shared,
-    contracts: contracts.rows.map((row) => ({ id: row.id, reference: amcReference(row.id), client: row.client_name, system: row.system_description })),
+    contracts: contracts.rows.map((row) => ({ id: row.id, reference: row.reference, client: row.client_name, system: row.system_description })),
   };
 }

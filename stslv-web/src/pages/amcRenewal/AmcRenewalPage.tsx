@@ -14,7 +14,6 @@ import { queryString } from '../amc/amcApi'
 import { Filter, FilterPanel, Pager } from '../amc/components'
 import { ContractFormModal } from '../amc/ContractFormModal'
 import { ContractStatusDialog } from '../amc/ContractStatusDialog'
-import { amcReference } from '../amc/calendar/calendarTypes'
 import { CONTRACT_STATUS_LABELS, type Contract, type ContractStatus } from '../amc/types'
 import { KpiGroup } from '../amcManagement/KpiGroup'
 import { RENEWAL_KPIS } from './renewalKpis'
@@ -393,7 +392,7 @@ function ActionDialog({ action, onClose, onDone }: { action: Action; onClose: ()
         renewalOf={contract.data}
         draftOnly
         onClose={onClose}
-        onSaved={(saved) => onDone(`Renewal ${amcReference(saved.id)} created for ${amcReference(action.contractId)} (${formatDate(saved.validFrom)} to ${formatDate(saved.validTo)}). It is under client approval; ${amcReference(action.contractId)} is unchanged.`)}
+        onSaved={(saved) => onDone(`Renewal ${saved.amcReference} created for ${contract.data.amcReference} (${formatDate(saved.validFrom)} to ${formatDate(saved.validTo)}). It is under client approval; ${contract.data.amcReference} is unchanged.`)}
       />
     )
   }
@@ -406,8 +405,8 @@ function ActionDialog({ action, onClose, onDone }: { action: Action; onClose: ()
       onChanged={(saved) =>
         onDone(
           saved.status === 'ACTIVE'
-            ? `Renewal ${amcReference(saved.id)} approved: it is now active and its schedule was generated.`
-            : `Renewal ${amcReference(saved.id)} cancelled. It is kept in the renewal history, and a new renewal can be started.`,
+            ? `Renewal ${saved.amcReference} approved: it is now active and its schedule was generated.`
+            : `Renewal ${saved.amcReference} cancelled. It is kept in the renewal history, and a new renewal can be started.`,
         )
       }
     />
@@ -521,7 +520,7 @@ function HistoryTab() {
                   <tr key={renewal.id} className={TABLE.row}>
                     <td className={`${TABLE.td} whitespace-nowrap`}>
                       <ContractLink id={source.id} className="font-mono text-sm font-semibold text-[#0b3b66] hover:underline">
-                        {amcReference(source.id)}
+                        {source.reference}
                       </ContractLink>
                     </td>
                     <td className={`${TABLE.td} ${TABLE.text}`}>
@@ -531,7 +530,7 @@ function HistoryTab() {
                     <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(source.validTo)}</td>
                     <td className={`${TABLE.td} whitespace-nowrap`}>
                       <ContractLink id={renewal.id} className="font-mono text-sm font-semibold text-[#1479BD] hover:underline">
-                        {amcReference(renewal.id)}
+                        {renewal.reference}
                       </ContractLink>
                     </td>
                     <td className={`${TABLE.td} whitespace-nowrap`}>

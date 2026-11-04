@@ -16,7 +16,6 @@ import { InvoiceDialogs, type InvoiceDialog } from '../invoices/InvoiceDialogs'
 import { InvoicesTable } from '../invoices/InvoicesTable'
 import { queryString } from './amcApi'
 import { currentMonth, formatDate, formatMoney, isZeroMoney, todayIso } from './amcFormat'
-import { amcReference } from './calendar/calendarTypes'
 import { ContractStatusPill, EligibilityPill, OrDash, Pager, Pill, PlannedDate, VisitStatusPill } from './components'
 import { ContractFormModal } from './ContractFormModal'
 import { ContractMastersPanel } from './ContractMastersPanel'
@@ -312,7 +311,8 @@ export function ContractDetailPage() {
   const contract = query.data
   const validity = validityState(contract.validFrom, contract.validTo, todayIso())
   const schedule = contract.schedule
-  const reference = amcReference(contract.id)
+  // The AMC Reference Number typed when the contract was created; read-only.
+  const reference = contract.amcReference
   const openRenewal = renewals.data?.renewals.find((renewal) => renewal.status !== 'CANCELLED')
   const servicesThisMonth = visits.data?.items.filter((visit) => visit.status !== 'CANCELLED' && visit.scheduledDate.startsWith(currentMonth())).length
   const openTab = (tab: TabId) => setActiveTab(tab)
@@ -602,6 +602,9 @@ export function ContractDetailPage() {
                                   Amount
                                 </th>
                                 <th scope="col" className={TABLE.th}>
+                                  Quotation No.
+                                </th>
+                                <th scope="col" className={TABLE.th}>
                                   Invoice No.
                                 </th>
                                 <th scope="col" className={TABLE.th}>
@@ -633,8 +636,12 @@ export function ContractDetailPage() {
                                   </td>
                                   <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(visit.completedDate)}</td>
                                   <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(visit.visitAmount)}</td>
+                                  {/* Read-only: the quotation number is entered on Service Sales, against this visit only. */}
+                                  <td className={`${TABLE.td} whitespace-nowrap`}>
+                                    {visit.quotationNo ? <span className="font-mono text-sm font-semibold text-slate-900">{visit.quotationNo}</span> : '—'}
+                                  </td>
                                   <td className={TABLE.td}>
-                                    <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} label={visitNumberLabel(visit)} />
+                                    <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} completed={visit.status === 'COMPLETED'} label={visitNumberLabel(visit)} />
                                   </td>
                                   <td className={`${TABLE.td} whitespace-nowrap`}>{visit.paidAt ? formatDateTime(visit.paidAt) : '—'}</td>
                                   <td className={TABLE.td}>

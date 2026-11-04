@@ -12,16 +12,16 @@ export type ExecutionMode = 'view' | 'complete' | 'update'
 interface ExecutionVisitModalProps {
   visit: ExecutionVisit
   mode: ExecutionMode
-  /** Reopening a completed visit needs approval permission. */
-  canReopen: boolean
   onClose: () => void
   onSaved: (visit: ExecutionVisit) => void
 }
 
+const FORM_FIELDS = ['status', 'completedDate', 'scheduledDate', 'workPerformed', 'executionNotes', 'statusReason']
+
 const TITLES: Record<ExecutionMode, string> = { view: 'Visit details', complete: 'Complete visit', update: 'Update visit' }
 
 /** One visit for the execution team: read it, complete it, or update its status and work notes. */
-export function ExecutionVisitModal({ visit, mode, canReopen, onClose, onSaved }: ExecutionVisitModalProps) {
+export function ExecutionVisitModal({ visit, mode, onClose, onSaved }: ExecutionVisitModalProps) {
   const queryClient = useQueryClient()
   const wasCompleted = visit.status === 'COMPLETED'
 
@@ -37,8 +37,8 @@ export function ExecutionVisitModal({ visit, mode, canReopen, onClose, onSaved }
   const completing = status === 'COMPLETED'
   const needsReason = status === 'POSTPONED' || status === 'CANCELLED'
   const canReschedule = status !== 'COMPLETED' && status !== 'CANCELLED'
-  // A completed visit keeps its status unless the user may reopen it.
-  const statusLocked = wasCompleted && !canReopen
+  // Completion lock (2026-11-04): a completed visit keeps its status and completion date, for every user.
+  const statusLocked = wasCompleted
 
   const save = useMutation({
     mutationFn: () =>
@@ -64,7 +64,9 @@ export function ExecutionVisitModal({ visit, mode, canReopen, onClose, onSaved }
       }
 
       setErrors(fieldErrors)
-      setFailure(Object.keys(fieldErrors).length > 0 ? null : errorMessage(error))
+      // A refusal about something this form has no field for (the service report, the lock) is shown above the form.
+      const onForm = Object.keys(fieldErrors).some((field) => FORM_FIELDS.includes(field))
+      setFailure(onForm ? null : errorMessage(error))
     },
   })
 
@@ -174,9 +176,9 @@ export function ExecutionVisitModal({ visit, mode, canReopen, onClose, onSaved }
             error={errors.status}
             hint={
               statusLocked
-                ? 'A completed visit can only be reopened by a user with approval permission.'
-                : wasCompleted && !completing
-                  ? 'Reopening removes the completion date and takes the visit out of the work ready for invoice.'
+                ? 'Completed services are locked: the status cannot be changed.'
+                : completing
+                  ? 'Completing needs this service\'s report uploaded on Service Status.'
                   : undefined
             }
           >

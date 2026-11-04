@@ -42,6 +42,7 @@ function makeItem(overrides: Partial<ServicesSalesItem> = {}): ServicesSalesItem
     quotationUpdatedAt: null,
     quotationUpdatedBy: null,
     quotationBeforeCompletion: false,
+    serviceReport: null,
     updatedAt: '2026-10-05T08:00:00.000Z',
     ...overrides,
   }
@@ -352,7 +353,7 @@ describe('Services Sales page', () => {
 })
 
 describe('Service Report No. and the Quote filter', () => {
-  it('shows the read-only column between Service Status and Quote No.', async () => {
+  it('shows the read-only column between Service Status and Service Report', async () => {
     salesApi(EDITOR, [makeItem({ serviceReportNo: 'SR-77' })])
     renderPage()
 
@@ -360,7 +361,8 @@ describe('Service Report No. and the Quote filter', () => {
     expect(screen.queryByRole('textbox', { name: /Service Report/ })).not.toBeInTheDocument()
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent)
     expect(headers.indexOf('Service Report No.')).toBe(headers.indexOf('Service Status') + 1)
-    expect(headers.indexOf('Quote No.')).toBe(headers.indexOf('Service Report No.') + 1)
+    expect(headers.indexOf('Service Report')).toBe(headers.indexOf('Service Report No.') + 1)
+    expect(headers.indexOf('Quote No.')).toBe(headers.indexOf('Service Report') + 1)
   })
 
   it('sends the Quote filter and the hidden columns to the list and the download', async () => {
@@ -384,5 +386,152 @@ describe('Service Report No. and the Quote filter', () => {
     const query = api.find('GET', '/services-sales/export')[0]?.query
     expect(query?.get('hidden')).toBe('serviceReportNo')
     expect(query?.get('quoteSubmission')).toBe('NOT_SUBMITTED')
+  })
+})
+
+describe('Service Report column (view and download only)', () => {
+  const REPORT_A = { id: '501', originalName: 'Report A – M1.pdf', mimeType: 'application/pdf', sizeBytes: 2048, uploadedAt: '2026-10-05T09:00:00.000Z' }
+  const REPORT_B = { id: '502', originalName: 'Report B.pdf', mimeType: 'application/pdf', sizeBytes: 1024, uploadedAt: '2026-11-05T09:00:00.000Z' }
+  const WORD = { id: '503', originalName: 'Report C.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', sizeBytes: 4096, uploadedAt: '2026-11-06T09:00:00.000Z' }
+  // Two services of the same contract, each with its own report, and one service without.
+  const M1 = makeItem({ id: '11', service: { sequenceNo: 1, cycleNo: 1, serviceCode: 'M1' }, serviceReportNo: 'SR-1', serviceReport: REPORT_A })
+  const M2 = makeItem({ id: '12', service: { sequenceNo: 2, cycleNo: 1, serviceCode: 'M2' }, scheduledDate: '2026-11-01', serviceReportNo: 'SR-2', serviceReport: REPORT_B })
+  const NONE = makeItem({ id: '13', reference: 'AMC-0009', service: { sequenceNo: 1, cycleNo: 1, serviceCode: 'Q1' }, serviceReport: null })
+  const REPORT_PATH = /^\/services-sales\/\d+\/report$/
+
+  const cellOf = (code: string) => {
+    const row = screen.getByText(code).closest('tr') as HTMLElement
+    const index = screen.getAllByRole('columnheader').findIndex((header) => header.textContent === 'Service Report')
+    return within(within(row).getAllByRole('cell')[index] as HTMLElement)
+  }
+
+  function captureFiles() {
+    const blobs: Blob[] = []
+    const names: string[] = []
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, {
+        createObjectURL: (blob: Blob) => {
+          blobs.push(blob)
+          return `blob:report-${blobs.length}`
+        },
+        revokeObjectURL: () => undefined,
+      }),
+    )
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      names.push(this.download)
+    })
+    return { blobs, names }
+  }
+
+  it('shows View and Download for a service with a report and Not uploaded without one, keeping the report number', async () => {
+    salesApi(VIEWER, [M1, NONE])
+    renderPage()
+
+    await screen.findByText('M1')
+    expect(cellOf('M1').getByRole('button', { name: 'View service report for AMC-0007 M1' })).toBeInTheDocument()
+    expect(cellOf('M1').getByRole('button', { name: 'Download service report for AMC-0007 M1' })).toBeInTheDocument()
+    expect(cellOf('Q1').getByText('Not uploaded')).toBeInTheDocument()
+    expect(cellOf('Q1').queryByRole('button')).not.toBeInTheDocument()
+    expect(screen.getByText('SR-1')).toBeInTheDocument()
+    // Read only: nothing to upload, replace or remove here.
+    expect(document.querySelector('input[type=file]')).toBeNull()
+    expect(screen.queryByRole('button', { name: /upload|replace|remove/i })).not.toBeInTheDocument()
+  })
+
+  it('downloads each service its own report by visit id, signed in, under its original name', async () => {
+    const files = captureFiles()
+    const api = salesApi(VIEWER, [M1, M2], (request) => (REPORT_PATH.test(request.path) ? ok(null) : undefined))
+    renderPage()
+
+    await screen.findByText('M2')
+    await userEvent.click(cellOf('M2').getByRole('button', { name: /^Download/ }))
+    await waitFor(() => expect(files.names).toEqual(['Report B.pdf']))
+    expect(api.requests.filter((request) => REPORT_PATH.test(request.path)).map((request) => request.path)).toEqual(['/services-sales/12/report'])
+    expect(api.find('GET', '/services-sales/12/report')[0]?.authorization).toMatch(/^Bearer /)
+
+    await userEvent.click(cellOf('M1').getByRole('button', { name: /^Download/ }))
+    await waitFor(() => expect(files.names).toEqual(['Report B.pdf', 'Report A – M1.pdf']))
+    expect(api.find('GET', '/services-sales/11/report')).toHaveLength(1)
+  })
+
+  it('views a PDF in a new tab from the authenticated file, without leaving the page', async () => {
+    const files = captureFiles()
+    const tab = { opener: {} as unknown, location: { href: '' }, close: vi.fn() }
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
+    const api = salesApi(VIEWER, [M1, M2], (request) => (REPORT_PATH.test(request.path) ? ok(null) : undefined))
+    renderPage()
+
+    await screen.findByText('M1')
+    await userEvent.click(cellOf('M1').getByRole('button', { name: /^View/ }))
+    await waitFor(() => expect(tab.location.href).toBe('blob:report-1'))
+    expect(open).toHaveBeenCalledWith('', '_blank')
+    expect(tab.opener).toBeNull()
+    expect(files.blobs[0]?.type).toBe('application/pdf')
+    expect(api.find('GET', '/services-sales/11/report')).toHaveLength(1)
+    expect(api.find('GET', '/services-sales/12/report')).toHaveLength(0)
+    expect(screen.getByRole('heading', { name: 'Service Sales' })).toBeInTheDocument()
+  })
+
+  it('downloads a Word report from View, since browsers cannot show it', async () => {
+    const files = captureFiles()
+    const open = vi.spyOn(window, 'open')
+    salesApi(VIEWER, [makeItem({ id: '14', serviceReport: WORD })], (request) => (request.path === '/services-sales/14/report' ? ok(null) : undefined))
+    renderPage()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'View service report for AMC-0007 H1 (Word document: downloads)' }))
+    await waitFor(() => expect(files.names).toEqual(['Report C.docx']))
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  it('shows a clear message when the file is missing, refused or the tab is blocked', async () => {
+    captureFiles()
+    const tab = { opener: {}, location: { href: '' }, close: vi.fn() }
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
+    salesApi(VIEWER, [M1, M2], (request) => {
+      if (request.path === '/services-sales/11/report') return fail(404, 'FILE_MISSING', 'The service report file could not be found. Ask for it to be uploaded again on Service Status.')
+      if (request.path === '/services-sales/12/report') return fail(404, 'SERVICE_REPORT_NOT_FOUND', 'No service report has been uploaded for this service.')
+      return undefined
+    })
+    renderPage()
+
+    await screen.findByText('M1')
+    await userEvent.click(cellOf('M1').getByRole('button', { name: /^View/ }))
+    expect(await cellOf('M1').findByText(/could not be found/)).toBeInTheDocument()
+    expect(tab.close).toHaveBeenCalled()
+
+    await userEvent.click(cellOf('M2').getByRole('button', { name: /^Download/ }))
+    expect(await cellOf('M2').findByText('No service report has been uploaded for this service.')).toBeInTheDocument()
+
+    open.mockReturnValue(null)
+    await userEvent.click(cellOf('M2').getByRole('button', { name: /^View/ }))
+    expect(await cellOf('M2').findByText(/blocked the new tab/)).toBeInTheDocument()
+  })
+
+  it('is in Hide Columns with the shown count, keeps earlier saved choices, and is never sent to the export', async () => {
+    // A choice saved before this column existed.
+    localStorage.setItem(`stslev.services-sales.hidden-columns.${EDITOR.id}`, JSON.stringify(['frequency']))
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:test', revokeObjectURL: () => undefined }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    const api = salesApi(EDITOR, [M1], (request) => (request.path === '/services-sales/export' ? ok(null) : undefined))
+    // Through the app's routes, which wait for the signed-in user, so the saved choice of that user is read.
+    renderApp('/amc/service-sales')
+
+    await screen.findByText('M1')
+    expect(screen.getByRole('columnheader', { name: 'Service Report' })).toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Frequency' })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hide Columns (1)' }))
+    const dialog = within(screen.getByRole('dialog', { name: 'Hide columns' }))
+    expect(dialog.getByText('9 of 10 columns shown')).toBeInTheDocument()
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Report' }))
+    expect(dialog.getByText('8 of 10 columns shown')).toBeInTheDocument()
+    await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
+    expect(screen.queryByRole('columnheader', { name: 'Service Report' })).not.toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Service Report No.' })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export Service Sales to Excel' }))
+    await waitFor(() => expect(api.find('GET', '/services-sales/export').length).toBe(1))
+    expect(api.find('GET', '/services-sales/export')[0]?.query.get('hidden')).toBe('frequency')
   })
 })

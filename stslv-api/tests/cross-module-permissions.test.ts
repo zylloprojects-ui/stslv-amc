@@ -3,7 +3,7 @@ import { pool } from "../src/config/database";
 import { loadMigrationFiles } from "../src/db/migrate";
 import { PERMISSION_CATALOG } from "../src/shared/permission-catalog";
 import { defaultGrants, isInRoleScope, SECURITY_MODULES } from "../src/shared/role-model";
-import { activeContract, createClient, visitsOf } from "./amc-helpers";
+import { activeContract, createClient, newContractBody, visitsOf } from "./amc-helpers";
 import { api, closePool, permissionsVersion, resetData, roleId, signedIn } from "./helpers";
 
 // Cross-module permissions (2026-10-31): Super Admin may give any configurable role any supported
@@ -452,10 +452,7 @@ describe("the contract form's client list", () => {
     expect(await status(master, `/api/clients/${lookup.body.data[0].id}`)).toBe(403);
 
     // A contract can be created with it, with no client permission at all.
-    const created = await api().post("/api/amc/contracts").set(master.headers).send({
-      clientId: lookup.body.data[0].id, responsibleEngineer: "Engineer", validFrom: "2027-01-01", validTo: "2027-12-31",
-      systemDescription: "FIRE", contractValue: "1620.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "405.000",
-    });
+    const created = await api().post("/api/amc/contracts").set(master.headers).send(await newContractBody(lookup.body.data[0].id, { amcReference: "LOOKUP-AMC-001" }));
     expect(created.status).toBe(201);
   });
 

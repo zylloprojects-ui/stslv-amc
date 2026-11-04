@@ -24,6 +24,8 @@ export interface ContractSource {
   ref: SourceRef;
   raw: RawValues;
   serial: string | null;
+  /** The optional "AMC Reference" column (migration 0105); null when the workbook has no such column or the cell is empty. */
+  amcReference: string | null;
   engineer: string | null;
   /** "YYYY-MM-DD", or null when the cell is not a date. */
   validFrom: string | null;
@@ -168,10 +170,14 @@ function fontColour(sheet: Sheet, refs: string[]): string | null {
 // ---------------------------------------------------------------------------
 
 const CONTRACT_HEADINGS = ["s. no", "engineer", "from (validity)", "to (validity)", "client", "description", "value", "final credit"];
+/** The optional heading of the AMC Reference Number column (compared folded to lower case, like the others). */
+export const AMC_REFERENCE_HEADING = "amc reference";
 
 export function parseContracts(workbook: string, sheet: Sheet): Pick<SourceData, "contracts"> & { totals: { contractValue: SourceTotal | null; finalCredit: SourceTotal | null } } {
   const header = findHeaderRow(sheet, CONTRACT_HEADINGS);
   const column = (name: string) => header.columns.get(name) as string;
+  // Optional: the client's register has no reference column; one must be added before contracts can be imported.
+  const referenceColumn = header.columns.get(AMC_REFERENCE_HEADING);
   const first = column("s. no");
   const end = totalRow(sheet, first, header.row + 1);
   const contracts: ContractSource[] = [];
@@ -191,6 +197,7 @@ export function parseContracts(workbook: string, sheet: Sheet): Pick<SourceData,
       ref: { workbook, sheet: sheet.name, row, cell: "" },
       raw: rawValues(sheet, row, header.labels),
       serial: textOf(cell("s. no")),
+      amcReference: referenceColumn === undefined ? null : (textOf(sheet.cells.get(`${referenceColumn}${row}`))?.trim() ?? null),
       engineer: textOf(cell("engineer")),
       validFrom: from?.type === "number" ? serialToIsoDate(from.value) : null,
       validTo: to?.type === "number" ? serialToIsoDate(to.value) : null,

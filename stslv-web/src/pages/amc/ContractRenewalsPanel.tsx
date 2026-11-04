@@ -8,6 +8,8 @@ import type { ContractStatus } from './types'
 
 interface ContractSummary {
   id: string
+  /** The AMC Reference Number (absent from responses of an API older than migration 0105). */
+  reference?: string
   client: { id: string; name: string }
   systemDescription: string
   validFrom: string
@@ -25,6 +27,7 @@ function SummaryLine({ contract }: { contract: ContractSummary }) {
   return (
     <span className="flex flex-wrap items-center gap-2">
       <Link to={`/amc/contracts/${contract.id}`} className="font-medium text-blue-700 hover:underline">
+        {contract.reference && <span className="mr-1 font-mono font-semibold">{contract.reference} ·</span>}
         {formatDate(contract.validFrom)} to {formatDate(contract.validTo)}
       </Link>
       <ContractStatusPill status={contract.status} />

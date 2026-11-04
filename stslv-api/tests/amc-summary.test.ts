@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { activeContract, createClient, createContract, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, createContract, reportIfCompleting, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The figures handed to the dashboard and reports: GET /api/amc/summary.
@@ -13,8 +13,10 @@ let procurement: Session;
 let now: string;
 let allVisits: { scheduled_date: string; status: string }[];
 
-const execute = (id: string, body: Record<string, unknown>) =>
-  api().patch(`/api/amc/execution/visits/${id}`).set(admin.headers).send(body);
+const execute = async (id: string, body: Record<string, unknown>) => {
+  await reportIfCompleting(id, body);
+  return api().patch(`/api/amc/execution/visits/${id}`).set(admin.headers).send(body);
+};
 const summary = (session: Session = admin, query: Record<string, unknown> = {}) =>
   api().get("/api/amc/summary").query(query).set(session.headers);
 

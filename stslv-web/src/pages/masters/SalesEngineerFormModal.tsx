@@ -9,13 +9,16 @@ import { ENGINEER_STATUS_LABELS, isFeatureUnavailable, type Department, type Eng
 // that a newly linked account is active, approved and not linked to another
 // engineer.
 
-type Values = Record<'name' | 'employeeNo' | 'userId' | 'email' | 'phone' | 'departmentId' | 'notes' | 'status', string>
+type Values = Record<'code' | 'name' | 'employeeNo' | 'userId' | 'email' | 'phone' | 'departmentId' | 'notes' | 'status', string>
 type FieldName = keyof Values
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+// The API's rule for an engineer code (masters.schemas.ts): at most 20 characters, starting with a letter or digit.
+const CODE = /^[A-Za-z0-9][A-Za-z0-9 _./&-]*$/
 
 function initialValues(engineer: EngineerRecord | null): Values {
   return {
+    code: engineer?.code ?? '',
     name: engineer?.name ?? '',
     employeeNo: engineer?.employeeNo ?? '',
     userId: engineer?.user?.id ?? '',
@@ -30,6 +33,10 @@ function initialValues(engineer: EngineerRecord | null): Values {
 function validate(values: Values): Partial<Record<FieldName, string>> {
   const errors: Partial<Record<FieldName, string>> = {}
 
+  const code = values.code.trim()
+  if (!code) errors.code = 'Engineer code is required.'
+  else if (code.length > 20) errors.code = 'Engineer code must be at most 20 characters.'
+  else if (!CODE.test(code)) errors.code = 'Engineer code may use letters, digits, spaces and - _ . / & only.'
   if (!values.name.trim()) errors.name = 'Engineer name is required.'
   if (values.email.trim() && !EMAIL.test(values.email.trim())) errors.email = 'Enter a valid email address.'
 
@@ -76,6 +83,7 @@ export function SalesEngineerFormModal({ engineer, onClose, onSaved }: { enginee
     mutationFn: async () => {
       const text = (name: FieldName) => values[name].trim()
       const fields: Record<string, string> = {
+        code: text('code'),
         name: text('name'),
         employeeNo: text('employeeNo'),
         userId: values.userId,
@@ -151,9 +159,18 @@ export function SalesEngineerFormModal({ engineer, onClose, onSaved }: { enginee
       <form id={formId} onSubmit={submit} noValidate className="space-y-4">
         {unavailable && <Alert>Sales engineers cannot be saved until the database update (migration 0070) is applied.</Alert>}
         {save.isError && !unavailable && !(save.error instanceof ApiError && save.error.details.length > 0) && <Alert>{errorMessage(save.error)}</Alert>}
-        {engineer && <p className="text-sm text-slate-600">Engineer code {engineer.code}. The code is fixed and cannot be changed.</p>}
-
-        <TextField label="Engineer name" required maxLength={150} autoComplete="off" {...field('name')} />
+        <div className="grid gap-4 sm:grid-cols-[minmax(0,12rem)_1fr]">
+          <TextField
+            label="Engineer code"
+            required
+            maxLength={20}
+            autoComplete="off"
+            placeholder="e.g. SE-0001"
+            hint={engineer ? 'Changing the code keeps every contract linked to this engineer.' : 'Unique, ignoring capitals. A deleted engineer’s code cannot be reused.'}
+            {...field('code')}
+          />
+          <TextField label="Engineer name" required maxLength={150} autoComplete="off" {...field('name')} />
+        </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField label="Employee number" maxLength={50} autoComplete="off" {...field('employeeNo')} />
           <SelectField label="Department" hint={departments.isError ? 'The department list could not be loaded.' : undefined} {...field('departmentId')}>

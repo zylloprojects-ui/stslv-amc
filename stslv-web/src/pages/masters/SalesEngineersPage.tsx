@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { isSuperAdmin } from '../../auth/roles'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
@@ -14,8 +15,9 @@ import { ENGINEER_STATUS_LABELS, isFeatureUnavailable, type Department, type Mas
 import { FilterPanel } from '../amc/components'
 
 // Master Data Center → Sales Engineers: search, filter, sort, page and export;
-// add, view (Engineer 360), edit and disable. Engineers are never deleted, so
-// the AMC contracts they are on stay intact.
+// add, view (Engineer 360), edit and disable. Super Admin may also delete an
+// engineer no AMC contract refers to; one on a contract can only be disabled,
+// so the contracts stay intact.
 
 type StatusFilter = 'active' | 'inactive' | 'all'
 
@@ -116,6 +118,8 @@ export function SalesEngineersPage() {
   const [editing, setEditing] = useState<{ engineer: EngineerRecord | null } | null>(null)
   // The engineer whose status change from the row icon waits for confirmation.
   const [confirming, setConfirming] = useState<EngineerRecord | null>(null)
+  // The engineer whose permanent deletion waits for confirmation.
+  const [deleting, setDeleting] = useState<EngineerRecord | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
@@ -183,6 +187,17 @@ export function SalesEngineersPage() {
     },
   })
 
+  // Deletes an engineer no contract refers to; the API refuses a linked one (409) and says why.
+  const remove = useMutation({
+    mutationFn: (engineer: EngineerRecord) => api.delete(`/masters/sales-engineers/${engineer.id}`),
+    onMutate: () => setNotice(null),
+    onSuccess: async (_result, engineer) => {
+      setDeleting(null)
+      await queryClient.invalidateQueries({ queryKey: ['masters'] })
+      setNotice(`${engineer.name} (${engineer.code}) was deleted.`)
+    },
+  })
+
   // Every status change asks first; disabling also shows the engineer's active contracts.
   const apply = (engineer: EngineerRecord) => {
     toggle.reset()
@@ -192,6 +207,8 @@ export function SalesEngineersPage() {
   const canCreate = auth.can('SALES_ENGINEERS', 'CREATE')
   const canEdit = auth.can('SALES_ENGINEERS', 'EDIT')
   const canExport = auth.can('SALES_ENGINEERS', 'EXPORT')
+  // Permanent deletion is Super Admin only; the API refuses everyone else with 403.
+  const canDelete = isSuperAdmin(auth.user)
   const unavailable = list.isError && isFeatureUnavailable(list.error)
   const data = list.data
   const filtered = search !== '' || status !== 'active' || departmentId !== ''
@@ -201,7 +218,7 @@ export function SalesEngineersPage() {
     <>
       <PageHeader
         title="Sales Engineers"
-        description="Engineers assigned to AMC contracts. Engineers are disabled, never deleted, so the contracts they are on stay intact."
+        description="Engineers assigned to AMC contracts. An engineer on a contract is disabled, not deleted, so the contracts stay intact."
         actions={canCreate && !unavailable && <Button onClick={() => setEditing({ engineer: null })}>Add sales engineer</Button>}
       />
 
@@ -366,7 +383,7 @@ export function SalesEngineersPage() {
               <EmptyState
                 title={filtered ? 'No sales engineers match your filters' : 'No sales engineers yet'}
                 description={
-                  filtered ? 'Try a different search, status or department.' : 'Engineers you add here can be assigned to AMC contracts. Each gets an engineer code such as SE-0001.'
+                  filtered ? 'Try a different search, status or department.' : 'Engineers you add here can be assigned to AMC contracts. Each needs its own engineer code, such as SE-0001.'
                 }
                 action={!filtered && canCreate ? <Button onClick={() => setEditing({ engineer: null })}>Add sales engineer</Button> : undefined}
               />
@@ -471,6 +488,18 @@ export function SalesEngineersPage() {
                                   onClick={() => apply(engineer)}
                                 />
                               )}
+                              {canDelete && (
+                                <ActionButton
+                                  danger
+                                  label={`Delete ${engineer.name}`}
+                                  icon="delete"
+                                  disabled={remove.isPending && remove.variables?.id === engineer.id}
+                                  onClick={() => {
+                                    remove.reset()
+                                    setDeleting(engineer)
+                                  }}
+                                />
+                              )}
                             </ActionGroup>
                           </td>
                         </tr>
@@ -492,6 +521,29 @@ export function SalesEngineersPage() {
           onSaved={(message) => {
             setNotice(message)
             setEditing(null)
+          }}
+        />
+      )}
+      {deleting && (
+        <ConfirmDialog
+          title="Delete sales engineer"
+          message={
+            <>
+              Permanently delete <strong>{deleting.name}</strong> (<span className="font-mono">{deleting.code}</span>)? The engineer is removed for good and this cannot be undone.
+              The code {deleting.code} will not be available for another engineer.
+              <span className="mt-2 block text-sm">
+                An engineer linked to any AMC contract, including one in the Recycle Bin, cannot be deleted; disable the engineer instead.
+              </span>
+            </>
+          }
+          confirmLabel="Delete permanently"
+          danger
+          loading={remove.isPending}
+          error={remove.isError ? errorMessage(remove.error) : null}
+          onConfirm={() => remove.mutate(deleting)}
+          onCancel={() => {
+            remove.reset()
+            setDeleting(null)
           }}
         />
       )}

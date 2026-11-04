@@ -229,14 +229,14 @@ describe('the contract form without client permissions', () => {
 
 describe('contract status filters without Dashboard', () => {
   it('stay available from their own figures', async () => {
-    const figures = { active: 3, activePastValidity: 0, draft: 1, expired: 0, cancelled: 0 }
+    const figures = { total: 4, contractValue: '1620.000', finalCredit: '0.000', finalCreditMissing: 0, expired: 0 }
     const api = amcApi(finance(['AMC_CONTRACTS:VIEW']), {
       contracts: [makeContract()],
-      override: (request) => (request.path === '/amc/contracts/status-summary' ? ok({ contracts: figures }) : undefined),
+      override: (request) => (request.path === '/amc/contracts/kpis' ? ok(figures) : undefined),
     })
     renderApp('/amc/contracts')
 
-    expect(await screen.findByRole('group', { name: 'Filter contracts by status' })).toBeInTheDocument()
+    expect(await screen.findByRole('group', { name: 'AMC contract figures' })).toBeInTheDocument()
     expect(api.find('GET', '/dashboard/summary')).toHaveLength(0)
   })
 })

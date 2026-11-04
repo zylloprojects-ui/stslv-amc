@@ -2,6 +2,7 @@ import { pool } from "../../config/database";
 import { CONTRACT_STATUSES, type ContractStatus, type VisitStatus } from "../amc/amc.constants";
 import { getWorkload, type WorkloadMonth } from "../amc/reports.service";
 import { IN_SCOPE } from "../amc/service-status.service";
+import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import type { AuthContext } from "../auth/access";
 import { schemaHas } from "../../shared/schema-features";
 
@@ -36,6 +37,18 @@ export interface PaymentFigures {
   /** Services whose Invoice No. was entered this calendar month, and their value. */
   paidThisMonth: number;
   paidThisMonthValue: string;
+  /**
+   * The same split (Invoice No. entered or not), over the services SCHEDULED in this
+   * calendar month, whenever the number was entered. Added for the 12-card dashboard:
+   * "Invoices Generated / Not Generated" of the current month. paid / unpaid above are
+   * the overall figures.
+   */
+  scheduledThisMonth: {
+    withInvoiceNo: number;
+    withInvoiceNoValue: string;
+    withoutInvoiceNo: number;
+    withoutInvoiceNoValue: string;
+  };
 }
 
 export interface PaymentTrendMonth {
@@ -69,6 +82,10 @@ export interface OperationsKpis {
     thisMonth: number;
     completedThisMonth: number;
     openThisMonth: number;
+    /** Every counted visit, whatever its date: earlier years and the planned visits still ahead. Same rule as thisMonth. */
+    overall: number;
+    /** Of overall, the visits still open (Scheduled, In Progress, Postponed), the same statuses as openThisMonth. */
+    openOverall: number;
   } | null;
   /** Requires INVOICES:VIEW. Reference status, see PaymentFigures. */
   payments: PaymentFigures | null;
@@ -83,13 +100,15 @@ export interface PortfolioStatus {
 
 export interface ExpiringRow {
   id: string;
+  /** The contract's AMC Reference Number (stored from migration 0105). */
+  reference: string;
   client: { id: string; name: string };
   systemDescription: string;
   validTo: string;
   /** Negative once validity has ended. */
   daysLeft: number;
   /** The renewal that is not cancelled, if any; null when there is none or renewals are not installed. */
-  renewal: { id: string; status: ContractStatus } | null;
+  renewal: { id: string; reference: string; status: ContractStatus } | null;
 }
 
 export interface ScheduleItem {
@@ -193,8 +212,9 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
   // Same contract dates as the KPI, a wider window. Active contracts already past
   // validity are listed first: they are the most urgent and are still marked Active.
   const window = "c.status = 'ACTIVE' AND c.valid_to <= current_date + $1::int";
+  const storedReference = await hasStoredReference();
   const renewalSelect = renewals
-    ? `(SELECT json_build_object('id', r.id::text, 'status', r.status) FROM amc_contracts r
+    ? `(SELECT json_build_object('id', r.id::text, 'reference', ${referenceSql("r", storedReference)}, 'status', r.status) FROM amc_contracts r
         WHERE r.renewed_from_id = c.id AND r.status <> 'CANCELLED' ORDER BY r.id LIMIT 1)`
     : "NULL::json";
   const [totals, rows] = await Promise.all([
@@ -205,14 +225,15 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
     ),
     pool.query<{
       id: string;
+      reference: string;
       client_id: string;
       client_name: string;
       system_description: string;
       valid_to: string;
       days_left: number;
-      renewal: { id: string; status: ContractStatus } | null;
+      renewal: { id: string; reference: string; status: ContractStatus } | null;
     }>(
-      `SELECT c.id, cl.id AS client_id, cl.name AS client_name, c.system_description,
+      `SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.id AS client_id, cl.name AS client_name, c.system_description,
               c.valid_to::text AS valid_to, (c.valid_to - current_date)::int AS days_left,
               ${renewalSelect} AS renewal
        FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
@@ -230,6 +251,7 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
     renewalsInstalled: renewals,
     items: rows.rows.map((row) => ({
       id: row.id,
+      reference: row.reference,
       client: { id: row.client_id, name: row.client_name },
       systemDescription: row.system_description,
       validTo: row.valid_to,
@@ -246,15 +268,46 @@ export const COUNTED_VISIT = `v.status NOT IN ('CANCELLED', 'HISTORICAL')
 
 const UPCOMING_DAYS = 7;
 
+/** Visit statuses still to be carried out: the workload chart's "open". */
+const OPEN_VISIT = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED')";
+
+/** Every counted visit across all dates, and how many are still open. */
+export async function overallServiceCounts(): Promise<{ overall: number; openOverall: number }> {
+  const result = await pool.query<{ overall: number; open_overall: number }>(
+    `SELECT count(*)::int AS overall, count(*) FILTER (WHERE ${OPEN_VISIT})::int AS open_overall
+     FROM amc_visits v
+     WHERE ${COUNTED_VISIT}`
+  );
+
+  return { overall: result.rows[0]?.overall ?? 0, openOverall: result.rows[0]?.open_overall ?? 0 };
+}
+
 export async function paymentFigures(): Promise<PaymentFigures> {
   const paidThisMonth = "v.manual_invoice_no IS NOT NULL AND date_trunc('month', v.manual_invoice_at) = date_trunc('month', now())";
-  const result = await pool.query<{ paid: number; paid_value: string; unpaid: number; unpaid_value: string; month_count: number; month_value: string }>(
+  // Scheduled this month, by the same current_date as Services This Month.
+  const scheduledThisMonth = "date_trunc('month', v.scheduled_date) = date_trunc('month', current_date)";
+  const result = await pool.query<{
+    paid: number;
+    paid_value: string;
+    unpaid: number;
+    unpaid_value: string;
+    month_count: number;
+    month_value: string;
+    sched_with: number;
+    sched_with_value: string;
+    sched_without: number;
+    sched_without_value: string;
+  }>(
     `SELECT count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS paid,
             COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS paid_value,
             count(*) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS unpaid,
             COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS unpaid_value,
             count(*) FILTER (WHERE ${paidThisMonth})::int AS month_count,
-            COALESCE(sum(v.visit_amount) FILTER (WHERE ${paidThisMonth}), 0)::numeric(16,3)::text AS month_value
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${paidThisMonth}), 0)::numeric(16,3)::text AS month_value,
+            count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NOT NULL)::int AS sched_with,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS sched_with_value,
+            count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL)::int AS sched_without,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS sched_without_value
      FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
      WHERE ${IN_SCOPE}`
   );
@@ -267,6 +320,12 @@ export async function paymentFigures(): Promise<PaymentFigures> {
     unpaidValue: row?.unpaid_value ?? "0.000",
     paidThisMonth: row?.month_count ?? 0,
     paidThisMonthValue: row?.month_value ?? "0.000",
+    scheduledThisMonth: {
+      withInvoiceNo: row?.sched_with ?? 0,
+      withInvoiceNoValue: row?.sched_with_value ?? "0.000",
+      withoutInvoiceNo: row?.sched_without ?? 0,
+      withoutInvoiceNoValue: row?.sched_without_value ?? "0.000",
+    },
   };
 }
 
@@ -350,7 +409,7 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
   const canInvoices = auth.permissions.has("INVOICES:VIEW");
   const renewals = canContracts ? await schemaHas(["amc_contracts.renewed_from_id"]) : false;
 
-  const [clock, contracts, statusBreakdown, expiringList, workload, todayWork, payments, trend] = await Promise.all([
+  const [clock, contracts, statusBreakdown, expiringList, workload, todayWork, payments, trend, overallServices] = await Promise.all([
     pool.query<{ today: string; time_zone: string }>("SELECT current_date::text AS today, current_setting('TimeZone') AS time_zone"),
     canContracts ? contractKpis(renewals) : null,
     canContracts ? portfolio() : null,
@@ -359,6 +418,7 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
     canVisits ? schedule() : null,
     canInvoices ? paymentFigures() : null,
     canInvoices ? paymentTrend() : null,
+    canVisits ? overallServiceCounts() : null,
   ]);
   const thisMonth = workload?.months[0];
 
@@ -367,7 +427,10 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
     timeZone: clock.rows[0]?.time_zone ?? "",
     kpis: {
       contracts,
-      services: thisMonth ? { thisMonth: thisMonth.planned, completedThisMonth: thisMonth.completed, openThisMonth: thisMonth.open } : null,
+      services:
+        thisMonth && overallServices
+          ? { thisMonth: thisMonth.planned, completedThisMonth: thisMonth.completed, openThisMonth: thisMonth.open, ...overallServices }
+          : null,
       payments,
     },
     portfolio: statusBreakdown,

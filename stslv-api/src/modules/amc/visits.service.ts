@@ -4,13 +4,15 @@ import { pool } from "../../config/database";
 import { featureUnavailable } from "../../middleware/require-schema";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
-import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
+import { AppError, conflict, notFound, validationError } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { assertVisitNotInvoiced } from "../invoices/invoice-locks";
 import { assertVisitNotPaid, PAYMENT_STATUS_SQL, type PaymentStatus } from "./manual-invoice.service";
+import { assertServiceReportPresent } from "./service-reports.service";
 import type { ContractStatus, InvoiceEligibility, VisitStatus } from "./amc.constants";
+import { referenceStaticSql } from "./contract-reference";
 import type {
   ListExecutionQuery,
   ListVisitsQuery,
@@ -23,10 +25,12 @@ interface VisitRow {
   color_override: string | null;
   manual_invoice_no: string | null;
   manual_invoice_at: Date | null;
+  quotation_no: string | null;
   invoice_recorded: boolean;
   first_service: boolean;
   id: string;
   amc_contract_id: string;
+  contract_reference: string;
   contract_status: ContractStatus;
   system_description: string;
   maintenance_frequency: string;
@@ -60,7 +64,8 @@ interface VisitRow {
 /** A visit as the execution screens see it: no amounts and no invoicing state. */
 export interface ExecutionVisit {
   id: string;
-  contract: { id: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: string };
+  /** reference: the contract's AMC Reference Number (stored from migration 0105). */
+  contract: { id: string; reference: string; status: ContractStatus; systemDescription: string; maintenanceFrequency: string };
   client: { id: string; name: string };
   sequenceNo: number;
   /** Contract year and service code taken when the visit was generated ("Year 2 · Q3"); null on visits generated before migration 0076. */
@@ -100,6 +105,11 @@ export interface ScheduleVisit extends ExecutionVisit {
   paymentStatus: PaymentStatus;
   /** When the manual Invoice No. was entered; null while Unpaid. */
   paidAt: string | null;
+  /**
+   * The quotation number recorded for THIS visit on Service Sales (amc_visits.quotation_no, migration 0078).
+   * Read-only here: Service Sales is the only place it is entered. Null when none is recorded.
+   */
+  quotationNo: string | null;
   /** The manual colour of the service (Color Priority level 1); null when none is set. */
   colorOverride: string | null;
   /** The Color Priority state that wins for this service. Derived, never stored. */
@@ -123,7 +133,7 @@ const BILLING_STATUS_SQL = `CASE
   END`;
 
 const VISIT_SELECT = `
-  SELECT v.id, v.amc_contract_id, c.status AS contract_status, c.system_description, c.maintenance_frequency,
+  SELECT v.id, v.amc_contract_id, ${referenceStaticSql("c")} AS contract_reference, c.status AS contract_status, c.system_description, c.maintenance_frequency,
          c.client_id, cl.name AS client_name, v.sequence_no,
          -- Migration 0076 columns, read so that a database without them still works (they are then null).
          (to_jsonb(v) ->> 'cycle_no')::int AS cycle_no, to_jsonb(v) ->> 'service_code' AS service_code,
@@ -135,6 +145,8 @@ const VISIT_SELECT = `
          v.work_performed, v.execution_notes, v.status_reason, v.notes,
          b.invoice_eligibility, v.created_at, v.updated_at, v.color_override,
          v.manual_invoice_no, v.manual_invoice_at,
+         -- Migration 0078 column, read the same way so a database without it still lists visits (null).
+         to_jsonb(v) ->> 'quotation_no' AS quotation_no,
          NOT EXISTS (SELECT 1 FROM amc_visits e WHERE e.amc_contract_id = v.amc_contract_id AND e.sequence_no < v.sequence_no AND e.status <> 'HISTORICAL') AS first_service`;
 
 const VISIT_FROM = `
@@ -149,6 +161,7 @@ function toExecutionVisit(row: VisitRow): ExecutionVisit {
     id: row.id,
     contract: {
       id: row.amc_contract_id,
+      reference: row.contract_reference,
       status: row.contract_status,
       systemDescription: row.system_description,
       maintenanceFrequency: row.maintenance_frequency,
@@ -186,6 +199,7 @@ function toScheduleVisit(row: VisitRow): ScheduleVisit {
     manualInvoiceNo: row.manual_invoice_no,
     paymentStatus: row.manual_invoice_no ? "PAID" : "UNPAID",
     paidAt: row.manual_invoice_at?.toISOString() ?? null,
+    quotationNo: row.quotation_no,
     colorOverride: row.color_override,
     colorState: colorState({
       override: row.color_override,
@@ -234,7 +248,7 @@ function searchCondition(params: unknown[], search: string): string {
   params.push(`%${escapeLike(search)}%`);
   const p = `$${params.length}`;
 
-  return `(cl.name ILIKE ${p} OR c.system_description ILIKE ${p} OR COALESCE(v.assigned_to, c.responsible_engineer) ILIKE ${p})`;
+  return `(${referenceStaticSql("c")} ILIKE ${p} OR cl.name ILIKE ${p} OR c.system_description ILIKE ${p} OR COALESCE(v.assigned_to, c.responsible_engineer) ILIKE ${p})`;
 }
 
 // ---------------------------------------------------------------------------
@@ -670,6 +684,13 @@ export async function listExecutionVisits(query: ListExecutionQuery) {
 
 const fieldError = (field: string, message: string) => validationError(message, [{ field, message }]);
 
+/** A completed visit cannot leave Completed or change its completion date. */
+const completionLocked = (field = "status") => {
+  const message = "This service is completed and locked. Its status and completion date cannot be changed.";
+
+  return new AppError(409, "COMPLETION_LOCKED", message, [{ field, message }]);
+};
+
 /** Execution changes to one visit: status, completion, planned date and work notes. */
 export function updateExecution(auth: AuthContext, id: string, input: UpdateExecutionInput): Promise<ExecutionVisit> {
   return withTransaction((client) => applyExecution(client, auth, id, input));
@@ -688,14 +709,14 @@ export async function applyExecution(client: Queryable, auth: AuthContext, id: s
   const status = input.status ?? row.status;
   const statusChanged = status !== row.status;
 
-  // Reopening completed work changes what is ready for invoice, so it needs
-  // the APPROVE permission. PROVISIONAL: who may reopen is unconfirmed.
-  if (row.status === "COMPLETED" && statusChanged && !auth.permissions.has("AMC_EXECUTION:APPROVE")) {
-    throw forbidden("A completed visit can only be reopened by a user with approval permission for AMC Execution.");
-  }
-  // Invoiced work stays completed until its invoice is cancelled.
+  // Completion lock (approved 2026-11-04): once a visit is saved as Completed its status and completion date are
+  // final, for every user and on every route. There is no reopening; an unlock would need a separately approved
+  // change. Migration 0104 adds the same guard in the database.
   if (row.status === "COMPLETED" && statusChanged) {
-    await assertVisitNotInvoiced(client, id, "reopened");
+    throw completionLocked();
+  }
+  if (row.status === "COMPLETED" && input.completedDate !== undefined && input.completedDate !== row.completed_date) {
+    throw completionLocked("completedDate");
   }
 
   let completedDate = row.completed_date;
@@ -717,6 +738,8 @@ export async function applyExecution(client: Queryable, auth: AuthContext, id: s
     }
     if (statusChanged) {
       completedBy = auth.user.id;
+      // A service is completed only with its service report (0104), checked with the visit locked.
+      await assertServiceReportPresent(client, id);
     }
   } else {
     if (input.completedDate) {

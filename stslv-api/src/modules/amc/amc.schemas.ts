@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { exportFormatSchema } from "../../shared/export/report";
 import { idSchema, optionalText, requiredText } from "../../shared/validation";
+import { amcReferenceSchema } from "./amc-reference.rules";
 import {
   BILLING_STATUSES,
   CONTRACT_STATUSES,
@@ -90,6 +91,9 @@ const page = z.coerce.number().int().min(1).default(1);
 // ---------------------------------------------------------------------------
 
 export const BILLING_BASES = ["CONTRACT_VALUE", "FINAL_CREDIT", "CUSTOM"] as const;
+
+/** A System Types master record (migration 0070). */
+const systemTypeLink = z.string({ error: "Select a system." }).regex(/^[1-9]\d{0,17}$/, "Select a system.");
 export type BillingBasis = (typeof BILLING_BASES)[number];
 
 const contractFields = {
@@ -111,6 +115,7 @@ const contractFields = {
 };
 
 export const createContractSchema = z.strictObject({
+  amcReference: amcReferenceSchema,
   clientId: contractFields.clientId,
   responsibleEngineer: contractFields.responsibleEngineer.optional(),
   validFrom: contractFields.validFrom,
@@ -128,8 +133,67 @@ export const createContractSchema = z.strictObject({
   notes: contractFields.notes.optional(),
   // Optional link to the Sales Engineer master (migration 0070); null or left out: no link.
   salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
+  // The System Types master record (migration 0070). When given, it must be active, and the contract's system
+  // becomes that type's name, so the two never disagree. Required when adding a contract (createNewContractSchema).
+  systemTypeId: systemTypeLink.optional(),
   // A contract is created as a draft (no schedule) or active (schedule generated at once).
   status: z.enum(["DRAFT", "ACTIVE"]).default("DRAFT"),
+});
+
+/**
+ * Base64 text only (padding included); checked before decoding, since Buffer.from(..., "base64") skips stray
+ * characters. A plain loop rather than a regular expression: the text of a large file is millions of characters.
+ */
+function isBase64(value: string): boolean {
+  if (value.length % 4 !== 0) return false;
+
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+
+  for (let index = 0; index < value.length - padding; index += 1) {
+    const code = value.charCodeAt(index);
+    const valid = (code >= 65 && code <= 90) || (code >= 97 && code <= 122) || (code >= 48 && code <= 57) || code === 43 || code === 47;
+
+    if (!valid) return false;
+  }
+
+  return true;
+}
+
+/**
+ * The contract document sent with a new contract: its file name and its content as base64. Its type, size and
+ * content are checked in the service (attachments.service prepareContractDocument), as for every other upload.
+ */
+const contractDocument = z.strictObject(
+  {
+    fileName: z.string({ error: "Attach the contract document." }).trim().min(1, "Attach the contract document.").max(500, "The file name is too long."),
+    contentBase64: z
+      .string({ error: "Attach the contract document." })
+      .min(1, "Attach the contract document.")
+      .refine(isBase64, "The contract document could not be read. Choose the file again."),
+  },
+  { error: "Attach the contract document." }
+);
+
+/**
+ * Add AMC Contract (approved 2026-11-03): a new contract names an active sales engineer and an active system type,
+ * records its Final Credit (zero is allowed) and carries at least one contract document (PDF or Word). These apply
+ * to new contracts only: renewals keep createRenewalSchema, and existing contracts are never re-checked.
+ */
+export const createNewContractSchema = createContractSchema.extend({
+  salesEngineerId: z.string({ error: "Select a sales engineer." }).regex(/^[1-9]\d{0,17}$/, "Select a sales engineer."),
+  systemTypeId: z.string({ error: "Select a system." }).regex(/^[1-9]\d{0,17}$/, "Select a system."),
+  // Set from the chosen system type; a value sent here is replaced by the type's name.
+  systemDescription: contractFields.systemDescription.optional(),
+  // Zero is allowed. One message per problem: missing, or not an amount.
+  finalCredit: z
+    .string({ error: "Final credit is required." })
+    .trim()
+    .superRefine((value, ctx) => {
+      if (value === "") ctx.addIssue({ code: "custom", message: "Final credit is required." });
+      else if (!MONEY_PATTERN.test(value)) ctx.addIssue({ code: "custom", message: moneyMessage("Final credit") });
+    })
+    .transform(normalizeMoney),
+  contractDocument,
 });
 
 /** A renewal: the same fields, plus optional notes kept in the activity log of the new contract. */
@@ -157,6 +221,10 @@ export const updateContractSchema = z
     defaultVisitAmount: contractFields.defaultVisitAmount.optional(),
     notes: contractFields.notes.optional(),
     salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
+    // A new system type link (it cannot be removed here); the contract's system becomes its name.
+    systemTypeId: systemTypeLink.optional(),
+    // Read-only after creation: refused with a clear message rather than ignored.
+    amcReference: z.never({ error: "The AMC Reference Number cannot be changed after the contract is created." }).optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), "Provide at least one field to update.");
 
@@ -396,6 +464,7 @@ export const summarySchema = z.object({
 });
 
 export type CreateContractInput = z.infer<typeof createContractSchema>;
+export type CreateNewContractInput = z.infer<typeof createNewContractSchema>;
 export type UpdateContractInput = z.infer<typeof updateContractSchema>;
 export type ChangeContractStatusInput = z.infer<typeof changeContractStatusSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsSchema>;

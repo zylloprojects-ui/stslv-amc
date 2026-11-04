@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { colorState, COLOR_PRIORITY_RULE } from "../src/modules/amc/amc.schedule";
-import { activeContract, createClient, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { cancelInvoice, invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -16,7 +16,10 @@ const get = (url: string, query: Record<string, unknown> = {}, session: Session 
 const patch = (url: string, body: Record<string, unknown>, session: Session = admin) => api().patch(`/api${url}`).set(session.headers).send(body);
 const post = (url: string, body: Record<string, unknown> = {}, session: Session = admin) => api().post(`/api${url}`).set(session.headers).send(body);
 const body = (overrides: Record<string, unknown>) => ({ clientId, systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "300.000", ...overrides });
-const complete = async (id: string) => expect((await patch(`/amc/execution/visits/${id}`, { status: "COMPLETED", completedDate: await today() })).status).toBe(200);
+const complete = async (id: string) => {
+  await withServiceReport(id);
+  expect((await patch(`/amc/execution/visits/${id}`, { status: "COMPLETED", completedDate: await today() })).status).toBe(200);
+};
 const visitRow = async (id: string) => (await get(`/amc/visits/${id}`)).body.data;
 
 const setManualNo = async (visitId: string, invoiceNo: string | null) => {
@@ -194,8 +197,11 @@ describe("Cross-module synchronisation", () => {
     expect(cancelled.invoiced).toBe(invoiced.invoiced - 1);
 
     const row = (await get("/amc/service-status", { clientId: other, pageSize: 50 })).body.data.items.find((item: { id: string }) => item.id === first!.id);
-    expect((await patch(`/amc/service-status/${first!.id}`, { status: "NOT_COMPLETED", expectedUpdatedAt: row.updatedAt })).status).toBe(200);
-    expect(await read()).toMatchObject({ accountsColour: "RED", masterColour: "RED", completed: 0 });
+    // Completion lock (2026-11-04): completed work cannot be reopened.
+    const reopened = await patch(`/amc/service-status/${first!.id}`, { status: "NOT_COMPLETED", expectedUpdatedAt: row.updatedAt });
+    expect(reopened.status).toBe(409);
+    expect(reopened.body.error.code).toBe("COMPLETION_LOCKED");
+    expect(await read()).toMatchObject({ accountsColour: "BLUE", masterColour: "YELLOW", completed: 1 });
   });
 });
 
@@ -208,7 +214,7 @@ describe("Deletion Log coverage", () => {
     expect((await patch(`/amc/execution/visits/${first!.id}`, { status: "CANCELLED", statusReason: "Client asked" })).status).toBe(200);
     expect((await post(`/amc/contracts/${id}/status`, { status: "CANCELLED", reason: "Test" })).status).toBe(200);
 
-    const engineer = (await post("/masters/sales-engineers", { name: "Log Engineer" })).body.data.id;
+    const engineer = (await post("/masters/sales-engineers", { code: "SE-LOG", name: "Log Engineer" })).body.data.id;
     expect((await post(`/masters/sales-engineers/${engineer}/status`, { isActive: false })).status).toBe(200);
     const gone = await createClient(admin, "Log Client");
     expect((await post(`/clients/${gone}/deactivate`)).status).toBe(200);

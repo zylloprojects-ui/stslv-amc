@@ -12,7 +12,7 @@ const day = (n: number) => `${MONTH}-${String(n).padStart(2, '0')}`
 
 const VISITS = [
   makeVisit({ id: '501', sequenceNo: 1, scheduledDate: day(3), status: 'COMPLETED', completedDate: day(3) }),
-  makeVisit({ id: '502', sequenceNo: 2, scheduledDate: day(3), client: { id: '11', name: 'Test Hotel Two' }, contract: { id: '101', status: 'ACTIVE', systemDescription: 'CCTV', maintenanceFrequency: 'MONTHLY' } }),
+  makeVisit({ id: '502', sequenceNo: 2, scheduledDate: day(3), client: { id: '11', name: 'Test Hotel Two' }, contract: { id: '101', reference: 'AMC-0101', status: 'ACTIVE', systemDescription: 'CCTV', maintenanceFrequency: 'MONTHLY' } }),
   makeVisit({ id: '503', sequenceNo: 3, scheduledDate: day(3), status: 'POSTPONED' }),
   makeVisit({ id: '504', sequenceNo: 4, scheduledDate: day(3) }),
   makeVisit({ id: '505', sequenceNo: 5, scheduledDate: day(12), isOverdue: true }),

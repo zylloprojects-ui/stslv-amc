@@ -152,8 +152,8 @@ describe("linked engineers and status", () => {
 
   it("counts linked engineers, active and in total", async () => {
     const amc = ids.get("AMC") as string;
-    engineerId = (await api().post(ENGINEERS).set(admin.headers).send({ name: "Alpha Field", employeeNo: "EMP-1", departmentId: amc })).body.data.id as string;
-    await api().post(ENGINEERS).set(admin.headers).send({ name: "Bravo Field", departmentId: amc, isActive: false });
+    engineerId = (await api().post(ENGINEERS).set(admin.headers).send({ code: "SE-ALPHA", name: "Alpha Field", employeeNo: "EMP-1", departmentId: amc })).body.data.id as string;
+    await api().post(ENGINEERS).set(admin.headers).send({ code: "SE-BRAVO", name: "Bravo Field", departmentId: amc, isActive: false });
 
     const amcRow = (await list({ search: "AMC" })).body.data.items[0];
     expect(amcRow).toMatchObject({ engineerCount: 2, activeEngineerCount: 1 });
@@ -161,8 +161,8 @@ describe("linked engineers and status", () => {
     // The linked list itself is the Sales Engineers list, filtered by department.
     const linked = await api().get(ENGINEERS).query({ departmentId: amc, status: "all" }).set(admin.headers);
     expect(linked.body.data.items.map((item: { name: string; code: string; employeeNo: string | null; isActive: boolean }) => [item.name, item.code, item.employeeNo, item.isActive])).toEqual([
-      ["Alpha Field", `SE-${engineerId.padStart(4, "0")}`, "EMP-1", true],
-      ["Bravo Field", expect.stringMatching(/^SE-\d{4,}$/), null, false],
+      ["Alpha Field", "SE-ALPHA", "EMP-1", true],
+      ["Bravo Field", "SE-BRAVO", null, false],
     ]);
   });
 
@@ -188,7 +188,7 @@ describe("linked engineers and status", () => {
     const options = await api().get(`${PATH}/options`).set(admin.headers);
     expect(options.body.data.map((item: { code: string }) => item.code)).not.toContain("AMC");
 
-    const refused = await api().post(ENGINEERS).set(admin.headers).send({ name: "Charlie Field", departmentId: amc });
+    const refused = await api().post(ENGINEERS).set(admin.headers).send({ code: "SE-CHARLIE", name: "Charlie Field", departmentId: amc });
     expect(refused.status).toBe(400);
     expect(refused.body.error.details).toEqual([{ field: "departmentId", message: "Select an active department." }]);
 

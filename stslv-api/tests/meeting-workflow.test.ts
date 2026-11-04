@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { createClient, today, visitsOf, type Session } from "./amc-helpers";
+import { createClient, newContractBody, referenceOf, testReference, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -34,24 +34,27 @@ async function frequencies(): Promise<FrequencyRow[]> {
 }
 
 async function newContract(overrides: Record<string, unknown>): Promise<string> {
-  const response = await post("/amc/contracts", {
-    clientId,
-    systemDescription: "FIRE",
-    validFrom: "2027-01-01",
-    validTo: "2027-12-31",
-    contractValue: "1200.000",
-    maintenanceFrequency: "QUARTERLY",
-    defaultVisitAmount: "100.000",
-    status: "ACTIVE",
-    ...overrides,
-  });
+  const response = await post(
+    "/amc/contracts",
+    await newContractBody(clientId, {
+      amcReference: testReference("WORKFLOW"),
+      systemDescription: "FIRE",
+      validFrom: "2027-01-01",
+      validTo: "2027-12-31",
+      contractValue: "1200.000",
+      maintenanceFrequency: "QUARTERLY",
+      defaultVisitAmount: "100.000",
+      status: "ACTIVE",
+      ...overrides,
+    })
+  );
 
   if (response.status !== 201) throw new Error(`Contract refused: ${response.status} ${JSON.stringify(response.body)}`);
   return response.body.data.id as string;
 }
 
 async function serviceRow(id: string) {
-  const response = await get("/amc/service-status", { pageSize: 200, search: `AMC-${contractId.padStart(4, "0")}` });
+  const response = await get("/amc/service-status", { pageSize: 200, search: await referenceOf(contractId) });
 
   return (response.body.data.items as { id: string; updatedAt: string; serviceStatus: string; reportNumber: string | null }[]).find((row) => row.id === id);
 }
@@ -67,7 +70,7 @@ describe("meeting workflow", () => {
     clientId = await createClient(admin, "Workflow Hotel LLC");
     expect((await post("/clients", { name: "Workflow Hotel LLC", clientType: "COMPANY" })).status).toBe(409);
 
-    const engineer = await post("/masters/sales-engineers", { name: "Workflow Engineer", employeeNo: "6744" });
+    const engineer = await post("/masters/sales-engineers", { code: "SE-6744", name: "Workflow Engineer", employeeNo: "6744" });
     expect(engineer.status).toBe(201);
     engineerId = engineer.body.data.id;
 
@@ -90,8 +93,9 @@ describe("meeting workflow", () => {
     expect(shape("EVERY_4_MONTHS")).toEqual([3, 4, "T"]);
     expect(rows.find((item) => item.code === "CUSTOM")?.codePrefix).toBe("C");
 
-    const before = await post("/amc/contracts", { clientId, systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "600.000", maintenanceFrequency: "BI_MONTHLY", status: "ACTIVE" });
+    const before = await post("/amc/contracts", await newContractBody(clientId, { amcReference: testReference("WORKFLOW"), systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "600.000", maintenanceFrequency: "BI_MONTHLY", status: "ACTIVE" }));
     expect(before.status).toBe(400);
+    expect(before.body.error.details.map((detail: { field: string }) => detail.field)).toEqual(["maintenanceFrequency"]);
 
     for (const code of ["BI_MONTHLY", "EVERY_4_MONTHS", "CUSTOM"]) {
       const id = rows.find((item) => item.code === code)?.id as string;
@@ -155,6 +159,7 @@ describe("meeting workflow", () => {
     const row = await serviceRow(first!.id);
 
     expect(row?.serviceStatus).toBe("NOT_COMPLETED");
+    await withServiceReport(first!.id);
 
     // A stale screen cannot overwrite a newer change.
     expect((await patch(`/amc/service-status/${first!.id}`, { status: "COMPLETED", completedDate: await today(), expectedUpdatedAt: "2000-01-01T00:00:00.000Z" })).status).toBe(409);
@@ -225,7 +230,7 @@ describe("meeting workflow", () => {
 
     // Draft renewal: under approval; activated: renewed. The source and its visits stay as they were.
     const sourceVisits = await visitsOf(at45);
-    const renewal = await post(`/amc/contracts/${at45}/renewals`, { clientId, systemDescription: "RENEW-45", validFrom: addDays(now, 46), validTo: addDays(now, 410), contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "100.000", salesEngineerId: engineerId, status: "DRAFT" });
+    const renewal = await post(`/amc/contracts/${at45}/renewals`, { amcReference: testReference("WORKFLOW-RENEWAL"), clientId, systemDescription: "RENEW-45", validFrom: addDays(now, 46), validTo: addDays(now, 410), contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "100.000", salesEngineerId: engineerId, status: "DRAFT" });
     expect(renewal.status).toBe(201);
     expect(await state(at45)).toMatchObject({ renewalState: "UNDER_APPROVAL" });
     expect((await post(`/amc/contracts/${renewal.body.data.id}/status`, { status: "ACTIVE" })).status).toBe(200);
@@ -234,7 +239,7 @@ describe("meeting workflow", () => {
     expect((await visitsOf(renewal.body.data.id)).length).toBeGreaterThan(0);
 
     // Cancelled renewal: the queue says so.
-    const second = await post(`/amc/contracts/${atToday}/renewals`, { clientId, systemDescription: "RENEW-0", validFrom: addDays(now, 1), validTo: addDays(now, 365), contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "100.000", salesEngineerId: engineerId, status: "DRAFT" });
+    const second = await post(`/amc/contracts/${atToday}/renewals`, { amcReference: testReference("WORKFLOW-RENEWAL"), clientId, systemDescription: "RENEW-0", validFrom: addDays(now, 1), validTo: addDays(now, 365), contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "100.000", salesEngineerId: engineerId, status: "DRAFT" });
     expect(second.status).toBe(201);
     expect((await post(`/amc/contracts/${second.body.data.id}/status`, { status: "CANCELLED", reason: "Client declined" })).status).toBe(200);
     expect(await state(atToday)).toMatchObject({ renewalState: "CANCELLED" });
@@ -244,7 +249,7 @@ describe("meeting workflow", () => {
     const before = (await get("/accounts", { clientId, invoiceStatus: "RECORDED", pageSize: 200 })).body.data.items as { id: string }[];
     expect((await post(`/amc/contracts/${contractId}/status`, { status: "CANCELLED", reason: "Workflow test" })).status).toBe(200);
 
-    const after = (await get("/amc/master-status", { search: `AMC-${contractId.padStart(4, "0")}`, pageSize: 200 })).body.data.items as { id: string }[];
+    const after = (await get("/amc/master-status", { search: await referenceOf(contractId), pageSize: 200 })).body.data.items as { id: string }[];
     expect(after.map((item) => item.id)).toEqual(before.map((item) => item.id));
     expect((await visitsOf(contractId)).filter((visit) => visit.status === "COMPLETED")).toHaveLength(1);
   });

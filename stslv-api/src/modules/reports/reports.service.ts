@@ -7,7 +7,8 @@ import { dateSchema } from "../../shared/money";
 import { idSchema } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { CONTRACT_STATUSES, VISIT_STATUSES } from "../amc/amc.constants";
-import { RENEWAL_QUEUE_SQL } from "../amc/renewal-queue.service";
+import { renewalQueueSql } from "../amc/renewal-queue.service";
+import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import { RENEWAL_HISTORY_FROM } from "../amc/renewals.service";
 import { EXPIRING_LIST_DAYS } from "../dashboard/operations.service";
 import { PAID_STATUS_NOTE } from "../amc/manual-invoice.service";
@@ -42,7 +43,12 @@ type Filters = {
 export const reportQuerySchema = z.object({ ...filters, page: z.coerce.number().int().min(1).default(1), pageSize: z.coerce.number().int().min(1).max(200).default(50) });
 export const reportExportSchema = z.object({ ...filters, format: exportFormatSchema });
 
-const REFERENCE = "'AMC-' || lpad(c.id::text, 4, '0')";
+/** What a report's SQL needs from the database: the AMC Reference Number of a contract alias (stored from 0105), and the renewal queue. */
+interface SqlContext {
+  reference: (alias: string) => string;
+  renewalQueue: string;
+}
+
 const MONEY = (key: string, header: string): ReportColumn => ({ key, header, kind: "money", width: 15 });
 const COUNT = (key: string, header: string): ReportColumn => ({ key, header, kind: "count", width: 11 });
 const TEXT = (key: string, header: string, width = 20): ReportColumn => ({ key, header, kind: "text", width, wrap: true });
@@ -62,7 +68,7 @@ const VISITS = `
     WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
   ) inv ON true`;
 
-const VISIT_COLUMNS = `${REFERENCE} AS reference, cl.name AS client, c.system_description AS system,
+const visitColumns = (ctx: SqlContext) => `${ctx.reference("c")} AS reference, cl.name AS client, c.system_description AS system,
   COALESCE(mf.label, c.maintenance_frequency) AS frequency, v.service_code AS service, v.scheduled_date::text AS scheduled_date,
   initcap(replace(v.status, '_', ' ')) AS status, v.service_report_no AS report_no, v.manual_invoice_no AS invoice_no,
   CASE WHEN v.manual_invoice_no IS NULL THEN 'Unpaid' ELSE 'Paid' END AS payment, inv.numbers AS zoho_invoices,
@@ -123,7 +129,7 @@ interface ReportSpec {
   statuses?: readonly string[];
   kpis?: ReportKpi[];
   columns: ReportColumn[];
-  sql: (where: string) => string;
+  sql: (where: string, ctx: SqlContext) => string;
   where: Where;
   orderBy: string;
   notes?: string[];
@@ -161,8 +167,8 @@ export const REPORTS = {
       DATE("valid_from", "Valid From"), DATE("valid_to", "Valid To"), TEXT("status", "Status", 10), MONEY("contract_value", "AMC Value / Year"), MONEY("final_credit", "Final Credit"),
       TEXT("billing_basis", "Billing Basis", 13), COUNT("services", "Services"), COUNT("completed", "Completed"), MONEY("scheduled_current_year", "Scheduled (Current Year)"), MONEY("unpaid_amount", "Unpaid Amount"),
     ],
-    sql: (where) => `
-      SELECT ${REFERENCE} AS reference, cl.name AS client, c.system_description AS system, COALESCE(mf.label, c.maintenance_frequency) AS frequency,
+    sql: (where, ctx) => `
+      SELECT ${ctx.reference("c")} AS reference, cl.name AS client, c.system_description AS system, COALESCE(mf.label, c.maintenance_frequency) AS frequency,
              se.name AS engineer, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to, initcap(c.status) AS status,
              c.contract_value, c.final_credit,
              CASE c.billing_basis WHEN 'CONTRACT_VALUE' THEN 'AMC Value / Year' WHEN 'FINAL_CREDIT' THEN 'Final Credit' WHEN 'CUSTOM' THEN 'Custom' END AS billing_basis,
@@ -190,7 +196,7 @@ export const REPORTS = {
     filters: [...STANDARD_FILTERS, "payment"],
     statuses: VISIT_REPORT_STATUSES,
     columns: VISIT_REPORT_COLUMNS,
-    sql: (where) => `SELECT ${VISIT_COLUMNS} ${VISITS} WHERE ${where}`,
+    sql: (where, ctx) => `SELECT ${visitColumns(ctx)} ${VISITS} WHERE ${where}`,
     where: (query, add) => {
       const out = visitWhere(query, add);
       if (query.payment === "PAID") out.push("v.manual_invoice_no IS NOT NULL");
@@ -205,7 +211,7 @@ export const REPORTS = {
     description: "Services marked completed.",
     filters: ["dates", "client", "engineer", "system"],
     columns: VISIT_REPORT_COLUMNS,
-    sql: (where) => `SELECT ${VISIT_COLUMNS} ${VISITS} WHERE ${where}`,
+    sql: (where, ctx) => `SELECT ${visitColumns(ctx)} ${VISITS} WHERE ${where}`,
     where: (query, add) => [...visitWhere(query, add), "v.status = 'COMPLETED'"],
     orderBy: "scheduled_date, client, reference",
     notes: [PAYMENT_NOTE],
@@ -216,7 +222,7 @@ export const REPORTS = {
     filters: STANDARD_FILTERS,
     statuses: OPEN_REPORT_STATUSES,
     columns: VISIT_REPORT_COLUMNS,
-    sql: (where) => `SELECT ${VISIT_COLUMNS} ${VISITS} WHERE ${where}`,
+    sql: (where, ctx) => `SELECT ${visitColumns(ctx)} ${VISITS} WHERE ${where}`,
     where: (query, add) => [...visitWhere(query, add), "v.status <> 'COMPLETED'"],
     orderBy: "scheduled_date, client, reference",
   },
@@ -240,10 +246,10 @@ export const REPORTS = {
       IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), DATE("valid_to", "Valid To"), COUNT("days_left", "Days Left"),
       TEXT("renewal_state", "Renewal Status", 16), MONEY("contract_value", "Contract Value"),
     ],
-    sql: (where) => `
-      SELECT 'AMC-' || lpad(q.id::text, 4, '0') AS reference, q.client_name AS client, q.system_description AS system, q.valid_to, q.days_left,
+    sql: (where, ctx) => `
+      SELECT q.reference, q.client_name AS client, q.system_description AS system, q.valid_to, q.days_left,
              initcap(replace(q.renewal_state, '_', ' ')) AS renewal_state, q.contract_value::numeric(16,3) AS contract_value
-      FROM ${RENEWAL_QUEUE_SQL} WHERE ${where}`,
+      FROM ${ctx.renewalQueue} WHERE ${where}`,
     where: (query, add) => {
       const out = ["q.renewal_state IS NOT NULL"];
       if (query.clientId) out.push(`q.client_id = ${add(query.clientId)}`);
@@ -262,11 +268,11 @@ export const REPORTS = {
       IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("engineer", "Sales Engineer", 16), DATE("valid_to", "Valid To"), COUNT("days_left", "Days Left"),
       TEXT("renewal_state", "Renewal State", 18), IDENT("renewal_reference", "Renewal"), MONEY("contract_value", "AMC Value / Year"),
     ],
-    sql: (where) => `
-      SELECT 'AMC-' || lpad(q.id::text, 4, '0') AS reference, q.client_name AS client, q.system_description AS system, se.name AS engineer, q.valid_to, q.days_left,
+    sql: (where, ctx) => `
+      SELECT q.reference, q.client_name AS client, q.system_description AS system, se.name AS engineer, q.valid_to, q.days_left,
              CASE q.renewal_state WHEN 'DUE' THEN 'Due / Expired' WHEN 'UNDER_APPROVAL' THEN 'Under Client Approval' WHEN 'RENEWED' THEN 'Renewed' WHEN 'CANCELLED' THEN 'Renewal Cancelled' ELSE 'Not Yet Due' END AS renewal_state,
-             'AMC-' || lpad(q.renewal_id::text, 4, '0') AS renewal_reference, q.contract_value::numeric(16,3) AS contract_value
-      FROM ${RENEWAL_QUEUE_SQL}
+             q.renewal_reference, q.contract_value::numeric(16,3) AS contract_value
+      FROM ${ctx.renewalQueue}
       JOIN amc_contracts c ON c.id = q.id
       LEFT JOIN sales_engineers se ON se.id = c.sales_engineer_id
       WHERE ${where}`,
@@ -283,8 +289,8 @@ export const REPORTS = {
       IDENT("reference", "AMC Reference"), IDENT("renewed_from", "Renewed From"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("engineer", "Sales Engineer", 16), DATE("source_valid_to", "Previous Valid To"),
       DATE("valid_from", "Valid From"), DATE("valid_to", "Valid To"), TEXT("status", "Status", 10), DATE("created_on", "Renewed On"), MONEY("source_value", "Previous AMC Value / Year"), MONEY("contract_value", "AMC Value / Year"),
     ],
-    sql: (where) => `
-      SELECT ${REFERENCE} AS reference, 'AMC-' || lpad(s.id::text, 4, '0') AS renewed_from, cl.name AS client, c.system_description AS system, se.name AS engineer,
+    sql: (where, ctx) => `
+      SELECT ${ctx.reference("c")} AS reference, ${ctx.reference("s")} AS renewed_from, cl.name AS client, c.system_description AS system, se.name AS engineer,
              s.valid_to::text AS source_valid_to, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to, initcap(c.status) AS status, c.created_at::date::text AS created_on,
              s.contract_value AS source_value, c.contract_value, c.id AS sort_id
       ${RENEWAL_HISTORY_FROM}
@@ -346,7 +352,7 @@ export const REPORTS = {
       IDENT("reference", "AMC Reference"), TEXT("client", "Client", 24), TEXT("system", "System", 16), DATE("valid_from", "Valid From"), DATE("valid_to", "Valid To"), COUNT("contract_years", "Contract Years"),
       TEXT("billing_basis", "Billing Basis", 13), MONEY("contract_value", "Value As Entered"), MONEY("visit_total", "Total Of Visit Amounts"), TEXT("assessment", "Assessment", 26),
     ],
-    sql: (where) => `
+    sql: (where, ctx) => `
       SELECT r.*, CASE
                WHEN r.visit_total = 0 THEN 'Unclear: no visit amounts'
                WHEN abs(r.contract_value - r.visit_total) <= r.visit_total * 0.001 THEN 'May be whole-term: equals all visit amounts'
@@ -354,7 +360,7 @@ export const REPORTS = {
                ELSE 'Unclear: matches neither'
              END AS assessment
       FROM (
-        SELECT ${REFERENCE} AS reference, cl.name AS client, c.system_description AS system, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
+        SELECT ${ctx.reference("c")} AS reference, cl.name AS client, c.system_description AS system, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
                ceil(EXTRACT(EPOCH FROM age(c.valid_to + 1, c.valid_from)) / EXTRACT(EPOCH FROM interval '1 year'))::int AS contract_years,
                COALESCE(CASE c.billing_basis WHEN 'CONTRACT_VALUE' THEN 'AMC Value / Year' END, 'Not selected') AS billing_basis,
                c.contract_value,
@@ -421,7 +427,9 @@ async function run(spec: ReportSpec, query: Filters, limit: number | null, offse
     params.push(value);
     return `$${params.length}`;
   };
-  const inner = spec.sql(spec.where(query, add).join(" AND "));
+  const stored = await hasStoredReference();
+  const ctx: SqlContext = { reference: (alias) => referenceSql(alias, stored), renewalQueue: await renewalQueueSql() };
+  const inner = spec.sql(spec.where(query, add).join(" AND "), ctx);
   const money = totalled(spec.columns);
   const aggregates = money.map((column) => `COALESCE(sum(r.${column.key}), 0)${column.kind === "money" ? "::numeric(16,3)" : ""}::text AS ${column.key}`);
   const summary = await pool.query<Record<string, string>>(`SELECT ${["count(*)::text AS row_count", ...aggregates].join(", ")} FROM (${inner}) r`, params);

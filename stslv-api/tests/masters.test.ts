@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { requireSchema } from "../src/middleware/require-schema";
 import { errorHandler } from "../src/shared/errors";
-import { activeContract, createClient, logsFor } from "./amc-helpers";
+import { createClient, legacyContract, logsFor } from "./amc-helpers";
 import { api, closePool, insertUser, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -90,7 +90,7 @@ describe("sales engineers", () => {
     const department = (await post("departments", { code: "SALES", name: "Sales" })).body.data.id as string;
     const userId = await insertUser({ email: "engineer@example.com", fullName: "Field Engineer" });
 
-    const created = await post("sales-engineers", { name: "Test Engineer", employeeNo: "E-001", email: "engineer@example.com", departmentId: department, userId });
+    const created = await post("sales-engineers", { code: "SE-TEST", name: "Test Engineer", employeeNo: "E-001", email: "engineer@example.com", departmentId: department, userId });
 
     expect(created.status).toBe(201);
     expect(created.body.data).toMatchObject({
@@ -102,7 +102,7 @@ describe("sales engineers", () => {
     });
 
     await api().post(`/api/masters/departments/${department}/status`).set(admin.headers).send({ isActive: false });
-    const refused = await post("sales-engineers", { name: "Second Engineer", departmentId: department });
+    const refused = await post("sales-engineers", { code: "SE-SECOND", name: "Second Engineer", departmentId: department });
     expect(refused.status).toBe(400);
     expect(refused.body.error.details[0].field).toBe("departmentId");
 
@@ -115,10 +115,10 @@ describe("sales engineers", () => {
   it("refuses a second engineer for the same user or employee number", async () => {
     const existing = (await api().get("/api/masters/sales-engineers").set(admin.headers)).body.data.items[0];
 
-    expect((await post("sales-engineers", { name: "Other", userId: existing.user.id })).status).toBe(409);
-    expect((await post("sales-engineers", { name: "Other", employeeNo: "e-001" })).status).toBe(409);
-    expect((await post("sales-engineers", { name: "Other", email: "not-an-email" })).status).toBe(400);
-    expect((await post("sales-engineers", { name: "Other", userId: "999999" })).status).toBe(400);
+    expect((await post("sales-engineers", { code: "SE-OTHER", name: "Other", userId: existing.user.id })).status).toBe(409);
+    expect((await post("sales-engineers", { code: "SE-OTHER", name: "Other", employeeNo: "e-001" })).status).toBe(409);
+    expect((await post("sales-engineers", { code: "SE-OTHER", name: "Other", email: "not-an-email" })).status).toBe(400);
+    expect((await post("sales-engineers", { code: "SE-OTHER", name: "Other", userId: "999999" })).status).toBe(400);
   });
 });
 
@@ -146,12 +146,12 @@ describe("contract links to master records", () => {
 
   beforeAll(async () => {
     const clientId = await createClient(admin, "Link Test Client");
-    contractId = await activeContract(admin, clientId, { responsibleEngineer: "Typed Engineer", systemDescription: "Typed system" });
-    engineerId = (await post("sales-engineers", { name: "Linked Engineer" })).body.data.id as string;
+    contractId = await legacyContract(admin, clientId, { responsibleEngineer: "Typed Engineer", systemDescription: "Typed system" });
+    engineerId = (await post("sales-engineers", { code: "SE-LINKED", name: "Linked Engineer" })).body.data.id as string;
     typeId = (await api().get("/api/masters/system-types").query({ search: "CCTV" }).set(admin.headers)).body.data.items[0].id as string;
   });
 
-  it("starts unlinked and links without touching the contract's own fields", async () => {
+  it("starts unlinked (an older contract) and links without touching its engineer or schedule", async () => {
     expect((await api().get(`/api/amc/contracts/${contractId}/masters`).set(admin.headers)).body.data).toEqual({ salesEngineer: null, systemType: null });
 
     const before = (await api().get(`/api/amc/contracts/${contractId}`).set(admin.headers)).body.data;
@@ -162,7 +162,8 @@ describe("contract links to master records", () => {
 
     const after = (await api().get(`/api/amc/contracts/${contractId}`).set(admin.headers)).body.data;
     expect(after.responsibleEngineer).toBe("Typed Engineer");
-    expect(after.systemDescription).toBe("Typed system");
+    // The system follows the linked type (2026-11-03).
+    expect(after.systemDescription).toBe("CCTV");
     expect(after.schedule).toEqual(before.schedule);
   });
 
@@ -170,17 +171,30 @@ describe("contract links to master records", () => {
     const history = (await api().get(`/api/amc/contracts/${contractId}/history`).set(admin.headers)).body.data.items;
     const entry = history.find((item: { action: string }) => item.action === "amc_contract.masters_linked");
 
-    expect(entry.changes).toEqual({ salesEngineer: { from: null, to: "Linked Engineer" }, systemType: { from: null, to: "CCTV — CCTV" } });
+    expect(entry.changes).toEqual({
+      salesEngineer: { from: null, to: "Linked Engineer" },
+      systemType: { from: null, to: "CCTV — CCTV" },
+      systemDescription: { from: "Typed system", to: "CCTV" },
+    });
     expect((await api().get(`/api/masters/sales-engineers/${engineerId}`).set(admin.headers)).body.data.contractCount).toBe(1);
   });
 
-  it("removes a link with null and refuses an inactive master", async () => {
+  it("refuses to remove a recorded link, and refuses an inactive master", async () => {
+    // A recorded link can be changed, not removed (2026-11-03).
     const cleared = await api().put(`/api/amc/contracts/${contractId}/masters`).set(admin.headers).send({ systemTypeId: null });
-    expect(cleared.body.data.systemType).toBeNull();
-    expect(cleared.body.data.salesEngineer.id).toBe(engineerId);
+    expect(cleared.status).toBe(400);
+    expect(cleared.body.error.details[0].field).toBe("systemTypeId");
+    const unlinked = await api().put(`/api/amc/contracts/${contractId}/masters`).set(admin.headers).send({ salesEngineerId: null });
+    expect(unlinked.status).toBe(400);
+    expect(unlinked.body.error.details[0].field).toBe("salesEngineerId");
+    const kept = (await api().get(`/api/amc/contracts/${contractId}/masters`).set(admin.headers)).body.data;
+    expect(kept).toMatchObject({ salesEngineer: { id: engineerId }, systemType: { id: typeId } });
 
+    // A disabled type is kept where it is linked (sent again unchanged, nothing happens), but cannot be newly linked.
     await api().post(`/api/masters/system-types/${typeId}/status`).set(admin.headers).send({ isActive: false });
-    const refused = await api().put(`/api/amc/contracts/${contractId}/masters`).set(admin.headers).send({ systemTypeId: typeId });
+    expect((await api().put(`/api/amc/contracts/${contractId}/masters`).set(admin.headers).send({ systemTypeId: typeId })).status).toBe(200);
+    const disabled = (await pool.query<{ id: string }>("INSERT INTO system_types (code, name, is_active) VALUES ('OLDLINK', 'Old link', false) RETURNING id")).rows[0]!.id;
+    const refused = await api().put(`/api/amc/contracts/${contractId}/masters`).set(admin.headers).send({ systemTypeId: disabled });
     expect(refused.status).toBe(400);
     expect((await api().put(`/api/amc/contracts/${contractId}/masters`).set(admin.headers).send({})).status).toBe(400);
   });

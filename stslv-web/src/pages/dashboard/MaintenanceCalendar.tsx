@@ -9,7 +9,6 @@ import { api } from '../../lib/api'
 import { cx, formatCount } from '../../lib/format'
 import type { Invoice } from '../../lib/invoiceTypes'
 import { queryString } from '../amc/amcApi'
-import { amcReference } from '../amc/calendar/calendarTypes'
 import { formatDate, formatMoney, monthLabel, shiftMonth } from '../amc/amcFormat'
 import { VisitStatusPill } from '../amc/components'
 import {
@@ -337,7 +336,7 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <VisitStatusPill status={data.status} overdue={data.isOverdue} />
                 <ContractLink id={data.contract.id} className="rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-[#1479BD] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
-                  {amcReference(data.contract.id)}
+                  {data.contract.reference}
                 </ContractLink>
               </div>
             </div>

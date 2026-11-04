@@ -41,7 +41,7 @@ beforeAll(async () => {
   procurement = await signedIn("procurement@example.com", ["PROCUREMENT"]);
   hotel = await createClient(admin, "Year Hotel");
   mall = await createClient(admin, "Year Mall");
-  engineerId = (await api().post("/api/masters/sales-engineers").set(admin.headers).send({ name: "Calendar Engineer" })).body.data.id;
+  engineerId = (await api().post("/api/masters/sales-engineers").set(admin.headers).send({ code: "SE-CAL", name: "Calendar Engineer" })).body.data.id;
 
   const fireId = await activeContract(admin, hotel, {
     validFrom: "2025-01-01",

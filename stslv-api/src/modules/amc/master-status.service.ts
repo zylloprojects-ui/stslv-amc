@@ -2,7 +2,8 @@ import { pool } from "../../config/database";
 import { escapeLike } from "../../shared/validation";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants";
 import type { ListMasterStatusQuery, RowColour } from "./master-status.schemas";
-import { amcReference, serviceStatusSql } from "./service-status.service";
+import { serviceStatusSql } from "./service-status.service";
+import { hasStoredReference, referenceSql } from "./contract-reference";
 
 // Master AMC Status: a read-only overview with one row per scheduled
 // maintenance visit (amc_visits), never one per contract. It reads the same
@@ -43,8 +44,9 @@ const FROM = `
     WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
   ) inv ON true`;
 
-const SELECT = `
-  SELECT v.id, c.id AS contract_id, c.status AS contract_status,
+/** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
+const selectSql = (storedReference: boolean) => `
+  SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
@@ -59,6 +61,7 @@ const SELECT = `
 interface MasterRow {
   id: string;
   contract_id: string;
+  contract_reference: string;
   contract_status: ContractStatus;
   client_id: string;
   client_name: string;
@@ -112,7 +115,7 @@ export interface MasterStatusItem {
 function toItem(row: MasterRow): MasterStatusItem {
   return {
     id: row.id,
-    reference: amcReference(row.contract_id),
+    reference: row.contract_reference,
     contract: { id: row.contract_id, status: row.contract_status },
     client: { id: row.client_id, name: row.client_name },
     system: { description: row.system_description, typeId: row.system_type_id, typeName: row.system_type_name },
@@ -134,18 +137,17 @@ function toItem(row: MasterRow): MasterStatusItem {
 
 export type MasterStatusFilters = Omit<ListMasterStatusQuery, "page" | "pageSize" | "sort" | "direction">;
 
-const SORT_SQL: Record<ListMasterStatusQuery["sort"], string> = {
-  scheduledDate: "v.scheduled_date",
-  reference: "c.id",
-  client: "lower(cl.name)",
-  visitValue: "v.visit_amount",
-};
-
-/** "AMC-0007", "amc7" or "7" names contract 7. */
-const REFERENCE_PATTERN = /^(?:amc-?)?0*(\d{1,15})$/i;
+const sortSql = (sort: ListMasterStatusQuery["sort"], storedReference: boolean): string =>
+  ({
+    scheduledDate: "v.scheduled_date",
+    // The reference as text, without regard to case. One expression: the direction is appended to it.
+    reference: `lower(${referenceSql("c", storedReference)})`,
+    client: "lower(cl.name)",
+    visitValue: "v.visit_amount",
+  })[sort];
 
 /** One WHERE clause for the rows, the cards and the export, so the three always agree. */
-function filterSql(query: MasterStatusFilters) {
+function filterSql(query: MasterStatusFilters, storedReference: boolean) {
   const conditions: string[] = [IN_SCOPE];
   const params: unknown[] = [];
   const add = (value: unknown) => {
@@ -168,10 +170,14 @@ function filterSql(query: MasterStatusFilters) {
   if (query.colour) conditions.push(`(${COLOUR_SQL}) = ${add(query.colour)}`);
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
-    const matches = [`cl.name ILIKE ${p}`, `v.quotation_no ILIKE ${p}`, `v.manual_invoice_no ILIKE ${p}`, `EXISTS (SELECT 1 FROM unnest(inv.numbers) AS n (number) WHERE n.number ILIKE ${p})`];
-    const reference = REFERENCE_PATTERN.exec(query.search);
+    const matches = [
+      `${referenceSql("c", storedReference)} ILIKE ${p}`,
+      `cl.name ILIKE ${p}`,
+      `v.quotation_no ILIKE ${p}`,
+      `v.manual_invoice_no ILIKE ${p}`,
+      `EXISTS (SELECT 1 FROM unnest(inv.numbers) AS n (number) WHERE n.number ILIKE ${p})`,
+    ];
 
-    if (reference) matches.push(`c.id = ${add(reference[1])}::bigint`);
     conditions.push(`(${matches.join(" OR ")})`);
   }
 
@@ -219,10 +225,11 @@ async function kpis(where: string, params: unknown[]): Promise<MasterStatusKpis>
 }
 
 export async function listMasterStatus(query: ListMasterStatusQuery) {
-  const { where, params } = filterSql(query);
+  const storedReference = await hasStoredReference();
+  const { where, params } = filterSql(query, storedReference);
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<MasterRow>(`${SELECT} ${FROM} ${where} ORDER BY ${SORT_SQL[query.sort]} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<MasterRow>(`${selectSql(storedReference)} ${FROM} ${where} ORDER BY ${sortSql(query.sort, storedReference)} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,
@@ -238,12 +245,13 @@ export async function listMasterStatus(query: ListMasterStatusQuery) {
  * the export cannot hold that many.
  */
 export async function listAllMasterStatus(filters: MasterStatusFilters, checkSize: (count: number) => void) {
-  const { where, params } = filterSql(filters);
+  const storedReference = await hasStoredReference();
+  const { where, params } = filterSql(filters, storedReference);
   const figures = await kpis(where, params);
 
   checkSize(figures.total);
 
-  const rows = await pool.query<MasterRow>(`${SELECT} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<MasterRow>(`${selectSql(storedReference)} ${FROM} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map(toItem), kpis: figures };
 }

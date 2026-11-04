@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, logsFor, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, logsFor, referenceOf, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Services Sales: migrations 0078 (quotation number, module) and 0079 (grants).
@@ -33,6 +33,7 @@ const save = (id: string, body: Record<string, unknown>, session: Session = admi
 const exportFile = (query: Record<string, unknown>, session: Session = admin) => api().get("/api/services-sales/export").query(query).set(session.headers).responseType("blob");
 
 async function complete(visitId: string): Promise<void> {
+  await withServiceReport(visitId);
   const response = await api().patch(`/api/amc/execution/visits/${visitId}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() });
   if (response.status !== 200) throw new Error(`Could not complete visit ${visitId}: ${response.status} ${JSON.stringify(response.body)}`);
 }
@@ -98,7 +99,7 @@ describe("Services Sales", () => {
       expect(items).toHaveLength(4);
       expect(new Set(items.map((item: { id: string }) => item.id)).size).toBe(4);
       expect(items[0]).toMatchObject({
-        reference: `AMC-${fx.alphaContract.padStart(4, "0")}`,
+        reference: await referenceOf(fx.alphaContract),
         client: { id: fx.alphaId, name: "Alpha Towers" },
         system: { description: "FIRE", typeName: "Fire Alarm" },
         frequency: { code: "QUARTERLY", label: "Quarterly" },
@@ -151,6 +152,7 @@ describe("Services Sales", () => {
   describe("integration with Service Status", () => {
     it("reflects a completion saved on Service Status, over the same visit record", async () => {
       const [first] = await visitsOf(fx.betaContract);
+      await withServiceReport(first!.id);
       const status = await api().get("/api/amc/service-status").query({ clientId: fx.betaId, pageSize: 200 }).set(admin.headers);
       expect(status.status).toBe(200);
       const row = status.body.data.items.find((item: { id: string }) => item.id === first!.id);
@@ -169,15 +171,16 @@ describe("Services Sales", () => {
       expect(sales.body.data.kpis.total).toBe(service.body.data.kpis.total);
     });
 
-    it("keeps a quotation number when the visit is reopened, counts it Not Completed and reports it", async () => {
+    it("keeps a quotation number when reopening is refused by the completion lock", async () => {
       const [first] = await visitsOf(fx.alphaContract);
       await complete(first!.id);
       await quote(first!.id, "QT-KEEP");
+      // Completion lock (2026-11-04): completed work cannot be reopened.
       const reopened = await api().patch(`/api/amc/execution/visits/${first!.id}`).set(admin.headers).send({ status: "SCHEDULED" });
-      expect(reopened.status).toBe(200);
+      expect(reopened.status).toBe(409);
+      expect(reopened.body.error.code).toBe("COMPLETION_LOCKED");
 
-      expect(await itemOf(first!.id)).toMatchObject({ quotationNo: "QT-KEEP", salesStatus: "NOT_COMPLETED", quotationBeforeCompletion: true });
-      expect((await list({ clientId: fx.alphaId })).body.data.kpis).toMatchObject({ notCompleted: 4, quoted: 0, quotationBeforeCompletion: 1 });
+      expect(await itemOf(first!.id)).toMatchObject({ quotationNo: "QT-KEEP", serviceStatus: "COMPLETED", quotationBeforeCompletion: false });
       // It may be cleared on purpose, never automatically.
       expect((await quote(first!.id, null)).status).toBe(200);
       expect(await itemOf(first!.id)).toMatchObject({ quotationNo: null, quotationBeforeCompletion: false });
@@ -291,7 +294,7 @@ describe("Services Sales", () => {
       await quote(alpha[0]!.id, "QT-777");
 
       expect(ids(await list({ search: "QT-777" }))).toEqual([alpha[0]!.id]);
-      expect(ids(await list({ search: `AMC-${fx.alphaContract.padStart(4, "0")}` }))).toEqual(alpha.map((v) => v.id).sort());
+      expect(ids(await list({ search: await referenceOf(fx.alphaContract) }))).toEqual(alpha.map((v) => v.id).sort());
       expect(ids(await list({ search: "beta" }))).toHaveLength(beta.length + 4);
       expect(ids(await list({ search: "cctv" }))).toEqual(beta.map((v) => v.id).sort());
       expect(ids(await list({ salesEngineerId: fx.esha }))).toEqual(alpha.map((v) => v.id).sort());
@@ -376,6 +379,78 @@ describe("Services Sales", () => {
       expect((await api().get("/api/amc/contracts").set(admin.headers)).status).toBe(200);
       expect((await api().get(`/api/amc/contracts/${fx.alphaContract}`).set(admin.headers)).status).toBe(200);
       expect((await api().get("/api/amc/execution/visits").set(admin.headers)).status).toBe(200);
+    });
+  });
+  // Contract 360 → Service Schedule reads /api/amc/visits?contractId=… and shows each visit's own quotation number.
+  describe("Contract 360 Service Schedule", () => {
+    const schedule = (contractId: string, session: Session = admin) =>
+      api().get("/api/amc/visits").query({ contractId, pageSize: 200 }).set(session.headers);
+    const quotationsOf = async (contractId: string) => {
+      const response = await schedule(contractId);
+      expect(response.status).toBe(200);
+      return new Map((response.body.data.items as { id: string; quotationNo: string | null }[]).map((item) => [item.id, item.quotationNo]));
+    };
+
+    it("shows the quotation saved on Service Sales on that visit only, and null on the others", async () => {
+      const [q1, q2, q3, q4] = await visitsOf(fx.alphaContract);
+      await complete(q1!.id);
+      await complete(q2!.id);
+      expect((await quote(q1!.id, "QT-2026-001")).status).toBe(200);
+      expect((await quote(q2!.id, "QT-2026-002")).status).toBe(200);
+
+      const alpha = await quotationsOf(fx.alphaContract);
+      expect(alpha.size).toBe(4);
+      expect(alpha.get(q1!.id)).toBe("QT-2026-001");
+      expect(alpha.get(q2!.id)).toBe("QT-2026-002");
+      expect(alpha.get(q3!.id)).toBeNull();
+      expect(alpha.get(q4!.id)).toBeNull();
+
+      // Another contract's visits are neither listed with alpha's nor given its numbers.
+      const beta = await quotationsOf(fx.betaContract);
+      expect(beta.size).toBe(2);
+      expect([...beta.values()].every((value) => value === null)).toBe(true);
+      expect([...beta.keys()].some((id) => alpha.has(id))).toBe(false);
+
+      // The single-visit read carries the same value.
+      expect((await api().get(`/api/amc/visits/${q1!.id}`).set(admin.headers)).body.data.quotationNo).toBe("QT-2026-001");
+    });
+
+    it("reflects a changed and a cleared quotation on the next read", async () => {
+      const [q1] = await visitsOf(fx.alphaContract);
+      await complete(q1!.id);
+      await quote(q1!.id, "QT-OLD");
+      expect((await quotationsOf(fx.alphaContract)).get(q1!.id)).toBe("QT-OLD");
+
+      expect((await quote(q1!.id, "QT-NEW")).status).toBe(200);
+      expect((await quotationsOf(fx.alphaContract)).get(q1!.id)).toBe("QT-NEW");
+
+      expect((await quote(q1!.id, null)).status).toBe(200);
+      expect((await quotationsOf(fx.alphaContract)).get(q1!.id)).toBeNull();
+    });
+
+    it("leaves the manual Invoice No. and payment status independent of the quotation", async () => {
+      const [q1] = await visitsOf(fx.alphaContract);
+      await complete(q1!.id);
+      await quote(q1!.id, "QT-9");
+
+      const item = (await schedule(fx.alphaContract)).body.data.items.find((row: { id: string }) => row.id === q1!.id);
+      expect(item).toMatchObject({ quotationNo: "QT-9", manualInvoiceNo: null, paymentStatus: "UNPAID", paidAt: null });
+    });
+
+    it("is not readable without schedule access, and the schedule offers no way to change it", async () => {
+      const [q1] = await visitsOf(fx.alphaContract);
+      await complete(q1!.id);
+      await quote(q1!.id, "QT-5");
+
+      expect((await api().get("/api/amc/visits").query({ contractId: fx.alphaContract })).status).toBe(401);
+      expect((await schedule(fx.alphaContract, procurement)).status).toBe(403);
+      expect((await api().get(`/api/amc/visits/${q1!.id}`).set(procurement.headers)).status).toBe(403);
+
+      // The schedule's own edit route rejects a quotation field (it is entered only on Service Sales).
+      const { updatedAt } = (await api().get(`/api/amc/visits/${q1!.id}`).set(admin.headers)).body.data;
+      const attempt = await api().patch(`/api/amc/visits/${q1!.id}`).set(admin.headers).send({ quotationNo: "QT-HACK", expectedUpdatedAt: updatedAt });
+      expect(attempt.status).toBe(400);
+      expect((await quotationsOf(fx.alphaContract)).get(q1!.id)).toBe("QT-5");
     });
   });
 });

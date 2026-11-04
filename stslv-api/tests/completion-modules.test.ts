@@ -8,7 +8,7 @@ import { env } from "../src/config/env";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { REPORTS } from "../src/modules/reports/reports.service";
 import { waitForBackups } from "../src/modules/security/backups.service";
-import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, legacyContract, newContractBody, renewalEngineer, testReference, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -23,7 +23,7 @@ let contractId: string;
 
 const get = (url: string, query: Record<string, unknown> = {}, session: Session = admin) => api().get(`/api${url}`).query(query).set(session.headers);
 const post = (url: string, body: Record<string, unknown> = {}, session: Session = admin) => api().post(`/api${url}`).set(session.headers).send(body);
-const contract = (overrides: Record<string, unknown>) => ({ clientId, systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "300.000", status: "ACTIVE", ...overrides });
+const contract = (overrides: Record<string, unknown>) => ({ amcReference: testReference("COMPLETION"), clientId, systemDescription: "FIRE", validFrom: "2027-01-01", validTo: "2027-12-31", contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "300.000", status: "ACTIVE", ...overrides });
 
 beforeAll(async () => {
   await resetData();
@@ -47,19 +47,25 @@ describe("Billing Basis", () => {
   });
 
   it("generates new visits from the chosen basis, and from Cost per Visit when none is chosen", async () => {
-    const created = await post("/amc/contracts", contract({ billingBasis: "FINAL_CREDIT", finalCredit: "999.000", systemDescription: "BASIS" }));
+    const created = await post("/amc/contracts", await newContractBody(clientId, contract({ billingBasis: "FINAL_CREDIT", finalCredit: "999.000", systemDescription: "BASIS" })));
     expect(created.status).toBe(201);
     expect((await visitsOf(created.body.data.id)).map((visit) => visit.visit_amount)).toEqual(["249.750", "249.750", "249.750", "249.750"]);
 
-    const manual = await post("/amc/contracts", contract({ systemDescription: "NO-BASIS" }));
+    const manual = await post("/amc/contracts", await newContractBody(clientId, contract({ systemDescription: "NO-BASIS" })));
     expect((await visitsOf(manual.body.data.id)).map((visit) => visit.visit_amount)).toEqual(["300.000", "300.000", "300.000", "300.000"]);
   });
 
   it("refuses an unknown basis, and Final Credit without an amount", async () => {
-    expect((await post("/amc/contracts", contract({ billingBasis: "ANNUAL" }))).status).toBe(400);
-    const missing = await post("/amc/contracts", contract({ billingBasis: "FINAL_CREDIT" }));
+    expect((await post("/amc/contracts", await newContractBody(clientId, contract({ billingBasis: "ANNUAL" })))).status).toBe(400);
+    // A new contract always records its Final Credit (2026-11-03), so the basis can only lack it on an older contract.
+    const missing = await post("/amc/contracts", await newContractBody(clientId, contract({ billingBasis: "FINAL_CREDIT", finalCredit: undefined })));
     expect(missing.status).toBe(400);
-    expect(missing.body.error.details).toContainEqual({ field: "billingBasis", message: "This basis needs a final credit amount." });
+    expect(missing.body.error.details).toContainEqual({ field: "finalCredit", message: "Final credit is required." });
+
+    const older = await legacyContract(admin, clientId, contract({ systemDescription: "OLDER" }));
+    const refused = await api().patch(`/api/amc/contracts/${older}`).set(admin.headers).send({ billingBasis: "FINAL_CREDIT" });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.details).toContainEqual({ field: "billingBasis", message: "This basis needs a final credit amount." });
   });
 
   it("is recorded in the contract's history", async () => {
@@ -103,6 +109,8 @@ describe("Master AMC Status sorting", () => {
 describe("Reports", () => {
   beforeAll(async () => {
     const [first, second] = await visitsOf(contractId);
+    await withServiceReport(first!.id);
+    await withServiceReport(second!.id);
     await api().patch(`/api/amc/execution/visits/${first!.id}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() });
     await api().patch(`/api/amc/execution/visits/${second!.id}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() });
     await newInvoice(admin, invoiceBody(clientId, [{ amcVisitId: first!.id, amount: "300.000" }], { amountExclVat: "300.000", vatAmount: "0.000", invoiceDate: await today() }));

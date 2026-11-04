@@ -187,7 +187,8 @@ describe('AMC Schedule', () => {
     const api = amcApi(ADMIN, { contracts: [FIRE], visits: [makeVisit()] })
     renderApp('/amc/schedule?contractId=100')
 
-    expect(await screen.findByText('AMC-0100')).toBeInTheDocument()
+    // The banner names the contract by its stored AMC Reference Number, which arrives with its visits.
+    expect(await screen.findByText((_, element) => element?.tagName === 'SPAN' && element.textContent === 'Showing contract AMC-0100 only.')).toBeInTheDocument()
     await waitFor(() => expect(api.find('GET', '/amc/visits').at(-1)?.query.get('contractId')).toBe('100'))
     expect(api.find('GET', '/amc/visits').at(-1)?.query.get('from')).toBeNull()
 
@@ -263,6 +264,7 @@ describe('Renewal form and client code', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Renew AMC Contract' })
 
     expect(await within(dialog).findByRole('option', { name: 'Test Hotel One (CL-00010)' })).toBeInTheDocument()
+    await userEvent.type(within(dialog).getByLabelText(/AMC Reference Number/), 'AMC-2028-101')
     await userEvent.type(within(dialog).getByLabelText('Valid from', { exact: false }), '2028-01-01')
     await userEvent.type(within(dialog).getByLabelText('Valid to', { exact: false }), '2028-12-31')
     await userEvent.type(within(dialog).getByLabelText('Renewal notes'), 'Two more sites')

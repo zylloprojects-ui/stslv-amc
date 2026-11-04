@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, createContract, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, referenceOf, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The AMC Renewal queue: renewal states derived from contracts and their
@@ -101,7 +101,7 @@ describe("GET /api/amc/renewals/queue — eligibility", () => {
     expect(response.status).toBe(200);
     expect(response.body.data).toMatchObject({ windowDays: 45, today: todayIso });
     const item = (response.body.data.items as Item[]).find((row) => row.id === fx.at45);
-    expect(item?.reference).toBe(`AMC-${fx.at45.padStart(4, "0")}`);
+    expect(item?.reference).toBe(await referenceOf(fx.at45));
     expect(item?.services.scheduled).toBe((await visitsOf(fx.at45)).filter((visit) => visit.status !== "CANCELLED").length);
     expect(item?.services.completed).toBe(0);
   });
@@ -194,7 +194,7 @@ describe("GET /api/amc/renewals/queue — filters and cards", () => {
   });
 
   it("searches by AMC reference, client and system", async () => {
-    const byReference = (await queue({ search: `AMC-${fx.pastValidity.padStart(4, "0")}` })).body.data.items as Item[];
+    const byReference = (await queue({ search: await referenceOf(fx.pastValidity) })).body.data.items as Item[];
     expect(byReference.map((item) => item.id)).toEqual([fx.pastValidity]);
     const bySystem = (await queue({ search: "pumps" })).body.data;
     expect(bySystem.items.map((item: Item) => item.id)).toEqual([fx.pastValidity]);
@@ -281,7 +281,8 @@ describe("exports", () => {
     const sheet = workbook.getWorksheet("Renewal History") as ExcelJS.Worksheet;
     expect((sheet.getRow(6).values as unknown[]).slice(1)).toEqual(["#", "Source AMC", "Client / System", "Source Expiry", "Renewed AMC", "New Validity", "Status", "Created"]);
     const first = (sheet.getRow(7).values as unknown[]).slice(1);
-    expect(first[4]).toBe(`AMC-${String(history.items[0].renewal.id).padStart(4, "0")}`);
+    expect(first[4]).toBe(await referenceOf(history.items[0].renewal.id));
+    expect(first[1]).toBe(await referenceOf(history.items[0].source.id));
     const statuses = Array.from({ length: history.total as number }, (_, index) => String((sheet.getRow(7 + index).values as unknown[])[7]));
     expect(statuses).toContain("Cancelled (Cancelled)");
     expect(statuses).toContain("Under Client Approval (Draft)");

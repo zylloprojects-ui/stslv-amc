@@ -6,6 +6,8 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     globalSetup: ["tests/global-setup.ts"],
+    // Each test file stores uploaded files in its own temporary folder.
+    setupFiles: ["tests/setup-test-storage.ts"],
     // All test files share one schema, so they must not run at the same time.
     fileParallelism: false,
     testTimeout: 20_000,

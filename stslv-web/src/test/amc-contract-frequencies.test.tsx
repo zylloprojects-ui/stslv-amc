@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { frequencyLabel, visitNumberLabel } from '../pages/amc/types'
-import { amcApi, makeContract } from './amc-helpers'
+import { amcApi, contractPdf, makeContract, typeReference } from './amc-helpers'
 import { ADMIN, ok, renderApp, type MockRequest } from './helpers'
 
 // The AMC contract form with the maintenance frequency master (migration 0076):
@@ -37,11 +37,17 @@ const frequencyChoices = (dialog: HTMLElement) =>
     .map((item) => item.getAttribute('value'))
 
 async function fillRequired(dialog: HTMLElement) {
+  await typeReference(dialog)
   await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '11')
-  await userEvent.type(within(dialog).getByLabelText(/System/), 'CCTV')
+  // System, sales engineer, Final Credit and the contract document are required on a new contract (2026-11-03).
+  await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
+  await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '23')
+  await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '5')
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-15')
   await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-01-14')
   await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '4000')
+  await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0')
+  await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, contractPdf())
 }
 
 describe('frequency choices', () => {

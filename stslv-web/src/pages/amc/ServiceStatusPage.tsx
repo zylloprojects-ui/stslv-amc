@@ -1,26 +1,30 @@
 import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
-import { api, errorMessage } from '../../lib/api'
+import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
+import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { queryString } from './amcApi'
 import { formatDate, todayIso } from './amcFormat'
 import { Filter, FilterPanel, Pager } from './components'
+import { ServiceDetailsDialog } from './ServiceDetailsDialog'
+import { ServiceReportCell, type ServiceReportCellHandle } from './ServiceReportCell'
 import { HideColumnsDialog, KpiCustomizeDialog } from './ServiceStatusDialogs'
 import { useHiddenServiceColumns, useKpiLayout, type KpiId } from './serviceStatusPreferences'
 import { VisitActionsDialog } from './VisitActionsDialog'
 import {
   MONTH_NAMES,
   SERVICE_STATUSES,
+  SERVICE_REPORT_REQUIRED_MESSAGE,
   SERVICE_STATUS_LABELS,
   serviceLabel,
+  type ServiceReport,
   type ServiceStatus,
   type ServiceStatusItem,
   type ServiceStatusList,
@@ -109,42 +113,58 @@ const COLUMNS = [
   { key: 'status', label: 'Service Status' },
   { key: 'engineer', label: 'Sales Engineer' },
   { key: 'report', label: 'Service Report No.' },
+  { key: 'serviceReport', label: 'Service Report' },
 ] as const
 type ColumnKey = (typeof COLUMNS)[number]['key']
 const COLUMN_KEYS = COLUMNS.map((column) => column.key)
 
 // --- One editable row ----------------------------------------------------------
+// The completion date is not asked for: the API records it on completion (today) and keeps it.
 interface Draft {
   status: ServiceStatus
-  completedDate: string
   reportNumber: string
 }
 
-const draftOf = (item: ServiceStatusItem): Draft => ({ status: item.serviceStatus, completedDate: item.completedDate ?? '', reportNumber: item.reportNumber ?? '' })
+const draftOf = (item: ServiceStatusItem): Draft => ({ status: item.serviceStatus, reportNumber: item.reportNumber ?? '' })
+
+const LockIcon = () => (
+  <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+    <rect x="4.5" y="9" width="11" height="8" rx="1.5" />
+    <path d="M7 9V6.5a3 3 0 0 1 6 0V9" strokeLinecap="round" />
+  </svg>
+)
 
 interface RowProps {
   item: ServiceStatusItem
   number: number
   shown: (key: ColumnKey) => boolean
   canSave: boolean
-  canReopen: boolean
   canViewContracts: boolean
   reportNumberAvailable: boolean
+  serviceReportsAvailable: boolean
+  reportMaxMb: number
   onSaved: (item: ServiceStatusItem) => void
+  /** A report was uploaded, replaced or removed: the visit itself is unchanged. */
+  onReportChanged: (id: string, report: ServiceReport | null) => void
+  /** Opens the read-only View of this service. */
+  onView: () => void
   /** Opens Visit actions (start, postpone, cancel, work notes); absent without the execution permissions. */
   onActions?: (() => void) | undefined
 }
 
-function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts, reportNumberAvailable, onSaved, onActions }: RowProps) {
+function ServiceRow({ item, number, shown, canSave, canViewContracts, reportNumberAvailable, serviceReportsAvailable, reportMaxMb, onSaved, onReportChanged, onView, onActions }: RowProps) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(item))
   const [base, setBase] = useState(item.updatedAt)
   const [problem, setProblem] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  // "Please upload service report.": shown when Completed is chosen (or saved) without a report.
+  const [needsReport, setNeedsReport] = useState(false)
+  const [highlightReport, setHighlightReport] = useState(false)
+  const reportCell = useRef<ServiceReportCellHandle>(null)
 
   const statusChanged = draft.status !== item.serviceStatus
-  const dateChanged = draft.status === 'COMPLETED' && draft.completedDate !== (item.completedDate ?? '')
   const reportChanged = reportNumberAvailable && draft.reportNumber.trim() !== (item.reportNumber ?? '')
-  const dirty = statusChanged || dateChanged || reportChanged
+  const dirty = statusChanged || reportChanged
 
   // A newer copy of this visit arrived (after a save here or elsewhere): take it, unless the user has unsaved edits.
   if (item.updatedAt !== base && !dirty) {
@@ -161,19 +181,26 @@ function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts,
       setSavedAt(saved.updatedAt)
       onSaved(saved)
     },
-    onError: (error) => setProblem(errorMessage(error)),
+    onError: (error) => {
+      // The API checks the report again (another user may have removed it): the same popup, and the draft is kept.
+      if (error instanceof ApiError && error.code === 'SERVICE_REPORT_REQUIRED') return askForReport()
+      setProblem(errorMessage(error))
+    },
   })
+
+  const askForReport = () => {
+    setNeedsReport(true)
+    setHighlightReport(true)
+  }
 
   const save = () => {
     setProblem(null)
     setSavedAt(null)
-    if (draft.status === 'COMPLETED' && !draft.completedDate) return setProblem('Enter the date the service was completed.')
-    if (draft.status === 'COMPLETED' && draft.completedDate > todayIso()) return setProblem('The completion date cannot be in the future.')
+    if (statusChanged && draft.status === 'COMPLETED' && !item.serviceReport) return askForReport()
     if (draft.reportNumber.trim().length > REPORT_NUMBER_MAX) return setProblem(`The report number can have at most ${REPORT_NUMBER_MAX} characters.`)
 
     mutation.mutate({
       ...(statusChanged ? { status: draft.status } : {}),
-      ...(statusChanged || dateChanged ? (draft.status === 'COMPLETED' ? { completedDate: draft.completedDate } : {}) : {}),
       ...(reportChanged ? { reportNumber: draft.reportNumber.trim() } : {}),
       expectedUpdatedAt: item.updatedAt,
     })
@@ -181,16 +208,14 @@ function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts,
 
   const chooseStatus = (status: ServiceStatus) => {
     setSavedAt(null)
-    setDraft({
-      ...draft,
-      status,
-      // A newly completed service starts with today's date; leaving completed clears it.
-      completedDate: status === 'COMPLETED' ? (item.completedDate ?? (draft.completedDate || todayIso())) : '',
-    })
+    setProblem(null)
+    // Completed needs this service's own uploaded report: without it the choice is not taken and the popup explains.
+    if (status === 'COMPLETED' && !item.serviceReport) return askForReport()
+    setDraft({ ...draft, status })
   }
 
-  // Reopening completed work needs approval; without it the status is shown, not offered.
-  const statusLocked = !canSave || (item.serviceStatus === 'COMPLETED' && !canReopen)
+  // Completed and saved: locked for everyone. Without the save permission the status is only shown.
+  const statusLocked = !canSave || item.locked
   // Waiting for renewal is derived: it is offered only as the row's current state.
   const openChoice: ServiceStatus = item.serviceStatus === 'WAITING_FOR_RENEWAL' ? 'WAITING_FOR_RENEWAL' : 'NOT_COMPLETED'
   const label = `${item.reference} ${item.client.name} ${serviceLabel(item.service)}`
@@ -229,34 +254,29 @@ function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts,
       {shown('status') && (
         <td className={cx(TABLE.td, 'min-w-44')}>
           {statusLocked ? (
-            <div title={canSave && item.serviceStatus === 'COMPLETED' ? 'Reopening completed work needs approval permission for AMC Execution.' : undefined}>
+            <span
+              className="inline-flex items-center gap-1.5"
+              title={item.locked ? 'Completed services are locked: the status cannot be changed.' : undefined}
+              aria-label={item.locked ? `${SERVICE_STATUS_LABELS[item.serviceStatus]}, locked` : undefined}
+            >
               <StatusBadge status={item.serviceStatus} />
-              {item.completedDate && <div className="mt-1 text-xs text-slate-500">on {formatDate(item.completedDate)}</div>}
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              <select
-                aria-label={`Service status of ${label}`}
-                value={draft.status}
-                onChange={(event) => chooseStatus(event.target.value as ServiceStatus)}
-                disabled={mutation.isPending}
-                className="block w-full min-w-[11.5rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm"
-              >
-                <option value={openChoice}>{SERVICE_STATUS_LABELS[openChoice]}</option>
-                <option value="COMPLETED">{SERVICE_STATUS_LABELS.COMPLETED}</option>
-              </select>
-              {draft.status === 'COMPLETED' && (
-                <input
-                  type="date"
-                  aria-label={`Completion date of ${label}`}
-                  value={draft.completedDate}
-                  max={todayIso()}
-                  onChange={(event) => setDraft({ ...draft, completedDate: event.target.value })}
-                  disabled={mutation.isPending}
-                  className="block w-full min-w-[11.5rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs shadow-sm"
-                />
+              {item.locked && (
+                <span className="text-slate-500">
+                  <LockIcon />
+                </span>
               )}
-            </div>
+            </span>
+          ) : (
+            <select
+              aria-label={`Service status of ${label}`}
+              value={draft.status}
+              onChange={(event) => chooseStatus(event.target.value as ServiceStatus)}
+              disabled={mutation.isPending}
+              className="block w-full min-w-[11.5rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm"
+            >
+              <option value={openChoice}>{SERVICE_STATUS_LABELS[openChoice]}</option>
+              <option value="COMPLETED">{SERVICE_STATUS_LABELS.COMPLETED}</option>
+            </select>
           )}
         </td>
       )}
@@ -281,13 +301,35 @@ function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts,
           )}
         </td>
       )}
-      {canSave && (
-        <td className={cx(TABLE.td, 'min-w-32 whitespace-nowrap text-right')}>
-          <span className="inline-flex gap-1.5">
+      {shown('serviceReport') && (
+        <td className={TABLE.td}>
+          <ServiceReportCell
+            ref={reportCell}
+            visitId={item.id}
+            report={item.serviceReport}
+            editable={canSave && serviceReportsAvailable && !item.locked}
+            locked={item.locked}
+            maxMb={reportMaxMb}
+            label={label}
+            highlight={highlightReport}
+            onChanged={(report) => {
+              setHighlightReport(false)
+              onReportChanged(item.id, report)
+            }}
+          />
+        </td>
+      )}
+      <td className={cx(TABLE.td, 'min-w-32 whitespace-nowrap text-right')}>
+        <span className="inline-flex gap-1.5">
+          <Button variant="secondary" size="sm" aria-label={`View ${label}`} title="View this service and its report." onClick={onView}>
+            View
+          </Button>
+          {canSave && (
             <Button size="sm" disabled={!dirty} loading={mutation.isPending} aria-label={`Save ${label}`} onClick={save}>
               Save
             </Button>
-            {onActions && (
+          )}
+          {canSave && onActions && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -298,25 +340,60 @@ function ServiceRow({ item, number, shown, canSave, canReopen, canViewContracts,
               >
                 Actions
               </Button>
-            )}
-          </span>
-          <div aria-live="polite" className="mt-1 max-w-48 whitespace-normal text-left text-xs">
-            {problem && (
-              <span role="alert" className="text-red-700">
-                {problem}
-              </span>
-            )}
-            {!problem && savedAt && !dirty && <span className="text-green-700">Saved</span>}
-            {!problem && dirty && !mutation.isPending && <span className="text-amber-700">Unsaved changes</span>}
-          </div>
-        </td>
+          )}
+        </span>
+        <div aria-live="polite" className="mt-1 max-w-48 whitespace-normal text-left text-xs">
+          {problem && (
+            <span role="alert" className="text-red-700">
+              {problem}
+            </span>
+          )}
+          {!problem && savedAt && !dirty && <span className="text-green-700">Saved</span>}
+          {!problem && dirty && !mutation.isPending && <span className="text-amber-700">Unsaved changes</span>}
+        </div>
+      </td>
+      {needsReport && (
+        <Modal
+          title="Service report required"
+          onClose={() => {
+            setNeedsReport(false)
+            // Back on the row, at the highlighted Upload Report action.
+            setTimeout(() => reportCell.current?.focus(), 0)
+          }}
+          footer={
+            <>
+              <Button variant="secondary" onClick={() => setNeedsReport(false)}>
+                OK
+              </Button>
+              {shown('serviceReport') && serviceReportsAvailable && (
+                <Button
+                  onClick={() => {
+                    setNeedsReport(false)
+                    reportCell.current?.choose()
+                  }}
+                >
+                  Upload Report
+                </Button>
+              )}
+            </>
+          }
+        >
+          <p role="alert" className="text-sm font-medium text-slate-800">
+            {SERVICE_REPORT_REQUIRED_MESSAGE}
+          </p>
+          <p className="mt-2 text-sm text-slate-600">
+            {serviceReportsAvailable
+              ? `${label} can be marked Completed once its service report (PDF, DOC or DOCX) is uploaded. Once saved as Completed, the status is locked.`
+              : 'Service reports cannot be stored until the database is updated (0104), so services cannot be completed yet.'}
+          </p>
+        </Modal>
       )}
     </tr>
   )
 }
 
 // --- Page -------------------------------------------------------------------------
-type Dialog = 'none' | 'kpis' | 'columns' | { visitId: string }
+type Dialog = 'none' | 'kpis' | 'columns' | { visitId: string } | { viewId: string }
 
 interface Filters {
   clientId: string
@@ -358,7 +435,6 @@ export function ServiceStatusPage() {
   }, [searchInput])
 
   const canSave = auth.can('AMC_EXECUTION', 'EDIT')
-  const canReopen = auth.can('AMC_EXECUTION', 'APPROVE')
   // Visit actions read the visit from the execution API, so they also need its view permission.
   const canAct = canSave && auth.can('AMC_EXECUTION', 'VIEW')
   const canExport = auth.can('SERVICE_STATUS', 'EXPORT')
@@ -391,9 +467,19 @@ export function ServiceStatusPage() {
     void refreshOperationalData(queryClient)
   }
 
+  // A report upload changes only the report: the row shows it at once, the visit (and its unsaved draft) is untouched.
+  const onReportChanged = (id: string, report: ServiceReport | null) => {
+    queryClient.setQueriesData<ServiceStatusList>({ queryKey: ['amc', 'service-status', 'list'] }, (current) =>
+      current ? { ...current, items: current.items.map((item) => (item.id === id ? { ...item, serviceReport: report } : item)) } : current,
+    )
+    void queryClient.invalidateQueries({ queryKey: ['amc', 'service-status', 'item', id] })
+  }
+
   const data = list.data
   const opts = options.data
   const reportNumberAvailable = data?.reportNumberAvailable ?? opts?.reportNumberAvailable ?? false
+  const serviceReportsAvailable = data?.serviceReportsAvailable ?? opts?.serviceReportsAvailable ?? false
+  const reportMaxMb = data?.serviceReportLimits.maxMb ?? 12
   const shown = (key: ColumnKey) => !hidden.has(key)
   const years = [...new Set([...(opts?.years ?? []), Number(todayIso().slice(0, 4))])].sort((a, b) => a - b)
   const period = filters.month && filters.year ? `${MONTH_NAMES[Number(filters.month) - 1]} ${filters.year}` : filters.year || (filters.month ? `${MONTH_NAMES[Number(filters.month) - 1]}, every year` : 'All dates')
@@ -402,7 +488,7 @@ export function ServiceStatusPage() {
     <>
       <PageHeader
         title="Service Status"
-        description="Every scheduled AMC service, one row per visit: completion and service report number."
+        description="Every scheduled AMC service, one row per visit: completion, service report and report number."
         actions={
           canExport ? (
             // Covers every service that matches the filters below, on every page, with the columns shown.
@@ -606,6 +692,12 @@ export function ServiceStatusPage() {
           </div>
         )}
 
+        {data && !data.serviceReportsAvailable && canSave && (
+          <div className="px-4 pt-4">
+            <Alert tone="info">Service reports cannot be uploaded yet: this database needs update 0104. Until then services cannot be marked Completed.</Alert>
+          </div>
+        )}
+
         {data && !data.reportNumberAvailable && canSave && (
           <div className="px-4 pt-4">
             <Alert tone="info">Service report numbers cannot be saved yet: this database needs update 0077. Statuses can be saved.</Alert>
@@ -655,11 +747,9 @@ export function ServiceStatusPage() {
                         {column.label}
                       </th>
                     ))}
-                    {canSave && (
-                      <th scope="col" className={cx(TABLE.th, 'text-right')}>
-                        Save
-                      </th>
-                    )}
+                    <th scope="col" className={cx(TABLE.th, 'text-right')}>
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -670,10 +760,13 @@ export function ServiceStatusPage() {
                       number={(data.page - 1) * data.pageSize + index + 1}
                       shown={shown}
                       canSave={canSave}
-                      canReopen={canReopen}
                       canViewContracts={canViewContracts}
                       reportNumberAvailable={reportNumberAvailable}
+                      serviceReportsAvailable={serviceReportsAvailable}
+                      reportMaxMb={reportMaxMb}
                       onSaved={onSaved}
+                      onReportChanged={onReportChanged}
+                      onView={() => setDialog({ viewId: item.id })}
                       onActions={canAct ? () => setDialog({ visitId: item.id }) : undefined}
                     />
                   ))}
@@ -700,8 +793,10 @@ export function ServiceStatusPage() {
         />
       )}
 
-      {typeof dialog === 'object' && (
-        <VisitActionsDialog visitId={dialog.visitId} canReopen={canReopen} onClose={() => setDialog('none')} onSaved={() => setDialog('none')} />
+      {typeof dialog === 'object' && 'viewId' in dialog && <ServiceDetailsDialog visitId={dialog.viewId} onClose={() => setDialog('none')} />}
+
+      {typeof dialog === 'object' && 'visitId' in dialog && (
+        <VisitActionsDialog visitId={dialog.visitId} onClose={() => setDialog('none')} onSaved={() => setDialog('none')} />
       )}
 
       {dialog === 'columns' && <HideColumnsDialog options={[...COLUMNS]} hidden={hidden} onChange={setHidden} onClose={() => setDialog('none')} />}

@@ -9,7 +9,7 @@ import { env } from "../src/config/env";
 import { setStorageForTests } from "../src/modules/attachments/attachments.service";
 import { HEADER_ROW } from "../src/shared/export/excel";
 import { LocalDiskStorage } from "../src/shared/storage";
-import { activeContract, contractBody, createClient, createContract, renewalEngineer, visitsOf } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, renewalEngineer, today, visitsOf, withServiceReport } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -216,6 +216,9 @@ describe("schedule exports", () => {
 
   beforeAll(async () => {
     paidVisit = (await visitsOf(second))[0]!.id;
+    // A manual Invoice No. needs a completed service (2026-11-04), and completing needs its service report (0104).
+    await withServiceReport(paidVisit);
+    expect((await api().patch(`/api/amc/execution/visits/${paidVisit}`).set(admin.headers).send({ status: "COMPLETED", completedDate: await today() })).status).toBe(200);
     expect((await setInvoice(paidVisit, "MAN-777")).status).toBe(200);
   });
 
@@ -282,27 +285,30 @@ describe("contract documents", () => {
 
     const response = await versions();
     expect(response.status).toBe(200);
-    expect(response.body.data.limits).toEqual({ maxMb: env.attachmentMaxMb, allowedTypes: ["PDF", "PNG", "JPEG"] });
-    expect(response.body.data.items.map((item: { version: number; isCurrent: boolean; integrity: string }) => [item.version, item.isCurrent, item.integrity])).toEqual([
-      [2, true, "VERIFIED"],
-      [1, false, "VERIFIED"],
+    // AMC contracts may also hold Word files (migration 0103).
+    expect(response.body.data.limits).toEqual({ maxMb: env.attachmentMaxMb, allowedTypes: ["PDF", "PNG", "JPEG", "Word (.doc)", "Word (.docx)"] });
+    // Newest first: both versions of this document, then the contract document the contract was added with.
+    expect(response.body.data.items.map((item: { version: number; isCurrent: boolean; integrity: string; title: string }) => [item.title, item.version, item.isCurrent, item.integrity])).toEqual([
+      ["Signed", 2, true, "VERIFIED"],
+      ["Signed", 1, false, "VERIFIED"],
+      ["Contract document", 1, true, "VERIFIED"],
     ]);
 
     const current = await api().get("/api/attachments").query({ entityType: "amc_contracts", entityId: first }).set(admin.headers);
-    expect(current.body.data).toHaveLength(1);
-    expect(current.body.data[0]).toMatchObject({ integrity: "VERIFIED", versionCount: 2 });
+    expect(current.body.data).toHaveLength(2);
+    expect(current.body.data[0]).toMatchObject({ title: "Signed", integrity: "VERIFIED", versionCount: 2 });
   });
 
   it("reports a changed or missing stored file instead of calling it verified", async () => {
     const stored = await readdir(folder);
-    const rows = await pool.query<{ storage_key: string; version: number }>("SELECT storage_key, version FROM attachments WHERE entity_id = $1 ORDER BY version", [first]);
-    expect(stored).toHaveLength(2);
+    const rows = await pool.query<{ storage_key: string; version: number }>("SELECT storage_key, version FROM attachments WHERE entity_id = $1 AND title = 'Signed' ORDER BY version", [first]);
+    expect(stored).toEqual(expect.arrayContaining(rows.rows.map((row) => row.storage_key)));
 
     await writeFile(path.join(folder, rows.rows[1]!.storage_key), "tampered");
     await rm(path.join(folder, rows.rows[0]!.storage_key));
 
     const response = await versions();
-    expect(response.body.data.items.map((item: { integrity: string }) => item.integrity)).toEqual(["FAILED", "MISSING"]);
+    expect(response.body.data.items.map((item: { integrity: string }) => item.integrity)).toEqual(["FAILED", "MISSING", "VERIFIED"]);
   });
 
   it("needs the same permission as the list, and an existing record", async () => {

@@ -8,7 +8,10 @@ import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants";
 import type { ListServiceStatusQuery, SaveServiceStatusInput } from "./amc.schemas";
+import { env } from "../../config/env";
+import { SERVICE_REPORT_JSON_SQL, SERVICE_REPORT_TYPES_TEXT, serviceReportsAvailable, toServiceReport, type ServiceReport } from "./service-reports.service";
 import { applyExecution } from "./visits.service";
+import { hasStoredReference, referenceSql } from "./contract-reference";
 
 // The Service Status page: one row per scheduled maintenance visit (amc_visits),
 // never one per contract. It reads the same visit records as the AMC Schedule
@@ -25,22 +28,23 @@ interface Features {
   frequencies: boolean;
   /** 0077: the service report number. */
   reportNumber: boolean;
+  /** 0104: the uploaded service report document. */
+  reports: boolean;
+  /** 0105: the stored AMC Reference Number. */
+  storedReference: boolean;
 }
 
 async function features(): Promise<Features> {
-  const [masters, renewals, frequencies, reportNumber] = await Promise.all([
+  const [masters, renewals, frequencies, reportNumber, reports, storedReference] = await Promise.all([
     schemaHas(["amc_contracts.sales_engineer_id", "amc_contracts.system_type_id", "sales_engineers", "system_types"]),
     schemaHas(["amc_contracts.renewed_from_id"]),
     schemaHas(["maintenance_frequencies"]),
     schemaHas(["amc_visits.service_report_no"]),
+    serviceReportsAvailable(),
+    hasStoredReference(),
   ]);
 
-  return { masters, renewals, frequencies, reportNumber };
-}
-
-/** "AMC-0007" for contract 7: derived from the id, never stored. PROVISIONAL until the client confirms a contract numbering rule. */
-export function amcReference(contractId: string): string {
-  return `AMC-${contractId.padStart(4, "0")}`;
+  return { masters, renewals, frequencies, reportNumber, reports, storedReference };
 }
 
 /** Names of the four built-in frequencies, for a database without the frequency master. */
@@ -79,7 +83,7 @@ function fromSql(f: Features): string {
 
 function selectSql(f: Features): string {
   return `
-  SELECT v.id, c.id AS contract_id, c.status AS contract_status, c.valid_to::text AS valid_to,
+  SELECT v.id, c.id AS contract_id, ${referenceSql("c", f.storedReference)} AS contract_reference, c.status AS contract_status, c.valid_to::text AS valid_to,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          ${f.masters ? "st.id AS system_type_id, st.name AS system_type_name" : "NULL::bigint AS system_type_id, NULL::text AS system_type_name"},
          c.maintenance_frequency, ${f.frequencies ? "mf.label" : "NULL::text"} AS frequency_label,
@@ -92,12 +96,14 @@ function selectSql(f: Features): string {
          ${f.masters ? "se.id AS sales_engineer_id, se.name AS sales_engineer_name" : "NULL::bigint AS sales_engineer_id, NULL::text AS sales_engineer_name"},
          ${f.reportNumber ? "v.service_report_no" : "NULL::text"} AS service_report_no,
          ${serviceStatusSql(f)} AS service_status,
+         ${f.reports ? SERVICE_REPORT_JSON_SQL : "NULL::jsonb"} AS service_report,
          v.updated_at`;
 }
 
 interface ServiceRow {
   id: string;
   contract_id: string;
+  contract_reference: string;
   contract_status: ContractStatus;
   valid_to: string;
   client_id: string;
@@ -120,6 +126,7 @@ interface ServiceRow {
   sales_engineer_name: string | null;
   service_report_no: string | null;
   service_status: ServiceStatus;
+  service_report: unknown;
   updated_at: Date;
 }
 
@@ -142,13 +149,17 @@ export interface ServiceStatusItem {
   completedDate: string | null;
   salesEngineer: { id: string; name: string } | null;
   reportNumber: string | null;
+  /** The uploaded Service Report document (0104), or null. */
+  serviceReport: ServiceReport | null;
+  /** Completed and saved: the status and completion date can no longer change. */
+  locked: boolean;
   updatedAt: string;
 }
 
 function toItem(row: ServiceRow): ServiceStatusItem {
   return {
     id: row.id,
-    reference: amcReference(row.contract_id),
+    reference: row.contract_reference,
     contract: { id: row.contract_id, status: row.contract_status, validTo: row.valid_to },
     client: { id: row.client_id, name: row.client_name },
     system: { description: row.system_description, typeId: row.system_type_id, typeName: row.system_type_name },
@@ -166,14 +177,13 @@ function toItem(row: ServiceRow): ServiceStatusItem {
     completedDate: row.completed_date,
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
     reportNumber: row.service_report_no,
+    serviceReport: toServiceReport(row.service_report),
+    locked: row.status === "COMPLETED",
     updatedAt: row.updated_at.toISOString(),
   };
 }
 
 export type ServiceStatusFilters = Omit<ListServiceStatusQuery, "page" | "pageSize">;
-
-/** "AMC-0007", "amc7" or "7" names contract 7. */
-const REFERENCE_PATTERN = /^(?:amc-?)?0*(\d{1,15})$/i;
 
 /** The WHERE clause, with and without the service status filter: the cards count every status of the other filters. */
 function filterSql(query: ServiceStatusFilters, f: Features) {
@@ -202,15 +212,14 @@ function filterSql(query: ServiceStatusFilters, f: Features) {
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
     const matches = [
+      `${referenceSql("c", f.storedReference)} ILIKE ${p}`,
       `cl.name ILIKE ${p}`,
       `c.system_description ILIKE ${p}`,
       `(to_jsonb(v) ->> 'service_code') ILIKE ${p}`,
       ...(f.masters ? [`st.name ILIKE ${p}`] : []),
       ...(f.reportNumber ? [`v.service_report_no ILIKE ${p}`] : []),
     ];
-    const reference = REFERENCE_PATTERN.exec(query.search);
 
-    if (reference) matches.push(`c.id = ${add(reference[1])}::bigint`);
     conditions.push(`(${matches.join(" OR ")})`);
   }
 
@@ -271,7 +280,16 @@ export async function listServiceStatus(query: ListServiceStatusQuery) {
     pageSize: query.pageSize,
     kpis: figures,
     reportNumberAvailable: f.reportNumber,
+    serviceReportsAvailable: f.reports,
+    serviceReportLimits: { maxMb: env.attachmentMaxMb, allowedTypes: SERVICE_REPORT_TYPES_TEXT },
   };
+}
+
+/** One service, by its visit id, for the View dialog. */
+export async function getServiceStatusItem(id: string): Promise<ServiceStatusItem> {
+  const f = await features();
+
+  return toItem(await findServiceRow(pool, id, f));
 }
 
 /**
@@ -343,6 +361,7 @@ async function filterOptions(scope: string) {
     frequencies: frequencies.rows.map((row) => ({ code: row.code, label: row.label ?? BUILT_IN_FREQUENCY_LABELS[row.code] ?? row.code })),
     years: years.rows.map((row) => row.year),
     reportNumberAvailable: f.reportNumber,
+    serviceReportsAvailable: f.reports,
   };
 }
 
@@ -355,10 +374,12 @@ async function findServiceRow(db: Queryable, id: string, f: Features): Promise<S
 }
 
 /**
- * Saves the status, completion date and report number of ONE visit, in one
- * transaction. A status change goes through the execution rules (completion
- * date, reopening needs approval, invoiced work cannot be reopened); nothing
- * else on the visit, and no other visit, is changed.
+ * Saves the status and report number of ONE visit, in one transaction. A status
+ * change goes through the execution rules: completing needs the visit's uploaded
+ * service report (0104), the completion date is recorded automatically (today,
+ * on the database's date) unless the request names one, and a completed visit
+ * is locked (no reopening, no date change). Nothing else on the visit, and no
+ * other visit, is changed.
  */
 export async function saveServiceStatus(auth: AuthContext, id: string, input: SaveServiceStatusInput): Promise<ServiceStatusItem> {
   const f = await features();
@@ -392,9 +413,14 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
     }
 
     if (input.status === "COMPLETED") {
-      await applyExecution(client, auth, id, { status: "COMPLETED", ...(input.completedDate !== undefined ? { completedDate: input.completedDate } : {}) });
+      // The page no longer asks for a date: completion is recorded on today's date (the database's), as before when
+      // the page pre-filled today. A request may still name the date when it completes the visit.
+      const completedDate =
+        input.completedDate ?? (row.status === "COMPLETED" ? undefined : (await client.query<{ today: string }>("SELECT current_date::text AS today")).rows[0]?.today);
+
+      await applyExecution(client, auth, id, { status: "COMPLETED", ...(completedDate !== undefined ? { completedDate } : {}) });
     } else if (input.status === "NOT_COMPLETED" && row.status === "COMPLETED") {
-      // Reopened work is scheduled again. An open visit (in progress, postponed) keeps its own status.
+      // Refused by the completion lock in the execution rules (there is no reopening).
       await applyExecution(client, auth, id, { status: "SCHEDULED" });
     } else if (input.status === undefined && input.completedDate !== undefined) {
       await applyExecution(client, auth, id, { completedDate: input.completedDate });

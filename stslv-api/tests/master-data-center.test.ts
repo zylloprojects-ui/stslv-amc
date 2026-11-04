@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { contractBody, createClient } from "./amc-helpers";
+import { createClient, legacyContract, newContractBody, renewalEngineer } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -39,9 +39,21 @@ describe("client details", () => {
     expect(fetched).toMatchObject({ clientType: "COMPANY", vatNumber: "OM1100223344", contactPerson: "Front Desk" });
   });
 
-  it("requires a client type for a new client and leaves an omitted VAT number empty", async () => {
-    for (const clientType of [undefined, "", null]) {
-      const refused = await postClient({ name: "Beta Test Person", ...(clientType === undefined ? {} : { clientType }) });
+  it("defaults an omitted client type to Company and keeps an explicitly supplied type", async () => {
+    const omitted = await postClient({ name: "Omitted Type Co" });
+    expect(omitted.status).toBe(201);
+    expect(omitted.body.data).toMatchObject({ clientType: "COMPANY" });
+    const stored = await pool.query("SELECT client_type FROM clients WHERE id = $1", [omitted.body.data.id]);
+    expect(stored.rows[0].client_type).toBe("COMPANY");
+
+    const individual = await postClient({ name: "Explicit Individual Person", clientType: "INDIVIDUAL" });
+    expect(individual.status).toBe(201);
+    expect(individual.body.data).toMatchObject({ clientType: "INDIVIDUAL" });
+  });
+
+  it("refuses an explicitly cleared client type for a new client and leaves an omitted VAT number empty", async () => {
+    for (const clientType of ["", null]) {
+      const refused = await postClient({ name: "Beta Test Person", clientType });
 
       expect(refused.status).toBe(400);
       expect(refused.body.error.details).toEqual([{ field: "clientType", message: "Select Company or Individual." }]);
@@ -88,7 +100,7 @@ describe("client details", () => {
 
   it("searches by VAT number, filters by type and sorts", async () => {
     expect((await listClients({ search: "OM1100" })).body.data.items.map((item: { name: string }) => item.name)).toEqual(["Alpha Test Co"]);
-    expect((await listClients({ clientType: "INDIVIDUAL" })).body.data.items.map((item: { name: string }) => item.name)).toEqual(["Beta Test Person"]);
+    expect((await listClients({ clientType: "INDIVIDUAL" })).body.data.items.map((item: { name: string }) => item.name)).toEqual(["Beta Test Person", "Explicit Individual Person"]);
 
     const newest = (await listClients({ sort: "createdAt", direction: "desc" })).body.data.items as { name: string }[];
     expect(newest[0]?.name).toBe("Beta Test Person");
@@ -106,8 +118,8 @@ describe("sales engineers in the Master Data Center", () => {
   let engineerB: string;
 
   beforeAll(async () => {
-    engineerA = (await postEngineer({ name: "Zed Engineer", employeeNo: "E-200" })).body.data.id as string;
-    engineerB = (await postEngineer({ name: "Amy Engineer", employeeNo: "E-100" })).body.data.id as string;
+    engineerA = (await postEngineer({ code: "SE-ZED", name: "Zed Engineer", employeeNo: "E-200" })).body.data.id as string;
+    engineerB = (await postEngineer({ code: "SE-AMY", name: "Amy Engineer", employeeNo: "E-100" })).body.data.id as string;
   });
 
   it("sorts by the columns the list offers and refuses others", async () => {
@@ -130,7 +142,7 @@ describe("sales engineers in the Master Data Center", () => {
     const created = await api()
       .post("/api/amc/contracts")
       .set(admin.headers)
-      .send(contractBody(clientId, { responsibleEngineer: "Amy Engineer", salesEngineerId: engineerB }));
+      .send(await newContractBody(clientId, { responsibleEngineer: "Amy Engineer", salesEngineerId: engineerB }));
 
     expect(created.status).toBe(201);
     const contractId = created.body.data.id as string;
@@ -144,14 +156,20 @@ describe("sales engineers in the Master Data Center", () => {
 
   it("is changed on an existing contract, alone or with other fields, without touching its schedule", async () => {
     const clientId = await createClient(admin, "Engineer Change Client");
-    const contractId = (await api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { status: "ACTIVE" }))).body.data.id as string;
+    // An older contract, added before a sales engineer was required: it starts with none.
+    const contractId = await legacyContract(admin, clientId);
     const visitsBefore = await pool.query("SELECT id, scheduled_date, visit_amount FROM amc_visits WHERE amc_contract_id = $1 ORDER BY id", [contractId]);
 
     const only = await api().patch(`/api/amc/contracts/${contractId}`).set(admin.headers).send({ salesEngineerId: engineerA });
     expect(only.status).toBe(200);
-    const both = await api().patch(`/api/amc/contracts/${contractId}`).set(admin.headers).send({ salesEngineerId: null, notes: "Changed engineer" });
+    const other = await renewalEngineer("Engineer Change Other");
+    const both = await api().patch(`/api/amc/contracts/${contractId}`).set(admin.headers).send({ salesEngineerId: other, notes: "Changed engineer" });
     expect(both.body.data.notes).toBe("Changed engineer");
-    expect((await api().get(`/api/amc/contracts/${contractId}/masters`).set(admin.headers)).body.data.salesEngineer).toBeNull();
+    expect((await api().get(`/api/amc/contracts/${contractId}/masters`).set(admin.headers)).body.data.salesEngineer).toMatchObject({ id: other });
+    // Once linked, the engineer can be changed but not removed (2026-11-03).
+    const removed = await api().patch(`/api/amc/contracts/${contractId}`).set(admin.headers).send({ salesEngineerId: null });
+    expect(removed.status).toBe(400);
+    expect(removed.body.error.details[0].field).toBe("salesEngineerId");
 
     const visitsAfter = await pool.query("SELECT id, scheduled_date, visit_amount FROM amc_visits WHERE amc_contract_id = $1 ORDER BY id", [contractId]);
     expect(visitsAfter.rows).toEqual(visitsBefore.rows);
@@ -164,7 +182,7 @@ describe("sales engineers in the Master Data Center", () => {
     await api().post(`/api/masters/sales-engineers/${engineerB}/status`).set(admin.headers).send({ isActive: false });
 
     const clientId = await createClient(admin, "Inactive Engineer Client");
-    const refused = await api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { salesEngineerId: engineerB }));
+    const refused = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { salesEngineerId: engineerB }));
     expect(refused.status).toBe(400);
     expect(refused.body.error.details[0].field).toBe("salesEngineerId");
 

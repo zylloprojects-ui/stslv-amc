@@ -76,6 +76,9 @@ describe("permission catalog", () => {
     const checked = checkedPermissions();
     // Attachments check their record type's module for VIEW and EDIT through a template string.
     const dynamic = new Set(["AMC_CONTRACTS:VIEW", "AMC_CONTRACTS:EDIT"]);
+    // Completion lock (2026-11-04): reopening is gone, so nothing checks AMC_EXECUTION:APPROVE. It stays offered, labelled
+    // "no effect", because seeded roles hold it (0087); retiring it (and its grants) awaits a decision.
+    dynamic.add("AMC_EXECUTION:APPROVE");
     const unused = entries.flatMap((entry) =>
       (Object.keys(entry.actions) as Action[]).map((action) => `${entry.module}:${action}`).filter((key) => !checked.has(key) && !dynamic.has(key))
     );

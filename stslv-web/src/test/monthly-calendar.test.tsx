@@ -77,8 +77,8 @@ const EXPIRING: ExpiringContracts = {
   asOf: '2027-03-10',
   days: 45,
   items: [
-    { id: '7', client: { id: '10', name: 'Test Hotel One' }, systemDescription: 'FIRE', validTo: '2027-04-01', daysLeft: 22 },
-    { id: '12', client: { id: '11', name: 'Test Hotel Two' }, systemDescription: 'CCTV', validTo: '2027-03-01', daysLeft: -9 },
+    { id: '7', reference: 'AMC-0007', client: { id: '10', name: 'Test Hotel One' }, systemDescription: 'FIRE', validTo: '2027-04-01', daysLeft: 22 },
+    { id: '12', reference: 'AMC-0012', client: { id: '11', name: 'Test Hotel Two' }, systemDescription: 'CCTV', validTo: '2027-03-01', daysLeft: -9 },
   ],
   total: 2,
   pastValidity: 1,

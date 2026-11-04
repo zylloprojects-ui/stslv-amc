@@ -1,4 +1,5 @@
 import { pool } from "../src/config/database";
+import { discardStoredFile } from "../src/modules/attachments/attachments.service";
 import { api, signedIn } from "./helpers";
 
 export type Session = Awaited<ReturnType<typeof signedIn>>;
@@ -33,8 +34,28 @@ export async function renewalEngineer(name = "Renewal Test Engineer"): Promise<s
   return (result.rows[0] as { id: string }).id;
 }
 
+let referenceCount = 0;
+
+/** A unique AMC Reference Number for a test contract (migration 0105 makes it required and unique for ever). */
+export function testReference(prefix = "TEST"): string {
+  referenceCount += 1;
+
+  // Fixed width, so a search for one reference never matches another as a substring.
+  return `${prefix}-${process.pid}-${Date.now().toString(36)}-${String(referenceCount).padStart(4, "0")}`;
+}
+
+/** The stored AMC Reference Number of a contract (Recycle Bin included). */
+export async function referenceOf(contractId: string | number): Promise<string> {
+  const result = await pool.query<{ amc_reference: string }>("SELECT amc_reference FROM amc_contracts_all WHERE id = $1", [String(contractId)]);
+  const row = result.rows[0];
+
+  if (!row) throw new Error(`No contract ${contractId}.`);
+  return row.amc_reference;
+}
+
 export function contractBody(clientId: string, overrides: Record<string, unknown> = {}) {
   return {
+    amcReference: testReference(),
     clientId,
     responsibleEngineer: "Test Engineer",
     validFrom: "2027-01-01",
@@ -47,8 +68,50 @@ export function contractBody(clientId: string, overrides: Record<string, unknown
   };
 }
 
+/** The smallest file the API recognises as a PDF, for contracts whose document is not under test. */
+export const TEST_PDF = Buffer.from("%PDF-1.4\n%%EOF\n", "latin1");
+
+/** A contract document as POST /api/amc/contracts expects it. */
+export function contractDocument(data: Buffer = TEST_PDF, fileName = "contract.pdf") {
+  return { fileName, contentBase64: data.toString("base64") };
+}
+
+/**
+ * An active system type named exactly `name`, so a contract saved with it keeps that system text. Its code is
+ * made from the name. Made active again if a test deactivated it.
+ */
+export async function systemTypeNamed(name: string): Promise<string> {
+  const code = name.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30) || "SYSTEM";
+  const result = await pool.query<{ id: string }>(
+    `INSERT INTO system_types (code, name, is_active) VALUES ($1, $2, true)
+     ON CONFLICT ((lower(btrim(code)))) DO UPDATE SET is_active = true, name = EXCLUDED.name
+     RETURNING id`,
+    [code, name]
+  );
+
+  return (result.rows[0] as { id: string }).id;
+}
+
+/**
+ * A complete body for adding a contract (POST /api/amc/contracts, 2026-11-03): contractBody plus the fields a new
+ * contract must carry — an active sales engineer, the system type of its system, Final Credit and a contract
+ * document. Each can be overridden; set one to undefined to leave it out.
+ */
+export async function newContractBody(clientId: string, overrides: Record<string, unknown> = {}) {
+  const body: Record<string, unknown> = contractBody(clientId, overrides);
+  const system = typeof body.systemDescription === "string" && body.systemDescription.trim() !== "" ? body.systemDescription : "FIRE";
+
+  return {
+    salesEngineerId: "salesEngineerId" in overrides ? undefined : await renewalEngineer("Contract Test Engineer"),
+    systemTypeId: "systemTypeId" in overrides ? undefined : await systemTypeNamed(system),
+    finalCredit: "0.000",
+    contractDocument: contractDocument(),
+    ...body,
+  };
+}
+
 export async function createContract(session: Session, clientId: string, overrides: Record<string, unknown> = {}) {
-  return api().post("/api/amc/contracts").set(session.headers).send(contractBody(clientId, overrides));
+  return api().post("/api/amc/contracts").set(session.headers).send(await newContractBody(clientId, overrides));
 }
 
 /** Creates an ACTIVE contract (its schedule is generated) and returns its id. */
@@ -60,6 +123,27 @@ export async function activeContract(session: Session, clientId: string, overrid
   }
 
   return response.body.data.id as string;
+}
+
+const LEGACY_PLACEHOLDER = "Legacy Contract Placeholder";
+
+/**
+ * An ACTIVE contract as one added before 2026-11-03 could be: a typed system with no System Types link, no Sales
+ * Engineer link, no Final Credit (unless given) and no contract document. Added through the API, so its schedule is
+ * generated as usual, then returned to that older state directly in the database, with the creation's link and
+ * document entries removed from its history. The placeholder system type it was added with is removed again.
+ */
+export async function legacyContract(session: Session, clientId: string, overrides: Record<string, unknown> = {}): Promise<string> {
+  const { systemDescription = "FIRE", finalCredit = null, ...rest } = overrides;
+  const id = await activeContract(session, clientId, { ...rest, systemDescription: LEGACY_PLACEHOLDER, finalCredit: finalCredit ?? "0.000" });
+
+  await pool.query("UPDATE amc_contracts_all SET sales_engineer_id = NULL, system_type_id = NULL, system_description = $2, final_credit = $3 WHERE id = $1", [id, systemDescription, finalCredit]);
+  const documents = await pool.query<{ storage_key: string }>("DELETE FROM attachments WHERE entity_type = 'amc_contracts' AND entity_id = $1 RETURNING storage_key", [id]);
+  for (const row of documents.rows) await discardStoredFile(row.storage_key);
+  await pool.query("DELETE FROM activity_logs WHERE entity_type = 'amc_contracts' AND entity_id = $1 AND action IN ('amc_contract.masters_linked', 'attachment.uploaded')", [id]);
+  await pool.query("DELETE FROM system_types t WHERE t.name = $1 AND NOT EXISTS (SELECT 1 FROM amc_contracts_all c WHERE c.system_type_id = t.id)", [LEGACY_PLACEHOLDER]);
+
+  return id;
 }
 
 export interface VisitRecord {
@@ -106,4 +190,29 @@ export async function grant(roleCode: string, permissions: [string, string][]) {
       [roleCode, module, action]
     );
   }
+}
+
+/**
+ * Records a current Service Report against one visit (migration 0104) directly in the database, so a test whose
+ * subject is not the upload itself can complete the visit. Metadata only: no file is stored, so it cannot be
+ * downloaded. tests/service-reports.test.ts covers the real upload. Returns the attachment id.
+ */
+export async function withServiceReport(visitId: string): Promise<string> {
+  const result = await pool.query<{ id: string }>(
+    `INSERT INTO attachments (entity_type, entity_id, category, title, original_name, mime_type, size_bytes, sha256, storage_key, uploaded_by)
+     VALUES ('amc_visits', $1, 'SERVICE_REPORT', 'Service report', 'fixture-report.pdf', 'application/pdf', 1, repeat('0', 64),
+             gen_random_uuid()::text || '.pdf', (SELECT min(id) FROM users))
+     ON CONFLICT DO NOTHING
+     RETURNING id`,
+    [visitId]
+  );
+  const id = result.rows[0]?.id;
+
+  if (id) await pool.query("UPDATE attachments SET document_id = id WHERE id = $1", [id]);
+  return id ?? "";
+}
+
+/** Attaches a fixture Service Report (withServiceReport) when a request body is about to complete the visit. */
+export async function reportIfCompleting(visitId: string | undefined, body: Record<string, unknown>): Promise<void> {
+  if (visitId && body.status === "COMPLETED") await withServiceReport(visitId);
 }

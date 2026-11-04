@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, renewalEngineer } from "./amc-helpers";
+import { activeContract, contractBody, createClient, newContractBody, renewalEngineer } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -188,10 +188,13 @@ describe("the sales engineer of a renewal", () => {
     expect(await linkedTo(chosen.body.data.id)).toMatchObject({ id: alpha });
   });
 
-  it("does not let a new contract that is not a renewal need an engineer", async () => {
-    const created = await api().post("/api/amc/contracts").set(admin.headers).send(contractBody(clientId, { systemDescription: "SE-NEW", status: "DRAFT" }));
+  it("needs an engineer on a new contract that is not a renewal too (2026-11-03)", async () => {
+    const refused = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { systemDescription: "SE-NEW", status: "DRAFT", salesEngineerId: undefined }));
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select a sales engineer." }]);
 
+    const created = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { systemDescription: "SE-NEW", status: "DRAFT", salesEngineerId: defaultEngineerId }));
     expect(created.status).toBe(201);
-    expect(await linkedTo(created.body.data.id)).toBeNull();
+    expect((await linkedTo(created.body.data.id))?.id).toBe(defaultEngineerId);
   });
 });

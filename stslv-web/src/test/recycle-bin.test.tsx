@@ -17,6 +17,7 @@ const ADMIN_ROLE: SessionUser = {
 
 const BINNED: DeletedContract = {
   id: '7',
+  amcReference: 'AMC-0007',
   client: { id: '3', name: 'Test Hotel One' },
   systemDescription: 'FIRE',
   validFrom: '2026-01-01',

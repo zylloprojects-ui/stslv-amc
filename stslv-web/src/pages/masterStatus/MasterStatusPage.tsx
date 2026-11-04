@@ -388,20 +388,15 @@ export function MasterStatusPage() {
         title="Master AMC Status"
         description="Every scheduled AMC service with its completion, invoice and quotation status. Read only."
         actions={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
-              Hide Columns · {visible.length} of {COLUMN_IDS.length} shown
-            </Button>
-            {canExport && (
-              // The download covers every service that matches the applied filters, on every page, with the columns shown.
-              <ExportButtons
-                what="Master AMC Status"
-                fileStem="master-amc-status"
-                path={(format) => `/amc/master-status/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
-                onError={setExportError}
-              />
-            )}
-          </div>
+          canExport ? (
+            // The download covers every service that matches the applied filters, on every page, with the columns shown.
+            <ExportButtons
+              what="Master AMC Status"
+              fileStem="master-amc-status"
+              path={(format) => `/amc/master-status/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
+              onError={setExportError}
+            />
+          ) : undefined
         }
       />
 
@@ -537,14 +532,19 @@ export function MasterStatusPage() {
                 </select>
               )}
             </Filter>
-            <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
-              <Button type="submit" variant={pendingChanges ? 'primary' : 'secondary'}>
-                Apply
+            <div className="flex flex-wrap items-end justify-between gap-2 sm:col-span-2 lg:col-span-4">
+              <div className="flex flex-wrap items-end gap-2">
+                <Button type="submit" variant={pendingChanges ? 'primary' : 'secondary'}>
+                  Apply
+                </Button>
+                <Button variant="secondary" disabled={!filtered && !pendingChanges} onClick={reset}>
+                  Reset
+                </Button>
+                {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
+              </div>
+              <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
+                Hide Columns · {visible.length} of {COLUMN_IDS.length} shown
               </Button>
-              <Button variant="secondary" disabled={!filtered && !pendingChanges} onClick={reset}>
-                Reset
-              </Button>
-              {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
             </div>
           </form>
 </FilterPanel>
@@ -634,7 +634,19 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
         {number}
         <span className="sr-only">, {ROW_COLOUR_LABELS[item.colour]}</span>
       </td>
-      <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>{item.reference}</td>
+      <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
+        {canViewContract ? (
+          <Link
+            to={`/amc/contracts/${item.contract.id}`}
+            aria-label={`Open contract ${item.reference}`}
+            className="rounded-sm text-[#1479BD] underline decoration-[#1479BD]/40 underline-offset-2 hover:text-[#0b3b66] hover:decoration-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1479BD]"
+          >
+            {item.reference}
+          </Link>
+        ) : (
+          item.reference
+        )}
+      </td>
       {shown('client') && <td className={`${TABLE.td} ${TABLE.text} font-semibold text-slate-900`}>{item.client.name}</td>}
       {shown('system') && (
         <td className={`${TABLE.td} ${TABLE.text}`}>

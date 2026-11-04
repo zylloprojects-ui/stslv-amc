@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, renewalEngineer, visitsOf } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer, visitsOf, withServiceReport } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // AMC Recycle Bin (migration 0101, approved 2026-11-03): moving a contract to the Recycle Bin
@@ -39,6 +39,7 @@ async function workedContract(system: string) {
   const id = await activeContract(superAdmin, clientId, { systemDescription: system, validFrom: "2026-01-01", validTo: "2026-12-31" });
   const visits = await visitsOf(id);
   const first = visits[0]!;
+  await withServiceReport(first.id);
   expect((await api().patch(`/api/amc/execution/visits/${first.id}`).set(superAdmin.headers).send({ status: "COMPLETED", completedDate: "2026-02-01" })).status).toBe(200);
   await pool.query("UPDATE amc_visits SET notes = 'Service report RB-1' WHERE id = $1", [visits[1]!.id]);
   const invoice = await api()
@@ -72,7 +73,8 @@ describe("moving an AMC contract to the Recycle Bin", () => {
     expect(keptVisits.rows.map((row) => row.id)).toEqual(visits.map((visit) => visit.id));
     expect(keptVisits.rows[0]?.status).toBe("COMPLETED");
     expect(keptVisits.rows[1]?.notes).toBe("Service report RB-1");
-    expect((await pool.query("SELECT 1 FROM attachments WHERE entity_type = 'amc_contracts' AND entity_id = $1", [id])).rowCount).toBe(1);
+    // The document uploaded here and the contract document the contract was added with.
+    expect((await pool.query("SELECT 1 FROM attachments WHERE entity_type = 'amc_contracts' AND entity_id = $1", [id])).rowCount).toBe(2);
 
     // The invoice stays, still showing what it covers.
     const invoice = await api().get(`/api/invoices/${invoiceId}`).set(superAdmin.headers);
@@ -93,7 +95,7 @@ describe("moving an AMC contract to the Recycle Bin", () => {
     const entries = await logs(id);
     expect(entries.at(-1)).toMatchObject({ action: "amc_contract.deleted", metadata: { recycleBin: true } });
     const listed = (await bin()).body.data.find((row: { id: string }) => row.id === id);
-    expect(listed).toMatchObject({ systemDescription: "RB-KEEP", services: visits.length, invoices: 1, documents: 1, deletedBy: "superadmin@example.com" });
+    expect(listed).toMatchObject({ systemDescription: "RB-KEEP", services: visits.length, invoices: 1, documents: 2, deletedBy: "superadmin@example.com" });
     const deletionLog = await api().get("/api/security/deletions").set(superAdmin.headers);
     expect(deletionLog.body.data.items.some((item: { action: string; entityId: string }) => item.action === "amc_contract.deleted" && item.entityId === id)).toBe(true);
 

@@ -61,6 +61,8 @@ export interface ExpiringContracts {
   days: number
   items: {
     id: string
+    /** The contract's AMC Reference Number. */
+    reference: string
     client: { id: string; name: string }
     systemDescription: string
     validTo: string
@@ -86,8 +88,3 @@ export interface CalendarFilters {
 
 /** Renewal warnings cover contracts ending within this many days (approved 2026-10-28). */
 export const RENEWAL_WARNING_DAYS = 45
-
-/** "AMC-0007" for contract 7, as Master AMC Status and Service Status show it. PROVISIONAL until the client confirms a numbering rule. */
-export function amcReference(contractId: string): string {
-  return `AMC-${contractId.padStart(4, '0')}`
-}

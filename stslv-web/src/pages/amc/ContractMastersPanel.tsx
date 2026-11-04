@@ -6,9 +6,10 @@ import { isFeatureUnavailable, type ContractMasters, type SalesEngineer, type Sy
 import { DetailRow } from './components'
 
 /**
- * The contract's optional links to the Sales Engineer and System Type master
- * lists. Separate from the contract's own typed engineer and system, which
- * stay as entered. Hidden entirely on a database without migration 0070.
+ * The contract's links to the Sales Engineer and System Type master lists. The
+ * typed engineer stays as entered; the contract's system follows the linked type.
+ * A recorded link can be changed but not removed (2026-11-03); an older contract
+ * without one can be linked here. Hidden on a database without migration 0070.
  */
 export function ContractMastersPanel({ contractId, canEdit }: { contractId: string; canEdit: boolean }) {
   const [editing, setEditing] = useState(false)
@@ -71,8 +72,14 @@ function LinkMastersModal({ contractId, current, onClose }: { contractId: string
   const engineers = useQuery({ queryKey: ['masters', 'sales-engineers', 'options'], queryFn: () => api.get<SalesEngineer[]>('/masters/sales-engineers/options') })
   const types = useQuery({ queryKey: ['masters', 'system-types', 'options'], queryFn: () => api.get<SystemType[]>('/masters/system-types/options') })
 
+  const changed = engineerId !== (current.salesEngineer?.id ?? '') || typeId !== (current.systemType?.id ?? '')
   const save = useMutation({
-    mutationFn: () => api.put<ContractMasters>(`/amc/contracts/${contractId}/masters`, { salesEngineerId: engineerId || null, systemTypeId: typeId || null }),
+    // Only what changed is sent; an empty choice is offered only where nothing is linked yet.
+    mutationFn: () =>
+      api.put<ContractMasters>(`/amc/contracts/${contractId}/masters`, {
+        ...(engineerId !== (current.salesEngineer?.id ?? '') ? { salesEngineerId: engineerId || null } : {}),
+        ...(typeId !== (current.systemType?.id ?? '') ? { systemTypeId: typeId || null } : {}),
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ['amc'] })
       await queryClient.invalidateQueries({ queryKey: ['masters'] })
@@ -89,18 +96,26 @@ function LinkMastersModal({ contractId, current, onClose }: { contractId: string
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={() => save.mutate()} loading={save.isPending}>
+          <Button onClick={() => (changed ? save.mutate() : onClose())} loading={save.isPending}>
             Save links
           </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <p className="text-sm text-slate-600">The contract’s typed engineer and system stay as entered. These links connect it to the master lists.</p>
+        <p className="text-sm text-slate-600">
+          The typed engineer stays as entered. The contract’s system becomes the name of the linked system type. A link that is recorded can be changed, not removed.
+        </p>
         {save.isError && <Alert>{errorMessage(save.error)}</Alert>}
         {(engineers.isError || types.isError) && <Alert>{errorMessage(engineers.error ?? types.error)}</Alert>}
         <SelectField label="Sales engineer" value={engineerId} onChange={(event) => setEngineerId(event.target.value)}>
-          <option value="">Not linked</option>
+          {current.salesEngineer ? (
+            <option value="" disabled>
+              Select a sales engineer…
+            </option>
+          ) : (
+            <option value="">Not linked</option>
+          )}
           {current.salesEngineer && !current.salesEngineer.isActive && <option value={current.salesEngineer.id}>{current.salesEngineer.name} (inactive)</option>}
           {(engineers.data ?? []).map((engineer) => (
             <option key={engineer.id} value={engineer.id}>
@@ -110,7 +125,13 @@ function LinkMastersModal({ contractId, current, onClose }: { contractId: string
           ))}
         </SelectField>
         <SelectField label="System type" value={typeId} onChange={(event) => setTypeId(event.target.value)}>
-          <option value="">Not linked</option>
+          {current.systemType ? (
+            <option value="" disabled>
+              Select a system...
+            </option>
+          ) : (
+            <option value="">Not linked</option>
+          )}
           {current.systemType && !current.systemType.isActive && (
             <option value={current.systemType.id}>
               {current.systemType.code} — {current.systemType.name} (inactive)

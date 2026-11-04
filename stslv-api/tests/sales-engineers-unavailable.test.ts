@@ -34,7 +34,7 @@ describe("sales engineers without migration 0070", () => {
   });
 
   it("refuses to save, without writing anything", async () => {
-    expect((await api().post("/api/masters/sales-engineers").set(admin.headers).send({ name: "Not Saved" })).status).toBe(503);
+    expect((await api().post("/api/masters/sales-engineers").set(admin.headers).send({ code: "SE-NONE", name: "Not Saved" })).status).toBe(503);
     expect((await api().post("/api/masters/sales-engineers/1/status").set(admin.headers).send({ isActive: false })).status).toBe(503);
   });
 

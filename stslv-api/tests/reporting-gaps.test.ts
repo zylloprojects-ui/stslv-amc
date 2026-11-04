@@ -5,7 +5,7 @@ import type { AuthContext } from "../src/modules/auth/access";
 import { buildServiceStatusExport } from "../src/modules/amc/service-status.export";
 import { serviceStatusHiddenSchema } from "../src/modules/amc/service-status.schemas";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, referenceOf, renewalEngineer, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Service Sales' Service Report No. and Quote filter, Accounts' contract filter, hidden columns in exports,
@@ -55,6 +55,7 @@ beforeAll(async () => {
   renewalId = renewal.body.data.id;
 
   const [first, second, third] = await visitsOf(quarterly);
+  await withServiceReport(first!.id);
   await api().patch(`/api/amc/execution/visits/${first!.id}`).set(admin.headers).send({ status: "COMPLETED", completedDate: now });
   await pool.query("UPDATE amc_visits SET service_report_no = 'SR-GAP-1', quotation_no = 'QT-1' WHERE id = $1", [first!.id]);
   // A number on a visit that is not completed: Submitted, though not "Quoted".
@@ -111,7 +112,7 @@ describe("Service Sales", () => {
 describe("Accounts contract filter", () => {
   it("offers the contracts with visits, and limits rows, cards and export to one", async () => {
     const options = (await get("/accounts/options")).body.data;
-    expect(options.contracts).toContainEqual({ id: quarterly, reference: `AMC-${quarterly.padStart(4, "0")}`, client: "Gaps Hotel", system: "FIRE" });
+    expect(options.contracts).toContainEqual({ id: quarterly, reference: await referenceOf(quarterly), client: "Gaps Hotel", system: "FIRE" });
     expect(options.contracts.some((contract: { id: string }) => contract.id === renewalId)).toBe(false);
     expect(options.clients.length).toBeGreaterThan(0);
 
@@ -124,7 +125,7 @@ describe("Accounts contract filter", () => {
 
     const sheet = await sheetOf("/accounts/export", { contractId: quarterly });
     expect(sheet.text).toContain("AMC Contract");
-    expect(sheet.text).toContain(`AMC-${quarterly.padStart(4, "0")}`);
+    expect(sheet.text).toContain(await referenceOf(quarterly));
     expect(sheet.text).not.toContain("Gaps Mall");
     expect((await get("/accounts", { contractId: "abc" })).status).toBe(400);
   });
@@ -239,16 +240,19 @@ describe("Expiry & Renewal Due", () => {
     const dashboard = (await get("/dashboard/operations")).body.data.expiring;
 
     expect(data.total).toBe(dashboard.total);
-    const row = (data.rows as Record<string, unknown>[]).find((item) => item.reference === `AMC-${dueSoon.padStart(4, "0")}`);
-    expect(row).toMatchObject({ days_left: 60, renewal_state: "Under Client Approval", renewal_reference: `AMC-${renewalId.padStart(4, "0")}`, contract_value: "90.500" });
+    const dueSoonReference = await referenceOf(dueSoon);
+    const row = (data.rows as Record<string, unknown>[]).find((item) => item.reference === dueSoonReference);
+    expect(row).toMatchObject({ days_left: 60, renewal_state: "Under Client Approval", renewal_reference: await referenceOf(renewalId), contract_value: "90.500" });
     expect(data.totals.days_left).toBeUndefined();
     expect(data.totals.contract_value).toMatch(/^\d+\.\d{3}$/);
 
     const past = await activeContract(admin, clientId, contractBody(clientId, { systemDescription: "PAST", validFrom: addDays(await today(), -400), validTo: addDays(await today(), -5) }));
     const far = await activeContract(admin, clientId, contractBody(clientId, { systemDescription: "NOTYET", validFrom: addDays(await today(), -100), validTo: addDays(await today(), 80) }));
     const after = (await get("/reports/expiry-renewal")).body.data.rows as Record<string, unknown>[];
-    expect(after.find((item) => item.reference === `AMC-${past.padStart(4, "0")}`)).toMatchObject({ days_left: -5, renewal_state: "Due / Expired" });
-    expect(after.find((item) => item.reference === `AMC-${far.padStart(4, "0")}`)).toMatchObject({ days_left: 80, renewal_state: "Not Yet Due" });
+    const pastReference = await referenceOf(past);
+    const farReference = await referenceOf(far);
+    expect(after.find((item) => item.reference === pastReference)).toMatchObject({ days_left: -5, renewal_state: "Due / Expired" });
+    expect(after.find((item) => item.reference === farReference)).toMatchObject({ days_left: 80, renewal_state: "Not Yet Due" });
   });
 });
 
@@ -258,7 +262,7 @@ describe("Renewal History", () => {
     const { data } = (await get("/reports/renewal-history")).body;
 
     expect(data.total).toBe(source.total);
-    expect(data.rows[0]).toMatchObject({ reference: `AMC-${renewalId.padStart(4, "0")}`, renewed_from: `AMC-${dueSoon.padStart(4, "0")}`, status: "Draft", contract_value: "95.250", source_value: "90.500" });
+    expect(data.rows[0]).toMatchObject({ reference: await referenceOf(renewalId), renewed_from: await referenceOf(dueSoon), status: "Draft", contract_value: "95.250", source_value: "90.500" });
     expect(data.totals).toMatchObject({ contract_value: "95.250", source_value: "90.500" });
     expect((await get("/reports/renewal-history", { status: "ACTIVE" })).body.data.total).toBe(0);
     expect((await get("/reports/renewal-history", { system: "FIRE" })).body.data.total).toBe(0);

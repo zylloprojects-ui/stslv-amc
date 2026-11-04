@@ -115,7 +115,7 @@ While an **active** invoice covers it:
 
 | Record | Refused (409) | Still allowed |
 |---|---|---|
-| AMC visit | Changing the visit amount. Any status change away from `COMPLETED` (reopening), with or without `AMC_EXECUTION:APPROVE`. | Notes, assignment, work performed, execution notes, completion date. |
+| AMC visit | Changing the visit amount. (Reopening is refused for every completed visit, invoiced or not: completion lock, 2026-11-04.) | Notes, assignment, work performed, execution notes. |
 | Project | Reopening (`COMPLETED → IN_PROGRESS`). Changing the client. | Other edits, including the job value: the invoice state follows it. |
 | AMC contract | Changing the client, while any of its visits is invoiced. | Everything else. |
 

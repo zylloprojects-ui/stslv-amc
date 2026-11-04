@@ -1,7 +1,11 @@
 import { z } from "zod";
 
-/** The Service Status columns a user may hide, by the page's own column keys. AMC Reference always stays. */
-export const SERVICE_STATUS_HIDEABLE_COLUMNS = ["client", "system", "frequency", "service", "due", "status", "engineer", "report"] as const;
+/**
+ * The Service Status columns a user may hide, by the page's own column keys. AMC Reference always stays.
+ * "serviceReport" (the uploaded document, 0104) is a page column only: the export has no file column, so hiding it
+ * changes nothing in an export.
+ */
+export const SERVICE_STATUS_HIDEABLE_COLUMNS = ["client", "system", "frequency", "service", "due", "status", "engineer", "report", "serviceReport"] as const;
 export type ServiceStatusColumn = (typeof SERVICE_STATUS_HIDEABLE_COLUMNS)[number];
 
 /** The `hidden` query value of an export: a comma-separated list of known columns. An unknown column is refused. */

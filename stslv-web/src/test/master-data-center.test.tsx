@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { Client, SessionUser } from '../lib/types'
 import type { SalesEngineer } from '../pages/masters/masterTypes'
 import { ACCOUNTANT, ADMIN, fail, makeClient, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
-import { makeContract } from './amc-helpers'
+import { contractPdf, makeContract, SYSTEM_TYPES } from './amc-helpers'
 
 // Master Data Center: Clients and Sales Engineers. Every record here is invented.
 
@@ -78,6 +78,8 @@ function masterApi(user: SessionUser = ADMIN, options: Options = {}) {
     if (method === 'GET' && path === '/masters/sales-engineers/5/history') return ok({ items: [], total: 0, page: 1, pageSize: 20 })
     if (method === 'GET' && path === '/masters/sales-engineers/options') return ok([ENGINEER])
     if (method === 'GET' && path === '/amc/contracts/systems') return ok(['FIRE'])
+    if (method === 'GET' && path === '/masters/system-types/options') return ok(SYSTEM_TYPES)
+    if (method === 'GET' && path === '/attachments/limits') return ok({ maxMb: 12, allowedTypes: ['PDF'], storageAvailable: true })
     if (method === 'POST' && path === '/amc/contracts') return ok({ ...makeContract({ id: '199' }), scheduleChange: null }, 201)
 
     return undefined
@@ -235,12 +237,17 @@ describe('sales engineers', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Add Contract' }))
     const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
-    const picker = await within(dialog).findByLabelText('Sales engineer (master list)')
+    // Required on a new contract (2026-11-03), so its label carries the asterisk.
+    const picker = await within(dialog).findByLabelText(/^Sales engineer \(master list\)/)
     await userEvent.selectOptions(picker, '5')
     expect(within(dialog).getByLabelText('Responsible engineer')).toHaveValue('Test Engineer')
 
+    await userEvent.type(within(dialog).getByLabelText(/AMC Reference Number/), 'AMC-2027-005')
     await userEvent.selectOptions(within(dialog).getByLabelText(/^Client/), '10')
-    await userEvent.type(within(dialog).getByLabelText(/^System/), 'FIRE')
+    await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
+    await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '21')
+    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0')
+    await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, contractPdf())
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'QUARTERLY')
@@ -258,7 +265,7 @@ describe('sales engineers', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Add Contract' }))
     const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
     await within(dialog).findByLabelText(/^Client/)
-    expect(within(dialog).queryByLabelText('Sales engineer (master list)')).not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText(/^Sales engineer \(master list\)/)).not.toBeInTheDocument()
   })
 
   it('is refused to a role without Settings access', async () => {

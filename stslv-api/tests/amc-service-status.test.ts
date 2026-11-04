@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { HEADER_ROW } from "../src/shared/export/excel";
-import { activeContract, contractBody, createClient, grant, logsFor, today, visitsOf, type Session, type VisitRecord } from "./amc-helpers";
+import { activeContract, contractBody, createClient, grant, legacyContract, logsFor, referenceOf, today, visitsOf, withServiceReport, type Session, type VisitRecord } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The Service Status page (/api/amc/service-status): one row per scheduled
@@ -54,7 +54,7 @@ beforeAll(async () => {
   year = Number((await today()).slice(0, 4));
   hotelOne = await createClient(admin, "Service Hotel One");
   hotelTwo = await createClient(admin, "Service Hotel Two");
-  engineerId = (await api().post("/api/masters/sales-engineers").set(admin.headers).send({ name: "Sara Sales" })).body.data.id;
+  engineerId = (await api().post("/api/masters/sales-engineers").set(admin.headers).send({ code: "SE-SARA", name: "Sara Sales" })).body.data.id;
   systemTypeId = (await api().post("/api/masters/system-types").set(admin.headers).send({ code: "FA", name: "Fire Alarm" })).body.data.id;
 
   fire = await activeContract(admin, hotelOne, {
@@ -63,7 +63,8 @@ beforeAll(async () => {
     salesEngineerId: engineerId,
   });
   await api().put(`/api/amc/contracts/${fire}/masters`).set(admin.headers).send({ systemTypeId });
-  cctv = await activeContract(admin, hotelTwo, {
+  // Older contracts, with no master links: the filter options come only from linked records.
+  cctv = await legacyContract(admin, hotelTwo, {
     systemDescription: "CCTV",
     validFrom: `${year + 1}-01-01`,
     validTo: `${year + 1}-06-30`,
@@ -71,7 +72,7 @@ beforeAll(async () => {
     contractValue: "900.000",
     defaultVisitAmount: "150.000",
   });
-  ended = await activeContract(admin, hotelOne, {
+  ended = await legacyContract(admin, hotelOne, {
     systemDescription: "PUMPS",
     validFrom: `${year - 2}-01-01`,
     validTo: `${year - 2}-03-31`,
@@ -99,9 +100,10 @@ describe("listing", () => {
 
     const first = response.body.data.items.find((item: { id: string }) => item.id === fireVisits[0]?.id);
     expect(first).toMatchObject({
-      reference: `AMC-${fire.padStart(4, "0")}`,
+      reference: await referenceOf(fire),
       client: { id: hotelOne, name: "Service Hotel One" },
-      system: { description: "FIRE", typeId: systemTypeId, typeName: "Fire Alarm" },
+      // Linking the system type set the contract's system to its name (2026-11-03).
+      system: { description: "Fire Alarm", typeId: systemTypeId, typeName: "Fire Alarm" },
       frequency: { code: "QUARTERLY", label: "Quarterly" },
       service: { sequenceNo: 1 },
       scheduledDate: fireVisits[0]?.scheduled_date,
@@ -142,10 +144,11 @@ describe("listing", () => {
   });
 
   it("searches the AMC reference, client, system and service", async () => {
-    expect((await list({ search: `AMC-${cctv.padStart(4, "0")}` })).body.data.total).toBe(5);
-    // A bare number names the contract, and also matches service codes such as "Q2".
-    const byNumber = (await list({ search: cctv, pageSize: 200 })).body.data.items.map((item: { contract: { id: string } }) => item.contract.id);
-    expect(byNumber.filter((id: string) => id === cctv)).toHaveLength(5);
+    const reference = await referenceOf(cctv);
+    expect((await list({ search: reference })).body.data.total).toBe(5);
+    // The stored reference is matched as text, without regard to case, in part as well as in full.
+    const byPart = (await list({ search: reference.slice(-9).toLowerCase(), pageSize: 200 })).body.data.items.map((item: { contract: { id: string } }) => item.contract.id);
+    expect(byPart.filter((id: string) => id === cctv)).toHaveLength(5);
     expect((await list({ search: "hotel two" })).body.data.total).toBe(5);
     expect((await list({ search: "pumps" })).body.data.total).toBe(3);
     expect((await list({ search: "fire alarm" })).body.data.total).toBe(4);
@@ -198,6 +201,7 @@ describe("renewal", () => {
 describe("saving one service", () => {
   it("completes exactly the chosen visit and nothing else", async () => {
     const target = fireVisits[0]?.id as string;
+    await withServiceReport(target);
     const before = await storedVisits();
     const row = await rowOf(target);
     const response = await save(target, { status: "COMPLETED", completedDate: `${year}-10-01`, expectedUpdatedAt: row?.updatedAt });
@@ -222,18 +226,21 @@ describe("saving one service", () => {
     expect((await list()).body.data.kpis).toMatchObject({ completed: 1, notCompleted: 8 });
   });
 
-  it("needs a completion date, not in the future", async () => {
+  it("records today's date when no completion date is sent, and refuses one in the future", async () => {
     const target = fireVisits[1]?.id as string;
+    await withServiceReport(target);
     const row = await rowOf(target);
-
-    const missing = await save(target, { status: "COMPLETED", expectedUpdatedAt: row?.updatedAt });
-    expect(missing.status).toBe(400);
-    expect(missing.body.error.details).toContainEqual({ field: "completedDate", message: "Enter the date the visit was completed." });
 
     const future = await save(target, { status: "COMPLETED", completedDate: `${year + 3}-01-01`, expectedUpdatedAt: row?.updatedAt });
     expect(future.status).toBe(400);
-
     expect((await rowOf(target))?.serviceStatus).toBe("NOT_COMPLETED");
+
+    // The page no longer asks for a date: completion is recorded on the database's current date.
+    const other = (await visitsOf(cctv))[0]?.id as string;
+    await withServiceReport(other);
+    const missing = await save(other, { status: "COMPLETED", expectedUpdatedAt: (await rowOf(other))?.updatedAt });
+    expect(missing.status).toBe(200);
+    expect(missing.body.data).toMatchObject({ serviceStatus: "COMPLETED", completedDate: await today() });
   });
 
   it("refuses Waiting for Renewal as a choice, and other bad input", async () => {
@@ -259,17 +266,20 @@ describe("saving one service", () => {
     expect((await rowOf(target))?.serviceStatus).toBe("NOT_COMPLETED");
   });
 
-  it("reopens completed work only with approval, back to scheduled", async () => {
+  it("never reopens completed work, not even with approval", async () => {
     const target = fireVisits[0]?.id as string;
-    let row = await rowOf(target);
+    const row = await rowOf(target);
 
-    const refused = await save(target, { status: "NOT_COMPLETED", expectedUpdatedAt: row?.updatedAt });
-    expect(refused.status).toBe(403);
-
-    row = await rowOf(target);
-    const reopened = await save(target, { status: "NOT_COMPLETED", expectedUpdatedAt: row?.updatedAt }, admin);
-    expect(reopened.status).toBe(200);
-    expect(reopened.body.data).toMatchObject({ serviceStatus: "NOT_COMPLETED", visitStatus: "SCHEDULED", completedDate: null });
+    // Completion lock (2026-11-04): completed work cannot be reopened.
+    for (const session of [execution, admin]) {
+      const refused = await save(target, { status: "NOT_COMPLETED", expectedUpdatedAt: row?.updatedAt }, session);
+      expect(refused.status).toBe(409);
+      expect(refused.body.error.code).toBe("COMPLETION_LOCKED");
+    }
+    const redated = await save(target, { completedDate: `${year}-09-30`, expectedUpdatedAt: row?.updatedAt }, admin);
+    expect(redated.status).toBe(409);
+    expect(redated.body.error.code).toBe("COMPLETION_LOCKED");
+    expect(await rowOf(target)).toMatchObject({ serviceStatus: "COMPLETED", completedDate: `${year}-10-01`, updatedAt: row?.updatedAt });
   });
 
   it("does not manage cancelled visits", async () => {
@@ -327,7 +337,9 @@ describe("exports", () => {
     for (let index = 1; index <= 8; index += 1) {
       references.push(String(sheet.getRow(HEADER_ROW + index).getCell(2).value));
     }
-    expect(references.filter((value) => value.startsWith("AMC-"))).toHaveLength(8);
+    // Each row carries its contract's stored AMC Reference Number.
+    const stored = new Set((await pool.query<{ amc_reference: string }>("SELECT amc_reference FROM amc_contracts")).rows.map((row) => row.amc_reference));
+    expect(references.filter((value) => stored.has(value))).toHaveLength(8);
   });
 
   it("exports the same filters to PDF", async () => {
@@ -342,6 +354,7 @@ describe("exports", () => {
 describe("report number (migration 0077)", () => {
   it("saves, shows, searches and clears the report number of one visit", async () => {
     const target = fireVisits[2]?.id as string;
+    await withServiceReport(target);
     let row = await rowOf(target);
 
     const saved = await save(target, { status: "COMPLETED", completedDate: `${year}-10-03`, reportNumber: "  SR-2027/014 ", expectedUpdatedAt: row?.updatedAt });

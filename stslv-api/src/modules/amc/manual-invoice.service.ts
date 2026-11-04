@@ -8,7 +8,11 @@ import type { AuthContext } from "../auth/access";
 // means Paid, cleared means Unpaid. No invoice is generated, no VAT is
 // calculated and neither a date nor an amount is asked for. It is a reference
 // status, not verification that money was received, and it is independent of the
-// service status and of the Zoho invoices in Invoice Tracking.
+// Zoho invoices in Invoice Tracking. Since 2026-11-04 a number can be entered only
+// on a completed service; clearing it is allowed at any status.
+
+/** Refusal when a number is entered on a service that is not completed. */
+export const SERVICE_NOT_COMPLETED_MESSAGE = "Complete the service before entering an invoice number.";
 
 /** Shown wherever Paid or Unpaid appears, so nobody reads it as a bank-verified payment. */
 export const PAID_STATUS_NOTE = "Paid means a manual Invoice No. is entered on the service. It is a reference status and does not verify that money was received.";
@@ -65,6 +69,14 @@ export async function setManualInvoice(auth: AuthContext, id: string, input: Set
     }
     if (!row.same) {
       throw conflict("This service was changed by someone else after the page was loaded. Reload to see the latest values, then save again.");
+    }
+
+    // Approved 2026-11-04: a number may be entered or changed only on a service whose stored status is
+    // Completed. The row is locked above, so a completion being undone at the same time cannot slip
+    // past. Clearing (Unpaid) stays allowed whatever the status, and re-saving an unchanged number is
+    // a no-op, so nothing already recorded is lost.
+    if (input.invoiceNo !== null && row.manual_invoice_no !== input.invoiceNo && row.status !== "COMPLETED") {
+      throw conflict(SERVICE_NOT_COMPLETED_MESSAGE);
     }
 
     if (row.manual_invoice_no !== input.invoiceNo) {

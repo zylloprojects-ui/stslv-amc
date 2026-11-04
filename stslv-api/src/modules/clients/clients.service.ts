@@ -225,8 +225,12 @@ export async function listClientHistory(id: string, page: number, pageSize: numb
   return listEntityHistory("clients", id, page, pageSize);
 }
 
-export async function createClient(auth: AuthContext, input: CreateClientInput): Promise<Client> {
+/** A new client whose type is left out is a Company. An explicit value (including an explicit clear) is kept and checked as given. */
+export const DEFAULT_CLIENT_TYPE = "COMPANY" as const;
+
+export async function createClient(auth: AuthContext, given: CreateClientInput): Promise<Client> {
   const details = await hasClientDetails();
+  const input: CreateClientInput = details && given.clientType === undefined ? { ...given, clientType: DEFAULT_CLIENT_TYPE } : given;
 
   await assertDetailsStorable(input, details);
   assertClientType(input, details, true);

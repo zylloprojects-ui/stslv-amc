@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays, buildSchedulePeriods } from "../src/modules/amc/amc.schedule";
-import { activeContract, createClient, createContract, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, createClient, createContract, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { insertHistoricalVisit, insertImportedContract } from "./historical-helpers";
 
@@ -326,6 +326,7 @@ describe("historical visit: not due, not overdue, not ready for invoice", () => 
       defaultVisitAmount: "100.000",
     });
     const [done] = await visitsOf(operational);
+    await withServiceReport(done!.id);
     await api().patch(`/api/amc/execution/visits/${done?.id}`).set(admin.headers).send({ status: "COMPLETED", completedDate: now });
 
     const before = await summary();
@@ -410,16 +411,20 @@ describe("historical visit: not due, not overdue, not ready for invoice", () => 
 });
 
 describe("operational visits are unchanged", () => {
-  it("schedules, starts, completes and reopens a visit as before", async () => {
+  it("schedules, starts and completes a visit as before, and keeps it completed", async () => {
     const contractId = await activeContract(admin, clientId);
     const [visit] = await visitsOf(contractId);
     const execute = (body: Record<string, unknown>) => api().patch(`/api/amc/execution/visits/${visit?.id}`).set(admin.headers).send(body);
 
     expect(await visitsOf(contractId)).toHaveLength(4);
     expect((await execute({ status: "IN_PROGRESS" })).body.data.status).toBe("IN_PROGRESS");
+    await withServiceReport(visit!.id);
     expect((await execute({ status: "COMPLETED", completedDate: now })).body.data).toMatchObject({ status: "COMPLETED", completedDate: now });
     expect((await get(`/api/amc/visits/${visit?.id}`)).body.data.invoiceEligibility).toBe("READY_FOR_INVOICE");
-    expect((await execute({ status: "SCHEDULED" })).body.data).toMatchObject({ status: "SCHEDULED", completedDate: null });
+    // Completion lock (2026-11-04): completed work cannot be reopened.
+    const reopened = await execute({ status: "SCHEDULED" });
+    expect(reopened.status).toBe(409);
+    expect(reopened.body.error.code).toBe("COMPLETION_LOCKED");
     expect((await api().patch(`/api/amc/visits/${visit?.id}`).set(admin.headers).send({ visitAmount: "410" })).body.data.visitAmount).toBe("410.000");
   });
 });

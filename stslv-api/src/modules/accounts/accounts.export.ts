@@ -5,7 +5,7 @@ import { PAID_STATUS_NOTE } from "../amc/manual-invoice.service";
 import { SERVICE_STATUS_LABELS } from "../amc/master-status.export";
 import type { AuthContext } from "../auth/access";
 import type { AccountsColour, AccountsColumn, ExportAccountsQuery } from "./accounts.schemas";
-import { amcReference } from "../amc/service-status.service";
+import { findContractReference } from "../amc/contract-reference";
 import { listAllAccounts, type AccountsItem } from "./accounts.service";
 
 // Accounts as a report: the visits the page lists for the same filters, the
@@ -81,7 +81,7 @@ async function describeFilters(query: ExportAccountsQuery): Promise<ReportDefini
 
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
   if (query.salesEngineerId) filters.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
-  if (query.contractId) filters.push({ label: "AMC Contract", value: amcReference(query.contractId) });
+  if (query.contractId) filters.push({ label: "AMC Contract", value: (await findContractReference(query.contractId)) ?? "Unknown contract" });
   if (query.month) filters.push({ label: "Month", value: MONTH_NAMES[query.month - 1] ?? String(query.month) });
   if (query.year) filters.push({ label: "Year", value: String(query.year) });
   if (query.serviceStatus) filters.push({ label: "Service status", value: SERVICE_FILTER_LABELS[query.serviceStatus] });

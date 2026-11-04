@@ -23,7 +23,7 @@ interface Master {
 }
 
 const MASTERS: Master[] = [
-  { path: "sales-engineers", module: "SALES_ENGINEERS", entityType: "sales_engineers", createBody: { name: "Audit Engineer" }, editBody: { name: "Audit Engineer Two" }, off: { isActive: false }, on: { isActive: true } },
+  { path: "sales-engineers", module: "SALES_ENGINEERS", entityType: "sales_engineers", createBody: { code: "SE-AUDIT", name: "Audit Engineer" }, editBody: { name: "Audit Engineer Two" }, off: { isActive: false }, on: { isActive: true } },
   { path: "system-types", module: "SYSTEM_TYPES", entityType: "system_types", createBody: { code: "AUD", name: "Audit System" }, editBody: { name: "Audit System Two" }, off: { isActive: false }, on: { isActive: true } },
   { path: "departments", module: "DEPARTMENTS", entityType: "departments", createBody: { code: "AUDD", name: "Audit Department" }, editBody: { name: "Audit Department Two" }, off: { isActive: false }, on: { isActive: true } },
   {

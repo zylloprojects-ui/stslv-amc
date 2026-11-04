@@ -21,6 +21,9 @@ import { logsFor, resetProjectData, setStatus } from "./projects-helpers";
 // Work that an active invoice covers is locked: its amount, its completion and
 // its client cannot change underneath the invoice. Cancelling the invoice, or
 // taking the work off it, lifts the lock.
+// Completion lock (2026-11-04): an AMC visit's completion is final whatever its
+// invoices, so reopening a visit is refused by that lock (COMPLETION_LOCKED)
+// before the invoice lock is reached; the amount lock still follows the invoices.
 
 let admin: Session;
 let fixture: Fixture;
@@ -73,7 +76,7 @@ describe("an invoiced AMC visit", () => {
       const response = await executeVisit(admin, visitId(0), { status });
 
       expect(response.status, status).toBe(409);
-      expect(response.body.error.message).toBe("This visit is covered by invoice 8101 and cannot be reopened. Cancel the invoice first.");
+      expect(response.body.error.code).toBe("COMPLETION_LOCKED");
     }
     expect(await storedVisit(0)).toEqual({ status: "COMPLETED", visit_amount: "405.000" });
     expect((await visitEligibility(visitId(0))).invoice_eligibility).toBe("INVOICED");
@@ -87,44 +90,37 @@ describe("an invoiced AMC visit", () => {
 
   it("can still have its notes, assignment and work details changed", async () => {
     const planning = await patchVisit(0, { notes: "Invoice sent to the client", assignedTo: "Engineer B" });
-    const work = await executeVisit(admin, visitId(0), { workPerformed: "Panel tested", completedDate: "2025-12-16" });
+    const work = await executeVisit(admin, visitId(0), { workPerformed: "Panel tested" });
     const sameAmount = await patchVisit(0, { visitAmount: "405.000" });
 
     expect(planning.status).toBe(200);
     expect(work.status).toBe(200);
-    expect(work.body.data).toMatchObject({ status: "COMPLETED", completedDate: "2025-12-16" });
+    expect(work.body.data).toMatchObject({ status: "COMPLETED", completedDate: "2025-12-15", workPerformed: "Panel tested" });
     // Sending the amount it already has is not a change.
     expect(sameAmount.status).toBe(200);
   });
 
-  it("is unlocked when its invoice is cancelled", async () => {
+  it("is unlocked for its amount when its invoice is cancelled, and stays completed", async () => {
     expect((await cancelInvoice(admin, invoiceId)).status).toBe(200);
     expect((await visitEligibility(visitId(0))).invoice_eligibility).toBe("READY_FOR_INVOICE");
 
     const amount = await patchVisit(0, { visitAmount: "450.000" });
+    // Completion lock (2026-11-04): completed work cannot be reopened.
     const reopened = await executeVisit(admin, visitId(0), { status: "IN_PROGRESS" });
 
     expect(amount.status).toBe(200);
     expect(amount.body.data).toMatchObject({ visitAmount: "450.000", invoiceEligibility: "READY_FOR_INVOICE" });
-    expect(reopened.status).toBe(200);
-    expect(await storedVisit(0)).toEqual({ status: "IN_PROGRESS", visit_amount: "450.000" });
+    expect(reopened.status).toBe(409);
+    expect(reopened.body.error.code).toBe("COMPLETION_LOCKED");
+    expect(await storedVisit(0)).toEqual({ status: "COMPLETED", visit_amount: "450.000" });
   });
 
-  it("cannot be invoiced again while it is reopened", async () => {
-    const response = await postInvoice(admin, invoiceBody(fixture.clientId, [{ amcVisitId: visitId(0), amount: "405.000" }]));
-
-    expect(response.status).toBe(400);
-    expect(response.body.error.details[0].message).toMatch(/is not completed/);
-
-    await completeVisit(admin, visitId(0));
-    expect((await visitEligibility(visitId(0))).invoice_eligibility).toBe("READY_FOR_INVOICE");
-  });
-
-  it("still needs approval permission to be reopened once it is unlocked", async () => {
+  it("cannot be reopened once unlocked, by any user", async () => {
     const execution = await signedIn("execution@example.com", ["EXECUTION"]);
     const response = await executeVisit(execution, visitId(0), { status: "IN_PROGRESS" });
 
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("COMPLETION_LOCKED");
   });
 });
 
@@ -151,20 +147,21 @@ describe("a visit covered by two invoices", () => {
     const locked = await executeVisit(admin, visitId(1), { status: "SCHEDULED" });
 
     expect(locked.status).toBe(409);
-    expect(locked.body.error.message).toBe("This visit is covered by invoices 8201, 8202 and cannot be reopened. Cancel the invoice first.");
+    expect(locked.body.error.code).toBe("COMPLETION_LOCKED");
     expect(await visitEligibility(visitId(1))).toEqual({ invoice_eligibility: "INVOICED", invoiced_amount: "405.000" });
 
     await cancelInvoice(admin, first);
 
     expect(await visitEligibility(visitId(1))).toEqual({ invoice_eligibility: "INVOICED", invoiced_amount: "205.000" });
     expect((await patchVisit(1, { visitAmount: "300.000" })).status).toBe(409);
-    expect((await executeVisit(admin, visitId(1), { status: "SCHEDULED" })).body.error.message).toMatch(/covered by invoice 8202 and/);
+    expect((await executeVisit(admin, visitId(1), { status: "SCHEDULED" })).body.error.code).toBe("COMPLETION_LOCKED");
 
     await cancelInvoice(admin, second);
 
     expect(await visitEligibility(visitId(1))).toEqual({ invoice_eligibility: "READY_FOR_INVOICE", invoiced_amount: "0.000" });
     expect((await patchVisit(1, { visitAmount: "300.000" })).status).toBe(200);
-    expect((await executeVisit(admin, visitId(1), { status: "SCHEDULED" })).status).toBe(200);
+    // Completion lock (2026-11-04): completed work cannot be reopened.
+    expect((await executeVisit(admin, visitId(1), { status: "SCHEDULED" })).status).toBe(409);
   });
 });
 
@@ -176,7 +173,8 @@ describe("taking a visit off an invoice", () => {
     expect((await patchInvoice(admin, invoice.id, { allocations: [{ amcVisitId: visitId(3), amount: "405.000" }] })).status).toBe(200);
 
     expect((await patchVisit(2, { visitAmount: "410.000" })).status).toBe(200);
-    expect((await executeVisit(admin, visitId(2), { status: "IN_PROGRESS" })).status).toBe(200);
+    // Completion lock (2026-11-04): completed work cannot be reopened, invoiced or not.
+    expect((await executeVisit(admin, visitId(2), { status: "IN_PROGRESS" })).status).toBe(409);
     expect((await patchVisit(3, { visitAmount: "410.000" })).status).toBe(409);
     expect((await executeVisit(admin, visitId(3), { status: "IN_PROGRESS" })).status).toBe(409);
   });

@@ -85,7 +85,7 @@ The reference describes a legacy system. It is evidence of behaviour, not a rule
 | Requirement | Status | Note |
 |---|---|---|
 | Status, report number, save, four KPIs, export with hidden columns | Verified | |
-| Independent of Paid, both directions | Verified | |
+| Independent of Paid, both directions | Changed | 2026-11-04: Invoice No. entry needs a completed service; completing never sets Paid (FINANCE_WORKFLOW.md) |
 | Waiting for Renewal selectable | Decision | Derived today |
 
 ## Accounts

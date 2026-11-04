@@ -47,7 +47,23 @@ export interface ServicesSalesItem {
   quotationUpdatedBy: string | null
   /** A quotation number is recorded but the visit is not completed (reopened after quoting). */
   quotationBeforeCompletion: boolean
+  /** The Service Report uploaded on Service Status for this visit, or null. Read only here: View and Download. */
+  serviceReport: ServicesSalesReport | null
   updatedAt: string
+}
+
+/** Metadata of a visit's current Service Report. The file is fetched by the visit id from /services-sales/:id/report. */
+export interface ServicesSalesReport {
+  id: string
+  originalName: string
+  mimeType: string
+  sizeBytes: number
+  uploadedAt: string
+}
+
+/** Browsers show these in a tab; anything else (Word) is downloaded instead. */
+export function isBrowserViewable(mimeType: string): boolean {
+  return mimeType === 'application/pdf' || mimeType === 'image/png' || mimeType === 'image/jpeg'
 }
 
 export interface ServicesSalesKpis {
@@ -64,6 +80,8 @@ export interface ServicesSalesList {
   page: number
   pageSize: number
   kpis: ServicesSalesKpis
+  /** False until the database has service reports (migration 0104); every row then shows Not uploaded. */
+  serviceReportsAvailable?: boolean
 }
 
 export interface ServicesSalesOptions {
