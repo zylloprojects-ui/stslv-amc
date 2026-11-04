@@ -1,27 +1,20 @@
 import { ContractLink } from '../../components/ContractLink'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
-import { useAuth } from '../../auth/context'
-import { Link } from 'react-router-dom'
 import { LoadError } from '../../components/records'
-import { Button, Spinner } from '../../components/ui'
+import { Spinner } from '../../components/ui'
 import { api } from '../../lib/api'
 import { cx, formatCount } from '../../lib/format'
 import type { Invoice } from '../../lib/invoiceTypes'
 import { queryString } from '../amc/amcApi'
-import { formatDate, formatMoney, monthLabel, shiftMonth } from '../amc/amcFormat'
+import { formatDate, formatMoney } from '../amc/amcFormat'
 import { VisitStatusPill } from '../amc/components'
 import {
   INVOICE_ELIGIBILITY_LABELS,
-  OPERATIONAL_VISIT_STATUSES,
   frequencyLabel,
   type ScheduleVisit,
-  type VisitList,
 } from '../amc/types'
-import { monthCells } from './calendarCells'
-import type { CalendarMonth, OperationsDashboard, ScheduleItem } from './operationsTypes'
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+import type { OperationsDashboard, ScheduleItem } from './operationsTypes'
 
 interface Props {
   schedule: NonNullable<OperationsDashboard['schedule']>
@@ -29,8 +22,6 @@ interface Props {
   asOf: string
   canSchedule: boolean
   canInvoices: boolean
-  expanded: boolean
-  onToggle: (expanded: boolean) => void
 }
 
 function WorkItem({ item, onOpen, showDate }: { item: ScheduleItem; onOpen: ((id: string) => void) | null; showDate?: boolean }) {
@@ -66,217 +57,73 @@ function WorkItem({ item, onOpen, showDate }: { item: ScheduleItem; onOpen: ((id
   )
 }
 
-/** Today's work, the next days, a collapsible month calendar and the details of a selected service. */
-export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices, expanded, onToggle }: Props) {
-  const [month, setMonth] = useState(asOf.slice(0, 7))
-  const [day, setDay] = useState<string | null>(null)
+/** Today's work, the next days and the details of a selected service, stacked across the full width. */
+export function MaintenanceCalendar({ schedule, asOf, canSchedule, canInvoices }: Props) {
   const [selected, setSelected] = useState<string | null>(null)
   const open = canSchedule ? setSelected : null
-  // The Monthly Calendar has its own permission (MONTHLY_CALENDAR).
-  const canOpenCalendar = useAuth().can('MONTHLY_CALENDAR', 'VIEW')
-
-  const calendar = useQuery({
-    queryKey: ['dashboard', 'calendar', month],
-    queryFn: () => api.get<CalendarMonth>(`/dashboard/calendar?month=${month}`),
-    enabled: expanded,
-    placeholderData: keepPreviousData,
-  })
-  const counts = new Map((calendar.data?.days ?? []).map((entry) => [entry.date, entry]))
-
-  // A day's services, from the schedule the user may already read. Amounts stay with the schedule permission.
-  const dayVisits = useQuery({
-    queryKey: ['amc', 'visits', 'day', day],
-    queryFn: () =>
-      api.get<VisitList>(`/amc/visits${queryString({ from: day, to: day, status: OPERATIONAL_VISIT_STATUSES.filter((s) => s !== 'CANCELLED').join(','), pageSize: 50 })}`),
-    enabled: canSchedule && day !== null,
-  })
 
   return (
-    <div className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" size="sm" aria-expanded={expanded} aria-controls="dashboard-mini-calendar" onClick={() => onToggle(!expanded)}>
-          {expanded ? 'Hide calendar ▴' : 'Show calendar ▾'}
-        </Button>
-        {canOpenCalendar && (
-          <Link to="/amc/calendar" className="rounded-lg bg-sky-50 px-3 py-1.5 text-sm font-semibold text-[#0b3b66] ring-1 ring-inset ring-sky-200 hover:bg-sky-100">
-            Open full calendar →
-          </Link>
+    <div className="flex min-w-0 flex-col gap-4">
+      <div className="min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
+        <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-4 py-2 text-sm font-bold text-[#0b3b66]">
+          <span>Today · {formatDate(asOf)}</span>
+          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-inset ring-sky-200">{formatCount(schedule.todayTotal)}</span>
+        </h3>
+        {schedule.today.length === 0 ? (
+          <p className="flex items-center gap-2.5 px-4 py-3.5 text-sm text-slate-600">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+              ✓
+            </span>
+            No maintenance planned today.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-200 px-3 py-1.5">
+            {schedule.today.map((item) => (
+              <WorkItem key={item.id} item={item} onOpen={open} />
+            ))}
+          </ul>
         )}
-        </div>
-        <p className="flex items-center gap-3 text-[11px] text-slate-600" aria-hidden="true">
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded border border-sky-200 bg-sky-50" /> Visits
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded border-2 border-[#1479BD]" /> Today
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="h-3 w-3 rounded bg-red-600" /> Overdue
-          </span>
-        </p>
-      </div>
-
-    <div className={cx('grid min-w-0 items-stretch gap-4', expanded && 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]')}>
-      <div className={cx('min-w-0 flex-col', expanded ? 'flex' : 'hidden')}>
-        {expanded && (
-          <div id="dashboard-mini-calendar" className="flex-1 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
-            <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-3 py-2">
-              <Button variant="secondary" size="sm" aria-label="Previous month" onClick={() => setMonth(shiftMonth(month, -1))}>
-                ←
-              </Button>
-              <h3 className="text-sm font-bold text-[#0b3b66]" aria-live="polite">
-                {monthLabel(month)}
-              </h3>
-              <Button variant="secondary" size="sm" aria-label="Next month" onClick={() => setMonth(shiftMonth(month, 1))}>
-                →
-              </Button>
-            </div>
-            <div className="p-3">
-            {calendar.isError && <LoadError error={calendar.error} onRetry={() => void calendar.refetch()} />}
-            {calendar.isPending && <Spinner size="sm" label="Loading calendar" />}
-            {calendar.data && (
-              <div role="grid" aria-label={`Visits in ${monthLabel(month)}`} className="grid grid-cols-7 gap-1.5 text-center">
-                {WEEKDAYS.map((name) => (
-                  <span key={name} role="columnheader" className="pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-700">
-                    {name}
-                  </span>
-                ))}
-                {monthCells(month).map((date, index) => {
-                  if (!date) return <span key={`blank-${index}`} role="gridcell" className="rounded-md bg-slate-100/50" />
-                  const entry = counts.get(date)
-                  const label = `${formatDate(date)}: ${entry ? `${entry.total} ${entry.total === 1 ? 'visit' : 'visits'}${entry.overdue ? `, ${entry.overdue} overdue` : ''}` : 'no visits'}`
-
-                  return (
-                    <span key={date} role="gridcell">
-                      <button
-                        type="button"
-                        aria-label={label}
-                        aria-pressed={day === date}
-                        disabled={!canSchedule || !entry}
-                        onClick={() => setDay(date)}
-                        className={cx(
-                          'flex h-11 w-full flex-col items-center justify-center gap-0.5 rounded-lg border text-xs font-semibold tabular-nums transition-all',
-                          day === date
-                            ? 'border-[#1479BD] bg-white text-[#0b3b66] shadow-md ring-2 ring-[#1479BD]/40'
-                            : entry
-                              ? entry.overdue
-                                ? 'border-rose-200 bg-rose-50 text-slate-800 hover:bg-rose-100'
-                                : 'border-sky-200 bg-sky-50 text-slate-800 hover:bg-sky-100'
-                              : 'border-slate-100 bg-slate-50/60 text-slate-400',
-                        )}
-                      >
-                        <span className={cx('flex h-5 min-w-5 items-center justify-center rounded-full px-1', date === asOf && 'bg-sky-100 font-bold text-[#0b3b66] ring-1 ring-sky-300')}>
-                          {Number(date.slice(8))}
-                        </span>
-                        {entry && (
-                          <span className={cx('flex items-center gap-1 text-[10px] font-bold leading-3', entry.overdue ? 'text-rose-700' : 'text-sky-800')}>
-                            <span className={cx('h-1.5 w-1.5 rounded-full', entry.overdue ? 'bg-rose-400' : 'bg-sky-500')} aria-hidden="true" />
-                            {entry.total}
-                          </span>
-                        )}
-                      </button>
-                    </span>
-                  )
-                })}
-              </div>
-            )}
-            {day && canSchedule && (
-              <div className="mt-3 border-t border-slate-200 pt-2">
-                <h4 className="px-2 text-sm font-bold text-[#0b3b66]">Services on {formatDate(day)}</h4>
-                {dayVisits.isPending && <Spinner size="sm" label="Loading services" />}
-                {dayVisits.isError && <LoadError error={dayVisits.error} onRetry={() => void dayVisits.refetch()} />}
-                {dayVisits.data && (
-                  <ul className="divide-y divide-slate-100">
-                    {dayVisits.data.items.map((visit) => (
-                      <WorkItem
-                        key={visit.id}
-                        onOpen={open}
-                        item={{
-                          id: visit.id,
-                          contractId: visit.contract.id,
-                          client: visit.client,
-                          systemDescription: visit.contract.systemDescription,
-                          scheduledDate: visit.scheduledDate,
-                          assignedTo: visit.assignedTo,
-                          status: visit.status,
-                          isOverdue: visit.isOverdue,
-                        }}
-                      />
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-            </div>
-          </div>
+        {schedule.todayTotal > schedule.today.length && (
+          <p className="border-t border-slate-200 bg-slate-50 px-5 py-2.5 text-xs text-slate-600">
+            Showing {schedule.today.length} of {schedule.todayTotal}.
+          </p>
         )}
       </div>
 
-      <div className="flex min-w-0 flex-col gap-3">
-          <div className="space-y-4">
-            <div className="min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
-              <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-4 py-2 text-sm font-bold text-[#0b3b66]">
-                <span>Today · {formatDate(asOf)}</span>
-                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-inset ring-sky-200">{formatCount(schedule.todayTotal)}</span>
-              </h3>
-              {schedule.today.length === 0 ? (
-                <p className="flex items-center gap-2.5 px-4 py-3.5 text-sm text-slate-600">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
-                    ✓
-                  </span>
-                  No maintenance planned today.
-                </p>
-              ) : (
-                <ul className="divide-y divide-slate-200 px-3 py-1.5">
-                  {schedule.today.map((item) => (
-                    <WorkItem key={item.id} item={item} onOpen={open} />
-                  ))}
-                </ul>
-              )}
-              {schedule.todayTotal > schedule.today.length && (
-                <p className="border-t border-slate-200 bg-slate-50 px-5 py-2.5 text-xs text-slate-600">
-                  Showing {schedule.today.length} of {schedule.todayTotal}.
-                </p>
-              )}
-            </div>
-            <div className="min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
-              <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-4 py-2 text-sm font-bold text-[#0b3b66]">
-                <span>Next {schedule.upcomingDays} days</span>
-                <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-inset ring-sky-200">{formatCount(schedule.upcomingTotal)} open</span>
-              </h3>
-              {schedule.upcoming.length === 0 ? (
-                <p className="flex items-center gap-2.5 px-4 py-3.5 text-sm text-slate-600">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
-                    ✓
-                  </span>
-                  No open service obligations in the next {schedule.upcomingDays} days.
-                </p>
-              ) : (
-                <ul className="divide-y divide-slate-200 px-3 py-1.5">
-                  {schedule.upcoming.map((item) => (
-                    <WorkItem key={item.id} item={item} onOpen={open} showDate />
-                  ))}
-                </ul>
-              )}
-              {schedule.upcomingTotal > schedule.upcoming.length && (
-                <p className="border-t border-slate-200 bg-slate-50 px-5 py-2.5 text-xs text-slate-600">
-                  Showing {schedule.upcoming.length} of {schedule.upcomingTotal}.
-                </p>
-              )}
-            </div>
-          </div>
-
-  <ServiceDetails visitId={selected} canSchedule={canSchedule} canInvoices={canInvoices} onClear={() => setSelected(null)} />
+      <div className="min-w-0 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
+        <h3 className="flex items-center justify-between gap-2 border-b border-slate-200 bg-sky-50 px-4 py-2 text-sm font-bold text-[#0b3b66]">
+          <span>Next {schedule.upcomingDays} days</span>
+          <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold tabular-nums ring-1 ring-inset ring-sky-200">{formatCount(schedule.upcomingTotal)} open</span>
+        </h3>
+        {schedule.upcoming.length === 0 ? (
+          <p className="flex items-center gap-2.5 px-4 py-3.5 text-sm text-slate-600">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" aria-hidden="true">
+              ✓
+            </span>
+            No open service obligations in the next {schedule.upcomingDays} days.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-200 px-3 py-1.5">
+            {schedule.upcoming.map((item) => (
+              <WorkItem key={item.id} item={item} onOpen={open} showDate />
+            ))}
+          </ul>
+        )}
+        {schedule.upcomingTotal > schedule.upcoming.length && (
+          <p className="border-t border-slate-200 bg-slate-50 px-5 py-2.5 text-xs text-slate-600">
+            Showing {schedule.upcoming.length} of {schedule.upcomingTotal}.
+          </p>
+        )}
       </div>
-    </div>
+
+      <ServiceDetails visitId={selected} canSchedule={canSchedule} canInvoices={canInvoices} onClear={() => setSelected(null)} />
     </div>
   )
 }
 
 function Field({ label, wide = false, children }: { label: string; wide?: boolean; children: ReactNode }) {
   return (
-    <div className={cx('min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5', wide && 'col-span-2')}>
+    <div className={cx('min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 px-3.5 py-2.5', wide && 'col-span-2 xl:col-span-1')}>
       <dt className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{label}</dt>
       <dd className="mt-1 min-w-0 break-words text-sm font-semibold text-slate-900">{children}</dd>
     </div>
@@ -310,7 +157,7 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
         )}
       </div>
       {!canSchedule && <p className="px-4 py-3.5 text-sm text-slate-600">Service details need the AMC Schedule view permission.</p>}
-      {canSchedule && !visitId && <p className="px-4 py-3.5 text-sm text-slate-600">Select a service from today’s work, the next days or the calendar.</p>}
+      {canSchedule && !visitId && <p className="px-4 py-3.5 text-sm text-slate-600">Select a service from today’s work or the next days.</p>}
       {canSchedule && visitId && visit.isPending && (
         <div className="p-4">
           <Spinner size="sm" label="Loading service" />
@@ -342,7 +189,7 @@ function ServiceDetails({ visitId, canSchedule, canInvoices, onClear }: { visitI
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 gap-2.5">
+          <dl className="grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-4">
             <Field label="Scheduled date">{formatDate(data.scheduledDate)}</Field>
             <Field label="Frequency">{frequencyLabel(data.contract.maintenanceFrequency)}</Field>
             <Field label="Engineer">{data.assignedTo ?? '—'}</Field>

@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionUser } from '../lib/types'
-import { monthCells } from '../pages/dashboard/calendarCells'
 import { orderedIds } from '../pages/dashboard/dashboardPreferences'
 import { monthName } from '../pages/dashboard/kpis'
 import { MetricCard } from '../pages/dashboard/MetricCard'
@@ -134,6 +133,20 @@ const VISIT = {
   invoiceEligibility: 'INVOICED',
 }
 
+const UPCOMING_VISIT = {
+  ...VISIT,
+  id: '502',
+  contract: { id: '42', reference: 'AMC-0042', status: 'ACTIVE', systemDescription: 'CCTV', maintenanceFrequency: 'MONTHLY' },
+  client: { id: '2', name: 'City Tower' },
+  scheduledDate: '2026-10-30',
+  originalScheduledDate: '2026-10-30',
+  assignedTo: null,
+  status: 'SCHEDULED',
+  completedDate: null,
+  visitAmount: '120.000',
+  invoiceEligibility: 'NOT_COMPLETED',
+}
+
 const invoice = (id: string, invoiceNumber: string, status: 'ISSUED' | 'CANCELLED' = 'ISSUED') => ({
   id,
   invoiceNumber,
@@ -179,6 +192,7 @@ function dashboardApi(user: SessionUser, overrides: Overrides = {}) {
     if (request.path === '/dashboard/calendar')
       return overrides.calendar?.(request) ?? ok({ month: request.query.get('month'), days: [{ date: '2026-10-27', total: 2, completed: 1, open: 1, overdue: 0 }] })
     if (request.path === '/amc/visits/501') return overrides.visit?.(request) ?? ok(VISIT)
+    if (request.path === '/amc/visits/502') return ok(UPCOMING_VISIT)
     if (request.path === '/amc/visits') return overrides.dayVisits?.(request) ?? ok({ items: [VISIT], total: 1, page: 1, pageSize: 50, totals: { visitAmount: '405.125', amountMissingCount: 0 } })
     if (request.path === '/invoices') {
       if (overrides.invoices) return overrides.invoices(request)
@@ -393,7 +407,12 @@ describe('maintenance calendar', () => {
     const panel = (await screen.findByRole('heading', { name: 'AMC Maintenance Calendar' })).closest('section') as HTMLElement
     expect(within(panel).getByText(/Today · 27 Oct 2026/)).toBeInTheDocument()
     expect(within(panel).getByText('City Tower')).toBeInTheDocument()
-    expect(within(panel).getByRole('link', { name: 'Open full calendar →' })).toHaveAttribute('href', '/amc/calendar')
+    expect(within(panel).getByText('Next 7 days')).toBeInTheDocument()
+    // The month grid, its navigation, legend and buttons are no longer on the dashboard.
+    expect(within(panel).queryByRole('grid')).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: /calendar/i })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: /month/i })).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('link', { name: /full calendar/i })).not.toBeInTheDocument()
 
     await userEvent.click(within(panel).getByRole('button', { name: /Service details: Harbour Hotel, FIRE ALARM, 27 Oct 2026/ }))
 
@@ -421,40 +440,26 @@ describe('maintenance calendar', () => {
     expect(api.find('GET', '/invoices')).toHaveLength(0)
   })
 
-  it('shows counts per day, lists a day’s services, and collapses with the choice remembered', async () => {
+  it('shows a Next 7 days service in Service details and does not load a month calendar', async () => {
     const api = dashboardApi(ADMIN)
-    const view = renderApp('/dashboard')
-
-    const grid = await screen.findByRole('grid', { name: 'Visits in October 2026' })
-    await userEvent.click(within(grid).getByRole('button', { name: '27 Oct 2026: 2 visits' }))
-    expect(await screen.findByRole('heading', { name: 'Services on 27 Oct 2026' })).toBeInTheDocument()
-    const dayRequest = api.find('GET', '/amc/visits')[0]
-    expect(dayRequest?.query.get('from')).toBe('2026-10-27')
-    expect(dayRequest?.query.get('to')).toBe('2026-10-27')
-    // Days without visits cannot be opened.
-    expect(within(grid).getByRole('button', { name: '01 Oct 2026: no visits' })).toBeDisabled()
-
-    await userEvent.click(screen.getByRole('button', { name: 'Next month' }))
-    expect(await screen.findByRole('grid', { name: 'Visits in November 2026' })).toBeInTheDocument()
-    expect(api.find('GET', '/dashboard/calendar').map((request) => request.query.get('month'))).toEqual(['2026-10', '2026-11'])
-
-    await userEvent.click(screen.getByRole('button', { name: 'Hide calendar ▴' }))
-    expect(screen.queryByRole('grid')).not.toBeInTheDocument()
-    expect(localStorage.getItem('stslev.dashboard.calendar-open.1')).toBe('0')
-
-    view.unmount()
     renderApp('/dashboard')
-    expect(await screen.findByRole('button', { name: 'Show calendar ▾' })).toHaveAttribute('aria-expanded', 'false')
-  })
 
-  it('builds whole weeks around a month', () => {
-    const cells = monthCells('2026-10')
+    const panel = (await screen.findByRole('heading', { name: 'AMC Maintenance Calendar' })).closest('section') as HTMLElement
+    const details = within(panel).getByRole('region', { name: 'Service details' })
+    expect(within(details).getByText('Select a service from today’s work or the next days.')).toBeInTheDocument()
 
-    // 1 October 2026 is a Thursday.
-    expect(cells.slice(0, 5)).toEqual([null, null, null, null, '2026-10-01'])
-    expect(cells.length % 7).toBe(0)
-    expect(cells.filter(Boolean)).toHaveLength(31)
-    expect(monthCells('2028-02').filter(Boolean)).toHaveLength(29)
+    await userEvent.click(within(panel).getByRole('button', { name: /Service details: Harbour Hotel/ }))
+    expect(await within(details).findByText('Quarterly')).toBeInTheDocument()
+
+    await userEvent.click(within(panel).getByRole('button', { name: /Service details: City Tower, CCTV, 30 Oct 2026/ }))
+    expect(await within(details).findByText('Monthly')).toBeInTheDocument()
+    expect(within(details).getByRole('link', { name: 'AMC-0042' })).toHaveAttribute('href', '/amc/contracts/42')
+    expect(within(details).getByText('Not completed')).toBeInTheDocument()
+    expect(within(details).queryByText('Harbour Hotel')).not.toBeInTheDocument()
+
+    await userEvent.click(within(details).getByRole('button', { name: 'Clear' }))
+    expect(within(details).getByText('Select a service from today’s work or the next days.')).toBeInTheDocument()
+    expect(api.find('GET', '/dashboard/calendar')).toHaveLength(0)
   })
 })
 
