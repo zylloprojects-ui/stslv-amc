@@ -1,7 +1,7 @@
 import path from "node:path";
 import pdfMake = require("pdfmake");
 import type { Content, TableCell, TDocumentDefinitions } from "pdfmake/interfaces";
-import { BRAND, COMPANY_NAME, SYSTEM_NAME, artworkHeight, footerArtwork, headerArtwork } from "./branding";
+import { BRAND, COMPANY_NAME, SYSTEM_NAME } from "./branding";
 import {
   EMPTY_MESSAGE,
   cleanText,
@@ -16,43 +16,60 @@ import {
   type ReportTable,
 } from "./report";
 
-// The company PDF. Every page carries the official header artwork across the
-// top and the official footer artwork across the bottom, each over the full
-// width of the page and in its own proportions. The report's own lines sit
-// between them: title and period under the header; what the report is, who made
-// it and the page number above the footer. The page margins are worked out from
-// the height of the artwork, so the content can never run into either.
-// Tables repeat their headings on each page and never split a row.
+// The PDF standard for every report the application generates.
+//
+// Every PDF is A4 landscape, whatever orientation the report declares (that
+// setting now only governs how its Excel workbook prints). There is no
+// letterhead: no header or footer artwork, no logo, no branded background.
+// Each page carries plain report lines only: the title and period at the top
+// over a thin rule; under a thin rule at the bottom, the standing disclaimer
+// (if any), who generated the report and when, and the page number.
+// Tables fill the width between the margins, repeat their headings on each
+// page and never split a row; long text wraps inside its column.
 
 const hex = (rgb: string) => `#${rgb}`;
 
-// A4 in points.
-const PAGE = { portrait: { width: 595.28, height: 841.89 }, landscape: { width: 841.89, height: 595.28 } };
+/** A4 landscape in points (297 × 210 mm). */
+export const PDF_PAGE = { size: "A4", orientation: "landscape", width: 841.89, height: 595.28 } as const;
 const SIDE_MARGIN = 28;
-/** The band under the header artwork that holds the report title and period. */
-const TITLE_BAND = 30;
-/** The band above the footer artwork that holds the disclaimer, the generation line and the page number. */
-const FOOT_BAND = 28;
-const FOOT_TEXT_TOP = 4;
+/** Distance from the top edge to the title line. */
+const HEAD_TOP = 20;
+/** Distance from the top edge to the start of the content; holds the title, period and rule. */
+const MARGIN_TOP = 54;
+/** Distance from the bottom edge to the end of the content; holds the rule, disclaimer, generation line and page number. */
+const MARGIN_BOTTOM = 40;
+const FOOT_TEXT_TOP = 8;
 const FOOT_FONT_SIZE = 7;
 const LINE_HEIGHT = 1.15;
 
-/** Where everything sits on a page of the given orientation, in points. */
-export function pageLayout(orientation: ReportDefinition["orientation"]) {
-  const page = PAGE[orientation];
-  const headerHeight = artworkHeight(headerArtwork(), page.width);
-  const footerHeight = artworkHeight(footerArtwork(), page.width);
-
+/** Where everything sits on a page, in points. */
+export function pageLayout() {
   return {
-    page,
-    headerHeight,
-    footerHeight,
-    marginTop: Math.ceil(headerHeight + TITLE_BAND),
-    marginBottom: Math.ceil(footerHeight + FOOT_BAND),
+    page: { width: PDF_PAGE.width, height: PDF_PAGE.height },
+    contentWidth: PDF_PAGE.width - SIDE_MARGIN * 2,
+    margins: [SIDE_MARGIN, MARGIN_TOP, SIDE_MARGIN, MARGIN_BOTTOM] as [number, number, number, number],
   };
 }
+
+/** A thin full-width rule between the margins. */
+const rule = (margin: [number, number, number, number] = [0, 0, 0, 0]): Content => ({
+  margin,
+  canvas: [{ type: "line", x1: 0, y1: 0, x2: PDF_PAGE.width - SIDE_MARGIN * 2, y2: 0, lineWidth: 0.75, lineColor: hex(BRAND.line) }],
+});
 const CELL_PADDING = 3;
+const CELL_PADDING_V = 3.5;
 const FONT_SIZE = 8;
+const LINE_WIDTH = 0.5;
+
+const tableLayout = (hLineWidth: (index: number) => number) => ({
+  hLineWidth,
+  vLineWidth: () => 0,
+  hLineColor: () => hex(BRAND.line),
+  paddingLeft: () => CELL_PADDING,
+  paddingRight: () => CELL_PADDING,
+  paddingTop: () => CELL_PADDING_V,
+  paddingBottom: () => CELL_PADDING_V,
+});
 
 // Roboto is shipped inside pdfmake, so no font is downloaded or installed.
 const FONT_DIR = path.join(path.dirname(require.resolve("pdfmake/package.json")), "fonts", "Roboto");
@@ -92,14 +109,14 @@ export function pdfText(kind: ColumnKind, value: CellValue): string {
 }
 
 /** Column widths in points: the columns share the width of the page in proportion to their declared widths. */
-function columnWidths(columns: ReportColumn[], orientation: ReportDefinition["orientation"]): number[] {
-  const available = PAGE[orientation].width - SIDE_MARGIN * 2 - columns.length * CELL_PADDING * 2;
+function columnWidths(columns: ReportColumn[]): number[] {
+  const available = PDF_PAGE.width - SIDE_MARGIN * 2 - columns.length * CELL_PADDING * 2;
   const total = columns.reduce((sum, column) => sum + column.width, 0);
 
   return columns.map((column) => Math.floor((available * column.width * 100) / total) / 100);
 }
 
-function tableContent(table: ReportTable, report: ReportDefinition, withHeading: boolean): Content[] {
+function tableContent(table: ReportTable, withHeading: boolean): Content[] {
   const columns = table.columns.filter((column) => !column.excelOnly);
   const span = (cell: TableCell): TableCell[] => [cell, ...columns.slice(1).map(() => ({}))];
   const body: TableCell[][] = [
@@ -111,6 +128,13 @@ function tableContent(table: ReportTable, report: ReportDefinition, withHeading:
       alignment: isNumeric(column.kind) ? "right" : "left",
     })),
   ];
+  const widths = columnWidths(columns);
+  const dataRow = (row: ReportTable["rows"][number], striped: boolean): TableCell[] =>
+    columns.map((column) => ({
+      text: pdfText(column.kind, row[column.pdfKey ?? column.key] ?? null),
+      alignment: isNumeric(column.kind) ? "right" : "left",
+      ...(striped ? { fillColor: hex(BRAND.zebra) } : {}),
+    }));
   let group: string | null = null;
   let striped = false;
 
@@ -120,16 +144,29 @@ function tableContent(table: ReportTable, report: ReportDefinition, withHeading:
     if (heading !== null && heading !== group) {
       group = heading;
       striped = false;
-      body.push(span({ text: heading, colSpan: columns.length, bold: true, color: hex(BRAND.navy), fillColor: hex(BRAND.group) }));
+      // A group heading is never left alone at the foot of a page: it and the
+      // group's first row are one row of the table, and a row is never split.
+      // That row holds a table of its own, with the same columns, padding and
+      // lines; the negative margin takes away the outer cell's padding so its
+      // columns line up exactly with the rows around it.
+      body.push(
+        span({
+          colSpan: columns.length,
+          margin: [-CELL_PADDING, -CELL_PADDING_V, -CELL_PADDING, -CELL_PADDING_V],
+          table: {
+            widths,
+            body: [
+              [{ text: heading, colSpan: columns.length, bold: true, color: hex(BRAND.navy), fillColor: hex(BRAND.group) }, ...columns.slice(1).map(() => ({}))],
+              dataRow(row, false),
+            ],
+          },
+          // Only the line between the heading and the row: the outer table draws the lines above and below.
+          layout: tableLayout((index) => (index === 1 ? LINE_WIDTH : 0)),
+        })
+      );
+    } else {
+      body.push(dataRow(row, striped));
     }
-
-    body.push(
-      columns.map((column) => ({
-        text: pdfText(column.kind, row[column.pdfKey ?? column.key] ?? null),
-        alignment: isNumeric(column.kind) ? "right" : "left",
-        ...(striped ? { fillColor: hex(BRAND.zebra) } : {}),
-      }))
-    );
     striped = !striped;
   }
 
@@ -163,23 +200,15 @@ function tableContent(table: ReportTable, report: ReportDefinition, withHeading:
     content.push({ text: table.notes.map(cleanText).join("  "), italics: true, fontSize: 7.5, color: hex(BRAND.muted), margin: [0, 0, 0, 6] });
   }
   content.push({
-    table: { headerRows: 1, dontBreakRows: true, widths: columnWidths(columns, report.orientation), body },
-    layout: {
-      hLineWidth: () => 0.5,
-      vLineWidth: () => 0,
-      hLineColor: () => hex(BRAND.line),
-      paddingLeft: () => CELL_PADDING,
-      paddingRight: () => CELL_PADDING,
-      paddingTop: () => 3.5,
-      paddingBottom: () => 3.5,
-    },
+    table: { headerRows: 1, dontBreakRows: true, widths, body },
+    layout: tableLayout(() => LINE_WIDTH),
   });
 
   return content;
 }
 
 export function pdfDefinition(report: ReportDefinition): TDocumentDefinitions {
-  const { page, headerHeight, footerHeight, marginTop, marginBottom } = pageLayout(report.orientation);
+  const { margins } = pageLayout();
   const generated = `Generated ${displayGeneratedAt(report.generatedAt)} by ${cleanText(report.generatedBy)}  ·  ${SYSTEM_NAME}`;
   const content: Content[] = [];
 
@@ -199,40 +228,32 @@ export function pdfDefinition(report: ReportDefinition): TDocumentDefinitions {
   const tables = report.tables.filter((table) => !table.excelOnly);
 
   for (const table of tables) {
-    content.push(...tableContent(table, report, tables.length > 1));
+    content.push(...tableContent(table, tables.length > 1));
   }
 
   return {
-    pageSize: "A4",
-    pageOrientation: report.orientation,
-    pageMargins: [SIDE_MARGIN, marginTop, SIDE_MARGIN, marginBottom],
+    pageSize: PDF_PAGE.size,
+    pageOrientation: PDF_PAGE.orientation,
+    pageMargins: margins,
     info: { title: report.title, author: COMPANY_NAME, creator: SYSTEM_NAME, creationDate: report.generatedAt },
-    defaultStyle: { font: "Roboto", fontSize: FONT_SIZE, color: hex(BRAND.text), lineHeight: LINE_HEIGHT },
-    // Each artwork is stored in the file once and drawn on every page.
-    images: {
-      header: `data:image/png;base64,${headerArtwork().png.toString("base64")}`,
-      footer: `data:image/png;base64,${footerArtwork().png.toString("base64")}`,
-    },
-    // The artwork is drawn on every page at fixed places: the header from the top edge, the footer up from the bottom edge.
-    background: () => [
-      { image: "header", width: page.width, absolutePosition: { x: 0, y: 0 } },
-      { image: "footer", width: page.width, absolutePosition: { x: 0, y: page.height - footerHeight } },
-    ],
-    header: () => ({
+    defaultStyle: { font: "Roboto", fontSize: FONT_SIZE, color: hex(BRAND.text), lineHeight: LINE_HEIGHT },    header: () => ({
+      margin: [SIDE_MARGIN, HEAD_TOP, SIDE_MARGIN, 0],
       stack: [
         {
-          margin: [SIDE_MARGIN, headerHeight + 6, SIDE_MARGIN, 0],
           columns: [
             { width: "*", text: report.title, bold: true, fontSize: 12, color: hex(BRAND.navy) },
-            { width: "auto", text: report.period ? `Period: ${report.period}` : "", fontSize: 8.5, margin: [0, 3, 0, 0], alignment: "right" },
+            { width: "auto", text: report.period ? `Period: ${report.period}` : "", fontSize: 8.5, margin: [12, 3, 0, 0], alignment: "right" },
           ],
         },
+        rule([0, 5, 0, 0]),
       ],
     }),
     footer: (currentPage: number, pageCount: number) => ({
+      margin: [SIDE_MARGIN, FOOT_TEXT_TOP, SIDE_MARGIN, 0],
       stack: [
+        rule(),
         {
-          margin: [SIDE_MARGIN, FOOT_TEXT_TOP, SIDE_MARGIN, 0],
+          margin: [0, 4, 0, 0],
           fontSize: FOOT_FONT_SIZE,
           color: hex(BRAND.muted),
           columns: [

@@ -74,6 +74,7 @@ export interface ReportDefinition {
   generatedAt: Date;
   /** The full name of the user who asked for the export. */
   generatedBy: string;
+  /** How the Excel workbook prints. Every PDF is A4 landscape regardless (see pdf.ts). */
   orientation: "portrait" | "landscape";
   tables: ReportTable[];
   /** A standing remark printed with the report, for example that it is not a tax invoice. */

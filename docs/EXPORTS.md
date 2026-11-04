@@ -18,21 +18,33 @@ No export exists for an individual invoice: a PDF of one would resemble a Zoho t
 
 | Subject | Decision |
 |---|---|
-| Header and footer | The company's official artwork, on every PDF page and every printed Excel page. Never redrawn, recoloured or stretched. |
-| Company details | Only what the artwork carries. Nothing is typed over or beside it. |
+| PDF page | Every application-generated PDF is A4 landscape (297 × 210 mm) with no letterhead: no header or footer artwork, logo or branded background (decided 2026-11-04). |
+| Excel header and footer | The company's official artwork, on screen and on every printed Excel page. Never redrawn, recoloured or stretched. Unchanged by the PDF decision. |
+| Company details | Excel: only what the artwork carries. PDF: none are printed; the company name is in the file properties only. |
+| Uploaded documents | Signed contracts, service reports, attachments and other uploaded files are never re-rendered; a download returns the original bytes. |
 | Invoice reports | Every page says "Internal tracking report. Not an official tax invoice." |
 | Currency | Amounts keep three decimals and carry no currency label. The single-currency question (Q18) is still open. |
 | Time zone | "Generated" times are in Asia/Muscat, printed as "Oman time". |
 | Permission | Exporting needs `EXPORT` on the module as well as `VIEW`. Only Admin holds `EXPORT`; an Admin grants it per role in Roles & Permissions. No role is given it automatically. |
 | Libraries | `exceljs`, `pdfmake` and `jszip`, in the API only. |
 
-## The artwork
+## The PDF page
+
+Defined once in `stslv-api/src/shared/export/pdf.ts` (`PDF_PAGE`, `pageLayout()`), and used by every PDF export:
+
+- A4 landscape, 841.89 × 595.28 pt, whatever `orientation` the report declares. `ReportDefinition.orientation` now only sets how the Excel workbook prints.
+- Margins: 28 pt each side, 54 pt top, 40 pt bottom.
+- Top of every page: the report title (bold, 12 pt) and, on the right, the period, over a thin rule.
+- Bottom of every page: a thin rule; under it the standing disclaimer (if the report has one), "Generated <time> by <user> · STSLEV AMC", and "Page n of N" on the right.
+- Under the title on the first page: the filters applied.
+- Tables: Roboto 8 pt, a navy heading row repeated on every page, rows never split across pages, zebra striping, group headings and a totals row where the report defines them. A group heading (a month, for example) is never left alone at the foot of a page: it and the group's first row are laid out as one row, which moves to the next page together if it does not fit. Columns share the full width between the margins in proportion to their declared widths, so a table never runs off the page; long text wraps inside its column.
+- No images of any kind are embedded.
+
+## The artwork (Excel only)
 
 - `stslv-api/assets/branding/source/` holds the two images exactly as supplied.
 - `report-header.png` and `report-footer.png` beside it are the copies the templates use. They differ from the supplied files only in that the grey frame of the screen capture is cut off: header 4 px left, 1 px right, 6 px top; footer 1 px bottom. Every remaining pixel is identical.
 - To replace the artwork (for example with a higher-resolution original), replace those two files. The layouts work out all sizes and margins from the image dimensions.
-
-**PDF.** The header is drawn from the top edge and the footer up from the bottom edge, each over the full width of the page. The page margins are the artwork heights plus a band for the report's own lines (title and period under the header; disclaimer, generation line and page number above the footer), so content cannot reach the artwork.
 
 **Excel.** On screen, the header artwork is at the top of each sheet and the footer artwork under the report. On paper, the artwork is the page header and footer of every printed page. The on-screen pictures are marked not to print, so nothing prints twice. Workbook-only columns at the end of a sheet (notes and the like) are left out of the printed area. The printed Excel pages carry no page number: Excel cannot place text beside a picture in the same part of the footer without overlapping it.
 
@@ -48,7 +60,7 @@ GET /api/invoices/billable/export?format=xlsx|pdf[&clientId=]
 
 - `stslv-api/src/shared/export/report.ts`: the report model. A module describes its report once (title, period, filters, tables, totals) and both formats are drawn from it.
 - `excel.ts`, `pdf.ts`: the two templates.
-- `branding.ts`: the artwork, system name and colours.
+- `branding.ts`: the Excel artwork, system name and colours.
 - `send.ts`: sends the file as a download and writes the audit entry once the file exists.
 
 Rules the engine enforces for every export:
@@ -62,6 +74,8 @@ Rules the engine enforces for every export:
 - **File names.** Built from fixed text and the clock, never from user input.
 
 ## Reports
+
+The orientation in brackets is how the Excel workbook prints; every PDF is A4 landscape.
 
 **AMC Schedule** (landscape). Every visit that matches the schedule's filters, in the schedule's order. Cancelled visits are listed but not counted in the total. The PDF is grouped by month.
 
@@ -83,7 +97,6 @@ Rules the engine enforces for every export:
 
 ## Known limits
 
-- The supplied artwork is about 1,330 pixels wide: sharp on screen, slightly soft in print. A higher-resolution original would print crisper.
-- The letterhead takes about a third of a landscape page, so a landscape report holds roughly 12 rows per page. Invoice reports are portrait for that reason.
-- The PDF font (Roboto, shipped with pdfmake) covers Latin, Greek and Cyrillic. Arabic text in the data would need another font and right-to-left layout. (The Arabic in the artwork is part of the image and is unaffected.)
-- In a PDF, a month heading can be the last line of a page, with its visits on the next.
+- The supplied artwork is about 1,330 pixels wide: sharp on screen, slightly soft when an Excel sheet is printed. A higher-resolution original would print crisper.
+- The PDF font (Roboto, shipped with pdfmake) covers Latin, Greek and Cyrillic. Arabic text in the data would need another font and right-to-left layout.
+- A single row taller than a whole page (which no current report produces) cannot be kept on one page.

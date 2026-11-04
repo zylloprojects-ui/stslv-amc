@@ -210,6 +210,41 @@ describe("PDF", () => {
     expect(JSON.stringify(pdfDefinition(report([])).content)).toContain(EMPTY_MESSAGE);
   });
 
+  it("keeps each group heading and its first row in one unbreakable row, so the heading is never left alone at the foot of a page", async () => {
+    type Cell = { text?: string; colSpan?: number; margin?: number[]; table?: { widths: number[]; body: Cell[][] } };
+    const months = ["January 2027", "January 2027", "February 2027", "March 2027", "March 2027"];
+    const rows = months.map((month, index) => ({ ...ROWS[0], reference: String(index), month }));
+    const grouped = report(rows);
+    const table = grouped.tables[0] as ReportDefinition["tables"][number];
+
+    table.groupBy = (row) => String(row.month);
+    const definition = pdfDefinition(grouped);
+    const outer = (definition.content as { table?: { dontBreakRows: boolean; widths: number[]; body: Cell[][] } }[]).find((node) => node.table)?.table;
+    const body = outer?.body ?? [];
+    // Each row as: its heading and first-row reference when it carries a group, or its reference.
+    const shape = body.map((row) => {
+      const nested = row[0]?.table;
+
+      return nested ? [nested.body[0]?.[0]?.text, nested.body[1]?.[0]?.text] : row[0]?.text;
+    });
+
+    expect(outer?.dontBreakRows).toBe(true);
+    expect(shape).toEqual(["Reference", ["January 2027", "0"], "1", ["February 2027", "2"], ["March 2027", "3"], "4", "Total"]);
+
+    const group = body[1]?.[0] as Cell;
+    // The grouped row spans the table, uses the table's own columns, and takes back the outer cell's padding.
+    expect(group.colSpan).toBe(7);
+    expect(group.table?.widths).toEqual(outer?.widths);
+    expect(group.margin).toEqual([-3, -3.5, -3, -3.5]);
+    expect(group.table?.body[1]?.map((cell) => cell.text)).toEqual(["0", "05 Jan 2027", "Test Hotel One", "Open", "1,250.500", "5%", "3"]);
+
+    // Hundreds of groups across many pages still render.
+    const many = Array.from({ length: 400 }, (_, index) => ({ ...ROWS[0], reference: String(index), month: `Group ${Math.floor(index / 3)}` }));
+    const big = report(many);
+    (big.tables[0] as ReportDefinition["tables"][number]).groupBy = (row) => String(row.month);
+    expect((await renderPdf(big)).subarray(0, 5).toString()).toBe("%PDF-");
+  });
+
   it("words values the way the application shows them", () => {
     expect(pdfText("money", "1234.5")).toBe("1,234.500");
     expect(pdfText("money", null)).toBe("—");
@@ -261,25 +296,39 @@ describe("official header and footer artwork", () => {
     expect([footerArtwork().width, footerArtwork().height]).toEqual([1318, 180]);
   });
 
-  it("is drawn in a PDF on every page, edge to edge, in its own proportions, clear of the content", () => {
+  it("is never drawn in a PDF: every PDF is plain A4 landscape, whatever the report declares", async () => {
     for (const orientation of ["portrait", "landscape"] as const) {
       const definition = pdfDefinition(report(ROWS, { orientation, disclaimer: "Internal tracking report. Not an official tax invoice." }));
-      const layout = pageLayout(orientation);
-      const background = (definition.background as () => unknown)();
-      const [, top, , bottom] = definition.pageMargins as number[];
+      const layout = pageLayout();
 
-      expect(layout.headerHeight).toBeCloseTo((layout.page.width * 223) / 1325, 5);
-      expect(layout.footerHeight).toBeCloseTo((layout.page.width * 180) / 1318, 5);
-      // Only a width is given, so the proportions are the artwork's own.
-      expect(background).toEqual([
-        { image: "header", width: layout.page.width, absolutePosition: { x: 0, y: 0 } },
-        { image: "footer", width: layout.page.width, absolutePosition: { x: 0, y: layout.page.height - layout.footerHeight } },
-      ]);
-      // The content starts below the header artwork and its title band, and ends above the footer band and artwork.
-      expect(top).toBeGreaterThanOrEqual(layout.headerHeight + 28);
-      expect(bottom).toBeGreaterThanOrEqual(layout.footerHeight + 26);
-      expect(Object.keys(definition.images ?? {})).toEqual(["header", "footer"]);
+      expect(definition.pageSize).toBe("A4");
+      expect(definition.pageOrientation).toBe("landscape");
+      expect(definition.pageMargins).toEqual(layout.margins);
+      // No letterhead: no artwork, no background, no images of any kind.
+      expect(definition.images).toBeUndefined();
+      expect(definition.background).toBeUndefined();
+      expect(JSON.stringify(definition)).not.toContain("image");
+
+      // The file itself: every page is 297 × 210 mm, and it embeds no picture.
+      const pdf = (await renderPdf(report(ROWS, { orientation }))).toString("latin1");
+      const boxes = pdf.match(/\/MediaBox \[[^\]]*\]/g) ?? [];
+
+      expect(boxes.length).toBeGreaterThan(0);
+      for (const box of boxes) {
+        const [, , width, height] = (box.match(/[\d.]+/g) ?? []).map(Number);
+        expect(width).toBeCloseTo(841.89, 1);
+        expect(height).toBeCloseTo(595.28, 1);
+      }
+      expect(pdf).not.toMatch(/\/Subtype \/Image/);
     }
+  });
+
+  it("leaves room in a PDF's margins for the report lines, clear of the content", () => {
+    const [left, top, right, bottom] = pageLayout().margins;
+
+    expect(left).toBe(right);
+    expect(top).toBeGreaterThanOrEqual(48);
+    expect(bottom).toBeGreaterThanOrEqual(36);
   });
 
   it("is the page header and footer of every printed Excel page, and is not printed twice", async () => {
