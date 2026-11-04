@@ -1225,7 +1225,21 @@ function insertContract(
   });
 }
 
-export function updateContract(
+export async function updateContract(
+  auth: AuthContext,
+  id: string,
+  input: UpdateContractInput
+): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
+  try {
+    return await updateContractFields(auth, id, input);
+  } catch (error) {
+    // A new AMC Reference Number already used by another contract (any status, Recycle Bin included): the unique
+    // index decides, so two simultaneous edits cannot both take one number. The whole edit is rolled back.
+    rethrowDuplicateReference(error);
+  }
+}
+
+function updateContractFields(
   auth: AuthContext,
   id: string,
   input: UpdateContractInput
@@ -1278,6 +1292,16 @@ export function updateContract(
 
     const changes = diffFields(beforeValues, afterValues, EDITABLE_FIELDS);
 
+    // The AMC Reference Number (2026-11-04). Only the text changes: every relationship (services, invoices,
+    // renewals, documents, history) uses the contract id, and reports and exports read the reference live.
+    // Unchanged or left out: kept as it is. A change of letter case only is a change.
+    const referenceChange =
+      input.amcReference !== undefined && input.amcReference !== before.amcReference ? { from: before.amcReference, to: input.amcReference } : null;
+    if (referenceChange) {
+      if (!(await hasStoredReference())) throw featureUnavailable();
+      changes.amcReference = referenceChange;
+    }
+
     // The links are recorded on their own (amc_contract.masters_linked); they never touch the schedule.
     if (input.salesEngineerId !== undefined || systemType) {
       await applyContractMasters(client, auth, id, {
@@ -1311,6 +1335,11 @@ export function updateContract(
           `The validity period and frequency of a ${before.status.toLowerCase()} contract cannot be changed. Reactivate the contract first.`
         );
       }
+    }
+
+    if (referenceChange) {
+      // First, so a number that is already taken stops the edit before anything else is written.
+      await client.query("UPDATE amc_contracts_all SET amc_reference = $1, updated_by = $2 WHERE id = $3", [referenceChange.to, auth.user.id, id]);
     }
 
     await client.query(
@@ -1364,7 +1393,9 @@ export function updateContract(
       module: "AMC_CONTRACTS",
       entityType: "amc_contracts",
       entityId: id,
-      description: `AMC contract for "${updated.client.name}" (${updated.systemDescription}) updated.`,
+      description: `AMC contract for "${updated.client.name}" (${updated.systemDescription}) updated.${
+        referenceChange ? ` AMC Reference Number changed from ${referenceChange.from} to ${referenceChange.to}.` : ""
+      }`,
       metadata: { changes },
     });
 

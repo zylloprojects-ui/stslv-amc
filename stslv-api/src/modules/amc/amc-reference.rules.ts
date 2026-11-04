@@ -11,6 +11,12 @@ export const AMC_REFERENCE_UNIQUE_INDEX = "amc_contracts_reference_uq";
 
 export const DUPLICATE_AMC_REFERENCE = "AMC Reference Number already exists. Please enter a different number.";
 
+/** The primary key of amc_contract_references (migration 0107): every number a contract has ever held, by lower case. */
+export const AMC_REFERENCE_HISTORY_KEY = "amc_contract_references_pk";
+
+/** A number another contract held before an edit (0107): never given out again. */
+export const RETIRED_AMC_REFERENCE = "AMC Reference Number was used before by another contract and cannot be reused. Please enter a different number.";
+
 /**
  * Typed when a contract or renewal is created. Trimmed, required, at most 50 characters of letters, digits,
  * spaces and - _ . / & starting with a letter or digit (the master-code convention). Case is kept as typed;

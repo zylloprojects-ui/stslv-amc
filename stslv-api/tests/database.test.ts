@@ -19,6 +19,8 @@ describe("migrations", () => {
     expect(result.rows.map((row) => row.table_name)).toEqual([
       "activity_logs",
       "amc_contract_custom_months",
+      // Migration 0107: every AMC Reference Number a contract has held.
+      "amc_contract_references",
       // Migration 0101: the tables hold every row; the views of the same old names hide the Recycle Bin.
       "amc_contracts",
       "amc_contracts_all",

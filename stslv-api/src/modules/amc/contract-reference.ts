@@ -1,13 +1,15 @@
 import { pool } from "../../config/database";
 import { conflict, isUniqueViolation } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
-import { AMC_REFERENCE_UNIQUE_INDEX, DUPLICATE_AMC_REFERENCE } from "./amc-reference.rules";
+import { AMC_REFERENCE_HISTORY_KEY, AMC_REFERENCE_UNIQUE_INDEX, DUPLICATE_AMC_REFERENCE, RETIRED_AMC_REFERENCE } from "./amc-reference.rules";
 
 // The AMC Reference Number of a contract.
 //
 // From migration 0105 it is stored in amc_contracts.amc_reference: typed by the
 // user when the contract (or a renewal) is created, never generated, and
-// read-only afterwards. Every contract that existed before 0105 was given the
+// editable afterwards (2026-11-04). Migration 0107 keeps every number a contract
+// has held (amc_contract_references), so a number given up by an edit is never
+// given to another contract. Every contract that existed before 0105 was given the
 // reference it already showed ("AMC-0007" for contract 7), so nothing was
 // renumbered. Relationships always use the contract id, never this text.
 //
@@ -50,10 +52,16 @@ export async function findContractReference(contractId: string): Promise<string 
   return result.rows[0]?.reference ?? null;
 }
 
-/** Turns the unique-index violation into the duplicate message; anything else is rethrown unchanged. */
+/**
+ * Turns a reference conflict into its message; anything else is rethrown unchanged. 0105's unique index: another
+ * contract holds the number now. 0107's history key: another contract held it before (it was changed by an edit).
+ */
 export function rethrowDuplicateReference(error: unknown): never {
   if (isUniqueViolation(error, AMC_REFERENCE_UNIQUE_INDEX)) {
     throw conflict(DUPLICATE_AMC_REFERENCE, [{ field: "amcReference", message: DUPLICATE_AMC_REFERENCE }]);
+  }
+  if (isUniqueViolation(error, AMC_REFERENCE_HISTORY_KEY)) {
+    throw conflict(RETIRED_AMC_REFERENCE, [{ field: "amcReference", message: RETIRED_AMC_REFERENCE }]);
   }
   throw error;
 }

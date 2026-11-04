@@ -236,8 +236,9 @@ export const updateContractSchema = z
     salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
     // A new system type link (it cannot be removed here); the contract's system becomes its name.
     systemTypeId: systemTypeLink.optional(),
-    // Read-only after creation: refused with a clear message rather than ignored.
-    amcReference: z.never({ error: "The AMC Reference Number cannot be changed after the contract is created." }).optional(),
+    // Editable (2026-11-04) under the same rules as at creation; unique over every contract (0105's index).
+    // Left out, or sent unchanged: the reference is kept. Relationships use the contract id, never this text.
+    amcReference: amcReferenceSchema.optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), "Provide at least one field to update.");
 

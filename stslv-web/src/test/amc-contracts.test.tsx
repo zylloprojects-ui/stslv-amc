@@ -560,24 +560,77 @@ describe('edit contract', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).toMatchObject({ contractValue: '1800', validFrom: '2027-01-01', validTo: '2027-12-31' })
     expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).not.toHaveProperty('status')
-    // The AMC Reference Number is read-only after creation and never sent with an edit.
+    // The AMC Reference Number was not changed, so it is not sent: the API keeps it.
     expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).not.toHaveProperty('amcReference')
     expect(api.find('GET', '/amc/contracts/100/schedule/preview')).toHaveLength(0)
     // In the register (the Total AMC Value figure above it shows the same amount).
     expect(await within(screen.getByRole('table', { name: 'AMC contracts' })).findByText('1,800.000')).toBeInTheDocument()
   })
 
-  it('shows the AMC Reference Number read-only', async () => {
-    amcApi(ADMIN, { contracts: [FIRE] })
-    renderApp('/amc/contracts')
-
+  const openEdit = async () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Edit Test Hotel One FIRE' }))
     const dialog = await screen.findByRole('dialog', { name: 'Edit AMC Contract' })
-    const reference = await within(dialog).findByLabelText(/AMC Reference Number/)
+    const reference = (await within(dialog).findByLabelText(/AMC Reference Number/)) as HTMLInputElement
+
+    return { dialog, reference }
+  }
+
+  it('shows the AMC Reference Number editable, with its current value', async () => {
+    amcApi(ADMIN, { contracts: [FIRE] })
+    renderApp('/amc/contracts')
+    const { dialog, reference } = await openEdit()
 
     expect(reference).toHaveValue('AMC-0100')
-    expect(reference).toHaveAttribute('readonly')
-    expect(within(dialog).getByText('Set when the contract was created. It cannot be changed.')).toBeInTheDocument()
+    expect(reference).not.toHaveAttribute('readonly')
+    expect(within(dialog).getByText(/Currently AMC-0100\. Each number can be used by one contract only\./)).toBeInTheDocument()
+  })
+
+  it('sends a changed AMC Reference Number, trimmed', async () => {
+    const api = amcApi(ADMIN, { contracts: [FIRE] })
+    renderApp('/amc/contracts')
+    const { dialog, reference } = await openEdit()
+
+    await userEvent.clear(reference)
+    await userEvent.type(reference, '  STSLV-AMC-2027-100 ')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).toMatchObject({ amcReference: 'STSLV-AMC-2027-100' })
+  })
+
+  it.each([
+    ['', 'AMC Reference Number is required.'],
+    ['AMC#100', 'AMC Reference Number may use letters, digits, spaces and - _ . / & only, and must start with a letter or digit.'],
+  ])('refuses the edited AMC Reference Number %j before calling the API', async (value, message) => {
+    const api = amcApi(ADMIN, { contracts: [FIRE] })
+    renderApp('/amc/contracts')
+    const { dialog, reference } = await openEdit()
+
+    await userEvent.clear(reference)
+    if (value) await userEvent.type(reference, value)
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(await within(dialog).findByText(message)).toBeInTheDocument()
+    expect(api.find('PATCH', '/amc/contracts/100')).toHaveLength(0)
+  })
+
+  it('shows a duplicate edited AMC Reference Number on its field and keeps what was typed', async () => {
+    const DUPLICATE = 'AMC Reference Number already exists. Please enter a different number.'
+    amcApi(ADMIN, {
+      contracts: [FIRE],
+      override: (request) =>
+        request.method === 'PATCH' && request.path === '/amc/contracts/100' ? fail(409, 'CONFLICT', DUPLICATE, [{ field: 'amcReference', message: DUPLICATE }]) : undefined,
+    })
+    renderApp('/amc/contracts')
+    const { dialog, reference } = await openEdit()
+
+    await userEvent.clear(reference)
+    await userEvent.type(reference, 'AMC-0200')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(await within(dialog).findByText(DUPLICATE)).toBeInTheDocument()
+    expect(reference).toHaveValue('AMC-0200')
+    expect(reference).toHaveAttribute('aria-invalid', 'true')
   })
 
   it('asks for confirmation, showing the effect on the schedule, before changing the terms of an active contract', async () => {

@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, newContractBody, renewalEngineer, visitsOf } from "./amc-helpers";
+import { activeContract, contractBody, createClient, grant, logsFor, newContractBody, renewalEngineer, visitsOf } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Manual AMC Reference Number (migration 0105): typed when a contract or renewal is created, never generated,
-// unique for ever without regard to case (cancelled and Recycle Bin contracts included), and read-only afterwards.
+// unique without regard to case (cancelled and Recycle Bin contracts included), and editable afterwards (2026-11-04).
 // Every record is invented.
 
 type Session = Awaited<ReturnType<typeof signedIn>>;
@@ -12,6 +12,7 @@ let admin: Session;
 let clientId: string;
 
 const DUPLICATE = "AMC Reference Number already exists. Please enter a different number.";
+const RETIRED = "AMC Reference Number was used before by another contract and cannot be reused. Please enter a different number.";
 
 beforeAll(async () => {
   await resetData();
@@ -120,19 +121,270 @@ describe("creating a contract with a manual AMC Reference Number", () => {
   });
 });
 
-describe("after creation", () => {
-  it("cannot be changed through the edit route", async () => {
-    const id = (await create("READ-ONLY-001")).body.data.id as string;
-    const response = await api().patch(`/api/amc/contracts/${id}`).set(admin.headers).send({ amcReference: "CHANGED-001", notes: "x" });
+// Editing the reference (2026-11-04): AMC Contracts Edit permission, the creation rules, unique over every contract,
+// and only the text changes: the id, services, money, renewal links and history stay as they are.
+describe("editing the reference", () => {
+  const patch = (session: Session, id: string, body: Record<string, unknown>) => api().patch(`/api/amc/contracts/${id}`).set(session.headers).send(body);
+  const snapshot = async (id: string) => {
+    const contract = await pool.query("SELECT id, client_id, contract_value, final_credit, default_visit_amount, valid_from, valid_to, status FROM amc_contracts WHERE id = $1", [id]);
+    const visits = await pool.query("SELECT id, amc_contract_id, scheduled_date, visit_amount, status FROM amc_visits WHERE amc_contract_id = $1 ORDER BY id", [id]);
+    return { contract: contract.rows, visits: visits.rows };
+  };
+
+  it("changes the reference, keeps the contract's id, services and money, and records old and new in the Audit Log", async () => {
+    const id = await activeContract(admin, clientId, { amcReference: "EDIT-OLD-001", validFrom: "2027-01-01", validTo: "2027-12-31" });
+    const before = await snapshot(id);
+    expect(before.visits.length).toBeGreaterThan(0);
+
+    const response = await patch(admin, id, { amcReference: "  EDIT-NEW-001 " });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ id, amcReference: "EDIT-NEW-001" });
+    expect(response.body.data.scheduleChange).toBeNull();
+    expect((await get(id)).body.data.amcReference).toBe("EDIT-NEW-001");
+    expect(await snapshot(id)).toEqual(before);
+
+    // Read live everywhere: the schedule shows the new reference; the old one is no longer found.
+    const visits = (await api().get(`/api/amc/visits?contractId=${id}`).set(admin.headers)).body.data.items;
+    expect(new Set(visits.map((visit: { contract: { reference: string } }) => visit.contract.reference))).toEqual(new Set(["EDIT-NEW-001"]));
+    expect((await api().get("/api/amc/contracts?search=EDIT-OLD-001").set(admin.headers)).body.data.total).toBe(0);
+
+    const logs = (await logsFor("amc_contracts", id)).filter((log) => log.action === "amc_contract.updated");
+    expect(logs).toHaveLength(1);
+    expect(logs[0]).toMatchObject({ user_id: admin.id, module: "AMC_CONTRACTS", metadata: { changes: { amcReference: { from: "EDIT-OLD-001", to: "EDIT-NEW-001" } } } });
+    const described = await pool.query("SELECT description FROM activity_logs WHERE entity_type = 'amc_contracts' AND entity_id = $1 AND action = 'amc_contract.updated'", [id]);
+    expect(described.rows[0].description).toContain("AMC Reference Number changed from EDIT-OLD-001 to EDIT-NEW-001.");
+  });
+
+  it("saves the reference together with other fields in one edit", async () => {
+    const id = (await create("EDIT-BOTH-001")).body.data.id as string;
+    const response = await patch(admin, id, { amcReference: "EDIT-BOTH-002", notes: "Edited with the reference" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ amcReference: "EDIT-BOTH-002", notes: "Edited with the reference" });
+    const [log] = (await logsFor("amc_contracts", id)).filter((entry) => entry.action === "amc_contract.updated");
+    expect(log?.metadata).toMatchObject({ changes: { amcReference: { from: "EDIT-BOTH-001", to: "EDIT-BOTH-002" }, notes: { to: "Edited with the reference" } } });
+  });
+
+  it("keeps the reference when it is left out or sent unchanged, and logs no reference change", async () => {
+    const id = (await create("EDIT-SAME-001")).body.data.id as string;
+
+    const leftOut = await patch(admin, id, { notes: "Edited" });
+    expect(leftOut.status).toBe(200);
+    expect(leftOut.body.data.amcReference).toBe("EDIT-SAME-001");
+
+    const same = await patch(admin, id, { amcReference: "EDIT-SAME-001", notes: "Edited again" });
+    expect(same.status).toBe(200);
+    expect(same.body.data.amcReference).toBe("EDIT-SAME-001");
+
+    // Only the reference, unchanged: nothing to save, nothing logged.
+    const onlySame = await patch(admin, id, { amcReference: " EDIT-SAME-001 " });
+    expect(onlySame.status).toBe(200);
+
+    const logs = (await logsFor("amc_contracts", id)).filter((log) => log.action === "amc_contract.updated");
+    expect(logs).toHaveLength(2);
+    for (const log of logs) expect((log.metadata as { changes: Record<string, unknown> }).changes).not.toHaveProperty("amcReference");
+  });
+
+  it("accepts a change of letter case of its own reference", async () => {
+    const id = (await create("edit-case-001")).body.data.id as string;
+    const response = await patch(admin, id, { amcReference: "EDIT-CASE-001" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.amcReference).toBe("EDIT-CASE-001");
+  });
+
+  it("refuses a reference used by another contract (any case, cancelled and Recycle Bin included) and saves nothing", async () => {
+    const id = (await create("EDIT-DUP-MINE")).body.data.id as string;
+    expect((await create("EDIT-DUP-TAKEN")).status).toBe(201);
+    const cancelled = (await create("EDIT-DUP-CANCELLED")).body.data.id as string;
+    expect((await api().post(`/api/amc/contracts/${cancelled}/status`).set(admin.headers).send({ status: "CANCELLED", reason: "Test" })).status).toBe(200);
+    const binned = (await create("EDIT-DUP-BIN")).body.data.id as string;
+    expect((await api().delete(`/api/amc/contracts/${binned}`).set(admin.headers)).status).toBe(200);
+
+    for (const taken of ["EDIT-DUP-TAKEN", "edit-dup-taken", "EDIT-DUP-CANCELLED", "edit-dup-bin"]) {
+      const response = await patch(admin, id, { amcReference: taken, notes: "Must not be saved" });
+
+      expect(response.status, taken).toBe(409);
+      expect(response.body.error).toMatchObject({ code: "CONFLICT", message: DUPLICATE, details: [{ field: "amcReference", message: DUPLICATE }] });
+    }
+
+    // The whole edit was rolled back.
+    const after = (await get(id)).body.data;
+    expect(after.amcReference).toBe("EDIT-DUP-MINE");
+    expect(after.notes).not.toBe("Must not be saved");
+    expect((await logsFor("amc_contracts", id)).filter((log) => log.action === "amc_contract.updated")).toHaveLength(0);
+  });
+
+  it.each([
+    ["empty", ""],
+    ["whitespace only", "   "],
+    ["characters outside the convention", "AMC#001"],
+    ["a leading symbol", "-AMC-001"],
+    ["longer than 50 characters", `AMC-${"9".repeat(47)}`],
+    ["not text", 7],
+    ["null", null],
+  ])("refuses a reference that is %s", async (_label, value) => {
+    const id = (await create(`EDIT-BAD-${String(_label).replace(/[^a-z]/gi, "").slice(0, 20).toUpperCase()}`)).body.data.id as string;
+    const response = await patch(admin, id, { amcReference: value });
 
     expect(response.status).toBe(400);
-    expect(response.body.error.details[0]).toEqual({ field: "amcReference", message: "The AMC Reference Number cannot be changed after the contract is created." });
-    expect((await get(id)).body.data.amcReference).toBe("READ-ONLY-001");
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+    expect(response.body.error.details[0].field).toBe("amcReference");
+  });
 
-    // Other fields still edit normally, and the reference stays.
-    const edit = await api().patch(`/api/amc/contracts/${id}`).set(admin.headers).send({ notes: "Edited" });
-    expect(edit.status).toBe(200);
-    expect(edit.body.data.amcReference).toBe("READ-ONLY-001");
+  it("is refused without the AMC Contracts Edit permission, and allowed to a non-admin role that has it", async () => {
+    const id = (await create("EDIT-PERM-001")).body.data.id as string;
+    const viewer = await signedIn("reference-viewer@example.com", ["VIEWER"]);
+    await grant("VIEWER", [["AMC_CONTRACTS", "VIEW"]]);
+
+    const refused = await patch(viewer, id, { amcReference: "EDIT-PERM-002" });
+    expect(refused.status).toBe(403);
+    expect((await get(id)).body.data.amcReference).toBe("EDIT-PERM-001");
+
+    await grant("AMC_OPERATIONS_EXECUTIVE", [["AMC_CONTRACTS", "VIEW"], ["AMC_CONTRACTS", "EDIT"]]);
+    const editor = await signedIn("reference-editor@example.com", ["AMC_OPERATIONS_EXECUTIVE"]);
+    const allowed = await patch(editor, id, { amcReference: "EDIT-PERM-002" });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.data.amcReference).toBe("EDIT-PERM-002");
+
+    const unauthenticated = await api().patch(`/api/amc/contracts/${id}`).send({ amcReference: "EDIT-PERM-003" });
+    expect(unauthenticated.status).toBe(401);
+  });
+
+  it("lets only one of two simultaneous edits take the same new reference", async () => {
+    const a = (await create("EDIT-RACE-A")).body.data.id as string;
+    const b = (await create("EDIT-RACE-B")).body.data.id as string;
+    const responses = await Promise.all([patch(admin, a, { amcReference: "EDIT-RACE-NEW" }), patch(admin, b, { amcReference: "EDIT-RACE-NEW" })]);
+
+    expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+    const stored = await pool.query("SELECT count(*)::int AS count FROM amc_contracts_all WHERE lower(amc_reference) = 'edit-race-new'");
+    expect(stored.rows[0]).toEqual({ count: 1 });
+  });
+
+  it("never gives a number given up by an edit to another contract, in any case, by any route", async () => {
+    const owner = (await create("REUSE-OLD-001")).body.data.id as string;
+    expect((await patch(admin, owner, { amcReference: "REUSE-NEW-001" })).status).toBe(200);
+
+    // A new contract, an edit of another contract and a renewal are all refused, without regard to case.
+    const created = await create("reuse-old-001");
+    expect(created.status).toBe(409);
+    expect(created.body.error).toMatchObject({ code: "CONFLICT", message: RETIRED, details: [{ field: "amcReference", message: RETIRED }] });
+
+    const other = (await create("REUSE-OTHER-001")).body.data.id as string;
+    const edited = await patch(admin, other, { amcReference: "  Reuse-Old-001 ", notes: "Must not be saved" });
+    expect(edited.status).toBe(409);
+    expect(edited.body.error.message).toBe(RETIRED);
+    expect((await get(other)).body.data).toMatchObject({ amcReference: "REUSE-OTHER-001" });
+    expect((await get(other)).body.data.notes).not.toBe("Must not be saved");
+
+    const engineer = await renewalEngineer();
+    const sourceId = await activeContract(admin, clientId, { amcReference: "REUSE-SRC-001", validFrom: "2031-01-01", validTo: "2031-12-31" });
+    const renewal = await api()
+      .post(`/api/amc/contracts/${sourceId}/renewals`)
+      .set(admin.headers)
+      .send({ ...contractBody(clientId, { validFrom: "2032-01-01", validTo: "2032-12-31", status: "DRAFT", salesEngineerId: engineer }), amcReference: "REUSE-OLD-001" });
+    expect(renewal.status).toBe(409);
+    expect(renewal.body.error.message).toBe(RETIRED);
+
+    // The current number of a contract still answers with the "already exists" message.
+    expect((await create("REUSE-NEW-001")).body.error.message).toBe(DUPLICATE);
+  });
+
+  it("lets a contract take back a number it held itself, and then keeps the one it gave up", async () => {
+    const id = (await create("BACK-A-001")).body.data.id as string;
+    expect((await patch(admin, id, { amcReference: "BACK-B-001" })).status).toBe(200);
+
+    const back = await patch(admin, id, { amcReference: "back-a-001" });
+    expect(back.status).toBe(200);
+    expect(back.body.data.amcReference).toBe("back-a-001");
+
+    expect((await create("BACK-B-001")).body.error.message).toBe(RETIRED);
+    expect((await create("BACK-A-001")).body.error.message).toBe(DUPLICATE);
+  });
+
+  it("keeps the history of every number in the database, with who changed it", async () => {
+    const id = (await create("HIST-001")).body.data.id as string;
+    expect((await patch(admin, id, { amcReference: "HIST-002" })).status).toBe(200);
+    expect((await patch(admin, id, { amcReference: "Hist-003" })).status).toBe(200);
+    expect((await patch(admin, id, { amcReference: "HIST-003" })).status).toBe(200); // letter case only: the same entry
+
+    const rows = await pool.query(
+      "SELECT reference_key, reference, assigned_by::text, retired_by::text, retired_at IS NOT NULL AS retired FROM amc_contract_references WHERE amc_contract_id = $1 ORDER BY reference_key",
+      [id]
+    );
+    expect(rows.rows).toEqual([
+      { reference_key: "hist-001", reference: "HIST-001", assigned_by: admin.id, retired_by: admin.id, retired: true },
+      { reference_key: "hist-002", reference: "HIST-002", assigned_by: admin.id, retired_by: admin.id, retired: true },
+      { reference_key: "hist-003", reference: "HIST-003", assigned_by: admin.id, retired_by: null, retired: false },
+    ]);
+  });
+
+  it("is enforced by the database for any writer, not only the API", async () => {
+    const id = (await create("DBH-OLD-001")).body.data.id as string;
+    expect((await patch(admin, id, { amcReference: "DBH-NEW-001" })).status).toBe(200);
+    const other = (await create("DBH-OTHER-001")).body.data.id as string;
+
+    await expect(pool.query("UPDATE amc_contracts_all SET amc_reference = 'dbh-old-001' WHERE id = $1", [other])).rejects.toMatchObject({
+      code: "23505",
+      constraint: "amc_contract_references_pk",
+    });
+    await expect(
+      pool.query(
+        `INSERT INTO amc_contracts (client_id, valid_from, valid_to, system_description, contract_value, maintenance_frequency, amc_reference)
+         VALUES ($1, '2027-01-01', '2027-12-31', 'FIRE', 100, 'QUARTERLY', 'DBH-OLD-001')`,
+        [clientId]
+      )
+    ).rejects.toMatchObject({ code: "23505", constraint: "amc_contract_references_pk" });
+  });
+
+  it("keeps exactly one current entry per contract, equal to its reference (Recycle Bin included)", async () => {
+    const binned = (await create("INV-BIN-001")).body.data.id as string;
+    expect((await api().delete(`/api/amc/contracts/${binned}`).set(admin.headers)).status).toBe(200);
+
+    const mismatched = await pool.query(
+      `SELECT c.id FROM amc_contracts_all c
+       LEFT JOIN amc_contract_references r ON r.amc_contract_id = c.id AND r.retired_at IS NULL
+       WHERE r.reference IS DISTINCT FROM c.amc_reference`
+    );
+    expect(mismatched.rows).toEqual([]);
+    const current = await pool.query("SELECT count(*)::int AS count FROM amc_contract_references WHERE retired_at IS NULL");
+    const contracts = await pool.query("SELECT count(*)::int AS count FROM amc_contracts_all");
+    expect(current.rows[0].count).toBe(contracts.rows[0].count);
+  });
+
+  it("refuses another contract a number being given up at the same moment, whichever request runs first", async () => {
+    for (let round = 1; round <= 3; round++) {
+      const holder = (await create(`RACE-OLD-${round}`)).body.data.id as string;
+      const [edit, take] = await Promise.all([patch(admin, holder, { amcReference: `RACE-MOVED-${round}` }), create(`race-old-${round}`)]);
+
+      expect(edit.status, `round ${round}`).toBe(200);
+      expect(take.status, `round ${round}`).toBe(409);
+      expect([DUPLICATE, RETIRED]).toContain(take.body.error.message);
+      const holders = await pool.query("SELECT count(*)::int AS count FROM amc_contracts_all WHERE lower(amc_reference) = $1", [`race-old-${round}`]);
+      expect(holders.rows[0]).toEqual({ count: 0 });
+    }
+  });
+
+  it("keeps renewal links on the id: both sides show the edited reference", async () => {
+    const engineer = await renewalEngineer();
+    const sourceId = await activeContract(admin, clientId, { amcReference: "EDIT-RSRC-001", validFrom: "2029-01-01", validTo: "2029-12-31" });
+    const renewal = await api()
+      .post(`/api/amc/contracts/${sourceId}/renewals`)
+      .set(admin.headers)
+      .send({ ...contractBody(clientId, { validFrom: "2030-01-01", validTo: "2030-12-31", status: "DRAFT", salesEngineerId: engineer }), amcReference: "EDIT-RNEW-001" });
+    expect(renewal.status).toBe(201);
+
+    expect((await patch(admin, sourceId, { amcReference: "EDIT-RSRC-002" })).status).toBe(200);
+    expect((await patch(admin, renewal.body.data.id, { amcReference: "EDIT-RNEW-002" })).status).toBe(200);
+
+    const links = (await api().get(`/api/amc/contracts/${renewal.body.data.id}/renewals`).set(admin.headers)).body.data;
+    expect(links.renewedFrom).toMatchObject({ id: sourceId, reference: "EDIT-RSRC-002" });
+    const history = (await api().get("/api/amc/reports/renewals").set(admin.headers)).body.data.items;
+    expect(history.find((item: { renewal: { id: string } }) => item.renewal.id === renewal.body.data.id)).toMatchObject({
+      renewal: { reference: "EDIT-RNEW-002" },
+      source: { id: sourceId, reference: "EDIT-RSRC-002" },
+    });
   });
 });
 

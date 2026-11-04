@@ -1,15 +1,53 @@
 # AMC Reference Number
 
-Requested 2026-11-04. Migration `0105_amc_contract_reference.sql`.
+Requested 2026-11-04. Migrations `0105_amc_contract_reference.sql` and `0107_amc_reference_history.sql`.
 
 ## Rule
 
 - Every AMC contract has an **AMC Reference Number**, stored in `amc_contracts.amc_reference`.
 - It is **typed by the user** when a contract is added, or when a renewal is created. It is never generated or
   prefilled. Examples: `AMC-0001`, `AMC-2026-001`, `STSLV-AMC-2026-015`.
-- It is **read-only after creation**. The edit route refuses it with "The AMC Reference Number cannot be changed
-  after the contract is created." There is no renaming workflow.
+- It is **editable after creation** (requested 2026-11-04) in Edit AMC Contract, by any role with the AMC Contracts
+  **Edit** permission (`PATCH /api/amc/contracts/:id`, field `amcReference`). See [Editing](#editing-the-reference).
 - Relationships (visits, invoices, renewals, documents) use the contract **id**, never this text.
+
+## Editing the reference
+
+- The same rules as at creation (table below), including uniqueness over every contract.
+- Left out of the request, or sent unchanged: the reference is kept and no reference change is logged. A change of
+  letter case only (`amc-0007` to `AMC-0007`) is a change.
+- Only `amc_contracts.amc_reference` changes. The contract id, its services, amounts, invoices, renewal links,
+  documents and history are untouched, and every screen, report and export shows the new value at once, because
+  they all read it live through the contract id. No other table stores a copy of the text.
+- The edit is one transaction: a duplicate refuses the whole edit (any other fields sent with it are not saved).
+- Audit: the `amc_contract.updated` activity entry records `changes.amcReference = { from, to }` and its description
+  says "AMC Reference Number changed from … to …". Shown in the Audit Log and the contract's history.
+- **Outside the system** the old number does not change: Zoho invoices, PDFs and Excel files already exported, and
+  documents sent to the client keep it. Activity entries written before the change also keep the old number in their
+  text. A search for the old number no longer finds the contract (the Audit Log still does).
+- **A number given up by an edit is never given to another contract** (approved 2026-11-04, migration 0107; see
+  [Reference history](#reference-history-migration-0107)). The contract itself may take back a number it held before.
+
+## Reference history (migration 0107)
+
+`amc_contract_references` keeps every number each contract has held: one current entry (`retired_at` empty) and one
+retired entry per number it gave up, with who and when (`assigned_by`/`assigned_at`, `retired_by`/`retired_at`). The
+key is `lower(reference)`, so the rule ignores case.
+
+- Triggers on `amc_contracts_all` maintain it for **every writer** (API, renewals, legacy import, scripts): on insert
+  the number is registered; on a change of reference the old entry is retired and the new number registered. A number
+  any other contract has ever held is refused with a unique violation on `amc_contract_references_pk`. A change of
+  letter case only keeps the same entry.
+- Messages (409, field `amcReference`):
+  - held now by another contract: "AMC Reference Number already exists. Please enter a different number."
+  - held before by another contract: "AMC Reference Number was used before by another contract and cannot be reused.
+    Please enter a different number."
+- Concurrency: the primary key makes a second simultaneous request for one number wait and then be refused.
+- The migration registered every existing contract's current number (Recycle Bin and cancelled included). Nothing
+  else changed: no contract, reference, service, invoice, audit entry or relationship, and no `updated_at`.
+- The contract link is `ON DELETE CASCADE`. The application never deletes contract rows (the Recycle Bin only marks
+  them), so a reservation lasts as long as its contract; only an administrative reset that removes contract rows also
+  removes their reservations.
 
 ## Validation (API, database and form)
 
@@ -20,7 +58,7 @@ Requested 2026-11-04. Migration `0105_amc_contract_reference.sql`.
 | Length | 1 to 50 characters. |
 | Characters | Letters, digits, spaces and `- _ . / &`, starting with a letter or digit (the master-code convention). |
 | Case | Kept as typed. |
-| Unique | Without regard to case, over **every** contract: active, draft, expired, cancelled and those in the Recycle Bin. A number is never reused. |
+| Unique | Without regard to case, over **every** contract: active, draft, expired, cancelled and those in the Recycle Bin. A number a contract holds, or has ever held, can never be given to another one (migration 0107). |
 | Concurrency | The unique index `amc_contracts_reference_uq` on `lower(amc_reference)` decides; of two simultaneous requests with one number, one is refused. |
 
 A duplicate is answered `409 CONFLICT` with "AMC Reference Number already exists. Please enter a different number."
