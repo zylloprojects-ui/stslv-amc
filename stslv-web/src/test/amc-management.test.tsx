@@ -330,8 +330,8 @@ describe('permissions', () => {
     expect(screen.queryByRole('button', { name: '+ New AMC' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Schedule Engine' })).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument()
-    // The KPI links lead only to modules the user may open.
-    expect(within(card('Contract KPIs', 'Active AMC')).getByRole('link', { name: 'View contracts' })).toHaveAttribute('href', '/amc/contracts')
+    // KPI cards are informational only: no links inside them.
+    expect(within(card('Contract KPIs', 'Active AMC')).queryByRole('link')).not.toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'AMC Management' })).toHaveAttribute('href', '/amc/management')
   })
 
@@ -355,8 +355,8 @@ describe('permissions', () => {
   })
 })
 
-describe('Reports and Accounts links', () => {
-  it('links Reports only with its permission, and the Paid cards to Accounts', async () => {
+describe('Reports link and informational KPI cards', () => {
+  it('links Reports only with its permission, and puts no link in any KPI card', async () => {
     managementApi(ADMIN)
     renderApp('/amc/management')
 
@@ -364,10 +364,18 @@ describe('Reports and Accounts links', () => {
     expect(within(banner).getByRole('link', { name: 'Reports' })).toHaveAttribute('href', '/reports')
     expect(screen.queryByText('(not built yet)')).not.toBeInTheDocument()
 
-    await waitFor(() => expect(within(card('Invoice KPIs', 'Paid Invoices')).getByRole('link', { name: 'Accounts' })).toHaveAttribute('href', '/finance/accounts'))
-    expect(within(card('Invoice KPIs', 'Unpaid Invoices')).getByRole('link', { name: 'Accounts' })).toHaveAttribute('href', '/finance/accounts')
-    expect(within(card('Invoice KPIs', 'Paid Invoice Total')).getByRole('link', { name: 'Accounts' })).toHaveAttribute('href', '/finance/accounts')
-    expect(within(card('Invoice KPIs', 'Invoice Module Status')).getByRole('link', { name: 'Invoice Tracking' })).toHaveAttribute('href', '/invoices')
+    await waitFor(() => expect(within(card('Invoice KPIs', 'Paid Invoices')).getByText('3')).toBeInTheDocument())
+    // No card holds a link (View contracts, AMC Schedule, Invoice Tracking, Accounts) or acts as one.
+    for (const title of ['Contract KPIs', 'Schedule KPIs', 'Invoice KPIs']) {
+      const cards = within(group(title)).getAllByRole('listitem')
+      expect(cards.length).toBeGreaterThan(0)
+      for (const item of cards) {
+        expect(within(item).queryByRole('link')).not.toBeInTheDocument()
+        expect(item.closest('a')).toBeNull()
+        expect(item).not.toHaveAttribute('role', 'link')
+        expect(item).not.toHaveAttribute('tabindex')
+      }
+    }
     expect(document.body.textContent).not.toMatch(/figures are unavailable/)
   })
 
@@ -379,5 +387,76 @@ describe('Reports and Accounts links', () => {
     expect(within(banner).queryByRole('link', { name: 'Reports' })).not.toBeInTheDocument()
     await waitFor(() => expect(within(card('Invoice KPIs', 'Paid Invoices')).getByText('3')).toBeInTheDocument())
     expect(within(card('Invoice KPIs', 'Paid Invoices')).queryByRole('link', { name: 'Accounts' })).not.toBeInTheDocument()
+  })
+})
+
+describe('Hide / Show of Recent AMC Contracts and Expiry & Renewal', () => {
+  const sectionOf = async (title: string) => (await screen.findByRole('heading', { name: title })).closest('section') as HTMLElement
+
+  it('shows both sections by default and hides each one on its own', async () => {
+    managementApi(ADMIN)
+    renderApp('/amc/management')
+
+    const recent = await sectionOf('Recent AMC Contracts')
+    const expiry = await sectionOf('Expiry & Renewal')
+    const hideRecent = within(recent).getByRole('button', { name: 'Hide Recent AMC Contracts' })
+    const hideExpiry = within(expiry).getByRole('button', { name: 'Hide Expiry & Renewal' })
+    expect(hideRecent).toHaveAttribute('aria-expanded', 'true')
+    expect(hideExpiry).toHaveAttribute('aria-expanded', 'true')
+    expect(within(recent).getByRole('table')).toBeVisible()
+    expect(within(expiry).getByRole('note')).toBeVisible()
+
+    await userEvent.click(hideRecent)
+    const showRecent = within(recent).getByRole('button', { name: 'Show Recent AMC Contracts' })
+    expect(showRecent).toHaveAttribute('aria-expanded', 'false')
+    expect(document.getElementById(showRecent.getAttribute('aria-controls') ?? '')).not.toBeVisible()
+    expect(within(recent).queryByRole('table')).not.toBeInTheDocument()
+    // The header and its View All button stay.
+    expect(within(recent).getByRole('heading', { name: 'Recent AMC Contracts' })).toBeVisible()
+    expect(within(recent).getByRole('link', { name: 'View All →' })).toHaveAttribute('href', '/amc/contracts')
+    // The other section is unaffected.
+    expect(within(expiry).getByRole('button', { name: 'Hide Expiry & Renewal' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(expiry).getByRole('list', { name: 'Expiry warning bands' })).toBeVisible()
+
+    await userEvent.click(within(expiry).getByRole('button', { name: 'Hide Expiry & Renewal' }))
+    expect(within(expiry).queryByRole('note')).not.toBeInTheDocument()
+    expect(within(expiry).queryByRole('list', { name: 'Expiry warning bands' })).not.toBeInTheDocument()
+    expect(within(expiry).queryByRole('table')).not.toBeInTheDocument()
+    expect(within(expiry).getByRole('link', { name: 'AMC Contracts →' })).toHaveAttribute('href', '/amc/contracts')
+
+    expect(localStorage.getItem('stslev.amc-management.section.recent-contracts.open.1')).toBe('0')
+    expect(localStorage.getItem('stslev.amc-management.section.expiry-renewal.open.1')).toBe('0')
+
+    await userEvent.click(within(recent).getByRole('button', { name: 'Show Recent AMC Contracts' }))
+    expect(within(recent).getByRole('table')).toBeVisible()
+    expect(within(expiry).queryByRole('note')).not.toBeInTheDocument()
+    expect(localStorage.getItem('stslev.amc-management.section.recent-contracts.open.1')).toBe('1')
+  })
+
+  it('works from the keyboard', async () => {
+    managementApi(ADMIN)
+    renderApp('/amc/management')
+
+    const expiry = await sectionOf('Expiry & Renewal')
+    within(expiry).getByRole('button', { name: 'Hide Expiry & Renewal' }).focus()
+    await userEvent.keyboard('{Enter}')
+    expect(within(expiry).getByRole('button', { name: 'Show Expiry & Renewal' })).toHaveAttribute('aria-expanded', 'false')
+    await userEvent.keyboard(' ')
+    expect(within(expiry).getByRole('button', { name: 'Hide Expiry & Renewal' })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('remembers each choice per user when the page is opened again', async () => {
+    localStorage.setItem('stslev.amc-management.section.expiry-renewal.open.1', '0')
+    localStorage.setItem('stslev.amc-management.section.recent-contracts.open.99', '0')
+    managementApi(ADMIN)
+    renderApp('/amc/management')
+
+    const recent = await sectionOf('Recent AMC Contracts')
+    const expiry = await sectionOf('Expiry & Renewal')
+    // Another user's choice does not apply.
+    expect(within(recent).getByRole('button', { name: 'Hide Recent AMC Contracts' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(recent).getByRole('table')).toBeVisible()
+    expect(within(expiry).getByRole('button', { name: 'Show Expiry & Renewal' })).toHaveAttribute('aria-expanded', 'false')
+    expect(within(expiry).queryByRole('note')).not.toBeInTheDocument()
   })
 })

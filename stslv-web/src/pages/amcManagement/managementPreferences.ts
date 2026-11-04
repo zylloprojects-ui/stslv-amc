@@ -120,3 +120,22 @@ export function useKpiCustomization(userId: string, group: string, defaults: rea
     namesChanged: Object.keys(names).length > 0,
   }
 }
+
+/**
+ * Whether one section of AMC Management is shown, remembered per section and per user in this browser.
+ * Shown until the user hides it; a blocked or empty browser store shows it.
+ */
+export function useSectionOpen(userId: string, section: string): [boolean, (open: boolean) => void] {
+  const key = `${PREFIX}.section.${section}.open.${userId}`
+  const [open, setOpenState] = useState<boolean>(() => read(key) !== '0')
+
+  const setOpen = useCallback(
+    (next: boolean) => {
+      setOpenState(next)
+      write(key, next ? '1' : '0')
+    },
+    [key],
+  )
+
+  return [open, setOpen]
+}
