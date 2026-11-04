@@ -1,8 +1,11 @@
+import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import path from "node:path";
+import { promisify } from "node:util";
 import { Readable } from "node:stream";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { describeStorage, resolveStorageConfig, type ObjectStorageConfig } from "../src/config/storage-config";
+import { describeStorage, endpointNamesProject, resolveStorageConfig, type ObjectStorageConfig } from "../src/config/storage-config";
 import { setStorageForTests } from "../src/modules/attachments/attachments.service";
 import { createS3Client, describeStorageError, OBJECT_KEY_PREFIX, S3ObjectStorage } from "../src/shared/object-storage";
 import { StoredFileNotFoundError } from "../src/shared/storage";
@@ -199,6 +202,63 @@ describe("Supabase S3 compatibility and error reporting (2026-11-04: a bare \"Er
     // None of the newer SDK defaults that S3-compatible stores may reject.
     expect(Object.keys(headers).filter((name) => /checksum|decoded-content-length|trailer|^expect$/.test(name))).toEqual([]);
     expect(headers["content-encoding"] ?? "").not.toContain("aws-chunked");
+  });
+});
+
+describe("a custom Supabase endpoint in production (the form the real bucket check passed with, 2026-11-04)", () => {
+  // Invented values: a custom endpoint whose host is not the default <ref>.storage.supabase.co.
+  const CUSTOM = "https://custom-host.example-storage.supabase.co/storage/v1/s3";
+  const KEY = "33333333-4444-5555-6666-777777777777.pdf";
+
+  it("is read by the API's own configuration (env.ts) at start, exactly as given, alongside the unchanged project reference", async () => {
+    const run = promisify(execFile);
+    const root = path.resolve(__dirname, "..");
+    const { stdout } = await run(process.execPath, [path.join(root, "node_modules", "tsx", "dist", "cli.mjs"), "tests/fixtures/print-storage-env.ts"], {
+      cwd: root,
+      timeout: 60_000,
+      env: {
+        PATH: process.env.PATH ?? process.env.Path ?? "",
+        SystemRoot: process.env.SystemRoot ?? "",
+        NODE_ENV: "production",
+        DOTENV_CONFIG_PATH: process.platform === "win32" ? "NUL" : "/dev/null",
+        JWT_SECRET: "fixture-only-secret-0123456789abcdefghijklmnop",
+        ...supabaseVars({ SUPABASE_S3_REGION: "ap-southeast-1", SUPABASE_S3_ENDPOINT: `${CUSTOM}/` }),
+      },
+    });
+
+    expect(JSON.parse(stdout.trim().split(/\r?\n/).pop() as string)).toEqual({ driver: "supabase", endpoint: CUSTOM, region: "ap-southeast-1", bucket: BUCKET });
+  });
+
+  it("sends every request to the custom endpoint's host and path, never to the default host built from the project reference", async () => {
+    const hosts: string[] = [];
+    const paths: string[] = [];
+    const recorder = {
+      handle: async (request: { hostname: string; path: string }) => {
+        hosts.push(request.hostname);
+        paths.push(request.path);
+        return { response: { statusCode: 200, headers: {}, body: Readable.from([TEST_PDF]) } };
+      },
+    };
+    const config = resolveStorageConfig(supabaseVars({ SUPABASE_S3_REGION: "ap-southeast-1", SUPABASE_S3_ENDPOINT: CUSTOM }), "production", "/app") as ObjectStorageConfig;
+    const store = new S3ObjectStorage(config, createS3Client(config, recorder as never));
+
+    await store.put(KEY, TEST_PDF);
+    await store.get(KEY);
+    await store.remove(KEY);
+
+    expect(new Set(hosts)).toEqual(new Set(["custom-host.example-storage.supabase.co"]));
+    expect(paths.every((item) => item === `/storage/v1/s3/${BUCKET}/${OBJECT_KEY_PREFIX}${KEY}`)).toBe(true);
+    expect(hosts).not.toContain(`${REF}.storage.supabase.co`);
+  });
+
+  it("keeps the project reference and the endpoint separate: still validated, never substituted, compared only as yes/no", () => {
+    // The reference stays required and validated even when the endpoint is custom.
+    expect(() => resolveStorageConfig(supabaseVars({ SUPABASE_S3_ENDPOINT: CUSTOM, SUPABASE_PROJECT_REF: "" }), "production", "/app")).toThrow(/SUPABASE_PROJECT_REF is missing/);
+    expect(() => resolveStorageConfig(supabaseVars({ SUPABASE_S3_ENDPOINT: CUSTOM, SUPABASE_PROJECT_REF: "Not-A-Ref" }), "production", "/app")).toThrow(/Invalid SUPABASE_PROJECT_REF/);
+
+    expect(endpointNamesProject(supabaseVars({ SUPABASE_S3_ENDPOINT: CUSTOM }))).toBe(false);
+    expect(endpointNamesProject(supabaseVars({ SUPABASE_S3_ENDPOINT: `https://${REF}.storage.supabase.co/storage/v1/s3` }))).toBe(true);
+    expect(endpointNamesProject(supabaseVars())).toBeNull();
   });
 });
 

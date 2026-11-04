@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { createHash, randomUUID } from "node:crypto";
-import { describeStorage, resolveStorageConfig } from "../config/storage-config";
+import { describeStorage, endpointNamesProject, resolveStorageConfig } from "../config/storage-config";
 import { describeStorageError } from "../shared/object-storage";
 import { StoredFileNotFoundError } from "../shared/storage";
 import { createFileStorage } from "../shared/storage-factory";
@@ -90,6 +90,11 @@ async function main(): Promise<boolean> {
     // Which form of address is used, never the address itself.
     const custom = Boolean(process.env[config.driver === "supabase" ? "SUPABASE_S3_ENDPOINT" : "R2_ENDPOINT"]?.trim());
     console.log(`Endpoint: ${custom ? "custom (from the *_ENDPOINT setting)" : "default for the provider"}; region: ${config.driver === "r2" ? "auto" : "as configured"}`);
+    const names = config.driver === "supabase" ? endpointNamesProject(process.env) : null;
+    if (names !== null) {
+      // A yes/no only: neither the endpoint nor the project reference is printed.
+      console.log(`Endpoint host contains SUPABASE_PROJECT_REF: ${names ? "yes" : "NO (review: the two settings name different things)"}`);
+    }
   }
 
   try {

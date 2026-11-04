@@ -60,15 +60,27 @@ message naming the missing variable (never a value).
 | none, development | `stslv-api/storage/attachments` (unchanged) |
 | none, production | none: uploads and new contracts refused (unchanged) |
 
-`SUPABASE_S3_ENDPOINT` is optional; it defaults to
-`https://<project ref>.storage.supabase.co/storage/v1/s3` (Supabase's recommended host).
+`SUPABASE_S3_ENDPOINT` is the **Endpoint exactly as shown on Storage → S3 Connection**. It is
+technically optional (default `https://<project ref>.storage.supabase.co/storage/v1/s3`), but
+**set it in production**: on 2026-11-04 the default host answered HTTP 400 "Project not
+specified.", and the real bucket check passed only with the dashboard's Endpoint.
 
-Check a configuration end to end (writes, reads and deletes one probe file under
-`attachments/`; prints only the store kind and OK/FAIL, never a secret):
+The project reference and the endpoint are separate settings. The reference stays required and
+validated; it is not derived from, or replaced by, the endpoint. When a custom endpoint is set,
+connections use the endpoint only. `npm run storage:check` reports, as a plain yes/no, whether the
+endpoint's host contains the project reference, so a mismatch can be reviewed without either value
+being printed.
+
+Check a configuration end to end (uploads one probe file under `attachments/`, downloads it,
+compares its SHA-256, deletes it and confirms it is gone; prints only the store kind and OK/FAIL,
+never a secret or address). It needs no database settings. Against the real bucket, from
+`stslv-api`, with credentials typed into masked prompts:
 
 ```
-npm run storage:check
+powershell -ExecutionPolicy Bypass -File scripts\check-supabase-storage.ps1
 ```
+
+Real check passed 2026-11-04 (region ap-southeast-1, custom endpoint).
 
 The Security page shows "Document storage: Supabase Storage (private)" when it is in use.
 
@@ -98,6 +110,7 @@ Project `sgzvlmjkhhrwtuuqatve`, bucket `stslv-amc-documents` (already created, p
 | `SUPABASE_S3_BUCKET` | `stslv-amc-documents` |
 | `SUPABASE_S3_ACCESS_KEY_ID` | the access key ID (mark as secret) |
 | `SUPABASE_S3_SECRET_ACCESS_KEY` | the secret access key (mark as secret) |
+| `SUPABASE_S3_ENDPOINT` | the Endpoint exactly as shown on Storage → S3 Connection (the one the check passed with) |
 
 Do **not** set `ATTACHMENTS_DIR` or any `R2_*` variable on Render. `ATTACHMENT_MAX_MB` stays 12.
 

@@ -140,6 +140,23 @@ export function resolveStorageConfig(vars: Vars, nodeEnv: string | undefined, cw
   return nodeEnv === "production" ? null : { driver: "local", dir: path.resolve(cwd, "storage", "attachments") };
 }
 
+/**
+ * For a custom Supabase endpoint: whether its host name contains the configured project reference. Only a yes/no for
+ * review (neither value is shown). The two are separate settings and never substituted for one another: the
+ * reference is validated and kept, the endpoint is used as given. Null when no custom endpoint is set.
+ */
+export function endpointNamesProject(vars: Vars): boolean | null {
+  const endpoint = read(vars, "SUPABASE_S3_ENDPOINT");
+  const projectRef = read(vars, "SUPABASE_PROJECT_REF");
+
+  if (!endpoint || !projectRef) return null;
+  try {
+    return new URL(endpoint).hostname.toLowerCase().split(".").includes(projectRef.toLowerCase());
+  } catch {
+    return null;
+  }
+}
+
 /** A description safe to show on the Security page: never a key, secret, project, account, bucket or address. */
 export function describeStorage(config: StorageConfig): { kind: "SUPABASE" | "R2" | "LOCAL" | "NONE"; detail: string } {
   if (!config) return { kind: "NONE", detail: "Not configured, so document uploads are off." };

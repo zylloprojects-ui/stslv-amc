@@ -66,6 +66,8 @@ describe("the standalone storage check (npm run storage:check)", () => {
     expect(output).not.toMatch(/database|DB_HOST|JWT_SECRET/i);
     expect(output).toContain("Document storage: SUPABASE");
     expect(output).toContain("Endpoint: custom (from the *_ENDPOINT setting); region: as configured");
+    // The fake endpoint (127.0.0.1) does not name the project: reported as a yes/no only.
+    expect(output).toContain("Endpoint host contains SUPABASE_PROJECT_REF: NO (review: the two settings name different things)");
     expect(output).toMatch(/OK {3}upload a \d+-byte probe file/);
     expect(output).toContain("OK   download it");
     expect(output).toContain("OK   SHA-256 of the download matches the upload");
