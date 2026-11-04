@@ -37,7 +37,7 @@ Defined once in `stslv-api/src/shared/export/pdf.ts` (`PDF_PAGE`, `pageLayout()`
 - Top of every page: the report title (bold, 12 pt) and, on the right, the period, over a thin rule.
 - Bottom of every page: a thin rule; under it the standing disclaimer (if the report has one), "Generated <time> by <user> · STSLEV AMC", and "Page n of N" on the right.
 - Under the title on the first page: the filters applied.
-- Tables: Roboto 8 pt, a navy heading row repeated on every page, rows never split across pages, zebra striping, group headings and a totals row where the report defines them. Columns share the full width between the margins in proportion to their declared widths, so a table never runs off the page; long text wraps inside its column.
+- Tables: Roboto 8 pt, a navy heading row repeated on every page, rows never split across pages, zebra striping, group headings and a totals row where the report defines them. A group heading (a month, for example) is never left alone at the foot of a page: it and the group's first row are laid out as one row, which moves to the next page together if it does not fit. Columns share the full width between the margins in proportion to their declared widths, so a table never runs off the page; long text wraps inside its column.
 - No images of any kind are embedded.
 
 ## The artwork (Excel only)
@@ -99,4 +99,4 @@ The orientation in brackets is how the Excel workbook prints; every PDF is A4 la
 
 - The supplied artwork is about 1,330 pixels wide: sharp on screen, slightly soft when an Excel sheet is printed. A higher-resolution original would print crisper.
 - The PDF font (Roboto, shipped with pdfmake) covers Latin, Greek and Cyrillic. Arabic text in the data would need another font and right-to-left layout.
-- In a PDF, a month heading can be the last line of a page, with its visits on the next.
+- A single row taller than a whole page (which no current report produces) cannot be kept on one page.

@@ -57,7 +57,19 @@ const rule = (margin: [number, number, number, number] = [0, 0, 0, 0]): Content 
   canvas: [{ type: "line", x1: 0, y1: 0, x2: PDF_PAGE.width - SIDE_MARGIN * 2, y2: 0, lineWidth: 0.75, lineColor: hex(BRAND.line) }],
 });
 const CELL_PADDING = 3;
+const CELL_PADDING_V = 3.5;
 const FONT_SIZE = 8;
+const LINE_WIDTH = 0.5;
+
+const tableLayout = (hLineWidth: (index: number) => number) => ({
+  hLineWidth,
+  vLineWidth: () => 0,
+  hLineColor: () => hex(BRAND.line),
+  paddingLeft: () => CELL_PADDING,
+  paddingRight: () => CELL_PADDING,
+  paddingTop: () => CELL_PADDING_V,
+  paddingBottom: () => CELL_PADDING_V,
+});
 
 // Roboto is shipped inside pdfmake, so no font is downloaded or installed.
 const FONT_DIR = path.join(path.dirname(require.resolve("pdfmake/package.json")), "fonts", "Roboto");
@@ -116,6 +128,13 @@ function tableContent(table: ReportTable, withHeading: boolean): Content[] {
       alignment: isNumeric(column.kind) ? "right" : "left",
     })),
   ];
+  const widths = columnWidths(columns);
+  const dataRow = (row: ReportTable["rows"][number], striped: boolean): TableCell[] =>
+    columns.map((column) => ({
+      text: pdfText(column.kind, row[column.pdfKey ?? column.key] ?? null),
+      alignment: isNumeric(column.kind) ? "right" : "left",
+      ...(striped ? { fillColor: hex(BRAND.zebra) } : {}),
+    }));
   let group: string | null = null;
   let striped = false;
 
@@ -125,16 +144,29 @@ function tableContent(table: ReportTable, withHeading: boolean): Content[] {
     if (heading !== null && heading !== group) {
       group = heading;
       striped = false;
-      body.push(span({ text: heading, colSpan: columns.length, bold: true, color: hex(BRAND.navy), fillColor: hex(BRAND.group) }));
+      // A group heading is never left alone at the foot of a page: it and the
+      // group's first row are one row of the table, and a row is never split.
+      // That row holds a table of its own, with the same columns, padding and
+      // lines; the negative margin takes away the outer cell's padding so its
+      // columns line up exactly with the rows around it.
+      body.push(
+        span({
+          colSpan: columns.length,
+          margin: [-CELL_PADDING, -CELL_PADDING_V, -CELL_PADDING, -CELL_PADDING_V],
+          table: {
+            widths,
+            body: [
+              [{ text: heading, colSpan: columns.length, bold: true, color: hex(BRAND.navy), fillColor: hex(BRAND.group) }, ...columns.slice(1).map(() => ({}))],
+              dataRow(row, false),
+            ],
+          },
+          // Only the line between the heading and the row: the outer table draws the lines above and below.
+          layout: tableLayout((index) => (index === 1 ? LINE_WIDTH : 0)),
+        })
+      );
+    } else {
+      body.push(dataRow(row, striped));
     }
-
-    body.push(
-      columns.map((column) => ({
-        text: pdfText(column.kind, row[column.pdfKey ?? column.key] ?? null),
-        alignment: isNumeric(column.kind) ? "right" : "left",
-        ...(striped ? { fillColor: hex(BRAND.zebra) } : {}),
-      }))
-    );
     striped = !striped;
   }
 
@@ -168,16 +200,8 @@ function tableContent(table: ReportTable, withHeading: boolean): Content[] {
     content.push({ text: table.notes.map(cleanText).join("  "), italics: true, fontSize: 7.5, color: hex(BRAND.muted), margin: [0, 0, 0, 6] });
   }
   content.push({
-    table: { headerRows: 1, dontBreakRows: true, widths: columnWidths(columns), body },
-    layout: {
-      hLineWidth: () => 0.5,
-      vLineWidth: () => 0,
-      hLineColor: () => hex(BRAND.line),
-      paddingLeft: () => CELL_PADDING,
-      paddingRight: () => CELL_PADDING,
-      paddingTop: () => 3.5,
-      paddingBottom: () => 3.5,
-    },
+    table: { headerRows: 1, dontBreakRows: true, widths, body },
+    layout: tableLayout(() => LINE_WIDTH),
   });
 
   return content;
@@ -212,8 +236,7 @@ export function pdfDefinition(report: ReportDefinition): TDocumentDefinitions {
     pageOrientation: PDF_PAGE.orientation,
     pageMargins: margins,
     info: { title: report.title, author: COMPANY_NAME, creator: SYSTEM_NAME, creationDate: report.generatedAt },
-    defaultStyle: { font: "Roboto", fontSize: FONT_SIZE, color: hex(BRAND.text), lineHeight: LINE_HEIGHT },
-    header: () => ({
+    defaultStyle: { font: "Roboto", fontSize: FONT_SIZE, color: hex(BRAND.text), lineHeight: LINE_HEIGHT },    header: () => ({
       margin: [SIDE_MARGIN, HEAD_TOP, SIDE_MARGIN, 0],
       stack: [
         {
