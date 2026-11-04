@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, createContract, logsFor, renewalEngineer } from "./amc-helpers";
+import { activeContract, createClient, createContract, fixtureError, logsFor, renewalEngineer } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // AMC contracts on the maintenance frequency master (migration 0076): the four
@@ -67,7 +67,7 @@ describe("the four existing frequencies", () => {
     const response = await createContract(admin, clientId, { maintenanceFrequency: "WEEKLY" });
 
     expect(response.status).toBe(400);
-    expect(response.body.error.details[0].field).toBe("maintenanceFrequency");
+    expect(fixtureError(response).details[0].field).toBe("maintenanceFrequency");
   });
 });
 
@@ -76,7 +76,7 @@ describe("new fixed intervals", () => {
     for (const code of ["BI_MONTHLY", "EVERY_4_MONTHS", "CUSTOM"]) {
       const response = await createContract(admin, clientId, { maintenanceFrequency: code, ...(code === "CUSTOM" ? { customMonths: [3] } : {}) });
       expect(response.status, code).toBe(400);
-      expect(response.body.error.details[0].field, code).toBe("maintenanceFrequency");
+      expect(fixtureError(response).details[0].field, code).toBe("maintenanceFrequency");
     }
   });
 
@@ -96,7 +96,7 @@ describe("new fixed intervals", () => {
     const response = await createContract(admin, clientId, { maintenanceFrequency: "QUARTERLY", customMonths: [2, 5] });
 
     expect(response.status).toBe(400);
-    expect(response.body.error.details[0].field).toBe("customMonths");
+    expect(fixtureError(response).details[0].field).toBe("customMonths");
   });
 });
 
@@ -117,7 +117,7 @@ describe("custom months (PROVISIONAL rule)", () => {
     ] as const) {
       const response = await createContract(admin, clientId, body(months));
       expect(response.status, JSON.stringify(months)).toBe(400);
-      expect(response.body.error.details[0].field, JSON.stringify(months)).toBe(field);
+      expect(fixtureError(response).details[0].field, JSON.stringify(months)).toBe(field);
     }
   });
 

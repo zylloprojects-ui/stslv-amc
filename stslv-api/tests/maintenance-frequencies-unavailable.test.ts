@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { pool } from "../src/config/database";
-import { createClient, createContract } from "./amc-helpers";
+import { createClient, createContract, fixtureError } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Maintenance frequencies on a database without migration 0076 (the 0076
@@ -64,10 +64,10 @@ describe("AMC contracts before migration 0076", () => {
   it("refuse the frequencies and custom months that need the update", async () => {
     const newCode = await createContract(admin, clientId, { maintenanceFrequency: "BI_MONTHLY" });
     expect(newCode.status).toBe(400);
-    expect(newCode.body.error.details[0].field).toBe("maintenanceFrequency");
+    expect(fixtureError(newCode).details[0].field).toBe("maintenanceFrequency");
 
     const months = await createContract(admin, clientId, { customMonths: [2, 8] });
     expect(months.status).toBe(400);
-    expect(months.body.error.details[0].field).toBe("customMonths");
+    expect(fixtureError(months).details[0].field).toBe("customMonths");
   });
 });

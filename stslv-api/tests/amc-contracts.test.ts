@@ -6,6 +6,7 @@ import {
   createClient,
   contractDocument,
   createContract,
+  fixtureError,
   grant,
   legacyContract,
   logsFor,
@@ -179,8 +180,8 @@ describe("money", () => {
       [notMoney, "finalCredit"],
     ] as const) {
       expect(response.status).toBe(400);
-      expect(response.body.error.code).toBe("VALIDATION_ERROR");
-      expect(response.body.error.details[0].field).toBe(field);
+      expect(fixtureError(response).code).toBe("VALIDATION_ERROR");
+      expect(fixtureError(response).details[0].field).toBe(field);
     }
   });
 
@@ -231,8 +232,8 @@ describe("validation", () => {
     const response = await createContract(admin, hotelOne, overrides);
 
     expect(response.status).toBe(400);
-    expect(response.body.error.code).toBe("VALIDATION_ERROR");
-    expect(response.body.error.details[0].field).toBe(field);
+    expect(fixtureError(response).code).toBe("VALIDATION_ERROR");
+    expect(fixtureError(response).details[0].field).toBe(field);
   });
 
   it("rejects unknown fields, such as a client name typed onto the contract", async () => {
@@ -248,7 +249,7 @@ describe("validation", () => {
     const response = await createContract(admin, inactive);
 
     expect(response.status).toBe(400);
-    expect(response.body.error.details).toEqual([
+    expect(fixtureError(response).details).toEqual([
       { field: "clientId", message: "An inactive client cannot be selected. Reactivate the client first." },
     ]);
   });

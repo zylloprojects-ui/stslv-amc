@@ -132,15 +132,21 @@ async function createDraftForTest(session: Session, body: Record<string, unknown
     status,
     body: { success: false, error: { code, message, ...(details ? { details } : {}) } },
   });
-  const found = await pool.query<{ id: string; email: string; full_name: string }>("SELECT id, email, full_name FROM users WHERE id = $1", [session.id]);
+  const found = await pool.query<{ id: string; email: string; full_name: string; must_change_password: boolean }>(
+    "SELECT id, email, full_name, must_change_password FROM users WHERE id = $1",
+    [session.id]
+  );
   const user = found.rows[0];
 
   if (!user) return fail(401, "UNAUTHORIZED", "Authentication is required.");
+  // As the authenticate middleware: a user still on a temporary password reaches no endpoint but the password change.
+  if (user.must_change_password) return fail(403, "PASSWORD_CHANGE_REQUIRED", "Choose a new password before continuing.");
 
   const auth: AuthContext = {
     user: { id: user.id, email: user.email, fullName: user.full_name },
     roles: await loadUserRoles(pool, user.id),
     permissions: await loadUserPermissions(pool, user.id),
+    mustChangePassword: user.must_change_password,
   };
 
   if (!auth.permissions.has("AMC_CONTRACTS:CREATE")) return fail(403, "FORBIDDEN", "You do not have permission to perform this action.");
@@ -170,6 +176,18 @@ export async function createContract(session: Session, clientId: string, overrid
   const response = await api().post("/api/amc/contracts").set(session.headers).send(body);
 
   return { status: response.status, body: response.body };
+}
+
+/**
+ * The error of a refused fixture request, with its field details (none listed = an empty list). Fails the test
+ * with the actual response when the request was not refused with an error.
+ */
+export function fixtureError(response: FixtureResponse): { code: string; message: string; details: { field: string; message: string }[] } {
+  const error = response.body.error;
+
+  if (!error) throw new Error(`Expected an error response, got ${response.status} ${JSON.stringify(response.body)}`);
+
+  return { code: error.code, message: error.message, details: error.details ?? [] };
 }
 
 /** Creates an ACTIVE contract (its schedule is generated) and returns its id. */
