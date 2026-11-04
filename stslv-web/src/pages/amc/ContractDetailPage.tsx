@@ -634,7 +634,7 @@ export function ContractDetailPage() {
                                   <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(visit.completedDate)}</td>
                                   <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(visit.visitAmount)}</td>
                                   <td className={TABLE.td}>
-                                    <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} label={visitNumberLabel(visit)} />
+                                    <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} completed={visit.status === 'COMPLETED'} label={visitNumberLabel(visit)} />
                                   </td>
                                   <td className={`${TABLE.td} whitespace-nowrap`}>{visit.paidAt ? formatDateTime(visit.paidAt) : '—'}</td>
                                   <td className={TABLE.td}>

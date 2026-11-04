@@ -2,6 +2,8 @@
 
 > **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
 
+> **Update (2026-11-04):** Hide Columns is in the Filters action row, on the right of Apply and Reset; the page header keeps only Excel and PDF. The **Actions** column (View, Record Zoho invoice) was removed: the AMC Reference still links to the contract, and Zoho invoices are recorded in Invoice Tracking (`/invoices`, which still accepts `?recordForVisit=`). The Invoice No. can be entered only on a completed service; see [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md#paid-is-a-reference-status). Columns: `#`, AMC Reference, then the ten that can be hidden.
+
 Route: `/finance/accounts` (navigation: AMC Operations → Accounts, the written specification's module order).
 API: `GET /api/accounts`, `GET /api/accounts/options`, `GET /api/accounts/export` (these read; the Invoice No. field saves through `PATCH /api/amc/visits/:id/manual-invoice`).
 Status: built 2026-10-28 on branch `feature/accounts-reconciliation`. No migration of its own; needs migration 0077.

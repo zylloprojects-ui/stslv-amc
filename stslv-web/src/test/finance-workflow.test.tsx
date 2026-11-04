@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { describe, expect, it, vi } from 'vitest'
-import { ManualInvoiceField, PAID_STATUS_NOTE, PaymentBadge } from '../pages/amc/ManualInvoiceField'
+import { COMPLETE_FIRST_NOTE, ManualInvoiceField, PAID_STATUS_NOTE, PaymentBadge } from '../pages/amc/ManualInvoiceField'
 import { RegenerateDialog } from '../pages/amc/RegenerateDialog'
 import { makeContract } from './amc-helpers'
 import { fail, mockApi, ok } from './helpers'
@@ -15,7 +15,7 @@ function wrap(children: ReactNode) {
 }
 
 const field = (props: Partial<Parameters<typeof ManualInvoiceField>[0]> = {}) => (
-  <ManualInvoiceField visitId="5" invoiceNo={null} updatedAt={UPDATED_AT} canEdit label="AMC-0007 Q1" {...props} />
+  <ManualInvoiceField visitId="5" invoiceNo={null} updatedAt={UPDATED_AT} canEdit completed label="AMC-0007 Q1" {...props} />
 )
 
 describe('manual Invoice No.', () => {
@@ -67,6 +67,45 @@ describe('manual Invoice No.', () => {
     expect(screen.getByText('INV-3')).toBeInTheDocument()
     expect(screen.getByText('Paid')).toBeInTheDocument()
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('on a service that is not completed, disables the field and OK and says why', () => {
+    mockApi(() => undefined)
+    wrap(field({ completed: false }))
+
+    const input = screen.getByLabelText('Invoice No. for AMC-0007 Q1')
+    expect(input).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Invoice No. for AMC-0007 Q1' })).toBeDisabled()
+    expect(screen.queryByRole('button', { name: /Clear Invoice No./ })).not.toBeInTheDocument()
+    expect(screen.getByText(COMPLETE_FIRST_NOTE)).toBeInTheDocument()
+    expect(input).toHaveAccessibleDescription(COMPLETE_FIRST_NOTE)
+    expect(COMPLETE_FIRST_NOTE).toBe('Complete the service before entering an invoice number.')
+  })
+
+  it('on a service that is not completed, keeps an existing number visible and read-only, and still lets it be cleared', async () => {
+    const api = mockApi((request) => (request.method === 'PATCH' ? ok({ id: '5' }) : undefined))
+    wrap(field({ completed: false, invoiceNo: 'INV-9' }))
+
+    const input = screen.getByLabelText('Invoice No. for AMC-0007 Q1')
+    expect(input).toHaveValue('INV-9')
+    expect(input).toHaveAttribute('readonly')
+    expect(screen.getByText('Paid')).toBeInTheDocument()
+    await userEvent.type(input, 'X')
+    expect(input).toHaveValue('INV-9')
+    expect(screen.getByRole('button', { name: 'Save Invoice No. for AMC-0007 Q1' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Clear Invoice No. for AMC-0007 Q1' }))
+    await waitFor(() => expect(api.find('PATCH', '/amc/visits/5/manual-invoice')[0]?.body).toEqual({ invoiceNo: null, expectedUpdatedAt: UPDATED_AT }))
+    expect(api.find('PATCH', '/amc/visits/5/manual-invoice')).toHaveLength(1)
+  })
+
+  it('on a completed service shows no completion note and no separate Clear button', () => {
+    mockApi(() => undefined)
+    wrap(field({ invoiceNo: 'INV-1' }))
+
+    expect(screen.getByLabelText('Invoice No. for AMC-0007 Q1')).toBeEnabled()
+    expect(screen.queryByText(COMPLETE_FIRST_NOTE)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Clear Invoice No./ })).not.toBeInTheDocument()
   })
 
   it('says on the badge that Paid is a reference status', () => {

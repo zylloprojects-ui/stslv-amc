@@ -536,7 +536,7 @@ export function AmcSchedulePage() {
                       <td className={TABLE.td}>
                         <EligibilityPill eligibility={visit.invoiceEligibility} />
                         <div className="mt-1">
-                          <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} label={label(visit)} />
+                          <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} completed={visit.status === 'COMPLETED'} label={label(visit)} />
                         </div>
                         <div className="mt-1">
                           <ServiceColor visit={visit} canEdit={canEdit} />

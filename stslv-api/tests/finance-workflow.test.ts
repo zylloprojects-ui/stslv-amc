@@ -35,6 +35,15 @@ const complete = async (id: string) => {
 const accountsRow = async (id: string, reference: string) =>
   ((await get("/accounts", { search: reference, pageSize: 200 })).body.data.items as { id: string; manualInvoiceNo: string | null; paymentStatus: string; colour: string; invoiceNumbers: string[] }[]).find((item) => item.id === id);
 const reference = (contractId: string) => `AMC-${contractId.padStart(4, "0")}`;
+/**
+ * A number entered before the 2026-11-04 completion rule, on a service that is still not completed.
+ * The API no longer accepts this, but such records exist and must keep working, so it is written
+ * straight into the test schema the way the API wrote it then.
+ */
+const legacyInvoiceNo = async (id: string, invoiceNo: string) => {
+  const by = (await pool.query("SELECT id FROM users WHERE email = 'admin@example.com'")).rows[0].id;
+  await pool.query("UPDATE amc_visits_all SET manual_invoice_no = $1, manual_invoice_at = now(), manual_invoice_by = $2, updated_at = now() WHERE id = $3", [invoiceNo, by, id]);
+};
 
 beforeAll(async () => {
   await resetData();
@@ -132,7 +141,7 @@ describe("Regenerate", () => {
     const [completed, paid, zoho, custom, cancelled] = visits;
 
     await complete(completed!.id);
-    expect((await setInvoiceNo(paid!.id, "M-1")).status).toBe(200);
+    await legacyInvoiceNo(paid!.id, "M-1");
     await complete(zoho!.id);
     await newInvoice(admin, invoiceBody(clientId, [{ amcVisitId: zoho!.id, amount: "50.000" }], { invoiceNumber: "ZOHO-KEEP", amountExclVat: "50.000", vatAmount: "2.500" }));
     expect((await patch(`/amc/visits/${custom!.id}`, { visitAmount: "77.000" })).status).toBe(200);
@@ -210,6 +219,7 @@ describe("manual Invoice No.", () => {
   it("entered = Paid, cleared = Unpaid; no date, amount or VAT asked for, and no invoice generated", async () => {
     const id = await activeContract(admin, clientId, terms("PAID-RULE", { billingBasis: "CONTRACT_VALUE" }));
     const [visit] = await visitsOf(id);
+    await complete(visit!.id);
     const invoices = (await pool.query("SELECT count(*)::int AS n FROM invoices")).rows[0].n;
 
     const entered = await setInvoiceNo(visit!.id, " INV-100 ");
@@ -228,24 +238,64 @@ describe("manual Invoice No.", () => {
     expect(actions.map((entry) => (entry.metadata as { changes: { manualInvoiceNo: unknown } }).changes.manualInvoiceNo)).toEqual([{ from: null, to: "INV-100" }, { from: "INV-100", to: null }]);
   });
 
-  it("is independent of service completion, in both directions", async () => {
-    const id = await activeContract(admin, clientId, terms("INDEPENDENT", { billingBasis: "CONTRACT_VALUE" }));
-    const [paidNotDone, doneNotPaid] = await visitsOf(id);
-
-    await setInvoiceNo(paidNotDone!.id, "EARLY-1");
-    await complete(doneNotPaid!.id);
-
+  it("can be entered only on a completed service; completing never makes a service Paid", async () => {
+    const id = await activeContract(admin, clientId, terms("COMPLETE-FIRST", { maintenanceFrequency: "QUARTERLY", billingBasis: "CONTRACT_VALUE" }));
+    const [open, doneNotPaid, postponed, inProgress] = await visitsOf(id);
     const ref = reference(id);
-    expect(await accountsRow(paidNotDone!.id, ref)).toMatchObject({ paymentStatus: "PAID", colour: "RED" });
+
+    // A direct request for a service that is not completed is refused, whatever the client claims.
+    const refused = await patch(`/amc/visits/${open!.id}/manual-invoice`, { invoiceNo: "EARLY-1", expectedUpdatedAt: await updatedAt(open!.id) });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toMatchObject({ success: false, error: { code: "CONFLICT", message: "Complete the service before entering an invoice number." } });
+    expect((await patch(`/amc/visits/${open!.id}/manual-invoice`, { invoiceNo: "EARLY-1", completed: true, expectedUpdatedAt: await updatedAt(open!.id) })).status).toBe(400);
+    expect((await get(`/amc/visits/${open!.id}`)).body.data).toMatchObject({ manualInvoiceNo: null, paymentStatus: "UNPAID", status: "SCHEDULED" });
+    expect((await logsFor("amc_visits", open!.id)).filter((entry) => entry.action === "amc_visit.manual_invoice_changed")).toHaveLength(0);
+
+    // Postponed and in-progress services are not completed either.
+    expect((await patch(`/amc/execution/visits/${postponed!.id}`, { status: "POSTPONED", statusReason: "Site closed" })).status).toBe(200);
+    expect((await setInvoiceNo(postponed!.id, "EARLY-2")).status).toBe(409);
+    expect((await patch(`/amc/execution/visits/${inProgress!.id}`, { status: "IN_PROGRESS" })).status).toBe(200);
+    expect((await setInvoiceNo(inProgress!.id, "EARLY-3")).status).toBe(409);
+
+    // Completing does not make a service Paid; once completed, the number is accepted.
+    await complete(doneNotPaid!.id);
     expect(await accountsRow(doneNotPaid!.id, ref)).toMatchObject({ paymentStatus: "UNPAID", colour: "BLUE" });
-    expect((await get(`/amc/visits/${paidNotDone!.id}`)).body.data.status).toBe("SCHEDULED");
-    await complete(paidNotDone!.id);
-    expect((await get(`/amc/visits/${paidNotDone!.id}`)).body.data.manualInvoiceNo).toBe("EARLY-1");
+    expect((await setInvoiceNo(doneNotPaid!.id, "DONE-1")).status).toBe(200);
+    expect(await accountsRow(doneNotPaid!.id, ref)).toMatchObject({ paymentStatus: "PAID", colour: "GREEN" });
+
+    // Each service is judged on its own: the completed one did not open the others of the same contract.
+    expect((await setInvoiceNo(open!.id, "DONE-1")).status).toBe(409);
+    await complete(open!.id);
+    expect((await setInvoiceNo(open!.id, "DONE-1")).status).toBe(200);
+  });
+
+  it("a number entered before the rule on a service not completed stays, may be cleared, but not changed", async () => {
+    const id = await activeContract(admin, clientId, terms("LEGACY-NO", { billingBasis: "CONTRACT_VALUE" }));
+    const [visit] = await visitsOf(id);
+    await legacyInvoiceNo(visit!.id, "OLD-1");
+    const ref = reference(id);
+
+    expect(await accountsRow(visit!.id, ref)).toMatchObject({ manualInvoiceNo: "OLD-1", paymentStatus: "PAID", colour: "RED" });
+    // Saving the same number again changes nothing and is not refused.
+    const same = await setInvoiceNo(visit!.id, "OLD-1");
+    expect(same.status).toBe(200);
+    expect(same.body.data.manualInvoiceNo).toBe("OLD-1");
+    // A different number is a new entry and needs completion.
+    expect((await setInvoiceNo(visit!.id, "OLD-2")).status).toBe(409);
+    expect((await get(`/amc/visits/${visit!.id}`)).body.data.manualInvoiceNo).toBe("OLD-1");
+    // Clearing returns the service to Unpaid at any status, and is logged.
+    const cleared = await setInvoiceNo(visit!.id, null);
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.data).toMatchObject({ manualInvoiceNo: null, paymentStatus: "UNPAID" });
+    const actions = (await logsFor("amc_visits", visit!.id)).filter((entry) => entry.action === "amc_visit.manual_invoice_changed");
+    expect(actions.map((entry) => (entry.metadata as { changes: { manualInvoiceNo: unknown } }).changes.manualInvoiceNo)).toEqual([{ from: "OLD-1", to: null }]);
   });
 
   it("the same number may cover several services", async () => {
     const id = await activeContract(admin, clientId, terms("SAME-NO", { billingBasis: "CONTRACT_VALUE" }));
     const [one, two] = await visitsOf(id);
+    await complete(one!.id);
+    await complete(two!.id);
 
     expect((await setInvoiceNo(one!.id, "SHARED-1")).status).toBe(200);
     expect((await setInvoiceNo(two!.id, "SHARED-1")).status).toBe(200);
@@ -271,7 +321,7 @@ describe("manual Invoice No.", () => {
   it("a Paid visit keeps its amount and survives contract cancellation of open visits", async () => {
     const id = await activeContract(admin, clientId, terms("PAID-LOCK", { billingBasis: "CONTRACT_VALUE" }));
     const [paid, open] = await visitsOf(id);
-    await setInvoiceNo(paid!.id, "LOCK-1");
+    await legacyInvoiceNo(paid!.id, "LOCK-1");
 
     const refused = await patch(`/amc/visits/${paid!.id}`, { visitAmount: "1.000" });
     expect(refused.status).toBe(409);
@@ -285,7 +335,7 @@ describe("manual Invoice No.", () => {
   it("a term change never removes a visit with a number on it", async () => {
     const id = await activeContract(admin, clientId, terms("TERM-KEEP", { billingBasis: "CONTRACT_VALUE", validTo: "2028-12-31" }));
     const visits = await visitsOf(id);
-    await setInvoiceNo(visits[3]!.id, "TERM-1");
+    await legacyInvoiceNo(visits[3]!.id, "TERM-1");
 
     // The paid visit falls outside the shorter validity: the change is refused, not silently applied.
     expect((await patch(`/amc/contracts/${id}`, { validTo: "2027-12-31" })).status).toBe(409);
@@ -295,6 +345,7 @@ describe("manual Invoice No.", () => {
   it("refuses historical and cancelled visits, a stale page, and an overlong number", async () => {
     const id = await activeContract(admin, clientId, terms("REFUSE", { billingBasis: "CONTRACT_VALUE" }));
     const [visit, other] = await visitsOf(id);
+    await complete(visit!.id);
     const stale = await updatedAt(visit!.id);
 
     expect((await setInvoiceNo(visit!.id, "FIRST")).status).toBe(200);
@@ -311,6 +362,7 @@ describe("manual Invoice No.", () => {
   it("needs INVOICES:EDIT on the server", async () => {
     const id = await activeContract(admin, clientId, terms("INV-PERM", { billingBasis: "CONTRACT_VALUE" }));
     const [visit] = await visitsOf(id);
+    await complete(visit!.id);
 
     expect((await setInvoiceNo(visit!.id, "NO", viewer)).status).toBe(403);
     expect((await patch(`/amc/visits/${visit!.id}/manual-invoice`, { invoiceNo: "YES", expectedUpdatedAt: await updatedAt(visit!.id) }, finance)).status).toBe(200);
@@ -323,9 +375,10 @@ describe("every page reads the same status", () => {
     const other = await createClient(admin, "Reconcile Plaza");
     const id = await activeContract(admin, other, terms("RECON", { clientId: other, maintenanceFrequency: "BI_MONTHLY", billingBasis: "CONTRACT_VALUE" }));
     const visits = await visitsOf(id);
-    await setInvoiceNo(visits[0]!.id, "RC-1");
-    await setInvoiceNo(visits[5]!.id, "RC-2");
     await complete(visits[0]!.id);
+    expect((await setInvoiceNo(visits[0]!.id, "RC-1")).status).toBe(200);
+    // A pre-rule number on a service not completed still counts as Paid everywhere.
+    await legacyInvoiceNo(visits[5]!.id, "RC-2");
 
     const accounts = (await get("/accounts", { clientId: other })).body.data;
     expect(accounts.kpis).toMatchObject({ rows: 6, invoiceFilled: 2, totalValue: "500.000", green: 1, red: 5 });
