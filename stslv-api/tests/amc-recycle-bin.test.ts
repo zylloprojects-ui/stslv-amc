@@ -178,15 +178,32 @@ describe("moving an AMC contract to the Recycle Bin", () => {
     expect((await pool.query("SELECT deleted_at FROM amc_contracts_all WHERE id = $1", [renewalId])).rows[0]?.deleted_at).not.toBeNull();
   });
 
-  it("keeps client deletion rules: a client whose only contract is in the Recycle Bin still cannot be deleted", async () => {
+  it("a client whose only contract is in the Recycle Bin can follow it there, but can never be deleted permanently (0106)", async () => {
     const otherClient = await createClient(superAdmin, "Client With Binned Contract");
     const id = await activeContract(superAdmin, otherClient, { systemDescription: "RB-CLIENT" });
+
+    // While the contract is live, the client cannot go to the Recycle Bin.
+    const refused = await api().delete(`/api/clients/${otherClient}`).set(superAdmin.headers);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toContain("1 AMC contract (1 Active)");
+
     expect((await remove(id)).status).toBe(200);
+    expect((await api().delete(`/api/clients/${otherClient}`).set(superAdmin.headers)).status).toBe(200);
 
-    const response = await api().delete(`/api/clients/${otherClient}`).set(superAdmin.headers);
+    // The contract stays listed in the Recycle Bin although its client is there too.
+    expect((await bin()).body.data.map((item: { id: string }) => item.id)).toContain(id);
 
-    expect(response.status).toBe(409);
-    expect(response.body.error.message).toContain("1 AMC contract");
-    expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [otherClient])).rowCount).toBe(1);
+    const purge = await api().delete(`/api/security/recycle-bin/clients/${otherClient}`).set(superAdmin.headers).send({ confirm: `CL-${otherClient.padStart(5, "0")}` });
+    expect(purge.status).toBe(409);
+    expect(purge.body.error.message).toContain("1 AMC contract (1 in the Recycle Bin)");
+    expect((await pool.query("SELECT 1 FROM clients_all WHERE id = $1", [otherClient])).rowCount).toBe(1);
+
+    // The contract cannot be restored before its client.
+    const blocked = await restore(id);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.error.message).toContain(`client CL-${otherClient.padStart(5, "0")} "Client With Binned Contract" is in the Recycle Bin`);
+
+    expect((await api().post(`/api/security/recycle-bin/clients/${otherClient}/restore`).set(superAdmin.headers)).status).toBe(200);
+    expect((await restore(id)).status).toBe(200);
   });
 });

@@ -12,6 +12,7 @@ import { assertContractNotInvoiced } from "../invoices/invoice-locks";
 import { attachStoredDocument, discardStoredFile, prepareContractDocument, storePreparedDocument } from "../attachments/attachments.service";
 import { clientCode } from "../clients/clients.service";
 import { hasStoredReference, referenceOfIdSql, referenceSql, rethrowDuplicateReference } from "./contract-reference";
+import { contractParents, restoreBlockers } from "../recycle-bin/contract-parents";
 import { amountForService, expectedTermTotal, serviceAmounts, servicesPerCycle, subtractMoney } from "./amc.billing";
 import { applyContractMasters } from "./contract-masters.service";
 import { CONTRACT_TRANSITIONS, MAX_CONTRACT_YEARS, type ContractStatus, type VisitStatus } from "./amc.constants";
@@ -1483,6 +1484,12 @@ export async function restoreContract(auth: AuthContext, id: string): Promise<Co
         }
       }
 
+      // A client, system type or sales engineer in the Recycle Bin (migration 0106) must be restored first.
+      const blockers = restoreBlockers(await contractParents(db, id));
+      if (blockers.length > 0) {
+        throw conflict(`This contract cannot be restored. ${blockers.join(" ")}`);
+      }
+
       await db.query("UPDATE amc_contracts_all SET deleted_at = NULL, deleted_by = NULL WHERE id = $1", [id]);
       const contract = await findContract(db, id);
       await logActivity(db, {
@@ -1501,6 +1508,10 @@ export async function restoreContract(auth: AuthContext, id: string): Promise<Co
     // The open-renewal index refuses it again should a renewal be created meanwhile.
     if (isUniqueViolation(error)) {
       throw conflict("This contract cannot be restored: its source contract now has another open renewal.");
+    }
+    // Migration 0106 refuses it again should a parent be moved to the Recycle Bin meanwhile.
+    if ((error as { code?: unknown } | null)?.code === "RB001") {
+      throw conflict("This contract cannot be restored: its client, system type or sales engineer is in the Recycle Bin. Restore that record first.");
     }
     throw error;
   }
@@ -1540,7 +1551,8 @@ export async function listDeletedContracts(auth: AuthContext): Promise<DeletedCo
              WHERE v.amc_contract_id = c.id) AS invoices,
             ${documents} AS documents
      FROM amc_contracts_all c
-     JOIN clients cl ON cl.id = c.client_id
+     -- clients_all: a contract stays listed when its client is in the Recycle Bin too (migration 0106).
+     JOIN clients_all cl ON cl.id = c.client_id
      LEFT JOIN users u ON u.id = c.deleted_by
      WHERE c.deleted_at IS NOT NULL
      ORDER BY c.deleted_at DESC, c.id DESC

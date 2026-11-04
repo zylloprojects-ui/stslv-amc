@@ -1,22 +1,25 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useId, useState } from 'react'
 import { useAuth } from '../../auth/context'
+import { isSuperAdmin } from '../../auth/roles'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
+import { MoveToRecycleBinDialog } from '../../components/MoveToRecycleBinDialog'
 import { ExportButtons } from '../../components/ExportButtons'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Badge, Button, ConfirmDialog, EmptyState, Modal, PageHeader, Spinner, TableScroll } from '../../components/ui'
+import { Alert, Badge, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { MasterFormModal, type AnyRecord } from './MasterDataPage'
 import { isFeatureUnavailable, type MasterList, type SystemType } from './masterTypes'
-import { DeleteSystemTypeModal, LinkedContractsModal } from './systemTypeDialogs'
+import { LinkedContractsModal } from './systemTypeDialogs'
 import { FilterPanel } from '../amc/components'
 
 // System Types (migration 0070): the classification an AMC contract is linked
 // to. A contract refers to its type by id, so editing a type's code or name
 // never breaks the link. Disabled types stay on the contracts that use them but
-// are not offered for new ones. Only a type no contract uses can be deleted.
+// are not offered for new ones. Delete moves a type no live contract uses to the
+// Recycle Bin (Super Admin only, migration 0106).
 
 type StatusFilter = 'active' | 'inactive' | 'all'
 type StatusValue = 'active' | 'inactive'
@@ -75,7 +78,6 @@ type Dialog =
   | { kind: 'edit'; type: SystemType }
   | { kind: 'contracts'; type: SystemType }
   | { kind: 'delete'; type: SystemType }
-  | { kind: 'in-use'; type: SystemType }
   | { kind: 'status'; type: SystemType }
 
 export function SystemTypesPage() {
@@ -141,7 +143,8 @@ export function SystemTypesPage() {
 
   const canCreate = auth.can('SYSTEM_TYPES', 'CREATE')
   const canEdit = auth.can('SYSTEM_TYPES', 'EDIT')
-  const canDelete = auth.can('SYSTEM_TYPES', 'DELETE')
+  // Moving a type to the Recycle Bin is Super Admin only (approved 2026-11-04); the API refuses anyone else.
+  const canDelete = isSuperAdmin(auth.user) && auth.can('SYSTEM_TYPES', 'DELETE')
   const canExport = auth.can('SYSTEM_TYPES', 'EXPORT')
   const canViewContracts = auth.can('AMC_CONTRACTS', 'VIEW')
   const closeDialog = () => setDialog({ kind: 'none' })
@@ -357,6 +360,9 @@ export function SystemTypesPage() {
                               ) : (
                                 type.contractCount
                               )}
+                              {(type.recycledContractCount ?? 0) > 0 && (
+                                <span className="block text-[11px] font-normal text-slate-500">+{type.recycledContractCount} in Recycle Bin</span>
+                              )}
                             </td>
                           )}
                           <td className={`${TABLE.td} whitespace-nowrap pr-5 text-right`}>
@@ -376,7 +382,7 @@ export function SystemTypesPage() {
                                   />
                                 )}
                                 {canDelete && (
-                                  <ActionButton danger label={`Delete ${type.name}`} icon="delete" onClick={() => setDialog(type.contractCount > 0 ? { kind: 'in-use', type } : { kind: 'delete', type })} />
+                                  <ActionButton danger label={`Delete ${type.name}`} icon="delete" onClick={() => setDialog({ kind: 'delete', type })} />
                                 )}
                               </ActionGroup>
                             )}
@@ -430,45 +436,25 @@ export function SystemTypesPage() {
       )}
 
       {dialog.kind === 'delete' && (
-        <DeleteSystemTypeModal
-          type={dialog.type}
+        <MoveToRecycleBinDialog
+          noun="system type"
+          label={`${dialog.type.code} — ${dialog.type.name}`}
+          usagePath={`/masters/system-types/${dialog.type.id}/usage`}
+          deletePath={`/masters/system-types/${dialog.type.id}`}
+          refresh={[['masters']]}
           onClose={closeDialog}
-          onDeleted={(message) => {
+          onMoved={(message) => {
             setNotice(message)
             closeDialog()
           }}
-        />
-      )}
-
-      {dialog.kind === 'in-use' && (
-        <Modal
-          title="This system type cannot be deleted"
-          onClose={closeDialog}
-          footer={
-            <>
-              {canViewContracts && (
-                <Button variant="secondary" onClick={() => setDialog({ kind: 'contracts', type: dialog.type })}>
-                  View contracts
-                </Button>
-              )}
-              <Button onClick={closeDialog}>Close</Button>
-            </>
+          blockedAction={
+            canViewContracts && dialog.type.contractCount > 0 ? (
+              <Button variant="secondary" onClick={() => setDialog({ kind: 'contracts', type: dialog.type })}>
+                View contracts
+              </Button>
+            ) : undefined
           }
-        >
-          <div className="space-y-3 text-sm text-slate-700">
-            <p>
-              <strong>
-                {dialog.type.code} — {dialog.type.name}
-              </strong>{' '}
-              is used by {dialog.type.contractCount} AMC {dialog.type.contractCount === 1 ? 'contract' : 'contracts'}. Deleting it would remove the classification from {dialog.type.contractCount === 1 ? 'that contract' : 'those contracts'}, so it is not allowed.
-            </p>
-            <p>
-              {dialog.type.isActive
-                ? 'Disable it instead, using the Status column: the contracts keep it, and it is no longer offered for new contracts.'
-                : 'It is already disabled: the contracts keep it, and it is not offered for new contracts.'}
-            </p>
-          </div>
-        </Modal>
+        />
       )}
     </>
   )

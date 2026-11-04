@@ -253,7 +253,7 @@ describe("status and AMC assignment", () => {
 
     expect(refused.status).toBe(409);
     expect(refused.body.error.message).toContain("1 AMC contract");
-    expect(refused.body.error.message).toContain("Disable the engineer instead");
+    expect(refused.body.error.message).toContain("Disable it instead");
     expect((await pool.query("SELECT 1 FROM sales_engineers WHERE id = $1", [engineer])).rowCount).toBe(1);
   });
 });
@@ -329,7 +329,7 @@ describe("permanent delete", () => {
     expect(enabled.body.data.isActive).toBe(true);
   });
 
-  it("refuses an engineer whose only contract is cancelled and in the Recycle Bin, and keeps every record", async () => {
+  it("moves an engineer whose only contract is in the Recycle Bin, keeps every link, and refuses its permanent deletion", async () => {
     const id = (await create({ code: "DEL-HIST", name: "Historical Engineer" })).body.data.id as string;
     const clientId = await createClient(admin, "Historical Client");
     const contract = await activeContract(admin, clientId, { salesEngineerId: id });
@@ -339,29 +339,39 @@ describe("permanent delete", () => {
 
     await pool.query("UPDATE amc_contracts_all SET status = 'CANCELLED', deleted_at = now(), deleted_by = $2 WHERE id = $1", [contract, admin.id]);
 
-    const refused = await api().delete(`/api/masters/sales-engineers/${id}`).set(admin.headers);
-    expect(refused.status).toBe(409);
-    expect(refused.body.error.message).toContain("Recycle Bin");
-    expect((await pool.query("SELECT 1 FROM sales_engineers WHERE id = $1", [id])).rowCount).toBe(1);
+    // A contract in the Recycle Bin does not block moving the engineer there too (D1).
+    const moved = await api().delete(`/api/masters/sales-engineers/${id}`).set(admin.headers);
+    expect(moved.status).toBe(200);
+    expect((await pool.query("SELECT 1 FROM sales_engineers_all WHERE id = $1 AND deleted_at IS NOT NULL", [id])).rowCount).toBe(1);
     expect((await pool.query("SELECT sales_engineer_id FROM amc_contracts_all WHERE id = $1", [contract])).rows[0]?.sales_engineer_id).toBe(id);
     expect(await countVisits()).toBe(visitsBefore);
+
+    // But it has been used, so it can never be deleted permanently.
+    const purge = await api().delete(`/api/security/recycle-bin/sales-engineers/${id}`).set(admin.headers).send({ confirm: "DEL-HIST" });
+    expect(purge.status).toBe(409);
+    expect(purge.body.error.message).toContain("1 AMC contract (1 in the Recycle Bin)");
+    expect((await pool.query("SELECT 1 FROM sales_engineers_all WHERE id = $1", [id])).rowCount).toBe(1);
   });
 
-  it("deletes an unused engineer, records it in the Deletion Log and never reuses the code", async () => {
+  it("deletes an unused engineer permanently from the Recycle Bin, records it in the Deletion History and never reuses the code", async () => {
     const id = (await create({ code: "DEL-OK", name: "Unused Engineer" })).body.data.id as string;
 
     const deleted = await api().delete(`/api/masters/sales-engineers/${id}`).set(admin.headers);
     expect(deleted.status).toBe(200);
-    expect(deleted.body.data).toEqual({ deleted: true });
+    expect(deleted.body.data).toEqual({ deleted: true, recycleBin: true });
     expect((await api().get(`/api/masters/sales-engineers/${id}`).set(admin.headers)).status).toBe(404);
     expect((await api().delete(`/api/masters/sales-engineers/${id}`).set(admin.headers)).status).toBe(404);
 
+    const purged = await api().delete(`/api/security/recycle-bin/sales-engineers/${id}`).set(admin.headers).send({ confirm: "del-ok" });
+    expect(purged.status).toBe(200);
+    expect((await pool.query("SELECT 1 FROM sales_engineers_all WHERE id = $1", [id])).rowCount).toBe(0);
+
     const logs = await logsFor("sales_engineers", id);
-    expect(logs.at(-1)?.action).toBe("sales_engineer.deleted");
+    expect(logs.map((entry) => entry.action).slice(-2)).toEqual(["sales_engineer.deleted", "sales_engineer.purged"]);
 
     const log = await api().get("/api/security/deletions").set(admin.headers);
-    const item = log.body.data.items.find((entry: { action: string; entityId: string }) => entry.action === "sales_engineer.deleted" && entry.entityId === id);
-    expect(item).toMatchObject({ kind: "DELETED", entityType: "sales_engineers", description: 'Sales engineer "Unused Engineer" (DEL-OK) deleted.' });
+    const item = log.body.data.items.find((entry: { action: string; entityId: string }) => entry.action === "sales_engineer.purged" && entry.entityId === id);
+    expect(item).toMatchObject({ kind: "DELETED", deletion: "PERMANENT", currentStatus: "PERMANENTLY_DELETED", entityType: "sales_engineers" });
 
     const reused = await create({ code: "del-ok", name: "Code Reuser" });
     expect(reused.status).toBe(409);

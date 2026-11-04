@@ -96,7 +96,7 @@ describe("Accounts", () => {
   afterAll(closePool);
 
   beforeEach(async () => {
-    await pool.query("TRUNCATE activity_logs, invoice_allocations, invoices, amc_visits_all, amc_contracts_all, clients, sales_engineers RESTART IDENTITY CASCADE");
+    await pool.query("TRUNCATE activity_logs, invoice_allocations, invoices, amc_visits_all, amc_contracts_all, clients_all, sales_engineers_all RESTART IDENTITY CASCADE");
     const alphaId = await createClient(admin, "Alpha Towers");
     const betaId = await createClient(admin, "Beta Mall");
     const esha = await insertEngineer("Esha Engineer");

@@ -8,7 +8,7 @@ import { sendExport } from "../../shared/export/send";
 import { getClientSummary } from "./client-summary.service";
 import { buildClientContractsExport, buildClientsExport } from "./clients.export";
 import { createClientSchema, exportClientContractsSchema, exportClientsSchema, listClientsSchema, updateClientSchema } from "./clients.schemas";
-import { clientFeatures, createClient, deleteClient, getClient, listClientHistory, listClients, setClientActive, updateClient } from "./clients.service";
+import { clientFeatures, createClient, deleteClient, getClient, getClientUsage, listClientHistory, listClients, setClientActive, updateClient } from "./clients.service";
 
 export const clientsRouter = Router();
 
@@ -76,12 +76,18 @@ clientsRouter.patch("/:id", authorize("CLIENTS", "EDIT"), async (req, res) => {
   res.json({ success: true, data: client });
 });
 
-// Permanent deletion: Super Admin only (403 for everyone else, checked in deleteClient), and only a
-// client that no contract, project or invoice uses; otherwise 409 with the reason.
+// What uses the client, for the delete dialog: counted on request, Recycle Bin contracts apart.
+clientsRouter.get("/:id/usage", authorize("CLIENTS", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getClientUsage(parseIdParam(req.params.id)) });
+});
+
+// Moves the client to the Recycle Bin (nothing is removed): Super Admin only (403 for everyone else,
+// checked in the service), and only a client no live contract, invoice, project or import row uses;
+// otherwise 409 with the reason. Permanent deletion is in the Recycle Bin (/api/security/recycle-bin).
 clientsRouter.delete("/:id", authorize("CLIENTS", "DELETE"), async (req, res) => {
   await deleteClient(requireAuth(req), parseIdParam(req.params.id));
 
-  res.json({ success: true, data: { deleted: true } });
+  res.json({ success: true, data: { deleted: true, recycleBin: true } });
 });
 
 // The DELETE permission also governs deactivation.

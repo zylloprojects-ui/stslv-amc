@@ -75,7 +75,7 @@ describe("Services Sales", () => {
 
   beforeEach(async () => {
     // Visit ids restart, so the audit entries of earlier tests go too.
-    await pool.query("TRUNCATE activity_logs, amc_visits_all, amc_contracts_all, clients, sales_engineers, system_types RESTART IDENTITY CASCADE");
+    await pool.query("TRUNCATE activity_logs, amc_visits_all, amc_contracts_all, clients_all, sales_engineers_all, system_types_all RESTART IDENTITY CASCADE");
     const alphaId = await createClient(admin, "Alpha Towers");
     const betaId = await createClient(admin, "Beta Mall");
     const esha = await insertMaster("sales_engineers", "Esha Engineer");

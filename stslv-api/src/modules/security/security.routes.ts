@@ -2,7 +2,9 @@ import { createReadStream } from "node:fs";
 import { Router, type RequestHandler } from "express";
 import { adminOnly } from "../../middleware/admin-only";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
-import { forbidden } from "../../shared/errors";
+import { conflict, forbidden } from "../../shared/errors";
+import { purgeSchema, listRecycleBinSchema, recycleTypeParamSchema } from "../recycle-bin/recycle-bin.schemas";
+import { assertRecycleBinAdmin, checkRecycleItem, listRecycleBin, purgeMaster, restoreMaster } from "../recycle-bin/recycle-bin.service";
 import { isSuperAdmin } from "../../shared/role-model";
 import { parseIdParam } from "../../shared/validation";
 import { listDeletedContracts, restoreContract } from "../amc/contracts.service";
@@ -42,13 +44,50 @@ securityRouter.get("/deletions", async (req, res) => {
   res.json({ success: true, data: await listDeletions(listDeletionsSchema.parse(req.query)) });
 });
 
-// AMC contracts in the Recycle Bin, and restoring one. Super Admin only (checked in the service).
+// Recycle Bin (migrations 0101 and 0106): the records currently in it, never past events. Super Admin
+// only, checked in the services, so Admin gets 403 here although the router admits administrators.
+securityRouter.get("/recycle-bin", async (req, res) => {
+  res.json({ success: true, data: await listRecycleBin(requireAuth(req), listRecycleBinSchema.parse(req.query)) });
+});
+
+// Kept for a frontend released before 0106 (Pages and the API deploy separately): the deleted contracts as before.
 securityRouter.get("/recycle-bin/amc-contracts", async (req, res) => {
   res.json({ success: true, data: await listDeletedContracts(requireAuth(req)) });
 });
 
-securityRouter.post("/recycle-bin/amc-contracts/:id/restore", async (req, res) => {
-  res.json({ success: true, data: await restoreContract(requireAuth(req), parseIdParam(req.params.id)) });
+// What restoring and permanent deletion would do: blockers, warnings, and whether the record was ever used.
+securityRouter.get("/recycle-bin/:type/:id/check", async (req, res) => {
+  const type = recycleTypeParamSchema.parse(req.params.type);
+
+  res.json({ success: true, data: await checkRecycleItem(requireAuth(req), type, parseIdParam(req.params.id)) });
+});
+
+securityRouter.post("/recycle-bin/:type/:id/restore", async (req, res) => {
+  const auth = requireAuth(req);
+  const type = recycleTypeParamSchema.parse(req.params.type);
+  const id = parseIdParam(req.params.id);
+
+  if (type === "AMC_CONTRACT") {
+    // The response of the former route: the restored contract (the frontend of before 0106 reads it).
+    res.json({ success: true, data: await restoreContract(auth, id) });
+    return;
+  }
+
+  res.json({ success: true, data: await restoreMaster(auth, type, id) });
+});
+
+// Permanent deletion: clients, system types and sales engineers only, never used, code typed to confirm.
+securityRouter.delete("/recycle-bin/:type/:id", async (req, res) => {
+  const auth = requireAuth(req);
+  const type = recycleTypeParamSchema.parse(req.params.type);
+
+  assertRecycleBinAdmin(auth);
+  if (type === "AMC_CONTRACT") {
+    throw conflict("AMC contracts are never deleted permanently. Restore the contract, or leave it in the Recycle Bin.");
+  }
+
+  await purgeMaster(auth, type, parseIdParam(req.params.id), purgeSchema.parse(req.body ?? {}).confirm);
+  res.json({ success: true, data: { deleted: true } });
 });
 
 securityRouter.get("/backups", async (_req, res) => {

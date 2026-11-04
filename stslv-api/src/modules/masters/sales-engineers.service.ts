@@ -1,8 +1,6 @@
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
-import { withTransaction } from "../../shared/db";
-import { conflict, forbidden, notFound } from "../../shared/errors";
-import { isSuperAdmin } from "../../shared/role-model";
+import { getMasterUsage, moveMasterToRecycleBin } from "../recycle-bin/recycle-bin.service";
 import { assertExportSize, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
 import type { PermissionKey } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
@@ -164,7 +162,8 @@ export async function engineerUserOptions(engineerId: string | undefined) {
     `SELECT u.id, u.full_name, u.email
      FROM users u
      WHERE u.is_active AND u.approval_status = 'APPROVED'
-       AND NOT EXISTS (SELECT 1 FROM sales_engineers e WHERE e.user_id = u.id AND e.id IS DISTINCT FROM $1::bigint)
+       -- sales_engineers_all: an engineer in the Recycle Bin keeps its account (migration 0106).
+       AND NOT EXISTS (SELECT 1 FROM sales_engineers_all e WHERE e.user_id = u.id AND e.id IS DISTINCT FROM $1::bigint)
      ORDER BY lower(u.full_name), u.id`,
     [engineerId ?? null]
   );
@@ -173,95 +172,23 @@ export async function engineerUserOptions(engineerId: string | undefined) {
 }
 
 // ---------------------------------------------------------------------------
-// Permanent delete
+// Delete: to the Recycle Bin
 // ---------------------------------------------------------------------------
 
-/** True for a PostgreSQL foreign-key violation (23503). */
-function isForeignKeyViolation(error: unknown): boolean {
-  return (error as { code?: unknown } | null)?.code === "23503";
-}
-
-function inUseMessage(name: string, contracts: number): string {
-  const what = contracts > 0 ? `${contracts} AMC contract${contracts === 1 ? "" : "s"}` : "other records";
-
-  return `${name} cannot be deleted: the engineer is linked to ${what} (including any in the Recycle Bin). Disable the engineer instead; the contracts keep the link.`;
-}
-
 /**
- * Permanently deletes a sales engineer that no AMC contract refers to. Super Admin only (403 for
- * everyone else, whatever their permissions). The only record that refers to an engineer is
- * amc_contracts_all.sales_engineer_id; contracts in the Recycle Bin count too, and their services,
- * invoices and history hang off the contract. A linked engineer is refused with 409, and the
- * database's ON DELETE RESTRICT refuses it again should a contract be linked between the check and
- * the delete. The code is retired so it is never reused, and the activity log (Deletion Log) keeps
- * what the engineer was.
+ * Moves a sales engineer to the Recycle Bin (migration 0106, approved 2026-11-04). Nothing is
+ * removed, and the engineer keeps its code, department and user links. Super Admin only (403 for
+ * everyone else, whatever their permissions). Refused with 409 while an AMC contract outside the
+ * Recycle Bin is linked to the engineer. Permanent deletion, which retires the code for good, is only
+ * possible from the Recycle Bin, for an engineer never used.
  */
-export async function deleteSalesEngineer(auth: AuthContext, id: string): Promise<void> {
-  if (!isSuperAdmin(auth.roles)) {
-    throw forbidden("Only Super Admin can permanently delete a sales engineer. Disable the engineer instead.");
-  }
+export function deleteSalesEngineer(auth: AuthContext, id: string): Promise<void> {
+  return moveMasterToRecycleBin(auth, "SALES_ENGINEER", id);
+}
 
-  let name = "";
-
-  try {
-    await withTransaction(async (db) => {
-      // Locked, so no contract can be linked to the engineer until this transaction ends.
-      const found = await db.query<{ code: string; name: string; employee_no: string | null; email: string | null; phone: string | null; department_id: string | null; user_id: string | null; is_active: boolean }>(
-        "SELECT code, name, employee_no, email, phone, department_id, user_id, is_active FROM sales_engineers WHERE id = $1 FOR UPDATE",
-        [id]
-      );
-      const engineer = found.rows[0];
-
-      if (!engineer) {
-        throw notFound(`${SALES_ENGINEERS.label} not found.`);
-      }
-      name = engineer.name;
-
-      const used = await db.query<{ contracts: number }>("SELECT count(*)::int AS contracts FROM amc_contracts_all WHERE sales_engineer_id = $1", [id]);
-      const contracts = used.rows[0]?.contracts ?? 0;
-
-      if (contracts > 0) {
-        throw conflict(inUseMessage(engineer.name, contracts));
-      }
-
-      await db.query("DELETE FROM sales_engineers WHERE id = $1", [id]);
-      await db.query(
-        `INSERT INTO sales_engineer_retired_codes (code_key, code, engineer_id, name, retired_by)
-         VALUES (lower($1), $1, $2, $3, $4)
-         ON CONFLICT (code_key) DO NOTHING`,
-        [engineer.code, id, engineer.name, auth.user.id]
-      );
-      await logActivity(db, {
-        userId: auth.user.id,
-        action: "sales_engineer.deleted",
-        module: SALES_ENGINEERS.module,
-        entityType: SALES_ENGINEERS.entityType,
-        entityId: id,
-        description: `Sales engineer "${engineer.name}" (${engineer.code}) deleted.`,
-        // The record no longer exists; the log keeps what it was.
-        metadata: {
-          deleted: {
-            code: engineer.code,
-            name: engineer.name,
-            employeeNo: engineer.employee_no,
-            email: engineer.email,
-            phone: engineer.phone,
-            departmentId: engineer.department_id,
-            userId: engineer.user_id,
-            isActive: engineer.is_active,
-          },
-        },
-      });
-    });
-  } catch (error) {
-    if (isForeignKeyViolation(error)) {
-      const count = await pool.query<{ count: number }>("SELECT count(*)::int AS count FROM amc_contracts_all WHERE sales_engineer_id = $1", [id]);
-
-      throw conflict(inUseMessage(name, count.rows[0]?.count ?? 0));
-    }
-
-    throw error;
-  }
+/** What uses an engineer, for the delete dialog. */
+export function getSalesEngineerUsage(id: string) {
+  return getMasterUsage("SALES_ENGINEER", id);
 }
 
 // ---------------------------------------------------------------------------

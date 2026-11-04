@@ -1,5 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { isSuperAdmin } from '../../auth/roles'
 import { ExportButtons } from '../../components/ExportButtons'
@@ -14,11 +15,17 @@ import { IconTile, type IconName } from '../dashboard/icons'
 import { ColumnsMenu } from '../clients/ColumnsMenu'
 import { useHiddenColumns } from './useHiddenColumns'
 import { actionLabel, fieldLabel } from './auditTypes'
-import { DeletedContracts } from './DeletedContracts'
+import { RecycleBin } from './RecycleBin'
+
+type CurrentStatus = 'LIVE' | 'INACTIVE' | 'CANCELLED' | 'ARCHIVED' | 'IN_RECYCLE_BIN' | 'PERMANENTLY_DELETED'
 
 interface DeletionEntry {
   id: string
-  kind: 'DELETED' | 'VOIDED' | 'DEACTIVATED'
+  kind: 'DELETED' | 'VOIDED' | 'DEACTIVATED' | 'RESTORED'
+  /** For DELETED: moved to the Recycle Bin, or removed for good. */
+  deletion: 'RECYCLE_BIN' | 'PERMANENT' | null
+  /** The record's status now, for the record types that have one. */
+  currentStatus: CurrentStatus | null
   action: string
   entityType: string
   entityId: string | null
@@ -37,10 +44,11 @@ interface DeletionList {
 }
 
 const PAGE_SIZE = 25
-const COLUMN_IDS = ['type', 'record', 'user', 'details'] as const
+const COLUMN_IDS = ['type', 'record', 'status', 'user', 'details'] as const
 const COLUMNS: { key: (typeof COLUMN_IDS)[number]; label: string }[] = [
   { key: 'type', label: 'Record type' },
   { key: 'record', label: 'Record no.' },
+  { key: 'status', label: 'Status now' },
   { key: 'user', label: 'User' },
   { key: 'details', label: 'Details' },
 ]
@@ -48,6 +56,25 @@ const KIND = {
   DELETED: { label: 'Deleted', tone: 'bg-red-100 text-red-800 ring-red-200', dot: 'bg-red-500', edge: '#ef4444', row: 'hover:bg-red-50/60', filter: 'kind-filter-deleted' },
   VOIDED: { label: 'Cancelled', tone: 'bg-amber-100 text-amber-900 ring-amber-200', dot: 'bg-amber-500', edge: '#f59e0b', row: 'hover:bg-amber-50/60', filter: 'kind-filter-voided' },
   DEACTIVATED: { label: 'Deactivated', tone: 'bg-slate-200 text-slate-800 ring-slate-300', dot: 'bg-slate-500', edge: '#64748b', row: 'hover:bg-slate-100/70', filter: 'kind-filter-deactivated' },
+  RESTORED: { label: 'Restored', tone: 'bg-emerald-100 text-emerald-900 ring-emerald-200', dot: 'bg-emerald-500', edge: '#10b981', row: 'hover:bg-emerald-50/60', filter: 'kind-filter-restored' },
+}
+
+/** "To Recycle Bin" or "Deleted permanently" for a deletion; the kind's own label otherwise. */
+function kindLabel(entry: DeletionEntry): string {
+  if (entry.kind === 'DELETED' && entry.deletion === 'RECYCLE_BIN') return 'To Recycle Bin'
+  if (entry.kind === 'DELETED' && entry.deletion === 'PERMANENT') return 'Deleted permanently'
+  if (entry.kind === 'RESTORED') return entry.action.endsWith('.restored') ? 'Restored' : 'Reactivated'
+
+  return KIND[entry.kind].label
+}
+
+const STATUS: Record<CurrentStatus, { label: string; tone: string }> = {
+  LIVE: { label: 'Active', tone: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
+  INACTIVE: { label: 'Inactive', tone: 'border-slate-300 bg-slate-100 text-slate-700' },
+  CANCELLED: { label: 'Cancelled', tone: 'border-amber-200 bg-amber-50 text-amber-900' },
+  ARCHIVED: { label: 'Archived', tone: 'border-slate-300 bg-slate-100 text-slate-700' },
+  IN_RECYCLE_BIN: { label: 'In Recycle Bin', tone: 'border-red-200 bg-red-50 text-red-800' },
+  PERMANENTLY_DELETED: { label: 'Permanently deleted', tone: 'border-slate-400 bg-white text-slate-800' },
 }
 
 function Stat({ label, value, icon, from, to, children }: { label: string; value: string; icon: IconName; from: string; to: string; children?: ReactNode }) {
@@ -66,13 +93,83 @@ function Stat({ label, value, icon, from, to, children }: { label: string; value
 
 const isoDay = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 
+type View = 'bin' | 'history'
+
 /**
- * Recycle Bin: deleted AMC contracts, which Super Admin can restore (migration 0101), and the removals
- * recorded in the activity log, newest first. Administrators only. Other record types are history only
- * (see docs/RECYCLE_BIN.md). Its address and API keep the former Deletion Log names, so saved links,
- * permissions and existing audit entries stay valid.
+ * Two views (approved 2026-11-04, docs/RECYCLE_BIN.md):
+ *   * Recycle Bin (Super Admin): the AMC contracts, clients, system types and sales engineers deleted now,
+ *     read from their current state, with Restore and, for records never used, Delete permanently.
+ *   * Deletion History (administrators): every deletion, cancellation, deactivation and their reversal,
+ *     read from the activity log, newest first, with each record's status now. Nothing in it is removed.
+ * The address and API keep the former Deletion Log names, so saved links, permissions and existing audit
+ * entries stay valid.
  */
 export function DeletionLogPage() {
+  const auth = useAuth()
+  const superAdmin = isSuperAdmin(auth.user)
+  const [params, setParams] = useSearchParams()
+  const view: View = superAdmin && params.get('view') !== 'history' ? 'bin' : 'history'
+  const showView = (next: View) => setParams(next === 'bin' ? {} : { view: 'history' }, { replace: true })
+
+  return (
+    <>
+      <PageHeader
+        title="Recycle Bin"
+        description={
+          superAdmin
+            ? 'Records deleted now, which you can restore, and the history of every deletion, cancellation, deactivation and restore.'
+            : 'The history of every deletion, cancellation, deactivation and restore: what, by whom and when. Only Super Admin can open the Recycle Bin itself.'
+        }
+      />
+      {superAdmin && (
+        <div role="tablist" aria-label="Recycle Bin views" className="mb-4 flex gap-1 border-b border-slate-200">
+          {(
+            [
+              ['bin', 'Recycle Bin'],
+              ['history', 'Deletion History'],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={view === value}
+              onClick={() => showView(value)}
+              className={cx(
+                '-mb-px rounded-t-lg border border-b-0 px-4 py-2 text-sm font-semibold',
+                view === value ? 'border-slate-200 bg-white text-[#0b3b66]' : 'border-transparent text-slate-600 hover:text-[#0b3b66]',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {view === 'bin' ? <RecycleBinView /> : <DeletionHistory />}
+    </>
+  )
+}
+
+function RecycleBinView() {
+  return (
+    <>
+      <div role="note" className="mb-4 flex gap-3 rounded-xl border border-l-4 border-sky-200 border-l-[#1479BD] bg-sky-50 px-4 py-3 text-sm text-slate-800">
+        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#1479BD] text-xs font-bold text-white" aria-hidden="true">i</span>
+        <div>
+          <p className="font-semibold">Only records deleted now are here.</p>
+          <p className="mt-1 text-xs leading-relaxed">
+            A record in the Recycle Bin is kept in full and can be restored with the same number and links. A client, system type or sales engineer that was never used can also be deleted
+            permanently. AMC contracts are never deleted permanently. Deactivated records are not here: they stay on their own pages, where they can be switched back on. Every event stays in the
+            Deletion History and the Audit Log.
+          </p>
+        </div>
+      </div>
+      <RecycleBin />
+    </>
+  )
+}
+
+function DeletionHistory() {
   const auth = useAuth()
   const [hidden, setHidden] = useHiddenColumns('deletion-log', auth.user?.id ?? '', COLUMN_IDS)
   const show = (key: (typeof COLUMN_IDS)[number]) => !hidden.has(key)
@@ -132,29 +229,20 @@ export function DeletionLogPage() {
 
   return (
     <>
-      <PageHeader
-        title="Recycle Bin"
-        description="History of records that were deleted, cancelled, voided or deactivated: what, by whom and when. The Audit Log holds every other change."
-        actions={<ExportButtons what="Recycle Bin" fileStem="recycle-bin" path={(format) => `/security/deletions/export${queryString({ search, kind, entityType, userId, from, to, format })}`} onError={setExportError} />}
-      />
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <p className="max-w-3xl text-sm text-slate-600">
+          Every deletion, cancellation, deactivation and restore, newest first. It is history: an entry stays after the record is restored or reactivated, and its status now is shown beside it. The
+          Audit Log holds every other change.
+        </p>
+        <ExportButtons what="Deletion History" fileStem="deletion-history" path={(format) => `/security/deletions/export${queryString({ search, kind, entityType, userId, from, to, format })}`} onError={setExportError} />
+      </div>
       {exportError && (
         <div className="mb-4">
           <Alert onDismiss={() => setExportError(null)}>{exportError}</Alert>
         </div>
       )}
-      <div role="note" className="mb-4 flex gap-3 rounded-xl border border-l-4 border-amber-200 border-l-amber-500 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-amber-500 text-xs font-bold text-white" aria-hidden="true">!</span>
-        <div>
-          <p className="font-semibold">Deleted AMC contracts can be restored by Super Admin. Everything else here is history.</p>
-          <p className="mt-1 text-xs leading-relaxed">
-            A deleted AMC contract is kept in full with its services, invoices and documents. Other deleted records no longer exist. Cancelled contracts and deactivated clients, master records and users stay on their own pages, where they can be switched back on. Cancelled invoices and voided expenses stay as records; a cancelled invoice's number can be entered again.
-          </p>
-        </div>
-      </div>
 
-      {isSuperAdmin(auth.user) && <DeletedContracts />}
-
-      <dl className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <dl className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Stat label="Entries" value={String(data?.total ?? '—')} icon="invoice" from="#1479BD" to="#4aa3df">
           <p className="text-[11px] text-slate-500">{filtered ? 'Matching your filters' : 'Recorded in total'}</p>
         </Stat>
@@ -165,6 +253,9 @@ export function DeletionLogPage() {
           <p className="text-[11px] text-slate-500">On this page</p>
         </Stat>
         <Stat label="Deactivated" value={String(onPage('DEACTIVATED'))} icon="shield" from="#64748B" to="#94A3B8">
+          <p className="text-[11px] text-slate-500">On this page</p>
+        </Stat>
+        <Stat label="Restored or reactivated" value={String(onPage('RESTORED'))} icon="shield" from="#059669" to="#34D399">
           <p className="text-[11px] text-slate-500">On this page</p>
         </Stat>
       </dl>
@@ -184,6 +275,7 @@ export function DeletionLogPage() {
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-red-500" />Deleted</span>
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" />Cancelled</span>
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-500" />Deactivated</span>
+            <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />Restored</span>
           </span>
         </div>
         <FilterPanel id="deletion-log">
@@ -198,6 +290,7 @@ export function DeletionLogPage() {
                 <option value="DELETED" style={{ color: '#b91c1c', backgroundColor: '#fee2e2', fontWeight: 700 }}>Deleted</option>
                 <option value="VOIDED" style={{ color: '#b45309', backgroundColor: '#fef3c7', fontWeight: 700 }}>Cancelled or voided</option>
                 <option value="DEACTIVATED" style={{ color: '#334155', backgroundColor: '#e2e8f0', fontWeight: 700 }}>Deactivated</option>
+                <option value="RESTORED" style={{ color: '#065f46', backgroundColor: '#d1fae5', fontWeight: 700 }}>Restored or reactivated</option>
               </select>
             )}
           </Filter>
@@ -231,7 +324,7 @@ export function DeletionLogPage() {
 </FilterPanel>
 
         {rangeInvalid && <p className="px-5 py-4 text-sm text-red-700">The From date is after the To date.</p>}
-        {!rangeInvalid && log.isPending && <Spinner label="Loading Recycle Bin" />}
+        {!rangeInvalid && log.isPending && <Spinner label="Loading Deletion History" />}
         {log.isError && <LoadError error={log.error} onRetry={() => void log.refetch()} />}
         {data && data.items.length === 0 && <EmptyState title={filtered ? 'No entries match your filters' : 'No removals recorded yet'} description={filtered ? 'Try a different filter or date range.' : undefined} />}
         {data && data.items.length > 0 && (
@@ -253,7 +346,7 @@ export function DeletionLogPage() {
             </div>
             <div className={TABLE.wrapper}>
               <table className={TABLE.table}>
-                <caption className="sr-only">Recycle Bin</caption>
+                <caption className="sr-only">Deletion History</caption>
                 <thead>
                   <tr>
                     {['When', 'Action', ...COLUMNS.filter((column) => show(column.key)).map((column) => column.label)].map((heading) => (
@@ -278,7 +371,7 @@ export function DeletionLogPage() {
                         <td className={TABLE.td}>
                           <span className={cx('inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wide ring-1 ring-inset', kind.tone)}>
                             <span className={cx('h-2 w-2 rounded-full', kind.dot)} aria-hidden="true" />
-                            {kind.label}
+                            {kindLabel(entry)}
                           </span>
                           <div className="mt-1.5 text-xs text-slate-500">{actionLabel(entry.action)}</div>
                         </td>
@@ -290,6 +383,15 @@ export function DeletionLogPage() {
                         {show('record') && (
                           <td className={cx(TABLE.td, 'whitespace-nowrap')}>
                             {entry.entityId ? <span className="inline-flex rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs font-bold text-slate-700 ring-1 ring-inset ring-slate-200">{entry.entityId}</span> : '—'}
+                          </td>
+                        )}
+                        {show('status') && (
+                          <td className={cx(TABLE.td, 'whitespace-nowrap')}>
+                            {entry.currentStatus ? (
+                              <span className={cx('inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold', STATUS[entry.currentStatus].tone)}>{STATUS[entry.currentStatus].label}</span>
+                            ) : (
+                              <span className="text-slate-400">—</span>
+                            )}
                           </td>
                         )}
                         {show('user') && (

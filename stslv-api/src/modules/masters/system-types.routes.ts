@@ -5,7 +5,7 @@ import { requireSchema } from "../../middleware/require-schema";
 import { sendExport } from "../../shared/export/send";
 import { parseIdParam } from "../../shared/validation";
 import { exportSystemTypesSchema, linkedContractsSchema } from "./system-types.schemas";
-import { buildSystemTypesExport, deleteSystemType, listLinkedContracts } from "./system-types.service";
+import { buildSystemTypesExport, deleteSystemType, getSystemTypeUsage, listLinkedContracts } from "./system-types.service";
 
 // Mounted at /api/masters/system-types, ahead of the master-list routes, which
 // still serve the list, create, edit and status of a system type. Middleware is
@@ -31,9 +31,15 @@ systemTypesRouter.get("/:id/contracts", authenticate, ready, authorize("AMC_CONT
   res.json({ success: true, data: await listLinkedContracts(parseIdParam(req.params.id), page, pageSize) });
 });
 
-// Only a type that no contract uses; otherwise 409 with a reason.
+// What uses the type, for the delete dialog: counted on request, Recycle Bin contracts apart.
+systemTypesRouter.get("/:id/usage", authenticate, ready, authorize("SYSTEM_TYPES", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await getSystemTypeUsage(parseIdParam(req.params.id)) });
+});
+
+// Moves the type to the Recycle Bin (nothing is removed). Super Admin only (403 for everyone else,
+// checked in the service), and only a type no live contract uses; otherwise 409 with a reason.
 systemTypesRouter.delete("/:id", authenticate, ready, authorize("SYSTEM_TYPES", "DELETE"), async (req, res) => {
   await deleteSystemType(requireAuth(req), parseIdParam(req.params.id));
 
-  res.json({ success: true, data: { deleted: true } });
+  res.json({ success: true, data: { deleted: true, recycleBin: true } });
 });

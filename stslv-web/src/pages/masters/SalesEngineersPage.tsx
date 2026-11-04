@@ -5,6 +5,7 @@ import { useAuth } from '../../auth/context'
 import { isSuperAdmin } from '../../auth/roles'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
+import { MoveToRecycleBinDialog } from '../../components/MoveToRecycleBinDialog'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Badge, Button, ConfirmDialog, EmptyState, OptionsNotice, PageHeader, Spinner, TableScroll } from '../../components/ui'
@@ -15,9 +16,9 @@ import { ENGINEER_STATUS_LABELS, isFeatureUnavailable, type Department, type Mas
 import { FilterPanel } from '../amc/components'
 
 // Master Data Center → Sales Engineers: search, filter, sort, page and export;
-// add, view (Engineer 360), edit and disable. Super Admin may also delete an
-// engineer no AMC contract refers to; one on a contract can only be disabled,
-// so the contracts stay intact.
+// add, view (Engineer 360), edit and disable. Super Admin may also move an
+// engineer no live AMC contract refers to into the Recycle Bin (migration 0106);
+// one on a contract can only be disabled, so the contracts stay intact.
 
 type StatusFilter = 'active' | 'inactive' | 'all'
 
@@ -187,17 +188,6 @@ export function SalesEngineersPage() {
     },
   })
 
-  // Deletes an engineer no contract refers to; the API refuses a linked one (409) and says why.
-  const remove = useMutation({
-    mutationFn: (engineer: EngineerRecord) => api.delete(`/masters/sales-engineers/${engineer.id}`),
-    onMutate: () => setNotice(null),
-    onSuccess: async (_result, engineer) => {
-      setDeleting(null)
-      await queryClient.invalidateQueries({ queryKey: ['masters'] })
-      setNotice(`${engineer.name} (${engineer.code}) was deleted.`)
-    },
-  })
-
   // Every status change asks first; disabling also shows the engineer's active contracts.
   const apply = (engineer: EngineerRecord) => {
     toggle.reset()
@@ -207,7 +197,8 @@ export function SalesEngineersPage() {
   const canCreate = auth.can('SALES_ENGINEERS', 'CREATE')
   const canEdit = auth.can('SALES_ENGINEERS', 'EDIT')
   const canExport = auth.can('SALES_ENGINEERS', 'EXPORT')
-  // Permanent deletion is Super Admin only; the API refuses everyone else with 403.
+  // Delete moves the engineer to the Recycle Bin (migration 0106). Super Admin only; the API refuses everyone else with 403.
+  // Permanent deletion is only in the Recycle Bin, for an engineer never used.
   const canDelete = isSuperAdmin(auth.user)
   const unavailable = list.isError && isFeatureUnavailable(list.error)
   const data = list.data
@@ -493,9 +484,8 @@ export function SalesEngineersPage() {
                                   danger
                                   label={`Delete ${engineer.name}`}
                                   icon="delete"
-                                  disabled={remove.isPending && remove.variables?.id === engineer.id}
                                   onClick={() => {
-                                    remove.reset()
+                                    setNotice(null)
                                     setDeleting(engineer)
                                   }}
                                 />
@@ -525,25 +515,16 @@ export function SalesEngineersPage() {
         />
       )}
       {deleting && (
-        <ConfirmDialog
-          title="Delete sales engineer"
-          message={
-            <>
-              Permanently delete <strong>{deleting.name}</strong> (<span className="font-mono">{deleting.code}</span>)? The engineer is removed for good and this cannot be undone.
-              The code {deleting.code} will not be available for another engineer.
-              <span className="mt-2 block text-sm">
-                An engineer linked to any AMC contract, including one in the Recycle Bin, cannot be deleted; disable the engineer instead.
-              </span>
-            </>
-          }
-          confirmLabel="Delete permanently"
-          danger
-          loading={remove.isPending}
-          error={remove.isError ? errorMessage(remove.error) : null}
-          onConfirm={() => remove.mutate(deleting)}
-          onCancel={() => {
-            remove.reset()
+        <MoveToRecycleBinDialog
+          noun="sales engineer"
+          label={`${deleting.name} (${deleting.code})`}
+          usagePath={`/masters/sales-engineers/${deleting.id}/usage`}
+          deletePath={`/masters/sales-engineers/${deleting.id}`}
+          refresh={[['masters']]}
+          onClose={() => setDeleting(null)}
+          onMoved={(message) => {
             setDeleting(null)
+            setNotice(message)
           }}
         />
       )}

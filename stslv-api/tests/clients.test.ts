@@ -221,18 +221,22 @@ describe("deactivate client", () => {
 });
 
 describe("delete client", () => {
-  it("deletes a client that nothing refers to, and the log keeps what it was", async () => {
+  it("moves a client that nothing refers to into the Recycle Bin, keeping the row, and the log keeps what it was", async () => {
     const created = await createClient({ name: "Delete Me", email: "gone@example.com" });
     const id = created.body.data.id;
 
     const response = await api().delete(`/api/clients/${id}`).set(admin.headers);
 
     expect(response.status).toBe(200);
-    expect(response.body.data).toEqual({ deleted: true });
+    expect(response.body.data).toEqual({ deleted: true, recycleBin: true });
+    // Hidden from the clients view, kept in clients_all with who deleted it.
     expect((await pool.query("SELECT 1 FROM clients WHERE id = $1", [id])).rowCount).toBe(0);
+    const kept = await pool.query("SELECT name, email, deleted_by, deleted_at IS NOT NULL AS deleted FROM clients_all WHERE id = $1", [id]);
+    expect(kept.rows[0]).toEqual({ name: "Delete Me", email: "gone@example.com", deleted_by: admin.id, deleted: true });
     const logs = await logsFor(id);
     expect(logs.map((log) => log.action)).toEqual(["client.created", "client.deleted"]);
-    expect(logs[1]?.metadata).toMatchObject({ deleted: { name: "Delete Me", email: "gone@example.com" } });
+    expect(logs[1]?.metadata).toMatchObject({ recycleBin: true, deleted: { name: "Delete Me", email: "gone@example.com" } });
+    expect((await api().get(`/api/clients/${id}`).set(admin.headers)).status).toBe(404);
     expect((await api().delete(`/api/clients/${id}`).set(admin.headers)).status).toBe(404);
   });
 
@@ -330,7 +334,9 @@ describe("delete client", () => {
     const log = await api().get("/api/security/deletions").set(admin.headers);
     const item = log.body.data.items.find((entry: { action: string; entityId: string }) => entry.action === "client.deleted" && entry.entityId === id);
 
-    expect(item).toMatchObject({ kind: "DELETED", entityType: "clients", description: 'Client "Logged Deletion" deleted.' });
+    expect(item).toMatchObject({ kind: "DELETED", deletion: "RECYCLE_BIN", currentStatus: "IN_RECYCLE_BIN", entityType: "clients" });
+    expect(item.description).toContain('Client "Logged Deletion"');
+    expect(item.description).toContain("moved to the Recycle Bin");
   });
 });
 

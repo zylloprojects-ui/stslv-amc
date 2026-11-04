@@ -127,7 +127,8 @@ export const api = {
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {}),
   patch: <T>(path: string, body: unknown) => request<T>('PATCH', path, body),
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
-  delete: <T = null>(path: string) => request<T>('DELETE', path),
+  /** A body only where the API asks for one (a permanent deletion's typed confirmation). */
+  delete: <T = null>(path: string, body?: unknown) => request<T>('DELETE', path, body),
   /** Sends one file as the raw body; its name travels URI-encoded in X-File-Name. */
   upload: <T>(path: string, file: File) =>
     request<T>('POST', path, undefined, {

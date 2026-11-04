@@ -69,6 +69,24 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
     return;
   }
 
+  // The Recycle Bin guards of migration 0106, when a service did not already turn them into its own message.
+  const pgCode = (error as { code?: unknown } | null)?.code;
+
+  if (pgCode === "RB001") {
+    res.status(409).json({
+      success: false,
+      error: { code: "CONFLICT", message: "A record this change refers to is in the Recycle Bin. Restore it first, or choose another record." },
+    });
+    return;
+  }
+  if (pgCode === "RB002") {
+    res.status(409).json({
+      success: false,
+      error: { code: "CONFLICT", message: "This record is still in use and cannot be moved to the Recycle Bin. Deactivate it instead." },
+    });
+    return;
+  }
+
   // Unexpected: log the reason server-side only; never send a stack trace or SQL to the caller.
   console.error(`Unhandled error: ${error instanceof Error ? (error.stack ?? error.message) : "Unknown error"}`);
   res.status(500).json({

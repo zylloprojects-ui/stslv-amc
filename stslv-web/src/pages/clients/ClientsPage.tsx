@@ -4,6 +4,7 @@ import { useAuth } from '../../auth/context'
 import { isSuperAdmin } from '../../auth/roles'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { ExportButtons } from '../../components/ExportButtons'
+import { MoveToRecycleBinDialog } from '../../components/MoveToRecycleBinDialog'
 import { Pager } from '../../components/records'
 import { Alert, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
@@ -185,28 +186,14 @@ export function ClientsPage() {
     },
   })
 
-  // Deletes a client that nothing refers to; the API refuses one with contracts, projects or invoices and says why.
-  const remove = useMutation({
-    mutationFn: (client: Client) => api.delete(`/clients/${client.id}`),
-    onMutate: () => setNotice(null),
-    onSuccess: async (_result, client) => {
-      setDialog({ kind: 'none' })
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['clients'] }),
-        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
-        queryClient.invalidateQueries({ queryKey: ['masters'] }),
-      ])
-      setNotice(`${client.name} was deleted.`)
-    },
-  })
-
   const closeDialog = () => setDialog({ kind: 'none' })
 
   const canCreate = auth.can('CLIENTS', 'CREATE')
   const canEdit = auth.can('CLIENTS', 'EDIT')
   // The DELETE permission governs disabling and re-enabling a client, the normal way to retire one.
   const canChangeStatus = auth.can('CLIENTS', 'DELETE')
-  // Permanent deletion is Super Admin only; the API refuses everyone else with 403.
+  // Delete moves the client to the Recycle Bin (migration 0106). Super Admin only; the API refuses everyone else
+  // with 403. Permanent deletion is only in the Recycle Bin, for a client never used.
   const canDelete = isSuperAdmin(auth.user)
   const canExport = auth.can('CLIENTS', 'EXPORT')
 
@@ -485,9 +472,8 @@ export function ClientsPage() {
                               danger
                               label={`Delete ${client.name}`}
                               icon="delete"
-                              disabled={remove.isPending && remove.variables?.id === client.id}
                               onClick={() => {
-                                remove.reset()
+                                setNotice(null)
                                 setDialog({ kind: 'delete', client })
                               }}
                             />
@@ -522,22 +508,16 @@ export function ClientsPage() {
 
       {/* A status change from the row icon is confirmed first, as on the client page. */}
       {dialog.kind === 'delete' && (
-        <ConfirmDialog
-          title="Delete client"
-          message={
-            <>
-              Delete <strong>{dialog.client.name}</strong>? The client is removed for good. This cannot be undone.
-              <span className="mt-2 block text-sm">A client that has AMC contracts, projects or invoices cannot be deleted; you will be told what uses it.</span>
-            </>
-          }
-          confirmLabel="Delete client"
-          danger
-          loading={remove.isPending}
-          error={remove.isError ? errorMessage(remove.error) : null}
-          onConfirm={() => remove.mutate(dialog.client)}
-          onCancel={() => {
-            remove.reset()
+        <MoveToRecycleBinDialog
+          noun="client"
+          label={`${dialog.client.name} (${dialog.client.code})`}
+          usagePath={`/clients/${dialog.client.id}/usage`}
+          deletePath={`/clients/${dialog.client.id}`}
+          refresh={[['clients'], ['dashboard'], ['masters']]}
+          onClose={closeDialog}
+          onMoved={(message) => {
             closeDialog()
+            setNotice(message)
           }}
         />
       )}
