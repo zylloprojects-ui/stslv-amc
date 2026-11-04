@@ -16,9 +16,9 @@ const ENTITY: Record<EntityType, { module: Module; table: string; logModule: str
   project_expenses: { module: "EXPENSES", table: "project_expenses", logModule: "EXPENSES", label: "expense" },
 };
 
-type FileKind = "PDF" | "PNG" | "JPEG" | "DOC" | "DOCX";
+export type FileKind = "PDF" | "PNG" | "JPEG" | "DOC" | "DOCX";
 
-interface FileType {
+export interface FileType {
   kind: FileKind;
   mime: string;
   ext: "pdf" | "png" | "jpg" | "doc" | "docx";
@@ -152,19 +152,29 @@ export function cleanFileName(raw: string): string {
 }
 
 /**
+ * Recognises a file by its content among the allowed kinds. Returns null when it is none of them; otherwise the type
+ * and, when its content is refused (not really a Word file, or one carrying macros), why. The single place these
+ * content rules live: contract documents, attachments and visit service reports (0104) all use it.
+ */
+export function recogniseFile(data: Buffer, kinds: readonly FileKind[]): { type: FileType; refused: string | null } | null {
+  const type = TYPES.filter((candidate) => kinds.includes(candidate.kind)).find((candidate) => candidate.magic.every((byte, index) => data[index] === byte));
+
+  return type ? { type, refused: type.inspect?.(data) ?? null } : null;
+}
+
+/**
  * Recognises the file by its content and checks that its name agrees. `kinds` are the types allowed here (by default
  * PDF, PNG and JPEG, as before 0103); `field` names the form field an error belongs to.
  */
 export function detectType(data: Buffer, fileName: string, kinds: FileKind[] = ["PDF", "PNG", "JPEG"], field = "file") {
-  const allowed = TYPES.filter((candidate) => kinds.includes(candidate.kind));
-  const type = allowed.find((candidate) => candidate.magic.every((byte, index) => data[index] === byte));
+  const match = recogniseFile(data, kinds);
   const onlyMessage = `Only ${kindList(kinds)} files can be uploaded.`;
 
-  if (!type) {
+  if (!match) {
     throw validationError(onlyMessage, [{ field, message: onlyMessage }]);
   }
 
-  const refused = type.inspect?.(data) ?? null;
+  const { type, refused } = match;
 
   if (refused) {
     throw validationError(refused, [{ field, message: refused }]);

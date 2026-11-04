@@ -6,7 +6,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { AppError, conflict, notFound, validationError } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
 import type { AuthContext } from "../auth/access";
-import { cleanFileName, storage } from "../attachments/attachments.service";
+import { cleanFileName, recogniseFile, storage, type FileKind } from "../attachments/attachments.service";
 
 // The Service Report of one scheduled AMC service (visit), migration 0104.
 //
@@ -29,40 +29,11 @@ export const SERVICE_REPORT_REQUIRED_MESSAGE = "Please upload service report.";
 
 /**
  * The file types a service report may be, recognised by their content (never by the name or the browser's stated
- * type alone). Word checks mirror migration 0103's contract-document rules: a .docx is a ZIP package with a Word body,
- * a .doc an OLE compound file with a WordDocument stream, and either is refused when it carries macros.
- * INTEGRATION NOTE: when 0103 (feature/amc-contract-kpis-required-fields) is merged, this table can be replaced by
- * its detectType(data, name, ["PDF", "DOC", "DOCX"]).
+ * type alone) with the same rules as contract documents (0103): a .docx is a ZIP package with a Word body, a .doc an
+ * OLE compound file with a WordDocument stream, and either is refused when it carries macros. The rules live in
+ * attachments.service (recogniseFile); only the service-report wording is kept here.
  */
-const has = (data: Buffer, text: string, encoding: BufferEncoding = "latin1") => data.includes(Buffer.from(text, encoding));
-
-const REPORT_TYPES: { mime: string; ext: "pdf" | "doc" | "docx"; label: string; magic: number[]; inspect?: (data: Buffer) => string | null }[] = [
-  { mime: "application/pdf", ext: "pdf", label: "PDF", magic: [0x25, 0x50, 0x44, 0x46, 0x2d] },
-  {
-    mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ext: "docx",
-    label: "Word document",
-    magic: [0x50, 0x4b, 0x03, 0x04],
-    inspect: (data) =>
-      !has(data, "[Content_Types].xml") || !has(data, "word/document.xml")
-        ? "This file is not a Word document."
-        : has(data, "vbaProject.bin")
-          ? "Word documents with macros cannot be uploaded."
-          : null,
-  },
-  {
-    mime: "application/msword",
-    ext: "doc",
-    label: "Word document",
-    magic: [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1],
-    inspect: (data) =>
-      !has(data, "WordDocument", "utf16le")
-        ? "This file is not a Word document."
-        : has(data, "Macros", "utf16le") || has(data, "_VBA_PROJECT", "utf16le")
-          ? "Word documents with macros cannot be uploaded."
-          : null,
-  },
-];
+const SERVICE_REPORT_KINDS: readonly FileKind[] = ["PDF", "DOC", "DOCX"];
 
 export const SERVICE_REPORT_TYPES_TEXT = "PDF, DOC and DOCX";
 
@@ -75,18 +46,16 @@ export function checkReportFile(rawName: string, data: Buffer) {
   if (data.length === 0) throw fileError("The chosen file is empty. Choose another file.");
   if (data.length > env.attachmentMaxMb * 1024 * 1024) throw fileError(`Service reports can be at most ${env.attachmentMaxMb} MB.`);
 
-  const type = REPORT_TYPES.find((candidate) => candidate.magic.every((byte, index) => data[index] === byte));
+  const match = recogniseFile(data, SERVICE_REPORT_KINDS);
 
-  if (!type) throw fileError(`Only ${SERVICE_REPORT_TYPES_TEXT} files can be uploaded as a service report.`);
+  if (!match) throw fileError(`Only ${SERVICE_REPORT_TYPES_TEXT} files can be uploaded as a service report.`);
+  if (match.refused) throw fileError(match.refused);
 
-  const refused = type.inspect?.(data) ?? null;
-
-  if (refused) throw fileError(refused);
-
+  const { type } = match;
   const extension = originalName.includes(".") ? (originalName.split(".").pop() ?? "").toLowerCase() : "";
 
-  if (extension !== type.ext) {
-    throw fileError(`This file is a ${type.label}; its name must end in .${type.ext}.`);
+  if (!type.extensions.includes(extension)) {
+    throw fileError(`This file is a ${type.kind === "PDF" ? "PDF" : "Word document"}; its name must end in .${type.ext}.`);
   }
 
   return { originalName, mime: type.mime, ext: type.ext };
