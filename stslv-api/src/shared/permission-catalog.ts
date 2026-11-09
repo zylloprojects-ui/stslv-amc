@@ -220,7 +220,8 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         actions: {
           VIEW: "See invoice records",
           CREATE: "Record Zoho invoices",
-          EDIT: "Edit and cancel invoice records",
+          EDIT:
+            "Edit and cancel Zoho invoice records; also enter, correct or clear the manual Invoice No. of a completed service (Paid / Unpaid) on Accounts, AMC Schedule and contract pages",
           EXPORT: "Export invoices",
           READ: "Data only: invoice numbers inside AMC pages (AMC Management, contract and visit details), without Invoice Tracking",
         },
@@ -228,10 +229,13 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
       {
         module: "ACCOUNTS",
         label: "Accounts",
-        description: "One read-only row per scheduled visit, with its service report number and invoices. Needs no other module's permission. Recording an invoice from it needs Invoice Tracking: Create.",
+        description:
+          "One row per scheduled service, with its amount, service report number, manual Invoice No. and any Zoho invoice numbers. Viewing needs no other module's permission. " +
+          "Entering, correcting or clearing a service's Invoice No. on this page needs Invoice Tracking: Edit: a number entered marks the service Paid, cleared marks it Unpaid. " +
+          "Paid is a manual reference status: it does not confirm that money was received. Zoho invoices are recorded in Invoice Tracking, not here.",
         pages: [{ label: "Accounts", path: "/finance/accounts" }],
         actions: {
-          VIEW: "See Accounts, including the visits and invoices it shows",
+          VIEW: "See Accounts: services, amounts, Invoice No., Paid / Unpaid reference status and Zoho invoice numbers (read only)",
           EXPORT: "Export Accounts",
         },
       },
@@ -369,10 +373,12 @@ export const FIXED_ACCESS = {
     { label: "Adding, renaming, deactivating or reactivating roles", path: "/api/roles" },
     { label: "Managing Super Admin and Admin accounts", path: "/admin/users" },
     { label: "Running and downloading backups", path: "/settings/backups" },
+    { label: "Recycle Bin: viewing, restoring and permanently deleting records", path: "/admin/deletion-log" },
   ],
   adminOnly: [
     { label: "Audit Log", path: "/admin/audit-log" },
-    { label: "Recycle Bin", path: "/admin/deletion-log" },
+    // Admin opens the same page, but sees only Deletion History; the Recycle Bin view and its actions are Super Admin only (API: assertRecycleBinAdmin).
+    { label: "Deletion History (Recycle Bin page, history only)", path: "/admin/deletion-log?view=history" },
     { label: "Backup & Restore status", path: "/settings/backups" },
     { label: "System readiness (Security Center)", path: "/settings/security" },
     { label: "Historical import audit", path: "/api/historical-data/audit" },

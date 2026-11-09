@@ -4,6 +4,7 @@ import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants
 import type { ListMasterStatusQuery, RowColour } from "./master-status.schemas";
 import { serviceStatusSql } from "./service-status.service";
 import { hasStoredReference, referenceSql } from "./contract-reference";
+import { SERVICE_IN_SCOPE } from "./service-scope";
 
 // Master AMC Status: a read-only overview with one row per scheduled
 // maintenance visit (amc_visits), never one per contract. It reads the same
@@ -14,8 +15,8 @@ import { hasStoredReference, referenceSql } from "./contract-reference";
 // has it also has 0060 (invoices), 0070 (sales engineers, system types),
 // 0072 (renewals), 0075 (frequency master) and 0076 (service codes).
 
-/** The same visits as Service Status and Services Sales: no cancelled or historical visit, no open work of a cancelled contract. */
-const IN_SCOPE = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED') AND (v.status = 'COMPLETED' OR c.status <> 'CANCELLED')";
+/** The same visits as Service Status, Accounts and the Dashboard (service-scope.ts). */
+const IN_SCOPE = SERVICE_IN_SCOPE;
 
 /** Service Status's own rule, so a visit shows the same status on both pages. */
 const SERVICE_STATUS_SQL = serviceStatusSql({ renewals: true });

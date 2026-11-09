@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { isAdmin } from '../../auth/roles'
 import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
@@ -127,6 +128,10 @@ interface Draft {
 
 const draftOf = (item: ServiceStatusItem): Draft => ({ status: item.serviceStatus, reportNumber: item.reportNumber ?? '' })
 
+/** The API's minimum length of an override reason. */
+const OVERRIDE_REASON_MIN = 5
+const REPORT_NUMBER_LOCKED_HINT = 'Locked: this service is Paid (an Invoice No. is entered). Only an administrator can change the report number, with a reason.'
+
 const LockIcon = () => (
   <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
     <rect x="4.5" y="9" width="11" height="8" rx="1.5" />
@@ -139,6 +144,8 @@ interface RowProps {
   number: number
   shown: (key: ColumnKey) => boolean
   canSave: boolean
+  /** Super Admin or Admin: may override a locked Service Report No. with a reason (the API checks the same). */
+  canOverrideReportNumber: boolean
   canViewContracts: boolean
   reportNumberAvailable: boolean
   serviceReportsAvailable: boolean
@@ -152,8 +159,24 @@ interface RowProps {
   onActions?: (() => void) | undefined
 }
 
-function ServiceRow({ item, number, shown, canSave, canViewContracts, reportNumberAvailable, serviceReportsAvailable, reportMaxMb, onSaved, onReportChanged, onView, onActions }: RowProps) {
+function ServiceRow({
+  item,
+  number,
+  shown,
+  canSave,
+  canOverrideReportNumber,
+  canViewContracts,
+  reportNumberAvailable,
+  serviceReportsAvailable,
+  reportMaxMb,
+  onSaved,
+  onReportChanged,
+  onView,
+  onActions,
+}: RowProps) {
   const [draft, setDraft] = useState<Draft>(() => draftOf(item))
+  // Reason for an administrator's override of a locked Service Report No.; sent only with a change of that number.
+  const [overrideReason, setOverrideReason] = useState('')
   const [base, setBase] = useState(item.updatedAt)
   const [problem, setProblem] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<string | null>(null)
@@ -165,6 +188,10 @@ function ServiceRow({ item, number, shown, canSave, canViewContracts, reportNumb
   const statusChanged = draft.status !== item.serviceStatus
   const reportChanged = reportNumberAvailable && draft.reportNumber.trim() !== (item.reportNumber ?? '')
   const dirty = statusChanged || reportChanged
+  // Paid and the lock switched on: read-only, except an administrator's override with a reason.
+  const reportNumberLocked = item.reportNumberLocked === true
+  const reportNumberEditable = canSave && reportNumberAvailable && (!reportNumberLocked || canOverrideReportNumber)
+  const needsOverrideReason = reportNumberLocked && reportChanged
 
   // A newer copy of this visit arrived (after a save here or elsewhere): take it, unless the user has unsaved edits.
   if (item.updatedAt !== base && !dirty) {
@@ -178,6 +205,7 @@ function ServiceRow({ item, number, shown, canSave, canViewContracts, reportNumb
       // The saved record replaces the draft; edits are kept only when the save fails.
       setBase(saved.updatedAt)
       setDraft(draftOf(saved))
+      setOverrideReason('')
       setSavedAt(saved.updatedAt)
       onSaved(saved)
     },
@@ -198,10 +226,14 @@ function ServiceRow({ item, number, shown, canSave, canViewContracts, reportNumb
     setSavedAt(null)
     if (statusChanged && draft.status === 'COMPLETED' && !item.serviceReport) return askForReport()
     if (draft.reportNumber.trim().length > REPORT_NUMBER_MAX) return setProblem(`The report number can have at most ${REPORT_NUMBER_MAX} characters.`)
+    if (needsOverrideReason && overrideReason.trim().length < OVERRIDE_REASON_MIN) {
+      return setProblem(`This service is Paid, so its report number is locked. Enter the reason for the change (at least ${OVERRIDE_REASON_MIN} characters).`)
+    }
 
     mutation.mutate({
       ...(statusChanged ? { status: draft.status } : {}),
       ...(reportChanged ? { reportNumber: draft.reportNumber.trim() } : {}),
+      ...(needsOverrideReason ? { reportNumberOverrideReason: overrideReason.trim() } : {}),
       expectedUpdatedAt: item.updatedAt,
     })
   }
@@ -283,19 +315,47 @@ function ServiceRow({ item, number, shown, canSave, canViewContracts, reportNumb
       {shown('engineer') && <td className={cx(TABLE.td, 'whitespace-nowrap')}>{item.salesEngineer?.name ?? <span className="text-slate-400">—</span>}</td>}
       {shown('report') && (
         <td className={cx(TABLE.td, 'min-w-40')}>
-          {canSave && reportNumberAvailable ? (
-            <input
-              aria-label={`Service report number of ${label}`}
-              value={draft.reportNumber}
-              maxLength={REPORT_NUMBER_MAX}
-              onChange={(event) => {
-                setSavedAt(null)
-                setDraft({ ...draft, reportNumber: event.target.value })
-              }}
-              disabled={mutation.isPending}
-              placeholder="Report no."
-              className="block w-full min-w-[9rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm placeholder:text-slate-400"
-            />
+          {reportNumberEditable ? (
+            <>
+              <span className="flex items-center gap-1.5">
+                <input
+                  aria-label={`Service report number of ${label}`}
+                  value={draft.reportNumber}
+                  maxLength={REPORT_NUMBER_MAX}
+                  onChange={(event) => {
+                    setSavedAt(null)
+                    setDraft({ ...draft, reportNumber: event.target.value })
+                  }}
+                  disabled={mutation.isPending}
+                  placeholder="Report no."
+                  title={reportNumberLocked ? REPORT_NUMBER_LOCKED_HINT : undefined}
+                  className="block w-full min-w-[9rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm placeholder:text-slate-400"
+                />
+                {reportNumberLocked && (
+                  <span className="text-slate-500" title={REPORT_NUMBER_LOCKED_HINT}>
+                    <LockIcon />
+                  </span>
+                )}
+              </span>
+              {needsOverrideReason && (
+                <input
+                  aria-label={`Reason for changing the locked report number of ${label}`}
+                  value={overrideReason}
+                  maxLength={500}
+                  onChange={(event) => setOverrideReason(event.target.value)}
+                  disabled={mutation.isPending}
+                  placeholder="Reason for override (audited)"
+                  className="mt-1 block w-full min-w-[9rem] rounded-lg border border-amber-400 bg-amber-50 px-2.5 py-1.5 text-xs shadow-sm placeholder:text-amber-800/70"
+                />
+              )}
+            </>
+          ) : reportNumberLocked ? (
+            <span className="inline-flex items-center gap-1.5" title={REPORT_NUMBER_LOCKED_HINT} aria-label={`${item.reportNumber ?? 'No report number'}, locked`}>
+              {item.reportNumber ?? <span className="text-slate-400">—</span>}
+              <span className="text-slate-500">
+                <LockIcon />
+              </span>
+            </span>
           ) : (
             (item.reportNumber ?? <span className="text-slate-400" title={reportNumberAvailable ? undefined : 'Available after database update 0077'}>—</span>)
           )}
@@ -435,6 +495,8 @@ export function ServiceStatusPage() {
   }, [searchInput])
 
   const canSave = auth.can('AMC_EXECUTION', 'EDIT')
+  // The override of a locked Service Report No. is reserved to administrators; the API checks the same.
+  const canOverrideReportNumber = isAdmin(auth.user)
   // Visit actions read the visit from the execution API, so they also need its view permission.
   const canAct = canSave && auth.can('AMC_EXECUTION', 'VIEW')
   const canExport = auth.can('SERVICE_STATUS', 'EXPORT')
@@ -760,6 +822,7 @@ export function ServiceStatusPage() {
                       number={(data.page - 1) * data.pageSize + index + 1}
                       shown={shown}
                       canSave={canSave}
+                      canOverrideReportNumber={canOverrideReportNumber}
                       canViewContracts={canViewContracts}
                       reportNumberAvailable={reportNumberAvailable}
                       serviceReportsAvailable={serviceReportsAvailable}

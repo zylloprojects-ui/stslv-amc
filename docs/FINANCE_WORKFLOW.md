@@ -80,7 +80,7 @@ Reports read the same records as their source modules, and PostgreSQL calculates
 
 ## Known differences from the reference
 
-* **A Paid visit on a cancelled contract** stays Scheduled, keeps its number and audit history, and leaves Accounts and the Paid figures, which exclude open work of cancelled contracts. Awaiting a decision.
+* **A Paid visit on a cancelled contract** (P1 fixes, 2026-11-09) stays Scheduled, keeps its number, amount and audit history, and **stays in Accounts, Master AMC Status, Service Status and the Paid figures**. One shared scope (`stslv-api/src/modules/amc/service-scope.ts`) now decides which services every page counts: not Cancelled, not Historical, and on a cancelled contract only the Completed or Paid ones. Open unpaid work of a cancelled contract is still left out. Cancelling never resets a visit to Scheduled, never clears a number, never changes an amount and never creates an invoice. Whether such a Paid-but-not-completed service should later be completed, cancelled or kept as it is remains a client decision; nothing changes it automatically.
 
 * **Schedule Pending Billing** and **Current Scheduled Value** keep their existing STSLV meanings: completed visits ready for a Zoho invoice, and this month's planned value. The reference counts every generated row in both.
 * **Schedule history** is the activity log, not a separate generation table, and the rows of an earlier generation are not kept as rows: changed amounts are in the log entry.

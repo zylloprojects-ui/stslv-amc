@@ -442,6 +442,7 @@ export const listServiceStatusSchema = z.object({
 export const exportServiceStatusSchema = listServiceStatusSchema.omit({ page: true, pageSize: true }).extend({ format: exportFormatSchema, hidden: serviceStatusHiddenSchema });
 
 const REPORT_NUMBER_MESSAGE = "Service report number must be at most 50 characters, without line breaks.";
+const OVERRIDE_REASON_MESSAGE = "Enter the reason for changing a locked Service Report No. (5 to 500 characters).";
 
 export const saveServiceStatusSchema = z
   .strictObject({
@@ -458,10 +459,21 @@ export const saveServiceStatusSchema = z
       .transform((value) => (value === "" ? null : value))
       .nullable()
       .optional(),
+    // Administrator override of the Service Report No. lock on a Paid service (when the lock is switched on). Audited.
+    reportNumberOverrideReason: z
+      .string({ error: OVERRIDE_REASON_MESSAGE })
+      .trim()
+      .min(5, OVERRIDE_REASON_MESSAGE)
+      .max(500, OVERRIDE_REASON_MESSAGE)
+      .optional(),
     // The updatedAt the page showed. A save over a newer change is refused, so one person cannot silently overwrite another.
     expectedUpdatedAt: z.string({ error: "Reload the page and try again." }).datetime({ offset: true, error: "Reload the page and try again." }),
   })
-  .refine((value) => value.status !== undefined || value.reportNumber !== undefined || value.completedDate !== undefined, "Provide a status, completion date or report number to save.");
+  .refine((value) => value.status !== undefined || value.reportNumber !== undefined || value.completedDate !== undefined, "Provide a status, completion date or report number to save.")
+  .refine((value) => value.reportNumberOverrideReason === undefined || value.reportNumber !== undefined, {
+    message: "An override reason is given only with a Service Report No. change.",
+    path: ["reportNumberOverrideReason"],
+  });
 
 /** The manual colour of a service (Color Priority level 1). Null clears it. */
 export const COLOR_OVERRIDES = ["RED", "AMBER", "GREEN", "BLUE", "PURPLE", "GREY"] as const;

@@ -2,7 +2,8 @@ import { pool } from "../../config/database";
 import { featureUnavailable } from "../../middleware/require-schema";
 import { diffFields, logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
-import { conflict, notFound, validationError } from "../../shared/errors";
+import { AppError, conflict, forbidden, notFound, validationError } from "../../shared/errors";
+import { hasAdminAccess } from "../../shared/role-model";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
@@ -12,6 +13,7 @@ import { env } from "../../config/env";
 import { SERVICE_REPORT_JSON_SQL, SERVICE_REPORT_TYPES_TEXT, serviceReportsAvailable, toServiceReport, type ServiceReport } from "./service-reports.service";
 import { applyExecution } from "./visits.service";
 import { hasStoredReference, referenceSql } from "./contract-reference";
+import { SERVICE_IN_SCOPE } from "./service-scope";
 
 // The Service Status page: one row per scheduled maintenance visit (amc_visits),
 // never one per contract. It reads the same visit records as the AMC Schedule
@@ -68,9 +70,10 @@ export function serviceStatusSql(f: Pick<Features, "renewals">): string {
   END`;
 }
 
-// Cancelled and historical visits are left out; so is outstanding work of a
-// cancelled contract (as on the execution list). Completed work always stays.
-export const IN_SCOPE = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED') AND (v.status = 'COMPLETED' OR c.status <> 'CANCELLED')";
+// Cancelled and historical visits are left out; so is outstanding unpaid work of a
+// cancelled contract. Completed and Paid services always stay. The shared rule of
+// Dashboard, Accounts and Master AMC Status: see service-scope.ts.
+export const IN_SCOPE = SERVICE_IN_SCOPE;
 
 function fromSql(f: Features): string {
   return `
@@ -95,6 +98,7 @@ function selectSql(f: Features): string {
          (v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < current_date) AS is_overdue,
          ${f.masters ? "se.id AS sales_engineer_id, se.name AS sales_engineer_name" : "NULL::bigint AS sales_engineer_id, NULL::text AS sales_engineer_name"},
          ${f.reportNumber ? "v.service_report_no" : "NULL::text"} AS service_report_no,
+         (v.manual_invoice_no IS NOT NULL) AS is_paid,
          ${serviceStatusSql(f)} AS service_status,
          ${f.reports ? SERVICE_REPORT_JSON_SQL : "NULL::jsonb"} AS service_report,
          v.updated_at`;
@@ -125,10 +129,25 @@ interface ServiceRow {
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
   service_report_no: string | null;
+  is_paid: boolean;
   service_status: ServiceStatus;
   service_report: unknown;
   updated_at: Date;
 }
+
+/**
+ * Service Report No. lock (PROPOSED RULE, P1 fixes 2026-11-09, not yet approved): the number is
+ * editable until the service is Paid (manual Invoice No. entered) and locked afterwards. Only an
+ * administrator (Super Admin or Admin role) may then change it, with a reason that goes into the
+ * Audit Log. Switched off unless SERVICE_REPORT_NO_LOCK_ENABLED=true, so behaviour is unchanged
+ * until the rule is approved. Read on every request, so the switch needs no code change.
+ */
+export function reportNumberLockEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
+  return source.SERVICE_REPORT_NO_LOCK_ENABLED?.trim().toLowerCase() === "true";
+}
+
+const REPORT_NUMBER_LOCKED_MESSAGE =
+  "The Service Report No. is locked because this service is Paid (an Invoice No. is entered). An administrator can change it with a reason.";
 
 export interface ServiceStatusItem {
   /** The visit id: every save names exactly this one visit. */
@@ -153,6 +172,10 @@ export interface ServiceStatusItem {
   serviceReport: ServiceReport | null;
   /** Completed and saved: the status and completion date can no longer change. */
   locked: boolean;
+  /** Paid (manual Invoice No. entered): the reference status. Does not verify payment. */
+  paid: boolean;
+  /** The Service Report No. is locked (lock switched on and the service Paid): only an administrator may change it, with a reason. */
+  reportNumberLocked: boolean;
   updatedAt: string;
 }
 
@@ -179,6 +202,8 @@ function toItem(row: ServiceRow): ServiceStatusItem {
     reportNumber: row.service_report_no,
     serviceReport: toServiceReport(row.service_report),
     locked: row.status === "COMPLETED",
+    paid: row.is_paid,
+    reportNumberLocked: row.is_paid && reportNumberLockEnabled(),
     updatedAt: row.updated_at.toISOString(),
   };
 }
@@ -282,6 +307,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery) {
     reportNumberAvailable: f.reportNumber,
     serviceReportsAvailable: f.reports,
     serviceReportLimits: { maxMb: env.attachmentMaxMb, allowedTypes: SERVICE_REPORT_TYPES_TEXT },
+    reportNumberLockEnabled: reportNumberLockEnabled(),
   };
 }
 
@@ -429,18 +455,30 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
     if (input.reportNumber !== undefined) {
       const changes = diffFields({ serviceReportNo: row.service_report_no }, { serviceReportNo: input.reportNumber }, ["serviceReportNo"]);
 
+      // The lock is decided on the stored Paid state, read under the row lock taken above, never from the request.
+      const override = Object.keys(changes).length > 0 && row.is_paid && reportNumberLockEnabled();
+
+      if (override) {
+        if (!input.reportNumberOverrideReason) {
+          throw new AppError(409, "REPORT_NUMBER_LOCKED", REPORT_NUMBER_LOCKED_MESSAGE);
+        }
+        if (!hasAdminAccess(auth.roles)) {
+          throw forbidden("Only an administrator can change the Service Report No. of a Paid service.");
+        }
+      }
+
       if (Object.keys(changes).length > 0) {
         await client.query("UPDATE amc_visits SET service_report_no = $1, updated_by = $2 WHERE id = $3", [input.reportNumber, auth.user.id, id]);
         await logActivity(client, {
           userId: auth.user.id,
-          action: "amc_visit.service_report_changed",
+          action: override ? "amc_visit.service_report_no_override" : "amc_visit.service_report_changed",
           module: "AMC_EXECUTION",
           entityType: "amc_visits",
           entityId: id,
           description: `Service report number of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
             input.reportNumber ? `set to ${input.reportNumber}` : "cleared"
-          }.`,
-          metadata: { changes },
+          }${override ? " by administrator override of the Paid lock" : ""}.`,
+          metadata: override ? { changes, override: true, reason: input.reportNumberOverrideReason } : { changes },
         });
       }
     }

@@ -23,8 +23,8 @@ order is fixed: Arrange KPIs, Reset KPI Layout and Reset KPI Names are removed.
 | 11 | Overall | Invoices Generated | `kpis.payments.paid` | Accounts scope, Invoice No. entered (unchanged; equals Accounts) |
 | 12 | Overall | Invoices Not Generated | `kpis.payments.unpaid` | Accounts scope, no Invoice No. (unchanged; equals Accounts) |
 
-- **Counted visits** (`COUNTED_VISIT`): not CANCELLED or HISTORICAL, on a contract that is not CANCELLED.
-- **Accounts scope** (`IN_SCOPE`): SCHEDULED, IN_PROGRESS, POSTPONED or COMPLETED; COMPLETED is kept even on a cancelled contract.
+- **One scope for every card** (P1 fixes, 2026-11-09; `amc/service-scope.ts`): SCHEDULED, IN_PROGRESS, POSTPONED or COMPLETED, and on a CANCELLED contract only COMPLETED or Paid (manual Invoice No.) services. `COUNTED_VISIT` (cards 5, 6, 9, 10, workload chart) and `IN_SCOPE` (cards 7, 8, 11, 12, Service Status, Accounts, Master AMC Status, Service Sales) are now the same rule. Before this, completed services of cancelled contracts were in cards 11 and 12 but not in 9.
+- **Reconciliation** (tested in `tests/p1-fixes.test.ts`): card 9 = card 11 + card 12 = Service Status total = Accounts rows = Master AMC Status rows; card 5 = card 7 + card 8 = workload first bar; Completed = card 9 − card 10.
 - "Invoices Generated" is the approved manual Invoice No. reference status (shown as Paid in Accounts). It does not verify payment, and the card's hover text says so. Zoho invoices (Invoice Tracking) are not read.
 - Amounts are `visit_amount` / contract values, OMR excluding VAT, three decimals. No VAT is read or added.
 - Contracts in the Recycle Bin (0101) and their services are excluded through the `amc_contracts` / `amc_visits` views.

@@ -133,6 +133,9 @@ are protected: there is no delete endpoint for contracts, and `renewed_from_id` 
 
 ## Automatic expiry processing — not built (needs approval)
 
+> Update 2026-11-09 (P1 fixes): the controlled, idempotent expiry run described below now exists, switched
+> off for applying. See [CONTRACT_EXPIRY.md](CONTRACT_EXPIRY.md). The rule still needs the client's approval.
+
 There is no scheduler, cron or background job in STSLV AMC. Contracts are never expired
 automatically: a user changes an `ACTIVE` contract past validity to `EXPIRED` from the contract
 page. Expiry alerts need no job, because they are computed on every request.

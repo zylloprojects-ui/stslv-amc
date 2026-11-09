@@ -52,7 +52,9 @@ Migrations 0080, 0081 and 0082 are **not applied** to `stslv_amc_dev` or Neon. T
 
 Shared read access, unchanged in effect: anyone with AMC_CONTRACTS View may read the four master lists (contract pickers); Sales Engineers View may read Departments, and Departments View may read Sales Engineers (each page needs the other list). The visit list and its export serve both AMC Schedule and Monthly Calendar; the visit filter options serve Schedule, Calendar and Service Status.
 
-Not set by role permissions: **Admin role only** — Audit Log, Suggestions Review, Security Center and Recycle Bin (formerly Deletion Log), Users and Login History exports, historical import audit. Super Admin only: creating and downloading backups. **Every signed-in user** — Notifications (filtered by module), My Suggestions and the suggestion popup, My account.
+Not set by role permissions: **Admin role only** — Audit Log, Suggestions Review, Security Center, Deletion History (the history view of the Recycle Bin page, formerly Deletion Log), Users and Login History exports, historical import audit. **Super Admin only**: creating and downloading backups; the Recycle Bin itself (viewing, restoring and permanently deleting records; the API refuses Admin with 403). Corrected 2026-11-09: the catalog used to list the Recycle Bin under Admin.
+
+Accounts (corrected 2026-11-09): ACCOUNTS View and Export only open and export the page. Entering, correcting or clearing a service's manual Invoice No. there (entered = Paid, cleared = Unpaid, a reference status that does not confirm payment) needs **INVOICES:EDIT**, which the API enforces on `PATCH /api/amc/visits/:id/manual-invoice`. Recording a Zoho invoice is done in Invoice Tracking (INVOICES:CREATE), not on Accounts. **Every signed-in user** — Notifications (filtered by module), My Suggestions and the suggestion popup, My account.
 
 ## 3. Before and after (approved matrix)
 
