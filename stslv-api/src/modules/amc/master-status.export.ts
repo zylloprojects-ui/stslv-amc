@@ -40,6 +40,8 @@ const COLUMNS: (ReportColumn & { hideable?: MasterStatusColumn })[] = [
   { key: "invoiceNo", header: "Invoice No.", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   // The Zoho invoice numbers recorded in Invoice Tracking for the visit, as on Accounts. Shown and hidden with Invoice No.
   { key: "zohoInvoices", header: "Zoho Invoices (Tracking)", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
+  // Their separate Zoho references (Invoice Tracking "Zoho reference"), one per invoice in the same order.
+  { key: "zohoReferences", header: "Zoho References (Tracking)", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   { key: "quotationNo", header: "Quote No.", kind: "identifier", width: 15, hideable: "quotationNo" },
   { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
   { key: "colour", header: "Row Colour", kind: "text", width: 24 },
@@ -53,6 +55,14 @@ export function masterStatusColumns(hidden: readonly MasterStatusColumn[]): Repo
 /** "Year 2 · Q3", or the visit number on a visit generated before service codes existed. */
 function serviceLabel(service: MasterStatusItem["service"]): string {
   return service.serviceCode && service.cycleNo ? `Year ${service.cycleNo} · ${service.serviceCode}` : `No. ${service.sequenceNo}`;
+}
+
+/**
+ * One entry per Zoho invoice, in the order of the Zoho Invoices column, "—" for an invoice without a reference, so
+ * each reference stays next to its invoice. Empty when no covering invoice has a reference.
+ */
+export function zohoReferencesCell(references: readonly (string | null)[]): string | null {
+  return references.some((reference) => reference !== null) ? references.map((reference) => reference ?? "—").join(", ") : null;
 }
 
 function toRow(item: MasterStatusItem, index: number): ReportRow {
@@ -70,6 +80,7 @@ function toRow(item: MasterStatusItem, index: number): ReportRow {
     serviceStatus: SERVICE_STATUS_LABELS[item.serviceStatus],
     invoiceNo: item.manualInvoiceNo,
     zohoInvoices: item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(", ") : null,
+    zohoReferences: zohoReferencesCell(item.invoiceReferences),
     quotationNo: item.quotationNo,
     salesEngineer: item.salesEngineer?.name ?? null,
     colour: ROW_COLOUR_LABELS[item.colour],
@@ -108,6 +119,7 @@ export async function buildMasterStatusExport(
     "Red: not completed. Yellow: completed, no invoice recorded. Blue: completed and invoiced, no quotation number. Green: completed, invoiced and quoted.",
     PAID_STATUS_NOTE,
     "Zoho Invoices (Tracking) are the invoice numbers recorded in Invoice Tracking for each service; cancelled ones are not listed. They do not decide Paid or Unpaid.",
+    "Zoho References (Tracking) are those invoices' Zoho references, in the same order; — marks an invoice recorded without one.",
   ];
 
   if (kpis.valueMissing > 0) {

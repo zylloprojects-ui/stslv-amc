@@ -60,11 +60,13 @@ describe("Master AMC Status export: Zoho invoice numbers", () => {
     expect(cellsOf(sheet).join(" ")).toMatch(/do not decide Paid or Unpaid/);
   });
 
-  it("hides the Zoho column together with Invoice No., and still writes the PDF", async () => {
+
+  it("hides the Zoho columns together with Invoice No., and still writes the PDF", async () => {
     const hidden = await file("/api/amc/master-status/export", { format: "xlsx", clientId, hidden: "invoiceNo" });
     const header = headerOf((await workbookOf(hidden)).getWorksheet("Master AMC Status") as ExcelJS.Worksheet);
     expect(header).not.toContain("Invoice No.");
     expect(header).not.toContain("Zoho Invoices (Tracking)");
+    expect(header).not.toContain("Zoho References (Tracking)");
     const pdf = await file("/api/amc/master-status/export", { format: "pdf", clientId });
     expect((pdf.body as Buffer).subarray(0, 4).toString()).toBe("%PDF");
   });

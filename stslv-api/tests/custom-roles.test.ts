@@ -3,8 +3,8 @@ import { pool } from "../src/config/database";
 import { api, bearer, closePool, insertUser, loginToken, permissionsVersion, resetData, signedIn } from "./helpers";
 
 // Custom roles (P2, 2026-11-09): Super Admin adds a role, gives it permissions, assigns it; the
-// holder signs in with exactly those permissions. Nobody else changes roles, built-in roles stay
-// protected, and nobody gives away more than they hold.
+// holder signs in with exactly those permissions. Built-in roles stay protected, and nobody gives
+// away more than they hold. Admin's own role management: tests/admin-custom-roles.test.ts.
 
 type Session = { id: string; headers: { Authorization: string } };
 let superAdmin: Session;
@@ -26,8 +26,7 @@ beforeAll(async () => {
 afterAll(closePool);
 
 describe("custom roles", () => {
-  it("only Super Admin adds a role; it starts with no permissions and is logged", async () => {
-    expect((await createRole(admin, { code: "SITE_SUPERVISOR", name: "Site Supervisor" })).status).toBe(403);
+  it("Super Admin adds a role (an executive role may not); it starts with no permissions and is logged", async () => {
     expect((await createRole(finance, { code: "SITE_SUPERVISOR", name: "Site Supervisor" })).status).toBe(403);
 
     const created = await createRole(superAdmin, { code: "site_supervisor", name: "Site Supervisor", description: "Checks completed services" });
@@ -48,13 +47,12 @@ describe("custom roles", () => {
     expect((await createRole(superAdmin, { code: "1BAD", name: "Bad" })).status).toBe(400);
   });
 
-  it("only Super Admin sets its permissions, within the catalog and its dependencies", async () => {
+  it("Super Admin sets its permissions (an executive role may not), within the catalog and its dependencies", async () => {
     const wanted = [
       { module: "DASHBOARD", action: "VIEW" },
       { module: "AMC_SCHEDULE", action: "VIEW" },
       { module: "SERVICE_STATUS", action: "VIEW" },
     ];
-    expect((await setPermissions(admin, customId, wanted)).status).toBe(403);
     expect((await setPermissions(finance, customId, wanted)).status).toBe(403);
     // Export without View is refused, and so is a permission the application does not check.
     expect((await setPermissions(superAdmin, customId, [{ module: "SERVICE_STATUS", action: "EXPORT" }])).status).toBe(400);

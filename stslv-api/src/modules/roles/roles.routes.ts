@@ -1,12 +1,21 @@
-import { Router } from "express";
+import { Router, type RequestHandler } from "express";
 import { z } from "zod";
-import { superAdminOnly } from "../../middleware/admin-only";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
+import { forbidden } from "../../shared/errors";
 import { FIXED_ACCESS, PERMISSION_CATALOG } from "../../shared/permission-catalog";
 import { ACTIONS, MODULES } from "../../shared/permissions";
 import { parseIdParam } from "../../shared/validation";
-import { createRole, deleteRole, listRoles, setRolePermissions, updateRole } from "./roles.service";
+import { canManageRoles, createRole, deleteRole, listRoles, ROLE_ADMINISTRATORS_ONLY, setRolePermissions, updateRole } from "./roles.service";
+
+/** Super Admin, or Admin with Users & Access Edit. Which roles Admin may change is decided per role by the service. */
+const roleAdministrators: RequestHandler = (req, _res, next) => {
+  if (!canManageRoles(requireAuth(req))) {
+    throw forbidden(ROLE_ADMINISTRATORS_ONLY);
+  }
+
+  next();
+};
 
 const setPermissionsSchema = z.strictObject({
   permissions: z
@@ -42,28 +51,32 @@ export const rolesRouter = Router();
 
 rolesRouter.use(authenticate);
 
-// Seeing roles is part of user administration (USERS:VIEW). Changing a role or any role's
-// permissions is reserved to Super Admin (approved 2026-10-29), whatever USERS permissions
-// another role holds; the service checks the same.
+// Seeing roles is part of user administration (USERS:VIEW). Changing roles (approved 2026-11-09): Super Admin
+// every role; Admin, while holding USERS:EDIT, only custom roles within Admin's own permissions. No other role,
+// whatever USERS permissions it holds. The service checks the same, per role.
 rolesRouter.get("/", authorize("USERS", "VIEW"), async (req, res) => {
+  const auth = requireAuth(req);
   // catalog: what each module governs and which of its actions are used, for Roles & Permissions.
-  res.json({ success: true, data: { roles: await listRoles(requireAuth(req)), modules: MODULES, actions: ACTIONS, catalog: PERMISSION_CATALOG, fixedAccess: FIXED_ACCESS } });
+  res.json({
+    success: true,
+    data: { roles: await listRoles(auth), canManageRoles: canManageRoles(auth), modules: MODULES, actions: ACTIONS, catalog: PERMISSION_CATALOG, fixedAccess: FIXED_ACCESS },
+  });
 });
 
-rolesRouter.post("/", superAdminOnly, async (req, res) => {
+rolesRouter.post("/", roleAdministrators, async (req, res) => {
   res.status(201).json({ success: true, data: await createRole(requireAuth(req), createRoleSchema.parse(req.body)) });
 });
 
-rolesRouter.patch("/:id", superAdminOnly, async (req, res) => {
+rolesRouter.patch("/:id", roleAdministrators, async (req, res) => {
   res.json({ success: true, data: await updateRole(requireAuth(req), parseIdParam(req.params.id), updateRoleSchema.parse(req.body)) });
 });
 
-rolesRouter.delete("/:id", superAdminOnly, async (req, res) => {
+rolesRouter.delete("/:id", roleAdministrators, async (req, res) => {
   await deleteRole(requireAuth(req), parseIdParam(req.params.id));
   res.json({ success: true, data: null });
 });
 
-rolesRouter.put("/:id/permissions", superAdminOnly, async (req, res) => {
+rolesRouter.put("/:id/permissions", roleAdministrators, async (req, res) => {
   const { permissions, expectedVersion } = setPermissionsSchema.parse(req.body);
 
   res.json({ success: true, data: await setRolePermissions(requireAuth(req), parseIdParam(req.params.id), permissions, expectedVersion) });

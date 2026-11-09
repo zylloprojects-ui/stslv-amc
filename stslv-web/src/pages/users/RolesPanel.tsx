@@ -63,8 +63,12 @@ function useRules(role: Role, editable: boolean, original: Set<string>): Rules {
     !retired && entry.actions[action] !== undefined && (scope === null || scope.has(keyOf(entry.module, action)))
   const shown = (entry: PermissionCatalogEntry, retired: boolean, action: Action) =>
     entry.actions[action] !== undefined && (available(entry, retired, action) || original.has(keyOf(entry.module, action)))
+  // Account and access administration is given to a role by Super Admin only; Admin may still remove it. The API checks the same.
+  const securityGrant = (entry: PermissionCatalogEntry, action: Action) =>
+    entry.module === 'USERS' && !isSuperAdmin(auth.user) && !original.has(keyOf(entry.module, action))
   // Nobody can grant or revoke a permission they do not hold.
-  const mayChange = (entry: PermissionCatalogEntry, retired: boolean, action: Action) => editable && auth.can(entry.module, action) && shown(entry, retired, action)
+  const mayChange = (entry: PermissionCatalogEntry, retired: boolean, action: Action) =>
+    editable && auth.can(entry.module, action) && shown(entry, retired, action) && !securityGrant(entry, action)
 
   return { shown, available, mayChange }
 }

@@ -141,12 +141,13 @@ export function RoleListPanel() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const allowed = auth.can('USERS', 'VIEW')
-  // Adding, renaming, deactivating and deleting roles is reserved to Super Admin; the API checks the same.
+  // Who may add, rename, deactivate and delete which role is decided by the API (Super Admin every role; Admin with
+  // Users & Access Edit only custom roles within its own permissions) and enforced there. An older API sends no
+  // decision: then only Super Admin is offered the actions, as before.
   const superAdmin = isSuperAdmin(auth.user)
-  const canAdd = superAdmin
-  const canEdit = superAdmin
-  const canDelete = superAdmin
   const roles = useQuery({ queryKey: ['roles'], queryFn: () => api.get<RolesResponse>('/roles'), enabled: allowed })
+  const canAdd = roles.data?.canManageRoles ?? superAdmin
+  const canManage = (role: Role) => role.manageable ?? superAdmin
 
   const remove = useMutation({
     mutationFn: (role: Role) => api.delete(`/roles/${role.id}`),
@@ -246,25 +247,25 @@ export function RoleListPanel() {
                     <td className={TABLE.td}>{role.isActive ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>}</td>
                     <td className={`${TABLE.td} text-center font-semibold tabular-nums text-[#0b3b66]`}>{role.userCount}</td>
                     <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-                      {canEdit || canDelete ? (
+                      {canManage(role) ? (
                         <ActionGroup>
-                          {canEdit && <ActionButton label={`Edit ${role.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', role })} />}
-                          {canDelete && (
-                            <ActionButton
-                              danger
-                              label={`Delete ${role.name}`}
-                              icon="delete"
-                              disabled={role.builtIn === true}
-                              hint={role.builtIn ? 'A built-in role cannot be deleted. Deactivate it instead.' : undefined}
-                              onClick={() => {
-                                setDeleteError(null)
-                                setDialog({ kind: 'delete', role })
-                              }}
-                            />
-                          )}
+                          <ActionButton label={`Edit ${role.name}`} icon="edit" onClick={() => setDialog({ kind: 'edit', role })} />
+                          <ActionButton
+                            danger
+                            label={`Delete ${role.name}`}
+                            icon="delete"
+                            disabled={role.builtIn === true}
+                            hint={role.builtIn ? 'A built-in role cannot be deleted. Deactivate it instead.' : undefined}
+                            onClick={() => {
+                              setDeleteError(null)
+                              setDialog({ kind: 'delete', role })
+                            }}
+                          />
                         </ActionGroup>
                       ) : (
-                        <span className="px-3 py-1.5 text-xs text-slate-400">—</span>
+                        <span className="px-3 py-1.5 text-xs text-slate-400" title={role.manageReason ?? undefined}>
+                          —{role.manageReason && <span className="sr-only">{role.manageReason}</span>}
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -280,7 +281,9 @@ export function RoleListPanel() {
         <Link to="/admin/roles" className="font-semibold text-[#1479BD] hover:underline">
           Roles &amp; Permissions
         </Link>
-        . A new role starts with no permissions, so it opens nothing until permissions are given. Only Super Admin adds or changes roles. A role that still has people, and any built-in role, cannot be deleted.
+        . A new role starts with no permissions, so it opens nothing until permissions are given. Super Admin manages every role. Admin, with Users &amp; Access Edit,
+        adds and changes custom roles, but only within its own permissions; built-in roles stay with Super Admin. A role that still has people, and any built-in role,
+        cannot be deleted.
       </p>
 
       {dialog.kind === 'add' && (

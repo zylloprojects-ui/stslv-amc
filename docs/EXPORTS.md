@@ -83,7 +83,7 @@ The orientation in brackets is how the Excel workbook prints; every PDF is A4 la
 
 **Recent Invoices** (portrait, 2026-11-09). The Dashboard widget's export: `GET /api/invoices/export?columns=number,client,...` writes only the columns the widget shows, in its order, on one sheet. Without `columns` the Invoice Tracking Report above is produced.
 
-**Master AMC Status** gained a Zoho Invoices (Tracking) column beside Invoice No. on 2026-11-09 (see [P2_IMPROVEMENTS.md](P2_IMPROVEMENTS.md)).
+**Master AMC Status** gained a Zoho Invoices (Tracking) column beside Invoice No. on 2026-11-09, followed by a separate Zoho References (Tracking) column (see [P2_IMPROVEMENTS.md](P2_IMPROVEMENTS.md)).
 
 **Pending Invoices Report** (portrait). Exactly the "Waiting for an invoice" list: completed AMC visits with an amount that no active invoice covers, and completed projects with job value that no active invoice covers yet. Fully invoiced work is never in it and cannot be requested. AMC and project figures are totalled separately. A section appears only for a role that may see it on the screen (AMC Schedule or Projects view).
 

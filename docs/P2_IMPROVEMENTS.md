@@ -24,12 +24,27 @@ Verified for all six roles (`tests/reports-permissions.test.ts`): without REPORT
 
 ## 2. Custom roles
 
-The API already existed (Super Admin only; grant only what you hold; scope and dependency checks; versioned saves). Completed:
-
-- `ROLE_LIST_ENABLED = true`: Settings › Organization › **Role list** is shown, to Users & Access viewers only. Super Admin adds, renames, deactivates and deletes custom roles there; permissions are set in Roles & Permissions, which marks custom roles "Custom" and links back.
+- `ROLE_LIST_ENABLED = true`: Settings › Organization › **Role list** is shown, to Users & Access viewers only. Custom roles are added, renamed, deactivated and deleted there; permissions are set in Roles & Permissions, which marks custom roles "Custom" and links back.
 - The API refuses a built-in role code for a custom role (409), even if that built-in row were missing.
 
-Unchanged and tested (`tests/custom-roles.test.ts`): only Super Admin creates or changes roles and permissions; nobody grants beyond what they hold; Admin may assign a custom role only while holding all of its permissions; nobody changes their own role (409); built-in roles are never deleted and only Super Admin renames or deactivates them; Super Admin's permissions are fixed; a role held by someone cannot be deactivated or deleted; a holder signs in with exactly the role's permissions and a change applies on the next request.
+**Who manages roles (approved 2026-11-09, recovery follow-up).** Super Admin **and Admin** manage custom roles and assign them to users. Enforced in the API (`roles.service.ts`: `canManageRoles`, `manageReason`; `roles.routes.ts`: `roleAdministrators`, replacing `superAdminOnly`):
+
+| | Super Admin | Admin (needs Users & Access **Edit**) | Any other role |
+|---|---|---|---|
+| Add a custom role | Yes | Yes | No (403) |
+| Rename, deactivate, reactivate, delete a custom role | Yes | Only if Admin holds **every** permission of that role | No |
+| Change a custom role's permissions | Yes | Only within Admin's own permissions, as above | No |
+| Give a role Users & Access permissions | Yes | **No** (403); removing them is allowed | No |
+| Change a built-in role or its permissions | Yes (never Super Admin's permissions) | **No** (403) | No |
+| Assign a custom role to a user | Yes | Only if Admin holds all its permissions (unchanged) | Per USERS:EDIT, same limit |
+| Assign Super Admin or Admin | Yes | **No** (unchanged) | No |
+
+- **No privilege escalation:** nobody grants, revokes or assigns a permission they do not hold; Admin never changes its own role (409) or its own role's permissions (built-in); a custom role never takes a built-in code or an existing name (409); Super Admin and Admin accounts stay with Super Admin.
+- **Configurable:** Super Admin removing USERS:EDIT from Admin removes role management from Admin at the next request (`canManageRoles: false`).
+- `GET /api/roles` tells the page what the viewer may do: `canManageRoles`, and per role `manageable` / `manageReason` beside `permissionsEditable` / `lockedReason`. The Role list and the permission matrix show only those actions; the matrix also keeps Users & Access boxes disabled for Admin unless the role already has them.
+- **For owner confirmation:** "Admin cannot give a role Users & Access" is a conservative safeguard added with this change (Admin could otherwise create further user-administering roles). Lifting it is a one-line change in `setRolePermissions`.
+
+Tested: `tests/admin-custom-roles.test.ts` (Admin's full lifecycle with audit entries; assignment and the holder's exact access; built-in roles refused; beyond-authority roles refused; Users & Access refused; no promotion; other roles with USERS:EDIT refused; removing USERS:EDIT from Admin), `tests/custom-roles.test.ts`, `tests/role-model.test.ts`; web: `role-list.test.tsx`, `role-model.test.tsx`.
 
 Per-user column-level access was **not** added (deferred).
 
@@ -50,7 +65,7 @@ Tested with cancelled, postponed and re-dated visits (`tests/first-service-prior
 
 ## 5. Exports
 
-- **Master AMC Status**: new column **Zoho Invoices (Tracking)** after Invoice No.: the Zoho invoice numbers recorded in Invoice Tracking for each service (cancelled ones left out), as on Accounts. Hidden together with Invoice No. A note says they do not decide Paid or Unpaid. Formatting, permissions (MASTER_AMC_STATUS View + Export) and the audit entry are unchanged.
+- **Master AMC Status**: new column **Zoho Invoices (Tracking)** after Invoice No.: the Zoho invoice numbers recorded in Invoice Tracking for each service (cancelled ones left out), as on Accounts. Then a separate column **Zoho References (Tracking)**: each of those invoices' Zoho reference (Invoice Tracking "Zoho reference", `invoices.source_reference`), one entry per invoice in the same order, `—` for an invoice recorded without one, empty when none has one. Both are hidden together with Invoice No. Notes say they do not decide Paid or Unpaid and explain the `—`. The page's API data carries `invoiceReferences` beside `invoiceNumbers`. Formatting, permissions (MASTER_AMC_STATUS View + Export) and the audit entry are unchanged. Tested in `tests/p2-zoho-references.test.ts` and `tests/amc-master-status.test.ts`.
 - **Recent Invoices** (Dashboard): the export sends `columns=` with the visible columns; `GET /api/invoices/export` then writes a one-sheet "Recent Invoices" file with exactly those columns in the table's order. The Total row appears when Total is visible; its Excel formula excludes cancelled invoices when Status is visible too. Unknown or empty column lists answer 400. Without `columns`, the full Invoice Tracking Report is unchanged. Permission (INVOICES View + Export) unchanged; the audit entry records the columns.
 
 ## 6. Related corrections

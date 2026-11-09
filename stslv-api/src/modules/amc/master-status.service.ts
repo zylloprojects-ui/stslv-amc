@@ -38,7 +38,9 @@ const FROM = `
   LEFT JOIN system_types st ON st.id = c.system_type_id
   LEFT JOIN maintenance_frequencies mf ON mf.code = c.maintenance_frequency
   LEFT JOIN LATERAL (
-    SELECT array_agg(i.invoice_number ORDER BY i.invoice_date, i.id) AS numbers
+    SELECT array_agg(i.invoice_number ORDER BY i.invoice_date, i.id) AS numbers,
+           -- The Zoho reference of each of those invoices, in the same order (null where none was entered).
+           array_agg(i.source_reference ORDER BY i.invoice_date, i.id) AS refs
     FROM invoice_allocations al
     JOIN invoices i ON i.id = al.invoice_id
     WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
@@ -54,7 +56,7 @@ const selectSql = (storedReference: boolean) => `
          v.scheduled_date::text AS scheduled_date, v.status, v.completed_date::text AS completed_date,
          v.visit_amount::text AS visit_amount, v.manual_invoice_no,
          se.id AS sales_engineer_id, se.name AS sales_engineer_name,
-         COALESCE(inv.numbers, '{}') AS invoice_numbers, v.quotation_no,
+         COALESCE(inv.numbers, '{}') AS invoice_numbers, COALESCE(inv.refs, '{}') AS invoice_references, v.quotation_no,
          ${SERVICE_STATUS_SQL} AS service_status,
          ${COLOUR_SQL} AS colour`;
 
@@ -81,6 +83,7 @@ interface MasterRow {
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
   invoice_numbers: string[];
+  invoice_references: (string | null)[];
   quotation_no: string | null;
   service_status: ServiceStatus;
   colour: RowColour;
@@ -107,6 +110,8 @@ export interface MasterStatusItem {
   paymentStatus: "PAID" | "UNPAID";
   /** Every active Zoho invoice in Invoice Tracking that covers the visit, oldest first. Empty when none. */
   invoiceNumbers: string[];
+  /** The Zoho reference (Invoice Tracking "Zoho reference") of each of invoiceNumbers, same order; null where none. */
+  invoiceReferences: (string | null)[];
   quotationNo: string | null;
   salesEngineer: { id: string; name: string } | null;
   colour: RowColour;
@@ -129,6 +134,7 @@ function toItem(row: MasterRow): MasterStatusItem {
     manualInvoiceNo: row.manual_invoice_no,
     paymentStatus: row.manual_invoice_no ? "PAID" : "UNPAID",
     invoiceNumbers: row.invoice_numbers,
+    invoiceReferences: row.invoice_references,
     quotationNo: row.quotation_no,
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
     colour: row.colour,

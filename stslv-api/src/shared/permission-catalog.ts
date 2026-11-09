@@ -274,7 +274,8 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
       {
         module: "USERS",
         label: "Users & Access",
-        description: "People and their roles. Roles and role permissions are changed by Super Admin only; Super Admin and Admin accounts are managed by Super Admin only.",
+        description:
+          "People and their roles. Built-in roles and their permissions are changed by Super Admin only; custom roles also by Admin with Edit, within Admin's own permissions. Super Admin and Admin accounts are managed by Super Admin only.",
         pages: [
           { label: "Users & Access", path: "/admin/users" },
           { label: "Roles & Permissions", path: "/admin/roles" },
@@ -366,12 +367,13 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
 /** Access no role can be granted or refused: it follows from being signed in, or from holding the Super Admin or Admin role. */
 export const FIXED_ACCESS = {
   superAdminOnly: [
-    { label: "Changing any role's permissions", path: "/admin/roles" },
-    { label: "Adding, renaming, deactivating or reactivating roles", path: "/api/roles" },
+    { label: "Changing built-in roles and their permissions", path: "/admin/roles" },
+    { label: "Giving a role Users & Access permissions", path: "/admin/roles" },
     { label: "Managing Super Admin and Admin accounts", path: "/admin/users" },
     { label: "Running and downloading backups", path: "/settings/backups" },
   ],
   adminOnly: [
+    { label: "Adding and changing custom roles (Admin also needs Users & Access Edit, and only within its own permissions)", path: "/settings?section=roles" },
     { label: "Audit Log", path: "/admin/audit-log" },
     { label: "Recycle Bin", path: "/admin/deletion-log" },
     { label: "Backup & Restore status", path: "/settings/backups" },

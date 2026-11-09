@@ -240,6 +240,7 @@ The scopes are enforced by the API (`src/shared/role-model.ts`, `isInRoleScope`)
 
 - Only Super Admin can assign or remove the Super Admin or Admin role, or edit, deactivate, approve, reject, change the role of, or issue a temporary password to a user holding either role (403 `Only Super Admin can manage Super Admin and Admin accounts.`).
 - Only Super Admin can change the Admin role's permissions, name or status (403). Nobody can change Super Admin's permissions. Neither role can be deleted.
+- **Custom roles (approved 2026-11-09):** Super Admin and Admin (with Users & Access Edit) add and change custom roles; Admin only within its own permissions, never a built-in role, never its own role, and never giving a role Users & Access. Details and the full table: [P2_IMPROVEMENTS.md §2](P2_IMPROVEMENTS.md). This supersedes "Super Admin only" for custom roles wherever it appears below.
 - Unchanged: nobody grants a permission they do not hold, assigns a role beyond their own permissions, or changes their own role; one role per user; the last active Super Admin cannot be removed.
 - `GET /api/roles` now tells each viewer, per role, `permissionsEditable`, `lockedReason`, `scope` and `assignable`. The role picker lists only assignable roles plus the user's current one.
 
@@ -272,7 +273,7 @@ Local alpha only, **uncommitted**. Migrations 0089 and 0090 follow 0087/0088; li
 
 1. **Only Super Admin changes any role's permission matrix.** `PUT /api/roles/:id/permissions` is Super Admin only (403 `Only Super Admin can change roles and their permissions.`); Super Admin's own permissions stay fixed. For everyone else every role shows read-only with `Only Super Admin can change role permissions.`
 2. **Admin** manages the users of the non-admin roles (create, edit, activate/deactivate, approve/reject, assign an existing operational role, temporary passwords) as its USERS permissions allow. It cannot add, rename, deactivate, reactivate or delete roles, change permissions, or manage Super Admin/Admin accounts. USERS:DELETE (it only deleted roles) is no longer an action; 0090 removes it from Admin.
-3. **Built-in roles** (the six and the four legacy ones) are never deleted, by anyone (403). Renaming, deactivating and reactivating them is Super Admin only (`superAdminOnly` on `POST/PATCH/DELETE /api/roles`, checked again in the service). Custom roles: Super Admin only.
+3. **Built-in roles** (the six and the four legacy ones) are never deleted, by anyone (403). Renaming, deactivating and reactivating them is Super Admin only (checked in `roles.service.ts`). Custom roles: Super Admin only *(superseded 2026-11-09: Admin also manages custom roles within its own permissions; see [P2_IMPROVEMENTS.md §2](P2_IMPROVEMENTS.md))*.
 4. **Executive roles open only their own section's pages.** Data another section owns, where their pages need it, is the new **data-only Read** (`READ`, migration 0089):
 
 | Role | Data-only Read | Where it is honoured (and nowhere else) | Still refused |
@@ -346,7 +347,7 @@ Before any shared database (each step separately approved): backup and restore c
 
 ### Still fixed
 
-- Only Super Admin changes the matrix (403 for everyone else). Super Admin's own role cannot change, so nobody can change their own permissions, and nobody changes their own role.
+- Only Super Admin changes the matrix of built-in roles (403 for everyone else); since 2026-11-09 Admin also changes custom roles' matrices within its own permissions ([P2_IMPROVEMENTS.md §2](P2_IMPROVEMENTS.md)). Super Admin's own role cannot change, so nobody can change their own permissions, and nobody changes their own role.
 - **USERS (Users & Access, Roles & Permissions, Login History) cannot be given to the Executive roles or Viewer** (403, `SECURITY_MODULES`). Admin and custom roles keep it as before.
 - Audit Log, system readiness and the historical import audit stay Super Admin and Admin only.
 - Admin may assign a role only if Admin holds all of that role's permissions.
