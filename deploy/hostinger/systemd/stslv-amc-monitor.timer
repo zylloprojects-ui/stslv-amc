@@ -1,0 +1,13 @@
+# STSLV AMC — monitor every 5 minutes. TEMPLATE.
+#   systemctl enable --now stslv-amc-monitor.timer
+
+[Unit]
+Description=Run the STSLV AMC monitor every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

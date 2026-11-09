@@ -85,7 +85,11 @@ describe("POST /api/auth/signup", () => {
       expect(response.body.error.code).toBe("VALIDATION_ERROR");
     }
     expect(badEmail.body.error.details).toEqual([{ field: "email", message: "Enter a valid email address." }]);
-    expect(weak.body.error.details).toEqual([{ field: "password", message: "Password must be at least 10 characters." }]);
+    // "short" is too short and uses one kind of character (P0 password policy: 12+, three kinds).
+    expect(weak.body.error.details).toEqual([
+      { field: "password", message: "Password must be at least 12 characters." },
+      { field: "password", message: "Password must use at least three of: lower-case letters, upper-case letters, digits, symbols." },
+    ]);
     expect(await userRow("valid@example.com")).toBeUndefined();
   });
 

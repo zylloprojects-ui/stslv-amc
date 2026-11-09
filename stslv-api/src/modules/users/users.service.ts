@@ -8,6 +8,7 @@ import { hasAdminAccess, isPrivilegedRole, isSuperAdmin } from "../../shared/rol
 import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth/access";
 import { hashPassword } from "../auth/password";
 import { revokeResetTokens } from "../auth/password-reset.service";
+import { listUserSessions, revokeSession, revokeUserSessions, type SessionSummary } from "../auth/sessions.service";
 import { generateTemporaryPassword, TEMPORARY_PASSWORD_MINUTES } from "../auth/temporary-password";
 import { ONE_ROLE_MESSAGE, type CreateUserInput, type UserFilters } from "./users.schemas";
 
@@ -370,6 +371,8 @@ export function setUserActive(auth: AuthContext, id: string, isActive: boolean):
 
     if (!isActive) {
       await revokeResetTokens(client, id);
+      // Deactivation already refuses the account's tokens; ending its sessions keeps Active Sessions accurate.
+      await revokeUserSessions(client, { userId: id, reason: "DEACTIVATED", by: auth.user.id });
     }
 
     await logActivity(client, {
@@ -544,6 +547,7 @@ export async function issueTemporaryPassword(auth: AuthContext, id: string): Pro
     const expiresAt = (updated.rows[0] as { expires_at: Date }).expires_at.toISOString();
 
     await revokeResetTokens(client, id);
+    await revokeUserSessions(client, { userId: id, reason: "TEMPORARY_PASSWORD", by: auth.user.id });
     await logActivity(client, {
       userId: auth.user.id,
       action: "user.temporary_password_issued",
@@ -556,5 +560,60 @@ export async function issueTemporaryPassword(auth: AuthContext, id: string): Pro
     });
 
     return { temporaryPassword, expiresAt };
+  });
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sessions of other users (migration 0108). Administrators only (Super Admin or Admin), on top of the route's
+// USERS permission, and subject to the same rule as every other user-management action: Admin cannot act on
+// Super Admin or Admin accounts, nor on anyone holding permissions Admin does not hold.
+// ---------------------------------------------------------------------------------------------
+
+function assertAdministrator(auth: AuthContext): void {
+  if (!hasAdminAccess(auth.roles)) {
+    throw forbidden("Only an administrator can view or end another user's sessions.");
+  }
+}
+
+export async function listSessionsOfUser(auth: AuthContext, id: string): Promise<SessionSummary[]> {
+  assertAdministrator(auth);
+  await findUser(pool, id);
+  await assertCanManageUser(auth, pool, id);
+
+  return listUserSessions(id, auth.sessionId ?? null);
+}
+
+/** Ends one session of a user, or all of them when `sessionId` is null. Returns how many ended. */
+export async function revokeSessionsOfUser(auth: AuthContext, id: string, sessionId: string | null): Promise<number> {
+  assertAdministrator(auth);
+
+  return withTransaction(async (client) => {
+    await lockUser(client, id);
+    const target = await findUser(client, id);
+    await assertCanManageUser(auth, client, id);
+
+    let ended: number;
+    if (sessionId) {
+      if (!(await revokeSession(client, { sessionId, userId: id, reason: "REVOKED_BY_ADMIN", by: auth.user.id }))) {
+        throw notFound("That session is not open.");
+      }
+      ended = 1;
+    } else {
+      ended = await revokeUserSessions(client, { userId: id, reason: "REVOKED_BY_ADMIN", by: auth.user.id });
+    }
+
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: sessionId ? "user.session_revoked" : "user.sessions_revoked",
+      module: "USERS",
+      entityType: "users",
+      entityId: id,
+      description: sessionId
+        ? `One session of user "${target.fullName}" (${target.email}) was signed out by an administrator.`
+        : `User "${target.fullName}" (${target.email}) was signed out of all devices by an administrator (${ended} session${ended === 1 ? "" : "s"}).`,
+      metadata: sessionId ? { sessionId } : { sessionsEnded: ended },
+    });
+
+    return ended;
   });
 }

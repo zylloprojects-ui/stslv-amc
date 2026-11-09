@@ -7,7 +7,7 @@ import { pool } from "../src/config/database";
 import { setStorageForTests } from "../src/modules/attachments/attachments.service";
 import { LocalDiskStorage } from "../src/shared/storage";
 import { activeContract, createClient, visitsOf, type Session } from "./amc-helpers";
-import { api, closePool, resetData, signedIn } from "./helpers";
+import { api, closePool, resetData, signedIn, withAuditLogUnlocked } from "./helpers";
 
 // Service Sales shows, views and downloads the Service Report uploaded on Service Status (migration 0104,
 // feature/service-status-report-completion-lock). Service Sales only reads it.
@@ -113,7 +113,7 @@ describe("Service Sales — Service Report view and download", () => {
   });
 
   beforeEach(async () => {
-    await pool.query("TRUNCATE activity_logs, amc_visits_all, amc_contracts_all, clients_all RESTART IDENTITY CASCADE");
+    await withAuditLogUnlocked("TRUNCATE activity_logs, amc_visits_all, amc_contracts_all, clients_all RESTART IDENTITY CASCADE");
     await pool.query("DELETE FROM attachments WHERE entity_type = 'amc_visits'").catch(() => undefined);
     const clientId = await createClient(admin, "Alpha Towers");
     contractA = await activeContract(admin, clientId, { systemDescription: "FIRE", maintenanceFrequency: "MONTHLY" });

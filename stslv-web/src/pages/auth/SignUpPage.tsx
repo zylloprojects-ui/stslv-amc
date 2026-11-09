@@ -101,7 +101,7 @@ export function SignUpPage() {
       <PasswordField
         label="Password"
         autoComplete="new-password"
-        placeholder="At least 10 characters"
+        placeholder="At least 12 characters"
         required
         error={errors.password?.message}
         {...register('password')}

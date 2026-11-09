@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../auth/context'
 import { Badge, Button, Card, PageHeader } from '../components/ui'
+import { ActiveSessions } from './account/ActiveSessions'
 import { ChangePasswordForm } from './account/ChangePasswordForm'
 
 export function AccountPage() {
@@ -47,6 +48,8 @@ export function AccountPage() {
             </Button>
           </div>
         </Card>
+
+        <ActiveSessions />
       </div>
     </>
   )

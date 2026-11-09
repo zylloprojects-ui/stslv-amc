@@ -6,7 +6,7 @@ import { env } from "../src/config/env";
 import { pool } from "../src/config/database";
 import { rateLimit } from "../src/middleware/rate-limit";
 import { errorHandler } from "../src/shared/errors";
-import { closePool, insertUser, PASSWORD, resetData } from "./helpers";
+import { closePool, insertUser, PASSWORD, resetData, withAuditLogUnlocked } from "./helpers";
 
 const original = {
   trustProxyHops: env.trustProxyHops,
@@ -64,7 +64,7 @@ async function failedLogins() {
 
 describe("failed sign-in logging", () => {
   afterEach(async () => {
-    await pool.query("DELETE FROM activity_logs WHERE action = 'auth.login_failed'");
+    await withAuditLogUnlocked("DELETE FROM activity_logs WHERE action = 'auth.login_failed'");
   });
 
   it("records a wrong password against the account, without the password", async () => {

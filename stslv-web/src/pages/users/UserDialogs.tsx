@@ -9,7 +9,7 @@ import { cx, formatDateTime } from '../../lib/format'
 import { passwordRule } from '../../lib/password'
 import type { Role, User } from '../../lib/types'
 
-const PASSWORD_HINT = 'At least 10 characters. Give it to the user privately; they can change it under My account.'
+const PASSWORD_HINT = 'At least 12 characters, three kinds of character, not containing their name. Give it to the user privately; they can change it under My account.'
 
 /** The API's message when a request names no role or several: each user holds exactly one role. */
 export const ONE_ROLE_MESSAGE = 'Select exactly one role.'

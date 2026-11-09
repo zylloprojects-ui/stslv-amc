@@ -112,10 +112,10 @@ describe('users', () => {
     await userEvent.type(within(dialog).getByLabelText(/Email/), 'test.person@example.com')
     await userEvent.type(within(dialog).getByLabelText(/Temporary password/), 'short')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create user' }))
-    expect(await within(dialog).findByText('Password must be at least 10 characters.')).toBeInTheDocument()
+    expect(await within(dialog).findByText('Password must be at least 12 characters.')).toBeInTheDocument()
     expect(api.find('POST', '/users')).toHaveLength(0)
 
-    await userEvent.type(within(dialog).getByLabelText(/Temporary password/), '-but-now-long-enough')
+    await userEvent.type(within(dialog).getByLabelText(/Temporary password/), '-but-NOW-long-enough-7')
     // No role chosen: refused before anything is sent.
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create user' }))
     expect(await within(dialog).findByText('Select exactly one role.')).toBeInTheDocument()
@@ -132,7 +132,7 @@ describe('users', () => {
     expect(api.find('POST', '/users')[0]?.body).toEqual({
       fullName: 'Test Person',
       email: 'test.person@example.com',
-      password: 'short-but-now-long-enough',
+      password: 'short-but-NOW-long-enough-7',
       roleIds: ['2'],
     })
     expect(await screen.findByText('Test Person')).toBeInTheDocument()

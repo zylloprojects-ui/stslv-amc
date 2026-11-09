@@ -8,6 +8,7 @@ import { cx, formatDateTime } from '../../lib/format'
 import { queryString } from '../amc/amcApi'
 import { Filter } from '../amc/components'
 import { IconTile, type IconName } from '../dashboard/icons'
+import { ActiveSessionsPanel } from './ActiveSessionsPanel'
 import { actionLabel } from './auditTypes'
 
 interface EventList {
@@ -33,6 +34,10 @@ interface Overview {
   checks: { id: string; label: string; state: 'OK' | 'ATTENTION' | 'UNAVAILABLE'; detail: string }[]
   configuration: {
     sessionHours: number
+    /** Server-side sessions (migration 0108) in force, the inactivity limit and the password minimum. Absent from older APIs. */
+    serverSessions?: boolean
+    sessionIdleMinutes?: number
+    passwordMinLength?: number
     passwordHashRounds: number
     loginRequestsPer15Min: number
     failedLoginsPer15Min: number
@@ -112,6 +117,10 @@ export function SecurityCenterPage() {
           colour: '#1479BD',
           items: [
             { label: 'Sign-in lasts', value: `${config.sessionHours} hours` },
+            ...(config.serverSessions !== undefined
+              ? [{ label: 'Sign-out after inactivity', value: config.serverSessions ? `${config.sessionIdleMinutes} minutes` : 'Not enabled (database update pending)', state: (config.serverSessions ? 'on' : 'off') as 'on' | 'off' }]
+              : []),
+            ...(config.passwordMinLength ? [{ label: 'Minimum password length', value: `${config.passwordMinLength} characters` }] : []),
             { label: 'Password hashing', value: `bcrypt, ${config.passwordHashRounds} rounds` },
           ],
         },
@@ -141,7 +150,7 @@ export function SecurityCenterPage() {
 
   return (
     <>
-      <PageHeader title="Security Center" description="Access, sign-in activity and the security settings in force. Read only." />
+      <PageHeader title="Security Center" description="Access, sign-in activity, open sessions and the security settings in force." />
 
       {overview.isPending && <Spinner label="Loading security overview" />}
       {overview.isError && <Alert>{errorMessage(overview.error)}</Alert>}
@@ -353,6 +362,8 @@ export function SecurityCenterPage() {
             )}
             {events.data && events.data.total > events.data.pageSize && <Pager page={events.data.page} pageSize={events.data.pageSize} total={events.data.total} shown={events.data.items.length} onPage={setPage} />}
           </Card>
+
+          <ActiveSessionsPanel />
         </div>
       )}
     </>

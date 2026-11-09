@@ -4,7 +4,7 @@ import { pool } from "../src/config/database";
 import { HEADER_ROW } from "../src/shared/export/excel";
 import { EMPTY_MESSAGE, EXPORT_ROW_LIMITS } from "../src/shared/export/report";
 import { activeContract, createClient, grant, visitsOf, type Session } from "./amc-helpers";
-import { api, closePool, resetData, signedIn } from "./helpers";
+import { api, closePool, resetData, signedIn, withAuditLogUnlocked } from "./helpers";
 
 let admin: Session;
 let accountant: Session; // AMC_SCHEDULE:VIEW, no EXPORT
@@ -236,7 +236,7 @@ describe("PDF export", () => {
 
 describe("audit", () => {
   it("records each export with who made it, the format, the filters and the row count, and nothing for a refused one", async () => {
-    await pool.query("DELETE FROM activity_logs WHERE action = 'amc_schedule.exported'");
+    await withAuditLogUnlocked("DELETE FROM activity_logs WHERE action = 'amc_schedule.exported'");
     await exportAs({ format: "pdf", clientId: hotelOne, status: "SCHEDULED" });
     await exportAs({ format: "xlsx" }, accountant);
 

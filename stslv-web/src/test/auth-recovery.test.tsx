@@ -6,7 +6,8 @@ import { describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
 import { ACCOUNTANT, ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply } from './helpers'
 
-const GOOD_PASSWORD = 'a-good-long-password'
+// Meets the password policy: 12+ characters, three kinds of character, no common word.
+const GOOD_PASSWORD = 'A-good-long-passw0rd'
 
 // Vitest does not load CSS into the test page, so the stylesheet is read as text
 // (the tests run from the stslv-web folder).
@@ -181,7 +182,7 @@ describe('sign up', () => {
 
     expect(await screen.findByText('Full name is required.')).toBeInTheDocument()
     expect(screen.getByText('Email is required.')).toBeInTheDocument()
-    expect(screen.getByText('Password must be at least 10 characters.')).toBeInTheDocument()
+    expect(screen.getByText('Password must be at least 12 characters.')).toBeInTheDocument()
     expect(screen.getByText('Confirm your password.')).toBeInTheDocument()
     expect(screen.getByLabelText(/Full name/)).toHaveAttribute('aria-invalid', 'true')
 
@@ -189,10 +190,15 @@ describe('sign up', () => {
     await submit()
 
     expect(await screen.findByText('Enter a valid email address.')).toBeInTheDocument()
-    expect(screen.getByText('Password must be at least 10 characters.')).toBeInTheDocument()
+    expect(screen.getByText('Password must be at least 12 characters.')).toBeInTheDocument()
     expect(screen.queryByText('Full name is required.')).not.toBeInTheDocument()
 
+    // Long enough but one kind of character only.
     await userEvent.type(screen.getByLabelText(/^Password/), '-now-long-enough')
+    await submit()
+    expect(await screen.findByText('Password must use at least three of: lower-case letters, upper-case letters, digits, symbols.')).toBeInTheDocument()
+
+    await userEvent.type(screen.getByLabelText(/^Password/), '-AND-9')
     await submit()
 
     expect(await screen.findByText('The two passwords do not match.')).toBeInTheDocument()
@@ -373,7 +379,7 @@ describe('required password change after a temporary password', () => {
     await signInWithTemporaryPassword()
 
     await userEvent.click(screen.getByRole('button', { name: 'Set new password' }))
-    expect(await screen.findByText('Password must be at least 10 characters.')).toBeInTheDocument()
+    expect(await screen.findByText('Password must be at least 12 characters.')).toBeInTheDocument()
     expect(screen.getByText('Confirm your new password.')).toBeInTheDocument()
 
     await fill(GOOD_PASSWORD, 'something-else-entirely')

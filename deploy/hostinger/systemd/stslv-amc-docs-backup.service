@@ -1,0 +1,38 @@
+# STSLV AMC — daily encrypted copy of the private document bucket. TEMPLATE: NOT YET DEPLOYED.
+# Started by stslv-amc-docs-backup.timer. Run by hand:  systemctl start stslv-amc-docs-backup
+#
+# Reads the Supabase bucket (list and download only; the code never writes or deletes there), encrypts each
+# file with the backup PUBLIC key and copies it to the off-site backup bucket. Existing backup copies are
+# never overwritten or deleted. See docs/BACKUP_AUTOMATION.md "Documents".
+
+[Unit]
+Description=STSLV AMC encrypted document backup (Supabase -> GPG -> off-site)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=stslv-backup
+Group=stslv-backup
+EnvironmentFile=/etc/stslv-amc/backup.env
+Environment=NODE_ENV=production
+Environment=GNUPGHOME=/var/lib/stslv-amc-backup/gnupg
+ExecStart=/usr/bin/node /opt/stslv-amc/api/current/dist/ops/cli.js docs-backup
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=idle
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/stslv-amc-backup
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077

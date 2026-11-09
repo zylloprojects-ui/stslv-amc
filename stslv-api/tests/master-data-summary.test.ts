@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { activeContract, createClient, logsFor, visitsOf } from "./amc-helpers";
-import { api, closePool, insertUser, loginToken, bearer, signedIn } from "./helpers";
+import { api, closePool, insertUser, loginToken, bearer, signedIn, withAuditLogUnlocked } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
 // Master Data Center: the active-record counts (GET /api/masters/summary) and
@@ -20,7 +20,7 @@ let procurement: Session;
 // codes (migration 0076), so the rows are reset in place rather than truncated;
 // the three further 0076 frequencies are removed, as this file counts only the four.
 async function restoreFrequencies() {
-  await pool.query("DELETE FROM activity_logs WHERE entity_type = 'maintenance_frequencies'");
+  await withAuditLogUnlocked("DELETE FROM activity_logs WHERE entity_type = 'maintenance_frequencies'");
   await pool.query("DELETE FROM maintenance_frequencies WHERE code NOT IN ('MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUALLY')");
   await pool.query(
     `UPDATE maintenance_frequencies f SET label = v.label, sort_order = v.sort_order, is_active = true, archived_at = NULL

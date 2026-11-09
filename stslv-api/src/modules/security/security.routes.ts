@@ -8,6 +8,7 @@ import { assertRecycleBinAdmin, checkRecycleItem, listRecycleBin, purgeMaster, r
 import { isSuperAdmin } from "../../shared/role-model";
 import { parseIdParam } from "../../shared/validation";
 import { listDeletedContracts, restoreContract } from "../amc/contracts.service";
+import { listAllOpenSessions } from "../auth/sessions.service";
 import { listBackups, startBackup, verifiedBackupFile } from "./backups.service";
 import { sendExport } from "../../shared/export/send";
 import { transportOf } from "../dashboard/readiness.service";
@@ -31,6 +32,12 @@ securityRouter.get("/overview", async (req, res) => {
 
 securityRouter.get("/events", async (req, res) => {
   res.json({ success: true, data: await listSecurityEvents(listSecurityEventsSchema.parse(req.query)) });
+});
+
+// Every open session (migration 0108), for the Active Sessions list. Ending one is done per user under
+// /api/users/:id/sessions, which applies the user-management rules.
+securityRouter.get("/sessions", async (req, res) => {
+  res.json({ success: true, data: await listAllOpenSessions(requireAuth(req).sessionId ?? null) });
 });
 
 securityRouter.get("/deletions/export", async (req, res) => {

@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { activeContract, createClient, referenceOf, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
-import { api, closePool, resetData, signedIn } from "./helpers";
+import { api, closePool, resetData, signedIn, withAuditLogUnlocked } from "./helpers";
 import { cancelInvoice, invoiceBody, newInvoice } from "./invoices-helpers";
 
 // Accounts: a read-only billing reconciliation over amc_visits, the service
@@ -96,7 +96,7 @@ describe("Accounts", () => {
   afterAll(closePool);
 
   beforeEach(async () => {
-    await pool.query("TRUNCATE activity_logs, invoice_allocations, invoices, amc_visits_all, amc_contracts_all, clients_all, sales_engineers_all RESTART IDENTITY CASCADE");
+    await withAuditLogUnlocked("TRUNCATE activity_logs, invoice_allocations, invoices, amc_visits_all, amc_contracts_all, clients_all, sales_engineers_all RESTART IDENTITY CASCADE");
     const alphaId = await createClient(admin, "Alpha Towers");
     const betaId = await createClient(admin, "Beta Mall");
     const esha = await insertEngineer("Esha Engineer");

@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { notFound } from "./errors";
+import { notFound, validationError } from "./errors";
+import { passwordProblems, type PasswordContext } from "./password-policy";
 
 /** Database ids are bigint and travel through the API as numeric strings. */
 export const idSchema = z.string().regex(/^[1-9]\d{0,17}$/, "Must be a valid id.");
@@ -39,17 +40,35 @@ export const emailSchema = z
   .max(254, "Email must be at most 254 characters.")
   .pipe(z.email("Enter a valid email address."));
 
-// bcrypt only uses the first 72 bytes of a password, so longer ones are refused
-// rather than silently truncated.
-export const PASSWORD_MIN_LENGTH = 10;
-export const PASSWORD_MAX_BYTES = 72;
+// A newly chosen password (shared/password-policy.ts): at least 12 characters, at most 72 bytes (bcrypt ignores
+// the rest), three kinds of character, not a well-known weak password. The rule about the person's name or email
+// is checked where those are known (refinePersonalPassword in a schema, or assertPasswordAllowed in a service).
+export { PASSWORD_MAX_BYTES, PASSWORD_MIN_LENGTH } from "./password-policy";
 
-export const newPasswordSchema = z
-  .string({ error: "Password is required." })
-  .min(PASSWORD_MIN_LENGTH, `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`)
-  .refine((value) => Buffer.byteLength(value, "utf8") <= PASSWORD_MAX_BYTES, {
-    message: `Password must be at most ${PASSWORD_MAX_BYTES} bytes.`,
-  });
+export const newPasswordSchema = z.string({ error: "Password is required." }).superRefine((value, context) => {
+  for (const message of passwordProblems(value)) context.addIssue({ code: "custom", message });
+});
+
+/** Adds the name/email rule to a schema whose object holds the password together with the person's details. */
+export function refinePersonalPassword(value: { password?: unknown; email?: unknown; fullName?: unknown }, context: z.RefinementCtx): void {
+  if (typeof value.password !== "string") return;
+
+  const person = { email: typeof value.email === "string" ? value.email : null, fullName: typeof value.fullName === "string" ? value.fullName : null };
+  const generic = new Set(passwordProblems(value.password));
+
+  for (const message of passwordProblems(value.password, person)) {
+    if (!generic.has(message)) context.addIssue({ code: "custom", message, path: ["password"] });
+  }
+}
+
+/** For a service that knows whose password it is setting: refuses a password that breaks any rule. */
+export function assertPasswordAllowed(password: string, person: PasswordContext, field = "newPassword"): void {
+  const problems = passwordProblems(password, person);
+
+  if (problems.length > 0) {
+    throw validationError(problems[0] as string, problems.map((message) => ({ field, message })));
+  }
+}
 
 /** Escapes % _ and \ so user text is matched literally inside ILIKE. */
 export function escapeLike(value: string): string {

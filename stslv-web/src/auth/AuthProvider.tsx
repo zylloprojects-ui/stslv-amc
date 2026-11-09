@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { api, apiUrl, getToken, setForbiddenHandler, setToken, setUnauthorizedHandler } from '../lib/api'
+import { api, apiUrl, getToken, resetActivity, setForbiddenHandler, setToken, setUnauthorizedHandler } from '../lib/api'
 import type { Action, Module, SessionUser } from '../lib/types'
 import { AuthContext, type AuthValue } from './context'
 
@@ -16,9 +16,13 @@ interface LoginResponse {
   user: SessionUser
 }
 
+// Refusals whose message is shown on the sign-in page.
+const EXPLAINED_SIGN_OUTS = new Set(['TEMPORARY_PASSWORD_EXPIRED', 'SESSION_IDLE_TIMEOUT', 'SESSION_REVOKED'])
+
 /**
- * Tells the API the user signed out, so it can be recorded. Best effort: not awaited, every failure is ignored, and
- * it bypasses the api client so a refusal cannot end a newer session. It revokes nothing.
+ * Tells the API the user signed out: it ends this session on the server (the token stops working everywhere) and
+ * records the sign-out. Best effort: not awaited, every failure is ignored, and it bypasses the api client so a
+ * refusal cannot end a newer session. The browser forgets the token either way.
  */
 function recordSignOut(token: string): void {
   try {
@@ -54,12 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     endSession()
   }, [endSession])
 
-  // Any request rejected with 401 ends the session. A temporary password that expired
-  // while the user was signed in (for example on the change-password screen) is
-  // explained on the sign-in page instead of leaving them there without a reason.
+  // Any request rejected with 401 ends the session. A temporary password that expired while the user was signed in
+  // (for example on the change-password screen), the inactivity limit, or a sign-out from another device or by an
+  // administrator is explained on the sign-in page instead of leaving them there without a reason.
   useEffect(() => {
     setUnauthorizedHandler((error) => {
-      if (error.code === 'TEMPORARY_PASSWORD_EXPIRED' && getToken() !== null) {
+      if (EXPLAINED_SIGN_OUTS.has(error.code) && getToken() !== null) {
         setSignOutNotice(error.message)
       }
       endSession()
@@ -97,6 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, password: string) => {
       const result = await api.post<LoginResponse>('/auth/login', { email, password })
 
+      resetActivity()
       setSignOutNotice(null)
       setToken(result.token)
       queryClient.setQueryData(ME_KEY, { user: result.user })

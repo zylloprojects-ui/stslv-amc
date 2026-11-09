@@ -1,0 +1,14 @@
+# STSLV AMC — schedule for the daily document backup. TEMPLATE: enable only with approval.
+#   systemctl enable --now stslv-amc-docs-backup.timer
+
+[Unit]
+Description=Daily STSLV AMC document backup
+
+[Timer]
+# After the database backup, so both describe roughly the same moment.
+OnCalendar=*-*-* 02:45:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
