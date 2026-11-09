@@ -186,7 +186,9 @@ describe('AMC Renewal page', () => {
     expect(within(dialog).queryByLabelText(/^Status/)).not.toBeInTheDocument()
     expect(within(dialog).getByText(/Saved as a draft, under client approval/)).toBeInTheDocument()
 
-    await userEvent.type(within(dialog).getByLabelText(/AMC Reference Number/), 'AMC-2026-080')
+    // The renewal keeps the number of the contract it renews (0111): shown read-only, not typed.
+    expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveValue('AMC-0041')
+    expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveAttribute('readonly')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2026-11-06')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-11-05')
     // Every renewal names an active sales engineer.
@@ -195,8 +197,8 @@ describe('AMC Renewal page', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/41/renewals')).toHaveLength(1))
-    expect(api.find('POST', '/amc/contracts/41/renewals')[0]?.body).toMatchObject({ amcReference: 'AMC-2026-080', clientId: '10', validFrom: '2026-11-06', validTo: '2027-11-05', status: 'DRAFT', salesEngineerId: '7' })
-    expect(await screen.findByText(/Renewal AMC-2026-080 created for AMC-0041/)).toBeInTheDocument()
+    expect(api.find('POST', '/amc/contracts/41/renewals')[0]?.body).toMatchObject({ amcReference: 'AMC-0041', clientId: '10', validFrom: '2026-11-06', validTo: '2027-11-05', status: 'DRAFT', salesEngineerId: '7' })
+    expect(await screen.findByText(/Renewal AMC-0041 version \d+ created for AMC-0041/)).toBeInTheDocument()
   })
 
   it('approves a renewal by activating the renewal contract, never the source', async () => {

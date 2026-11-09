@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { ContractRenewals } from '../pages/amc/ContractRenewalsPanel'
 import { ADMIN, fail, ok, renderApp } from './helpers'
-import { amcApi, makeContract, typeReference, VIEWER, attachRenewalDocument } from './amc-helpers'
+import { amcApi, makeContract, VIEWER, attachRenewalDocument } from './amc-helpers'
 
 // Renewals on the contract page. Every record here is invented.
 
@@ -63,11 +63,11 @@ describe('contract renewals', () => {
     expect(within(dialog).getByLabelText(/Valid from/)).toHaveValue('')
     expect(within(dialog).getByLabelText(/^Status/)).toHaveValue('DRAFT')
     expect(await within(dialog).findByText('A renewal is for the same client as the contract it renews.')).toBeInTheDocument()
-    // The renewal needs its own number: the source's is never copied.
-    expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveValue('')
-    expect(within(dialog).getByText(/A renewal needs its own new number; AMC-0100 stays with the contract being renewed/)).toBeInTheDocument()
+    // The renewal keeps the source's number (0111, approved 2026-11-09), read-only, and becomes its next version.
+    expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveValue('AMC-0100')
+    expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveAttribute('readonly')
+    expect(within(dialog).getByText(/The renewal keeps contract number AMC-0100 and is saved as the next version of it/)).toBeInTheDocument()
 
-    await typeReference(dialog, 'AMC-2028-001')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-12-31')
     await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '7')
@@ -76,7 +76,7 @@ describe('contract renewals', () => {
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))
     expect(api.find('POST', '/amc/contracts/100/renewals')[0]?.body).toMatchObject({
-      amcReference: 'AMC-2028-001',
+      amcReference: 'AMC-0100',
       clientId: '10',
       systemDescription: 'FIRE',
       validFrom: '2028-01-01',
@@ -150,7 +150,6 @@ describe('renewal form lists', () => {
     const dialog = await openRenewal()
 
     await waitFor(() => expect(dialog.getByLabelText(/Sales engineer \(master list\)/)).toHaveValue('7'))
-    await userEvent.type(dialog.getByLabelText(/AMC Reference Number/), 'AMC-2028-002')
     await userEvent.type(dialog.getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(dialog.getByLabelText(/Valid to/), '2028-12-31')
     await attachRenewalDocument()
@@ -173,7 +172,6 @@ describe('renewal form lists', () => {
       },
     })
   const fillValidity = async (dialog: ReturnType<typeof within>) => {
-    await userEvent.type(dialog.getByLabelText(/AMC Reference Number/), 'AMC-2028-003')
     await userEvent.type(dialog.getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(dialog.getByLabelText(/Valid to/), '2028-12-31')
   }

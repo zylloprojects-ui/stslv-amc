@@ -21,7 +21,8 @@ export const DEFAULT_KPI_LABELS: Record<KpiId, string> = {
 
 export const KPI_LABEL_MAX = 40
 
-export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'dueDate', 'serviceStatus', 'serviceReportNo', 'serviceReport', 'quotation', 'salesEngineer'] as const
+// amcValue (2026-11-09): offered only to users who may view AMC Contracts (the API then sends the values).
+export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'dueDate', 'serviceStatus', 'serviceReportNo', 'serviceReport', 'quotation', 'salesEngineer', 'amcValue'] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
 
 /** Page-only columns: the downloads have no such column, so they are never sent as hidden to the export. */
@@ -38,6 +39,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceReport: 'Service Report',
   quotation: 'Quote No.',
   salesEngineer: 'Sales Engineer',
+  amcValue: 'AMC Value (OMR)',
 }
 
 function read(key: string): unknown {

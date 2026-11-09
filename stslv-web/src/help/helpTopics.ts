@@ -728,7 +728,7 @@ const OPERATIONS: HelpTopic[] = [
         steps: [
           'On Renewal Queue, find the contract (ending within 45 days or already ended) and click Start Renewal. On a contract page, Start Renewal opens the same form.',
           'The form is the Add AMC Contract form, filled from the contract being renewed (client, system, frequency, values). The contract being renewed is shown at the top.',
-          'Enter a new AMC Reference Number, check the dates, value and active sales engineer, and add renewal notes.',
+          'The AMC Reference Number is kept: the renewal shows the same contract number and is saved as its next version (Version 2, 3, …). Check the dates, value and active sales engineer, and add renewal notes.',
           'Attach the updated renewal contract document (PDF or Word, up to 12 MB). It is required; the old contract’s document is never reused.',
           'Click Create renewal. It is saved as a draft, Under Client Approval, with no schedule yet.',
           'When the client approves, click Approve: the renewal becomes Active and its services are generated.',
@@ -756,10 +756,12 @@ const OPERATIONS: HelpTopic[] = [
         ],
       },
       {
-        heading: 'Why the renewal has its own number',
+        heading: 'One contract number, several versions',
         bullets: [
-          'Each AMC Reference Number belongs to one contract only, for life (approved 2026-11-04), so a renewal cannot reuse the number of the contract it renews.',
-          'Keeping the same visible number for renewals needs an owner decision on how contract periods are told apart. Until then, type a new number; the link to the original contract is kept and shown on both contracts.',
+          'The original contract and all its renewals show the same contract number (approved 2026-11-09). Each renewal is its own contract period with its own version: STS-AMC-001 is version 1, its first renewal version 2, and so on.',
+          'Lists, reports and exports show a renewal as "STS-AMC-001 (V2)", so every service, invoice and document stays with the right period. The contract page shows "Version 2".',
+          'A version number is never reused: a cancelled renewal keeps its version and the next renewal takes the next one.',
+          'The number still belongs to this contract only: no other contract can use it. Changing the number on any version changes it on every version.',
         ],
       },
     ],
@@ -890,7 +892,8 @@ const FINANCE: HelpTopic[] = [
       {
         heading: 'Totals',
         bullets: [
-          'Service Sales shows quotation numbers only and has no amount column, so it has no money totals. Service values and their totals are on Accounts and Master AMC Status.',
+          'AMC Value (OMR) shows the AMC Value / Year of each service’s contract period (a renewal has its own). It is shown only to users who may view AMC Contracts, and can be hidden with Hide Columns.',
+          'Total AMC Value of matching contracts adds up every contract period that has a matching service, on every page, counting each period once however many of its services match. It is not an invoice value or a payment.',
         ],
       },
     ],

@@ -6,7 +6,7 @@ import { sendExport } from "../../shared/export/send";
 import { parseIdParam } from "../../shared/validation";
 import { buildServicesSalesExport } from "./services-sales.export";
 import { exportServicesSalesSchema, listServicesSalesSchema, saveQuotationSchema } from "./services-sales.schemas";
-import { getServicesSalesOptions, listServicesSales, readServicesSalesReport, saveQuotation } from "./services-sales.service";
+import { getServicesSalesOptions, listServicesSales, readServicesSalesReport, saveQuotation, servicesSalesAccess } from "./services-sales.service";
 
 export const servicesSalesRouter = Router();
 
@@ -16,7 +16,7 @@ servicesSalesRouter.use(authenticate);
 const quotationReady = requireSchema(["amc_visits.quotation_no"]);
 
 servicesSalesRouter.get("/", authorize("SERVICES_SALES", "VIEW"), quotationReady, async (req, res) => {
-  res.json({ success: true, data: await listServicesSales(listServicesSalesSchema.parse(req.query)) });
+  res.json({ success: true, data: await listServicesSales(listServicesSalesSchema.parse(req.query), servicesSalesAccess(requireAuth(req))) });
 });
 
 servicesSalesRouter.get("/options", authorize("SERVICES_SALES", "VIEW"), quotationReady, async (_req, res) => {

@@ -26,6 +26,8 @@ export const SALES_STATUS_LABELS: Record<SalesStatus, string> = {
 
 export interface ServicesSalesItem {
   id: string
+  /** The AMC Value / Year of this visit's contract period (OMR, ex VAT); null for a user who may not see it. */
+  amcValue?: string | null
   reference: string
   contract: { id: string; status: string }
   client: { id: string; name: string }
@@ -82,6 +84,13 @@ export interface ServicesSalesList {
   kpis: ServicesSalesKpis
   /** False until the database has service reports (migration 0104); every row then shows Not uploaded. */
   serviceReportsAvailable?: boolean
+  /** The user may see contract values (AMC Contracts: View): the AMC Value column and total are offered. */
+  amcValueVisible?: boolean
+  /**
+   * AMC Value / Year of every UNIQUE contract period with a visit matching the filters, on every page (a period with
+   * several visits counts once; a renewal is its own period). Null for a user who may not see contract values.
+   */
+  amcValueTotal?: { total: string; contracts: number } | null
 }
 
 export interface ServicesSalesOptions {

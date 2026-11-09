@@ -143,7 +143,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     resolver: zodResolver(contract ? EDIT_SCHEMA : isNew ? NEW_CONTRACT_SCHEMA : CREATE_SCHEMA),
     defaultValues: {
       // Never prefilled: a new contract or renewal gets the number the user types. An edit shows the stored one, read-only.
-      amcReference: contract?.amcReference ?? '',
+      // A renewal keeps the number of the contract it renews (0111, approved 2026-11-09): shown, not typed.
+      amcReference: contract?.amcReference ?? renewalOf?.amcReference ?? '',
       clientId: start?.client.id ?? '',
       responsibleEngineer: start?.responsibleEngineer ?? '',
       validFrom: contract?.validFrom ?? '',
@@ -541,7 +542,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
           {renewalOf && (
             <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-[#0b3b66]" aria-label="Contract being renewed">
               <p>
-                Renewing contract <strong className="font-mono">{renewalOf.amcReference}</strong> · {renewalOf.client.name} · {renewalOf.systemDescription} · valid{' '}
+                Renewing contract <strong className="font-mono">{renewalOf.amcReference}</strong>
+                {(renewalOf.contractVersion ?? 1) > 1 ? ` (version ${renewalOf.contractVersion})` : ''} · {renewalOf.client.name} · {renewalOf.systemDescription} · valid{' '}
                 {formatDate(renewalOf.validFrom)} to {formatDate(renewalOf.validTo)}
               </p>
               <p className="mt-0.5 text-xs text-slate-600">
@@ -572,13 +574,14 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
                 spellCheck={false}
                 maxLength={AMC_REFERENCE_MAX}
                 placeholder="For example AMC-2026-001"
+                readOnly={Boolean(renewalOf)}
                 hint={
                   renewalOf
-                    ? `A renewal needs its own new number; ${renewalOf.amcReference} stays with the contract being renewed.`
+                    ? `The renewal keeps contract number ${renewalOf.amcReference} and is saved as the next version of it (this is version ${renewalOf.contractVersion ?? 1}). The contract being renewed is not changed.`
                     : 'Enter the contract number. Each number can be used by one contract only.'
                 }
                 error={errors.amcReference?.message}
-                className="font-mono"
+                className={renewalOf ? 'bg-slate-50 font-mono font-semibold' : 'font-mono'}
                 {...register('amcReference')}
               />
             )}

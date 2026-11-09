@@ -312,7 +312,8 @@ export function ContractDetailPage() {
   const validity = validityState(contract.validFrom, contract.validTo, todayIso())
   const schedule = contract.schedule
   // The AMC Reference Number typed when the contract was created; read-only.
-  const reference = contract.amcReference
+  // The contract number, with this period's version from a renewal's second version on (0111).
+  const reference = (contract.contractVersion ?? 1) > 1 ? `${contract.amcReference} (V${contract.contractVersion})` : contract.amcReference
   const openRenewal = renewals.data?.renewals.find((renewal) => renewal.status !== 'CANCELLED')
   const servicesThisMonth = visits.data?.items.filter((visit) => visit.status !== 'CANCELLED' && visit.scheduledDate.startsWith(currentMonth())).length
   const openTab = (tab: TabId) => setActiveTab(tab)
@@ -381,7 +382,7 @@ export function ContractDetailPage() {
 
       <PageHeader
         title={`${contract.client.name} — ${contract.systemDescription}`}
-        description={`${reference} · AMC contract: validity, contract figures, maintenance schedule, invoices and history.`}
+        description={`${contract.amcReference} · Version ${contract.contractVersion ?? 1} · AMC contract: validity, contract figures, maintenance schedule, invoices and history.`}
         actions={
           canEdit && (
             <>

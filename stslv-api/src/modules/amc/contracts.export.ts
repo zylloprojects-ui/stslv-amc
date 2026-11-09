@@ -52,7 +52,8 @@ const HIDDEN_KEYS: Record<ContractColumn, string[]> = {
 function toRow(contract: Contract, index: number, labels: Map<string, string>): ReportRow {
   return {
     number: index + 1,
-    reference: contract.amcReference,
+    // The contract number, with its version from a renewal's second version on (0111), as on every other export.
+    reference: contract.contractVersion > 1 ? `${contract.amcReference} (V${contract.contractVersion})` : contract.amcReference,
     client: contract.client.name,
     system: contract.systemDescription,
     frequency: labels.get(contract.maintenanceFrequency) ?? contract.maintenanceFrequency,

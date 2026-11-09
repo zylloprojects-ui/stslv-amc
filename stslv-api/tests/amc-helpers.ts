@@ -51,7 +51,11 @@ export function testReference(prefix = "TEST"): string {
 
 /** The stored AMC Reference Number of a contract (Recycle Bin included). */
 export async function referenceOf(contractId: string | number): Promise<string> {
-  const result = await pool.query<{ amc_reference: string }>("SELECT amc_reference FROM amc_contracts_all WHERE id = $1", [String(contractId)]);
+  // As every list, report and export shows it: the number, plus " (V2)" from a renewal's second version on (0111).
+  const result = await pool.query<{ amc_reference: string }>(
+    "SELECT amc_reference || CASE WHEN contract_version > 1 THEN ' (V' || contract_version || ')' ELSE '' END AS amc_reference FROM amc_contracts_all WHERE id = $1",
+    [String(contractId)]
+  );
   const row = result.rows[0];
 
   if (!row) throw new Error(`No contract ${contractId}.`);
@@ -85,8 +89,10 @@ export function contractDocument(data: Buffer = TEST_PDF, fileName = "contract.p
  * A renewal body with its required renewal contract document (client fixes, 2026-11-09), for tests whose subject is
  * not the document. A body that already names a document keeps it.
  */
-export function withRenewalDocument<T extends object>(body: T): T & { contractDocument: { fileName: string; contentBase64: string } } {
-  return { contractDocument: contractDocument(TEST_PDF, "renewal.pdf"), ...body };
+export function withRenewalDocument<T extends object>(body: T): Omit<T, "amcReference"> & { contractDocument: { fileName: string; contentBase64: string } } {
+  // A renewal keeps the contract number of the contract it renews (0111): a typed number is left out.
+  const { amcReference: _number, ...rest } = body as T & { amcReference?: unknown };
+  return { contractDocument: contractDocument(TEST_PDF, "renewal.pdf"), ...(rest as Omit<T, "amcReference">) };
 }
 
 /**

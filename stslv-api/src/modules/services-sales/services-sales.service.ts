@@ -4,6 +4,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { AppError, conflict, notFound } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
+import { holdsPermission } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
 import { readStoredFile } from "../attachments/attachments.service";
 import type { ContractStatus, VisitStatus } from "../amc/amc.constants";
@@ -78,6 +79,8 @@ const selectSql = (storedReference: boolean, reports: boolean) => `
          ${SERVICE_STATUS_SQL} AS service_status,
          ${SALES_STATUS_SQL} AS sales_status,
          ${reports ? SERVICE_REPORT_SQL : "NULL::jsonb"} AS service_report,
+         -- The AMC Value / Year of this visit's own contract period (its contract row: a renewal version has its own).
+         c.contract_value::text AS amc_value,
          v.updated_at`;
 
 interface SalesRow {
@@ -109,6 +112,7 @@ interface SalesRow {
   service_status: ServiceStatus;
   sales_status: SalesStatus;
   service_report: { id: string; originalName: string; mimeType: string; sizeBytes: number | string; uploadedAt: string } | null;
+  amc_value: string;
   updated_at: Date;
 }
 
@@ -149,10 +153,27 @@ export interface ServicesSalesItem {
   quotationBeforeCompletion: boolean;
   /** The current Service Report of this visit (0104), or null when none is uploaded or the database has no reports yet. */
   serviceReport: ServicesSalesReport | null;
+  /**
+   * The AMC Value / Year of the visit's contract period, OMR excluding VAT. Null unless the user holds AMC Contracts:
+   * View: the value is then never sent. Not an invoice value and not money received.
+   */
+  amcValue: string | null;
   updatedAt: string;
 }
 
-function toItem(row: SalesRow): ServicesSalesItem {
+/** What the signed-in user may see beyond the page itself: contract values need AMC Contracts: View. */
+export interface ServicesSalesAccess {
+  amcValue: boolean;
+}
+
+const NO_EXTRA_ACCESS: ServicesSalesAccess = { amcValue: false };
+
+export function servicesSalesAccess(auth: Pick<AuthContext, "permissions">): ServicesSalesAccess {
+  // No permission set (an internal caller): nothing extra is shown.
+  return { amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false };
+}
+
+function toItem(row: SalesRow, access: ServicesSalesAccess = NO_EXTRA_ACCESS): ServicesSalesItem {
   return {
     id: row.id,
     reference: row.contract_reference,
@@ -183,6 +204,7 @@ function toItem(row: SalesRow): ServicesSalesItem {
           uploadedAt: new Date(row.service_report.uploadedAt).toISOString(),
         }
       : null,
+    amcValue: access.amcValue ? row.amc_value : null,
     updatedAt: row.updated_at.toISOString(),
   };
 }
@@ -241,6 +263,29 @@ export interface ServicesSalesKpis {
   quotationBeforeCompletion: number;
 }
 
+/**
+ * The filtered AMC Value total (client fixes, 2026-11-09): the AMC Value / Year of every UNIQUE contract period that
+ * has at least one visit matching the filters, across all pages. A contract with several matching visits counts once;
+ * a renewal is its own contract period (own row, own value) and counts separately. PostgreSQL adds the amounts.
+ * Only computed for a user who may see contract values.
+ */
+export interface ServicesSalesAmcValueTotal {
+  /** Sum of AMC Value / Year over the unique contract periods, OMR excluding VAT, three decimals. */
+  total: string;
+  /** How many unique contract periods the total covers. */
+  contracts: number;
+}
+
+async function amcValueTotal(where: string, params: unknown[]): Promise<ServicesSalesAmcValueTotal> {
+  const result = await pool.query<{ total: string; contracts: number }>(
+    `SELECT COALESCE(sum(t.contract_value), 0)::numeric(16,3)::text AS total, count(*)::int AS contracts
+     FROM (SELECT DISTINCT c.id, c.contract_value ${FROM} ${where}) t`,
+    params
+  );
+
+  return { total: result.rows[0]?.total ?? "0.000", contracts: result.rows[0]?.contracts ?? 0 };
+}
+
 /** The card figures, over exactly the rows the filters select. total = notCompleted + quotePending + quoted. */
 async function kpis(where: string, params: unknown[]): Promise<ServicesSalesKpis> {
   const result = await pool.query<{ total: number; not_completed: number; quote_pending: number; quoted: number; before_completion: number }>(
@@ -263,17 +308,28 @@ async function kpis(where: string, params: unknown[]): Promise<ServicesSalesKpis
   };
 }
 
-export async function listServicesSales(query: ListServicesSalesQuery) {
+export async function listServicesSales(query: ListServicesSalesQuery, access: ServicesSalesAccess = NO_EXTRA_ACCESS) {
   const [storedReference, reports] = await Promise.all([hasStoredReference(), serviceReportsAvailable()]);
   const { where, params } = filterSql(query, storedReference);
   const figures = await kpis(where, params);
+  // Never computed, so never sent, for a user who may not see contract values.
+  const amcValue = access.amcValue ? await amcValueTotal(where, params) : null;
   const rows = await pool.query<SalesRow>(
     `${selectSql(storedReference, reports)} ${FROM} ${where} ${ORDER}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
 
-  return { items: rows.rows.map(toItem), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures, serviceReportsAvailable: reports };
+  return {
+    items: rows.rows.map((row) => toItem(row, access)),
+    total: figures.total,
+    page: query.page,
+    pageSize: query.pageSize,
+    kpis: figures,
+    serviceReportsAvailable: reports,
+    amcValueVisible: access.amcValue,
+    amcValueTotal: amcValue,
+  };
 }
 
 /**
@@ -281,7 +337,7 @@ export async function listServicesSales(query: ListServicesSalesQuery) {
  * `checkSize` is given the number of rows before any is read and throws when
  * the export cannot hold that many.
  */
-export async function listAllServicesSales(filters: ServicesSalesFilters, checkSize: (count: number) => void) {
+export async function listAllServicesSales(filters: ServicesSalesFilters, checkSize: (count: number) => void, access: ServicesSalesAccess = NO_EXTRA_ACCESS) {
   const storedReference = await hasStoredReference();
   const { where, params } = filterSql(filters, storedReference);
   const figures = await kpis(where, params);
@@ -290,7 +346,9 @@ export async function listAllServicesSales(filters: ServicesSalesFilters, checkS
 
   const rows = await pool.query<SalesRow>(`${selectSql(storedReference, await serviceReportsAvailable())} ${FROM} ${where} ${ORDER}`, params);
 
-  return { items: rows.rows.map(toItem), kpis: figures };
+  const amcValue = access.amcValue ? await amcValueTotal(where, params) : null;
+
+  return { items: rows.rows.map((row) => toItem(row, access)), kpis: figures, amcValueTotal: amcValue };
 }
 
 /** The lists for the page's filters, taken from the contracts that have visits on the page. */
@@ -358,7 +416,7 @@ export async function saveQuotation(auth: AuthContext, id: string, input: SaveQu
     const changes = diffFields({ quotationNo: row.quotation_no }, { quotationNo: input.quotationNo }, ["quotationNo"]);
 
     if (Object.keys(changes).length === 0) {
-      return toItem(row);
+      return toItem(row, servicesSalesAccess(auth));
     }
     if (input.quotationNo !== null && row.status !== "COMPLETED") {
       throw conflict("A quotation number can only be recorded once the service is completed. Complete it on Service Status first.", [
@@ -384,7 +442,7 @@ export async function saveQuotation(auth: AuthContext, id: string, input: SaveQu
       metadata: { changes, reference: row.contract_reference },
     });
 
-    return toItem(await findSalesRow(client, id));
+    return toItem(await findSalesRow(client, id), servicesSalesAccess(auth));
   });
 }
 

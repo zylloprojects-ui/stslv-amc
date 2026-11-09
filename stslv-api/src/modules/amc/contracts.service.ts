@@ -11,7 +11,7 @@ import { schemaHas } from "../../shared/schema-features";
 import { assertContractNotInvoiced } from "../invoices/invoice-locks";
 import { attachStoredDocument, discardStoredFile, prepareContractDocument, storePreparedDocument } from "../attachments/attachments.service";
 import { clientCode } from "../clients/clients.service";
-import { hasStoredReference, referenceOfIdSql, referenceSql, rethrowDuplicateReference } from "./contract-reference";
+import { hasStoredReference, rawReferenceSql, referenceOfIdSql, referenceSql, rethrowDuplicateReference, versionSql } from "./contract-reference";
 import { contractParents, restoreBlockers } from "../recycle-bin/contract-parents";
 import { amountForService, expectedTermTotal, serviceAmounts, servicesPerCycle, subtractMoney } from "./amc.billing";
 import { applyContractMasters } from "./contract-masters.service";
@@ -43,6 +43,8 @@ import type {
 interface ContractRow {
   id: string;
   amc_reference: string;
+  contract_version: number;
+  version_root_id: string;
   client_id: string;
   client_name: string;
   client_is_active: boolean;
@@ -84,6 +86,13 @@ export interface Contract {
   id: string;
   /** The AMC Reference Number: typed at creation (migration 0105), read-only afterwards. Older contracts keep their "AMC-0007" reference. */
   amcReference: string;
+  /**
+   * The contract period's version under its contract number (migration 0111): 1 for an original contract, 2 for its
+   * first renewal, and so on. Every version shows the same amcReference; the id stays each period's identity.
+   */
+  contractVersion: number;
+  /** The id of version 1 (the original contract) of this contract number; its own id for an original. */
+  versionRootId: string;
   client: { id: string; name: string; isActive: boolean };
   responsibleEngineer: string | null;
   validFrom: string;
@@ -165,7 +174,9 @@ export interface ScheduleChange {
 // list and the detail view. The custom months come from migration 0076; on a
 // database without it they are empty.
 const contractSelect = (withMonths: boolean, storedReference: boolean) => `
-  SELECT c.id, ${referenceSql("c", storedReference)} AS amc_reference, c.client_id, cl.name AS client_name, cl.is_active AS client_is_active,
+  SELECT c.id, ${rawReferenceSql("c", storedReference)} AS amc_reference, ${versionSql("c")} AS contract_version,
+         COALESCE(to_jsonb(c) ->> 'version_root_id', c.id::text) AS version_root_id,
+         c.client_id, cl.name AS client_name, cl.is_active AS client_is_active,
          c.responsible_engineer, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
          c.system_description, c.description, c.contract_value, c.final_credit, c.billing_basis, c.custom_billing_value,
          c.maintenance_frequency,
@@ -270,6 +281,8 @@ function toContract(row: ContractRow): Contract {
   return {
     id: row.id,
     amcReference: row.amc_reference,
+    contractVersion: row.contract_version,
+    versionRootId: row.version_root_id,
     client: { id: row.client_id, name: row.client_name, isActive: row.client_is_active },
     responsibleEngineer: row.responsible_engineer,
     validFrom: row.valid_from,
@@ -1021,6 +1034,36 @@ async function assertRenewable(db: Queryable, sourceId: string, clientId: string
   return source;
 }
 
+/** Whether this database keeps contract versions (migration 0111). */
+function hasContractVersions(): Promise<boolean> {
+  return schemaHas(["amc_contracts.contract_version"]);
+}
+
+/**
+ * The number and version a renewal of `source` gets (migration 0111): the source's contract number and the next free
+ * version under its original contract. The original is locked first, so two renewals at once cannot take the same
+ * version (the unique (version_root_id, contract_version) constraint also refuses it). A number typed in the request
+ * must be that same number. Null on a database without 0111.
+ */
+async function nextContractVersion(
+  db: Queryable,
+  source: Contract,
+  requested: string | undefined
+): Promise<{ reference: string; rootId: string; version: number } | null> {
+  if (!(await hasContractVersions())) {
+    return null;
+  }
+  if (requested !== undefined && requested.toLowerCase() !== source.amcReference.toLowerCase()) {
+    const message = `A renewal keeps the contract number ${source.amcReference}; it is saved as the next version of it.`;
+    throw validationError(message, [{ field: "amcReference", message }]);
+  }
+
+  await db.query("SELECT id FROM amc_contracts_all WHERE id = $1 FOR UPDATE", [source.versionRootId]);
+  const latest = await db.query<{ version: number }>("SELECT max(contract_version)::int AS version FROM amc_contracts_all WHERE version_root_id = $1", [source.versionRootId]);
+
+  return { reference: source.amcReference, rootId: source.versionRootId, version: (latest.rows[0]?.version ?? 1) + 1 };
+}
+
 /**
  * Every renewal names an active sales engineer, chosen by the user: it is never saved "not linked", and a renewed
  * contract's engineer who is no longer active is never replaced by someone the user did not choose. Whether the
@@ -1135,6 +1178,9 @@ export async function createNewContract(auth: AuthContext, input: CreateNewContr
   }
 }
 
+/** A contract's fields at creation. The number may be left out only on a renewal, which keeps its source's number (0111). */
+type ContractCreateFields = Omit<CreateContractInput, "amcReference"> & { amcReference?: string | undefined };
+
 /** Title of the document a renewal is created with, so it is told apart from the renewed contract's own document. */
 export const RENEWAL_DOCUMENT_TITLE = "Renewal contract document";
 
@@ -1148,7 +1194,7 @@ export const RENEWAL_DOCUMENT_TITLE = "Renewal contract document";
 export async function createRenewalWithDocument(
   auth: AuthContext,
   sourceId: string,
-  input: CreateContractInput & { contractDocument: { fileName: string; contentBase64: string } },
+  input: ContractCreateFields & { contractDocument: { fileName: string; contentBase64: string } },
   renewalNotes: string | null
 ): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
   const { contractDocument, ...fields } = input;
@@ -1174,7 +1220,7 @@ export async function createRenewalWithDocument(
 
 export async function createContract(
   auth: AuthContext,
-  input: CreateContractInput,
+  input: ContractCreateFields,
   options: {
     renewedFromId?: string;
     renewalNotes?: string | null;
@@ -1199,7 +1245,7 @@ export async function createContract(
 
 function insertContract(
   auth: AuthContext,
-  input: CreateContractInput,
+  input: ContractCreateFields,
   options: { renewedFromId?: string; renewalNotes?: string | null; attach?: (db: Queryable, contractId: string) => Promise<void> }
 ): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
   return withTransaction(async (client) => {
@@ -1213,6 +1259,13 @@ function insertContract(
 
     // A renewal (migration 0072): the source is locked and checked before the new contract is added.
     const source = options.renewedFromId ? await assertRenewable(client, options.renewedFromId, input.clientId) : null;
+    // Same visible contract number (migration 0111, approved 2026-11-09): the renewal keeps the number of the contract
+    // it renews and becomes the next version of it. Null without 0111 (the renewal then needs its own number, as before).
+    const version = source ? await nextContractVersion(client, source, input.amcReference) : null;
+    const amcReference = version ? version.reference : input.amcReference;
+    if (!amcReference) {
+      throw validationError("Enter the AMC Reference Number.", [{ field: "amcReference", message: "Enter the AMC Reference Number." }]);
+    }
     if (source && !input.salesEngineerId) {
       await assertRenewalEngineerChosen(client, source.id);
     }
@@ -1225,8 +1278,8 @@ function insertContract(
       `INSERT INTO amc_contracts
          (client_id, responsible_engineer, valid_from, valid_to, system_description, description,
           contract_value, final_credit, maintenance_frequency, default_visit_amount, status, notes,
-          created_by, updated_by, billing_basis, custom_billing_value, amc_reference)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13, $14, $15, $16)
+          created_by, updated_by, billing_basis, custom_billing_value, amc_reference${version ? ", version_root_id, contract_version" : ""})
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13, $14, $15, $16${version ? ", $17, $18" : ""})
        RETURNING id`,
       [
         input.clientId,
@@ -1244,7 +1297,8 @@ function insertContract(
         auth.user.id,
         input.billingBasis ?? null,
         input.billingBasis === "CUSTOM" ? (input.customBillingValue ?? null) : null,
-        input.amcReference,
+        amcReference,
+        ...(version ? [version.rootId, version.version] : []),
       ]
     );
     const id = (inserted.rows[0] as { id: string }).id;
@@ -1259,8 +1313,8 @@ function insertContract(
       module: "AMC_CONTRACTS",
       entityType: "amc_contracts",
       entityId: id,
-      description: `AMC contract ${created.amcReference} for "${created.client.name}" (${created.systemDescription}) created as ${created.status}.`,
-      metadata: { amcReference: created.amcReference },
+      description: `AMC contract ${created.amcReference}${created.contractVersion > 1 ? ` version ${created.contractVersion}` : ""} for "${created.client.name}" (${created.systemDescription}) created as ${created.status}.`,
+      metadata: { amcReference: created.amcReference, ...(created.contractVersion > 1 ? { contractVersion: created.contractVersion, versionRootId: created.versionRootId } : {}) },
     });
 
     if (source) {
@@ -1396,7 +1450,9 @@ function updateContractFields(
 
     if (referenceChange) {
       // First, so a number that is already taken stops the edit before anything else is written.
-      await client.query("UPDATE amc_contracts_all SET amc_reference = $1, updated_by = $2 WHERE id = $3", [referenceChange.to, auth.user.id, id]);
+      // A contract number belongs to the whole version chain (0111): it is changed on the original (version 1), and the
+      // database gives every later version the same number in the same transaction.
+      await client.query("UPDATE amc_contracts_all SET amc_reference = $1, updated_by = $2 WHERE id = $3", [referenceChange.to, auth.user.id, before.versionRootId]);
     }
 
     await client.query(

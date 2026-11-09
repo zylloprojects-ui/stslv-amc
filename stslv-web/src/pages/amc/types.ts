@@ -71,6 +71,13 @@ export interface Contract {
   id: string
   /** The AMC Reference Number typed when the contract was created (migration 0105). Read-only afterwards. */
   amcReference: string
+  /**
+   * The contract period's version under its number (migration 0111): 1 for an original, 2 for its first renewal, and
+   * so on. Every version shows the same amcReference. Absent from an older API (treated as 1).
+   */
+  contractVersion?: number
+  /** The id of version 1 (the original contract) of this number. Absent from an older API. */
+  versionRootId?: string
   client: { id: string; name: string; isActive: boolean }
   responsibleEngineer: string | null
   validFrom: string

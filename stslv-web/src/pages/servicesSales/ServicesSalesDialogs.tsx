@@ -93,13 +93,16 @@ export function CustomizeKpisDialog({ labels, order, onSave, onResetLabels, onRe
 
 interface HideColumnsProps {
   hidden: ReadonlySet<ColumnId>
+  /** The columns this user can have at all (AMC Value only with AMC Contracts: View). Every column by default. */
+  available?: readonly ColumnId[]
   onSave: (hidden: ReadonlySet<ColumnId>) => void
   onClose: () => void
 }
 
 /** Show or hide table columns. AMC Reference always stays, so every row is identified; downloads hold the columns shown. */
-export function HideColumnsDialog({ hidden, onSave, onClose }: HideColumnsProps) {
+export function HideColumnsDialog({ hidden, available = COLUMN_IDS, onSave, onClose }: HideColumnsProps) {
   const [draft, setDraft] = useState<Set<ColumnId>>(new Set(hidden))
+  const hiddenCount = available.filter((id) => draft.has(id)).length
   const toggle = (id: ColumnId) => {
     const next = new Set(draft)
     if (next.has(id)) next.delete(id)
@@ -129,12 +132,12 @@ export function HideColumnsDialog({ hidden, onSave, onClose }: HideColumnsProps)
         AMC Reference is always shown. Downloads include only the columns shown here, plus the sales status. Service Report files are viewed on the page and are not part of downloads.
       </p>
       <p className="mb-3 text-sm font-medium text-slate-700" aria-live="polite">
-        {COLUMN_IDS.length - draft.size} of {COLUMN_IDS.length} columns shown
+        {available.length - hiddenCount} of {available.length} columns shown
       </p>
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">
-          {COLUMN_IDS.map((id) => (
+          {available.map((id) => (
             <li key={id}>
               <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-sky-50">
                 <input type="checkbox" checked={!draft.has(id)} onChange={() => toggle(id)} className="h-4 w-4 rounded border-slate-300 accent-[#1479BD]" />

@@ -211,6 +211,9 @@ export const createNewContractSchema = createNewContractFieldsSchema.extend({
 
 /** A renewal: the same fields, plus optional notes kept in the activity log of the new contract. */
 export const createRenewalSchema = createContractSchema.extend({
+  // A renewal keeps the contract number of the contract it renews (0111, approved 2026-11-09): it may be left out, and
+  // if sent it must be that same number. On a database without 0111 it is still required (checked in the service).
+  amcReference: amcReferenceSchema.optional(),
   renewalNotes: optionalText("Renewal notes", 1000).optional(),
 });
 

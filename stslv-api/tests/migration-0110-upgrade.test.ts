@@ -50,7 +50,9 @@ describe("migration 0110 upgrade path", () => {
     expect(await tracked()).toBe("0109");
     const visitColumnsBefore = Number((await upgradePool.query("SELECT count(*) FROM information_schema.columns WHERE table_schema = $1 AND table_name = 'amc_visits'", [SCHEMA])).rows[0]!.count);
 
-    const result = await runMigrations(upgradePool, { schema: SCHEMA });
+    // Exactly 0110 on top (later migrations have their own upgrade tests).
+    fs.copyFileSync(path.join(MIGRATIONS_DIR, "0110_amc_visit_sales_engineer_name.sql"), path.join(workDir, "0110_amc_visit_sales_engineer_name.sql"));
+    const result = await runMigrations(upgradePool, { schema: SCHEMA, dir: workDir });
 
     expect(result.applied).toEqual(["0110_amc_visit_sales_engineer_name.sql"]);
     expect(await tracked()).toBe("0110");

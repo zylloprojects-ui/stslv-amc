@@ -280,12 +280,14 @@ describe("editing the reference", () => {
 
     const engineer = await renewalEngineer();
     const sourceId = await activeContract(admin, clientId, { amcReference: "REUSE-SRC-001", validFrom: "2031-01-01", validTo: "2031-12-31" });
+    // A renewal keeps its source's number (0111): typing any other number, a retired one included, is refused.
     const renewal = await api()
       .post(`/api/amc/contracts/${sourceId}/renewals`)
       .set(admin.headers)
-      .send(withRenewalDocument({ ...contractBody(clientId, { validFrom: "2032-01-01", validTo: "2032-12-31", status: "DRAFT", salesEngineerId: engineer }), amcReference: "REUSE-OLD-001" }));
-    expect(renewal.status).toBe(409);
-    expect(renewal.body.error.message).toBe(RETIRED);
+      .send({ ...withRenewalDocument(contractBody(clientId, { validFrom: "2032-01-01", validTo: "2032-12-31", status: "DRAFT", salesEngineerId: engineer })), amcReference: "REUSE-OLD-001" });
+    expect(renewal.status).toBe(400);
+    expect(renewal.body.error.details[0]).toMatchObject({ field: "amcReference" });
+    expect((await pool.query("SELECT count(*)::int AS count FROM amc_contracts_all WHERE lower(amc_reference) = 'reuse-old-001'")).rows[0]).toEqual({ count: 0 });
 
     // The current number of a contract still answers with the "already exists" message.
     expect((await create("REUSE-NEW-001")).body.error.message).toBe(DUPLICATE);
@@ -338,19 +340,26 @@ describe("editing the reference", () => {
     ).rejects.toMatchObject({ code: "23505", constraint: "amc_contract_references_pk" });
   });
 
-  it("keeps exactly one current entry per contract, equal to its reference (Recycle Bin included)", async () => {
+  it("keeps exactly one current entry per contract number, held by its original, equal to its reference (Recycle Bin included)", async () => {
     const binned = (await create("INV-BIN-001")).body.data.id as string;
     expect((await api().delete(`/api/amc/contracts/${binned}`).set(admin.headers)).status).toBe(200);
 
+    // 0111: a number is recorded once, for its original (version 1) contract; a renewal version shares it.
     const mismatched = await pool.query(
       `SELECT c.id FROM amc_contracts_all c
        LEFT JOIN amc_contract_references r ON r.amc_contract_id = c.id AND r.retired_at IS NULL
-       WHERE r.reference IS DISTINCT FROM c.amc_reference`
+       WHERE c.contract_version = 1 AND r.reference IS DISTINCT FROM c.amc_reference`
     );
     expect(mismatched.rows).toEqual([]);
+    const versions = await pool.query(
+      `SELECT v.id FROM amc_contracts_all v JOIN amc_contracts_all o ON o.id = v.version_root_id
+       WHERE v.contract_version > 1 AND (v.amc_reference <> o.amc_reference
+         OR EXISTS (SELECT 1 FROM amc_contract_references r WHERE r.amc_contract_id = v.id))`
+    );
+    expect(versions.rows).toEqual([]);
     const current = await pool.query("SELECT count(*)::int AS count FROM amc_contract_references WHERE retired_at IS NULL");
-    const contracts = await pool.query("SELECT count(*)::int AS count FROM amc_contracts_all");
-    expect(current.rows[0].count).toBe(contracts.rows[0].count);
+    const originals = await pool.query("SELECT count(*)::int AS count FROM amc_contracts_all WHERE contract_version = 1");
+    expect(current.rows[0].count).toBe(originals.rows[0].count);
   });
 
   it("refuses another contract a number being given up at the same moment, whichever request runs first", async () => {
@@ -372,24 +381,32 @@ describe("editing the reference", () => {
     const renewal = await api()
       .post(`/api/amc/contracts/${sourceId}/renewals`)
       .set(admin.headers)
-      .send(withRenewalDocument({ ...contractBody(clientId, { validFrom: "2030-01-01", validTo: "2030-12-31", status: "DRAFT", salesEngineerId: engineer }), amcReference: "EDIT-RNEW-001" }));
+      .send(withRenewalDocument(contractBody(clientId, { validFrom: "2030-01-01", validTo: "2030-12-31", status: "DRAFT", salesEngineerId: engineer })));
     expect(renewal.status).toBe(201);
+    expect(renewal.body.data).toMatchObject({ amcReference: "EDIT-RSRC-001", contractVersion: 2, versionRootId: sourceId });
 
+    // The number belongs to the whole chain (0111): editing it on the original renames every version...
     expect((await patch(admin, sourceId, { amcReference: "EDIT-RSRC-002" })).status).toBe(200);
+    expect((await get(renewal.body.data.id)).body.data.amcReference).toBe("EDIT-RSRC-002");
+    // ...and editing it on a later version renames the original (and so the chain) the same way.
     expect((await patch(admin, renewal.body.data.id, { amcReference: "EDIT-RNEW-002" })).status).toBe(200);
+    expect((await get(sourceId)).body.data.amcReference).toBe("EDIT-RNEW-002");
 
     const links = (await api().get(`/api/amc/contracts/${renewal.body.data.id}/renewals`).set(admin.headers)).body.data;
-    expect(links.renewedFrom).toMatchObject({ id: sourceId, reference: "EDIT-RSRC-002" });
+    expect(links.renewedFrom).toMatchObject({ id: sourceId, reference: "EDIT-RNEW-002" });
     const history = (await api().get("/api/amc/reports/renewals").set(admin.headers)).body.data.items;
     expect(history.find((item: { renewal: { id: string } }) => item.renewal.id === renewal.body.data.id)).toMatchObject({
-      renewal: { reference: "EDIT-RNEW-002" },
-      source: { id: sourceId, reference: "EDIT-RSRC-002" },
+      renewal: { reference: "EDIT-RNEW-002 (V2)" },
+      source: { id: sourceId, reference: "EDIT-RNEW-002" },
     });
+    // Each number the chain gave up stays retired for every other contract.
+    expect((await create("EDIT-RSRC-001")).status).toBe(409);
+    expect((await create("edit-rsrc-002")).status).toBe(409);
   });
 });
 
 describe("renewals", () => {
-  it("require their own unique reference and never generate one", async () => {
+  it("keep the contract number of the contract they renew, as its next version (0111)", async () => {
     const engineer = await renewalEngineer();
     const sourceId = await activeContract(admin, clientId, { amcReference: "RENEW-SRC-001", validFrom: "2027-01-01", validTo: "2027-12-31" });
     const renew = (overrides: Record<string, unknown>) =>
@@ -398,25 +415,33 @@ describe("renewals", () => {
         .set(admin.headers)
         .send(withRenewalDocument({ ...contractBody(clientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: engineer }), ...overrides }));
 
-    const missing = await renew({ amcReference: undefined });
-    expect(missing.status).toBe(400);
-    expect(missing.body.error.details[0].field).toBe("amcReference");
+    const renewAs = (amcReference: string) =>
+      api()
+        .post(`/api/amc/contracts/${sourceId}/renewals`)
+        .set(admin.headers)
+        .send({ ...withRenewalDocument(contractBody(clientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: engineer })), amcReference });
 
-    const reused = await renew({ amcReference: "renew-src-001" });
-    expect(reused.status).toBe(409);
-    expect(reused.body.error.message).toBe(DUPLICATE);
+    // A different number is refused; nothing is created.
+    const other = await renewAs("RENEW-NEW-001");
+    expect(other.status).toBe(400);
+    expect(other.body.error.details[0].field).toBe("amcReference");
 
-    const renewed = await renew({ amcReference: "RENEW-NEW-001" });
+    // The same number (any case), or none at all: the renewal is version 2 of RENEW-SRC-001, with its own id.
+    const renewed = await renewAs("renew-src-001");
     expect(renewed.status).toBe(201);
-    expect(renewed.body.data.amcReference).toBe("RENEW-NEW-001");
+    expect(renewed.body.data).toMatchObject({ amcReference: "RENEW-SRC-001", contractVersion: 2, versionRootId: sourceId });
+    expect(renewed.body.data.id).not.toBe(sourceId);
+    expect((await get(sourceId)).body.data).toMatchObject({ amcReference: "RENEW-SRC-001", contractVersion: 1, versionRootId: sourceId });
 
     const links = (await api().get(`/api/amc/contracts/${renewed.body.data.id}/renewals`).set(admin.headers)).body.data;
     expect(links.renewedFrom).toMatchObject({ id: sourceId, reference: "RENEW-SRC-001" });
     const history = (await api().get("/api/amc/reports/renewals").set(admin.headers)).body.data.items;
     expect(history.find((item: { renewal: { id: string } }) => item.renewal.id === renewed.body.data.id)).toMatchObject({
-      renewal: { reference: "RENEW-NEW-001" },
+      renewal: { reference: "RENEW-SRC-001 (V2)" },
       source: { id: sourceId, reference: "RENEW-SRC-001" },
     });
+    // The number still belongs to this chain only.
+    expect((await create("RENEW-SRC-001")).status).toBe(409);
   });
 });
 

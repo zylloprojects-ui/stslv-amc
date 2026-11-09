@@ -651,6 +651,11 @@ export function AmcContractsPage() {
                           <Link to={`/amc/contracts/${contract.id}`} className="hover:underline">
                             {contract.amcReference}
                           </Link>
+                          {(contract.contractVersion ?? 1) > 1 && (
+                            <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 font-sans text-[11px] font-bold text-[#0b3b66]" title={`Version ${contract.contractVersion} of contract ${contract.amcReference} (a renewal)`}>
+                              V{contract.contractVersion}
+                            </span>
+                          )}
                         </td>
                       )}
                       <td className={`${TABLE.td} min-w-48`}>

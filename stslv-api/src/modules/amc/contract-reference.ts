@@ -21,9 +21,35 @@ export function hasStoredReference(): Promise<boolean> {
   return schemaHas(["amc_contracts.amc_reference"]);
 }
 
-/** SQL for the reference of the contract row with the given alias. Without 0105: the derived text the 0105 backfill stores. */
-export function referenceSql(alias: string, stored: boolean): string {
+/**
+ * The version of a contract row (migration 0111, contract versions), read through to_jsonb so the SQL also runs on a
+ * database without the column (every contract is then version 1).
+ */
+export function versionSql(alias: string): string {
+  return `COALESCE((to_jsonb(${alias}) ->> 'contract_version')::int, 1)`;
+}
+
+/**
+ * Display text of a contract period: the visible contract number, plus " (V2)" from the second version on (0111), so
+ * the original and its renewals show the SAME number and each period can still be told apart. Version 1, and every
+ * contract made before 0111, shows the number alone, exactly as before.
+ */
+function labelled(numberSql: string, alias: string): string {
+  const version = versionSql(alias);
+  return `(${numberSql} || CASE WHEN ${version} > 1 THEN ' (V' || ${version} || ')' ELSE '' END)`;
+}
+
+/** The visible contract number itself (never with a version), as stored: the value a user types and edits. */
+export function rawReferenceSql(alias: string, stored: boolean): string {
   return stored ? `${alias}.amc_reference` : `('AMC-' || lpad(${alias}.id::text, greatest(4, length(${alias}.id::text)), '0'))`;
+}
+
+/**
+ * SQL for the reference of the contract row with the given alias, as shown on every list, report and export: the
+ * contract number with its version from the second version on. Without 0105: the derived text the 0105 backfill stores.
+ */
+export function referenceSql(alias: string, stored: boolean): string {
+  return labelled(rawReferenceSql(alias, stored), alias);
 }
 
 /**
@@ -31,13 +57,13 @@ export function referenceSql(alias: string, stored: boolean): string {
  * the visit queries read 0076 columns), falling back to the derived text on a database without 0105.
  */
 export function referenceStaticSql(alias: string): string {
-  return `COALESCE(to_jsonb(${alias}) ->> 'amc_reference', ${referenceSql(alias, false)})`;
+  return labelled(`COALESCE(to_jsonb(${alias}) ->> 'amc_reference', ${rawReferenceSql(alias, false)})`, alias);
 }
 
 /** SQL for the reference of the contract whose id is the given expression (any contract, Recycle Bin included). */
 export function referenceOfIdSql(idSql: string, stored: boolean): string {
   return stored
-    ? `(SELECT rc.amc_reference FROM amc_contracts_all rc WHERE rc.id = ${idSql})`
+    ? `(SELECT ${referenceSql("rc", true)} FROM amc_contracts_all rc WHERE rc.id = ${idSql})`
     : `('AMC-' || lpad((${idSql})::text, greatest(4, length((${idSql})::text)), '0'))`;
 }
 

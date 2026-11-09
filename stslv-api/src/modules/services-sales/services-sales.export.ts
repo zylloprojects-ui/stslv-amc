@@ -1,9 +1,9 @@
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
-import { assertExportSize, displayMonth, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
+import { assertExportSize, displayMoney, displayMonth, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
 import type { ExportServicesSalesQuery, SalesStatus, ServicesSalesColumn, ServiceStatus } from "./services-sales.schemas";
-import { listAllServicesSales, type ServicesSalesItem } from "./services-sales.service";
+import { listAllServicesSales, servicesSalesAccess, type ServicesSalesItem } from "./services-sales.service";
 
 // Services Sales as a report: the visits the page lists for the same filters,
 // with the same card figures, and only the columns the page shows. Nothing is calculated here.
@@ -36,11 +36,16 @@ const COLUMNS: (ReportColumn & { hideable?: ServicesSalesColumn })[] = [
   { key: "quotationNo", header: "Quote No.", kind: "identifier", width: 16, hideable: "quotation" },
   { key: "salesStatus", header: "Sales status", kind: "text", width: 24 },
   { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 20, wrap: true, hideable: "salesEngineer" },
+  // The contract period's AMC Value / Year, repeated on each of its services, so never totalled as a column: the
+  // unique-contract total is in the notes. Only for a user with AMC Contracts: View.
+  { key: "amcValue", header: "AMC Value / Year (OMR)", kind: "money", width: 16, hideable: "amcValue" },
 ];
 
 /** The report's columns: everything the page shows. AMC Reference and the sales status are always included. */
-export function servicesSalesColumns(hidden: readonly ServicesSalesColumn[]): ReportColumn[] {
-  return COLUMNS.filter((column) => !column.hideable || !hidden.includes(column.hideable)).map(({ hideable: _hideable, ...column }) => column);
+export function servicesSalesColumns(hidden: readonly ServicesSalesColumn[], amcValue = false): ReportColumn[] {
+  return COLUMNS.filter((column) => (column.key !== "amcValue" || amcValue) && (!column.hideable || !hidden.includes(column.hideable))).map(
+    ({ hideable: _hideable, ...column }) => column
+  );
 }
 
 /** "Year 2 · Q3", or the visit number on a visit generated before service codes existed. */
@@ -63,6 +68,7 @@ function toRow(item: ServicesSalesItem, index: number): ReportRow {
     quotationNo: item.quotationNo,
     salesStatus: item.quotationBeforeCompletion ? `${SALES_STATUS_LABELS[item.salesStatus]} (quote recorded before completion)` : SALES_STATUS_LABELS[item.salesStatus],
     salesEngineer: item.salesEngineer?.name ?? null,
+    amcValue: item.amcValue,
   };
 }
 
@@ -94,7 +100,8 @@ export async function buildServicesSalesExport(
   query: ExportServicesSalesQuery
 ): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
   const { format, hidden, ...filters } = query;
-  const { items, kpis } = await listAllServicesSales(filters, (count) => assertExportSize(format, count));
+  const access = servicesSalesAccess(auth);
+  const { items, kpis, amcValueTotal } = await listAllServicesSales(filters, (count) => assertExportSize(format, count), access);
   const notes = [
     `Total services ${kpis.total} · Not Completed ${kpis.notCompleted} · Completed / Quote Pending ${kpis.quotePending} · Quoted ${kpis.quoted}.`,
     "A service counts as quoted only when it is completed and has a quotation number. An empty Quote No. means none is recorded.",
@@ -105,6 +112,13 @@ export async function buildServicesSalesExport(
       `${kpis.quotationBeforeCompletion} ${kpis.quotationBeforeCompletion === 1 ? "service has" : "services have"} a quotation number but ${
         kpis.quotationBeforeCompletion === 1 ? "is" : "are"
       } not completed; counted as Not Completed.`
+    );
+  }
+  if (amcValueTotal && !hidden.includes("amcValue")) {
+    notes.push(
+      `Total AMC Value of matching contracts: ${displayMoney(amcValueTotal.total)} OMR excluding VAT, over ${amcValueTotal.contracts} unique contract ${
+        amcValueTotal.contracts === 1 ? "period" : "periods"
+      } (each counted once however many of its services match; a renewal is its own period). Not an invoice value or a payment.`
     );
   }
 
@@ -119,7 +133,7 @@ export async function buildServicesSalesExport(
     tables: [
       {
         name: "Service Sales",
-        columns: servicesSalesColumns(hidden),
+        columns: servicesSalesColumns(hidden, access.amcValue),
         rows: items.map(toRow),
         groupBy: (row) => displayMonth(String(row.scheduledDate)),
         notes,

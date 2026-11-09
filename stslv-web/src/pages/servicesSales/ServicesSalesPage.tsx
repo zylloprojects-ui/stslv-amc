@@ -10,6 +10,7 @@ import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } f
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, ApiError, download, errorMessage, saveFile } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
+import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
 import { Filter, FilterPanel, Pager } from '../amc/components'
 import { CustomizeKpisDialog, HideColumnsDialog } from './ServicesSalesDialogs'
@@ -349,7 +350,10 @@ export function ServicesSalesPage() {
   const refresh = () => refreshOperationalData(queryClient)
 
   const data = sales.data
-  const shown = (id: ColumnId) => !hidden.has(id)
+  // AMC Value is offered only when the API says this user may see contract values (it then sends them).
+  const amcValueVisible = data?.amcValueVisible === true
+  const available = COLUMN_IDS.filter((id) => id !== 'amcValue' || amcValueVisible)
+  const shown = (id: ColumnId) => available.includes(id) && !hidden.has(id)
 
   return (
     <>
@@ -362,7 +366,7 @@ export function ServicesSalesPage() {
               Customize KPIs
             </Button>
             <Button variant="secondary" onClick={() => setDialog('columns')}>
-              Hide Columns{hidden.size > 0 ? ` (${hidden.size})` : ''}
+              Hide Columns{available.filter((id) => hidden.has(id)).length > 0 ? ` (${available.filter((id) => hidden.has(id)).length})` : ''}
             </Button>
             {canExport && (
               // The download covers every service that matches the filters, on every page, with the columns shown.
@@ -592,7 +596,7 @@ export function ServicesSalesPage() {
                       AMC Reference
                     </th>
                     {COLUMN_IDS.filter(shown).map((id) => (
-                      <th key={id} scope="col" className={TABLE.th}>
+                      <th key={id} scope="col" className={cx(TABLE.th, id === 'amcValue' && 'text-right')}>
                         {COLUMN_LABELS[id]}
                       </th>
                     ))}
@@ -645,9 +649,28 @@ export function ServicesSalesPage() {
                         </td>
                       )}
                       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <span className="text-slate-400">—</span>}</td>}
+                      {shown('amcValue') && (
+                        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`} title="AMC Value / Year of this service's contract period, OMR excluding VAT">
+                          {item.amcValue ? formatMoney(item.amcValue) : <span className="text-slate-400">—</span>}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
+                {shown('amcValue') && data.amcValueTotal && (
+                  <tfoot>
+                    {/* PostgreSQL's sum over the unique contract periods of every matching service, on every page. */}
+                    <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
+                      <th scope="row" colSpan={2 + COLUMN_IDS.filter(shown).length - 1} className={`${TABLE.td} text-right`}>
+                        Total AMC Value of matching contracts ({data.amcValueTotal.contracts} unique contract {data.amcValueTotal.contracts === 1 ? 'period' : 'periods'}, all pages)
+                        <span className="block text-xs font-medium text-slate-500">
+                          Each contract period counts once, however many of its services match; a renewal is its own period. Not an invoice value or a payment.
+                        </span>
+                      </th>
+                      <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.amcValueTotal.total)}</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
             <Pager page={data.page} pageSize={data.pageSize} total={data.total} shown={data.items.length} onPage={setPage} />
@@ -672,6 +695,7 @@ export function ServicesSalesPage() {
       {dialog === 'columns' && (
         <HideColumnsDialog
           hidden={hidden}
+          available={available}
           onSave={(next) => {
             setHidden(next)
             setDialog('none')

@@ -392,7 +392,11 @@ function ActionDialog({ action, onClose, onDone }: { action: Action; onClose: ()
         renewalOf={contract.data}
         draftOnly
         onClose={onClose}
-        onSaved={(saved) => onDone(`Renewal ${saved.amcReference} created for ${contract.data.amcReference} (${formatDate(saved.validFrom)} to ${formatDate(saved.validTo)}). It is under client approval; ${contract.data.amcReference} is unchanged.`)}
+        onSaved={(saved) =>
+          onDone(
+            `Renewal ${saved.amcReference} version ${saved.contractVersion ?? 1} created for ${contract.data.amcReference}${(contract.data.contractVersion ?? 1) > 1 ? ` version ${contract.data.contractVersion}` : ''} (${formatDate(saved.validFrom)} to ${formatDate(saved.validTo)}). It is under client approval; the contract it renews is unchanged.`,
+          )
+        }
       />
     )
   }
@@ -405,8 +409,8 @@ function ActionDialog({ action, onClose, onDone }: { action: Action; onClose: ()
       onChanged={(saved) =>
         onDone(
           saved.status === 'ACTIVE'
-            ? `Renewal ${saved.amcReference} approved: it is now active and its schedule was generated.`
-            : `Renewal ${saved.amcReference} cancelled. It is kept in the renewal history, and a new renewal can be started.`,
+            ? `Renewal ${saved.amcReference}${(saved.contractVersion ?? 1) > 1 ? ` version ${saved.contractVersion}` : ''} approved: it is now active and its schedule was generated.`
+            : `Renewal ${saved.amcReference}${(saved.contractVersion ?? 1) > 1 ? ` version ${saved.contractVersion}` : ''} cancelled. It is kept in the renewal history, and a new renewal can be started.`,
         )
       }
     />

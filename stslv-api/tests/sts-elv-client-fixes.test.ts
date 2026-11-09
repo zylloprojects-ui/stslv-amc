@@ -147,8 +147,11 @@ describe("AMC Renewal: updated document required", () => {
   let source: string;
   let salesEngineerId: string;
   const renew = (body: Record<string, unknown>, session: Session = admin) => api().post(`/api/amc/contracts/${source}/renewals`).set(session.headers).send(body);
-  const body = async (overrides: Record<string, unknown> = {}) =>
-    contractBody(client, { systemDescription: "RENEWAL DOC", validFrom: await addDays(400), validTo: await addDays(764), status: "DRAFT", salesEngineerId, ...overrides });
+  // A renewal keeps its source's number (0111), so the body names none unless a test says so.
+  const body = async (overrides: Record<string, unknown> = {}) => {
+    const { amcReference: _typed, ...fields } = contractBody(client, { systemDescription: "RENEWAL DOC", validFrom: await addDays(400), validTo: await addDays(764), status: "DRAFT", salesEngineerId });
+    return { ...fields, ...overrides };
+  };
   const contractCount = async () => Number((await pool.query("SELECT count(*) FROM amc_contracts_all")).rows[0]!.count);
 
   beforeAll(async () => {
@@ -176,10 +179,13 @@ describe("AMC Renewal: updated document required", () => {
     expect(Number((await pool.query("SELECT count(*) FROM attachments")).rows[0]!.count)).toBe(attachments);
   });
 
-  it("refuses the renewed contract's own number: each number stays with one contract", async () => {
-    const refused = await renew({ ...(await body({ amcReference: await referenceOf(source) })), contractDocument: contractDocument() });
+  it("refuses a different contract number: a renewal keeps the number of the contract it renews", async () => {
+    const before = await contractCount();
+    const refused = await renew({ ...(await body({ amcReference: "SOME-OTHER-NUMBER" })), contractDocument: contractDocument() });
 
-    expect(refused.status).toBe(409);
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.details[0].field).toBe("amcReference");
+    expect(await contractCount()).toBe(before);
   });
 
   it("needs Create on AMC Renewal", async () => {
@@ -193,8 +199,9 @@ describe("AMC Renewal: updated document required", () => {
 
     expect(created.status).toBe(201);
     const renewalId = created.body.data.id as string;
-    const link = await pool.query("SELECT renewed_from_id, status FROM amc_contracts WHERE id = $1", [renewalId]);
-    expect(link.rows[0]).toEqual({ renewed_from_id: source, status: "DRAFT" });
+    const link = await pool.query("SELECT renewed_from_id, status, amc_reference, version_root_id, contract_version FROM amc_contracts WHERE id = $1", [renewalId]);
+    // Same visible number, next version, its own id (0111).
+    expect(link.rows[0]).toEqual({ renewed_from_id: source, status: "DRAFT", amc_reference: sourceBefore.amc_reference, version_root_id: source, contract_version: 2 });
 
     const docs = await pool.query("SELECT title, original_name, category FROM attachments WHERE entity_type = 'amc_contracts' AND entity_id = $1", [renewalId]);
     expect(docs.rows).toEqual([{ title: "Renewal contract document", original_name: "renewal-2027.pdf", category: "SIGNED_CONTRACT" }]);

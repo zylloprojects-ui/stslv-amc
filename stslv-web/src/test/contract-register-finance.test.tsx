@@ -96,7 +96,7 @@ describe('Contract 360', () => {
     contractApi()
     renderApp('/amc/contracts/100')
 
-    expect(await screen.findByText(/^AMC-0100 · AMC contract/)).toBeInTheDocument()
+    expect(await screen.findByText(/^AMC-0100 · Version 1 · AMC contract/)).toBeInTheDocument()
     expect(screen.getByText('4 service(s) · every 3 month(s)')).toBeInTheDocument()
 
     const figures = screen.getByRole('region', { name: 'Contract figures' })

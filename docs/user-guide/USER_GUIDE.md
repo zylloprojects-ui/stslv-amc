@@ -448,6 +448,10 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 
 ## Service Sales
 
+> **AMC Value and total (2026-11-09).** For users who may view AMC Contracts, *AMC Value (OMR)* shows the AMC Value /
+> Year of each service's contract period, and *Total AMC Value of matching contracts* adds up the matching contract
+> periods on every page, each counted once. It is not an invoice value or a payment.
+
 **Page:** `/amc/service-sales` (old `/amc/quotations` links redirect). **Permissions:** *Service Sales: View / Edit / Export*.
 
 - **Purpose:** track completed services and record quotation numbers for follow-up sales.
@@ -529,8 +533,9 @@ KPIs: Total Services, Green/Blue/Yellow/Red Rows, Total Value (Ex VAT). Filters 
 
 > **Start Renewal (2026-11-09).** The renewal form is the Add AMC Contract form, filled from the contract being renewed,
 > which is named at the top. An **updated renewal contract document is required**; the old contract's document is never
-> reused. A renewal still needs its own AMC Reference Number (each number belongs to one contract); keeping the same
-> visible number is awaiting an owner decision.
+> reused. The renewal **keeps the same contract number** and is saved as its next version: the original is version 1,
+> the first renewal version 2, and so on. Lists, reports and exports show a renewal as "STS-AMC-001 (V2)", so services,
+> invoices and documents stay with the right period. A version is never reused, and no other contract can take the number.
 
 **Page:** `/amc/renewal`. A renewal is a **new contract**; the contract it renews is never changed.
 

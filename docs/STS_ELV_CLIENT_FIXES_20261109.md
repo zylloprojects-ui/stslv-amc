@@ -63,15 +63,53 @@ store as the other columns. It is a page-only column: never sent to the export, 
 - The original contract is unchanged (record, documents, schedule, history); the link (`renewed_from_id`) and both
   Audit Log entries are kept as before.
 
-**Not done — owner decision needed: same visible contract number.** Each AMC Reference Number belongs to one contract
-for life: unique index `amc_contracts_reference_uq` (0105) and the reference history `amc_contract_references`
-(0107), approved 2026-11-04. A renewal is a separate contract, so it cannot hold the same number without weakening
-those constraints, which the brief forbids. Options for the owner:
+### 3a. Same visible contract number — versions (owner approval 2026-11-09, migration 0111)
 
-1. Keep one number per contract (today) and show "Renewal of …" everywhere (already shown on the contract page).
-2. A "contract number" shared by a renewal chain plus a period label (e.g. `AMC-0007 · Period 2`), as a new column;
-   every screen, export, search and Zoho reference would need to show the period to keep rows distinguishable.
-3. A suffix rule for renewals (e.g. `AMC-0007-R1`) — a numbering rule the owner must define.
+The first pass left this open because each number belonged to exactly one contract (0105/0107). The owner approved
+option 2 in its versioned form: the original and every renewal show the **same** contract number, and each renewal is
+its own contract period with a unique internal identity and version.
+
+| Period | `amc_reference` (visible) | `id` (identity) | `version_root_id` | `contract_version` | Shown as |
+|---|---|---|---|---|---|
+| Original | STS-AMC-001 | 7 | 7 | 1 | STS-AMC-001 |
+| First renewal | STS-AMC-001 | 12 | 7 | 2 | STS-AMC-001 (V2) |
+| Second renewal | STS-AMC-001 | 15 | 7 | 3 | STS-AMC-001 (V3) |
+
+**Why this design.** Each period stays its own `amc_contracts_all` row, so its `id` — which visits, invoices
+(allocations), documents, the Audit Log, renewal links and every report already use — keeps every record on the
+correct period. Nothing that refers to a contract changes, and no number, value or history is rewritten. The two
+alternatives were rejected: a separate "display number" column would leave two numbers per contract, and a suffix
+rule changes the number the client sees.
+
+**Integrity (no weaker than before).**
+- `amc_contracts_reference_uq` keeps its name; it is now "unique among version-1 (original) contracts". A trigger
+  forces every later version to carry exactly its original's number, and `(version_root_id, contract_version)` is a
+  unique constraint. Together a number still belongs to exactly one contract chain, and no other contract can take
+  it (tested: a new contract with the number gets 409; another original renamed to it is refused by the database).
+- `amc_contracts_version_ck`: version ≥ 1, and version 1 ⇔ `version_root_id = id`. FK `version_root_id` →
+  `amc_contracts_all(id)`.
+- Trigger `amc_contracts_version_check`: a later version's root must be a version 1 (`amc_contracts_version_root_ck`),
+  its number must equal the root's (`amc_contracts_version_reference_ck`), and the contract it renews must be in the
+  same chain (`amc_contracts_version_link_ck`) — no cross-version or cross-chain links.
+- Versions are assigned in the renewal's transaction after locking the original (`SELECT … FOR UPDATE`), as
+  max + 1; the unique constraint also refuses a duplicate. A cancelled renewal keeps its version; the next renewal
+  takes the next one (never reused).
+- Number history (0107) is per number, owned by the original; a later version never adds or retires a number. Renaming
+  the number on any version renames the original, and a trigger renames every version with it in the same
+  transaction. A number given up stays retired for every other contract (as before).
+
+**Workflow.** Start Renewal shows the original's number read-only ("The renewal keeps contract number … and is saved
+as the next version of it"); the API keeps that number and refuses a different typed number (400, nothing created).
+The updated renewal document is still required. Existing rules are unchanged: one open renewal per contract,
+draft → approve → active, expiry, permissions (AMC_RENEWAL:CREATE).
+
+**Display.** Lists, reports and exports (Accounts, Service Status, Master AMC Status, Service Sales, Renewal queue and
+history, Reports, Monthly Calendar, AMC Contracts export) show `STS-AMC-001 (V2)` from the second version on; version
+1 looks exactly as before. AMC Contracts shows a `V2` badge next to the number; Contract 360 shows "Version 2". The
+contract API returns `amcReference` (the number, for editing), `contractVersion` and `versionRootId`.
+
+**Existing renewals** made before 0111 keep their own, different numbers: each is version 1 of its own number, still
+linked by `renewed_from_id`. Nothing is renumbered (the brief forbids rewriting historical numbers).
 
 ## 4. Service Status
 
@@ -110,10 +148,19 @@ Contracts: View, the contract's AMC Value / Year; a Total Filtered row (service 
 services without value) over all pages. The export's columns are unchanged — "Zoho Invoices (Tracking)" and "Zoho
 References (Tracking)" stay — and its notes add the Paid and Zoho totals. P1 counting rules are unchanged.
 
-## 7. Service Sales
+## 7. Service Sales — AMC Value and filtered total (owner approval 2026-11-09)
 
-No total added: Service Sales has **no monetary field** (quotation numbers only). Adding a value column is a scope and
-permission decision (who in sales may see money); values and totals are on Accounts and Master AMC Status.
+- **AMC Value (OMR)** column: the AMC Value / Year of each visit's own contract period (`c.contract_value` of the
+  visit's contract row; a renewal version has its own value). Read only, in Hide Columns, OMR with three decimals.
+- **Total AMC Value of matching contracts**: `SELECT sum(contract_value) FROM (SELECT DISTINCT c.id, c.contract_value
+  … same FROM/WHERE as the list) t` — every **unique contract period** with at least one visit matching the active
+  filters, on **all pages**. A period with four matching visits counts once; a renewal is its own period. The footer
+  says "N unique contract periods, all pages" and "Not an invoice value or a payment". The export puts the same total
+  in its notes; the per-row column is never summed (it repeats per visit).
+- **Permissions**: the API computes and sends values and the total only when the user holds AMC_CONTRACTS:VIEW
+  (`servicesSalesAccess`). Otherwise `amcValue` is null on every row, `amcValueTotal` is null (not computed), the
+  page offers no column, and the export has neither the column nor the note. Service Sales' own permissions, filters,
+  sorting and layout are unchanged.
 
 ## 8. Reports — monthly invoice values
 
@@ -131,6 +178,14 @@ filters and period. Report access is unchanged (Reports View + source View; Expo
 Applied to isolated test databases only. A release applies it when the API starts, so releasing needs approval of
 this file too (together with 0108 and 0109 from P0).
 
+## 9b. Migration 0111
+
+`0111_amc_contract_versions.sql`, forward-only: adds `version_root_id` and `contract_version` to `amc_contracts_all`
+(backfilled `(id, 1)` with `updated_at` untouched), the constraints and triggers of section 3a, the partial unique
+index under the old name, a `CREATE OR REPLACE` of the 0107 history function (skips later versions), an index on
+`version_root_id`, and re-creates the `amc_contracts` view to show the columns. Reverse steps are in the file (only
+while no version > 1 exists). Releasing needs approval of 0111 with 0108, 0109 and 0110.
+
 ## 10. Verification
 
 All on the disposable database `stslv_amc_client_fixes` (schemas `stslv_test`, `upgrade_0110`, `e2e`) and a disposable
@@ -139,28 +194,36 @@ hosted service. Both production switches unset (off) throughout.
 
 | Check | Result |
 |---|---|
-| API suite | **1,804 passed, 2 skipped** (105 files; baseline 1,779 + 25 new in `sts-elv-client-fixes.test.ts` and `migration-0110-upgrade.test.ts`) |
-| Web suite | **851 passed** (56 files; baseline 843 + 8 new in `sts-elv-client-fixes.test.tsx`) |
+| API suite (after 0111 and Service Sales) | **1,817 passed, 2 skipped** (107 files; + `contract-versions-sales-value.test.ts` 12 tests, `migration-0111-upgrade.test.ts`) |
+| Web suite (after 0111 and Service Sales) | **855 passed** (57 files; + `contract-versions-sales-value.test.tsx` 4 tests) |
+| First pass (for the record) | API 1,804 passed / 2 skipped; web 851 passed; E2E 24/24 |
 | Typecheck, lint, builds | API typecheck and `tsc` build pass; web `tsc -b` and Vite build pass; oxlint exit 0 (13 earlier warnings, none in changed files) |
 | Migration 0110, fresh path | applied by every API test run (the test schema is rebuilt from all migrations) |
 | Migration 0110, upgrade path | 0109 → 0110 test; plus a rehearsal on a copy of the development database (at 0106): 0107–0110 applied, contract and visit fingerprints (md5 of every row) identical before and after, no value backfilled |
-| Browser E2E | **24 / 24** checks (headless Edge over DevTools; web 5411 → API 3411 with its own JWT secret, schema `e2e`, scratch document folder, mail off; guard: dev API 3001 not running) |
+| Migration 0111, fresh and upgrade paths | fresh: every API run; upgrade: 0110 → 0111 test (existing contracts, one renewing another, become version 1 of their own numbers; numbers, values, `updated_at` and history unchanged); rehearsal on the disposable dev copy: 7 contracts, fingerprints identical, all version 1 of their own number, 7 current history entries |
+| Browser E2E | **29 / 29** checks on a fresh schema `e2e2` at 0111 (headless Edge over DevTools; web 5411 → API 3411 with its own JWT secret, scratch document folder, mail off; guard: dev API 3001 not running) |
 
 E2E checks: isolation guard; login and STS-ELV title; Validity → Expired / Due; hide and show the Contract column;
-Start Renewal form naming the original; the same-number rule explained in the form (**the same number itself is not
-implemented**, section 3); renewal refused without the document, then saved with it through the file picker; Service
+Start Renewal form naming the original with its number read-only; renewal refused without the document, then saved
+through the file picker as version 2 with the same number; original and renewal both listed under the same number with
+a V2 badge, the renewal page showing "Version 2" and its services labelled (V2) on Accounts while the original's are
+not; a renewal of version 2 becomes version 3; Service
 Status AMC Value; Sales Engineer Name saved and shown after reload beside Service Report No.; Accounts viewer and
 Download inside it (file saved); Accounts totals and the missing-value reason; Master AMC Status totals; Service
-Sales has no money column; monthly report totals equal Accounts; Help content; a user without AMC Contracts: View
-sees no AMC Value (page and API), gets 403 on contracts and may still open the Accounts report; no page-level
-horizontal scroll at 1440 px and 390 px on AMC Contracts, Service Status, Accounts and Master AMC Status.
+Sales AMC Value column and unique-contract total (checked against the contracts' own values, page size 1), hidden and
+shown again; monthly report totals equal Accounts; Help content; a user without AMC Contracts: View
+sees no AMC Value (page and API, including Service Sales and its total), gets 403 on contracts and may still open
+the Accounts report; no page-level horizontal scroll at 1440 px and 390 px on AMC Contracts, Service Status, Accounts,
+Master AMC Status and Service Sales.
 
 Not exercised in the browser: dark mode, real phones, the Hostinger CSP (the E2E web server sends no CSP).
 
 ## 11. Outstanding
 
-1. Same visible contract number on renewal — owner decision (section 3).
+1. Same visible contract number on renewal — **done** (section 3a, migration 0111).
 2. App-wide "today" in Asia/Muscat instead of the database time zone — touches the Dashboard (section 2).
 3. Development Admin login `admin@stslev.com` — change only with approval (section 1).
-4. Service Sales money totals — needs a scope/permission decision (section 7).
+4. Service Sales money totals — **done** (section 7).
+6. Renewals made before 0111 keep their own numbers (not renumbered). If the client wants them merged under one number,
+   that is a data change on real records and needs separate approval.
 5. PDF preview under the Hostinger CSP (`object-src 'none'`): verify in UAT; the viewer always offers Download.

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { contractDocumentProblem, formatFileSize, readAsBase64 } from '../pages/amc/contractDocument'
 import { ADMIN, fail, ok, renderApp } from './helpers'
-import { amcApi, makeContract, typeReference, attachRenewalDocument } from './amc-helpers'
+import { amcApi, makeContract, attachRenewalDocument } from './amc-helpers'
 
 // Add AMC Contract, 2026-11-03: the contract document checks, and how the form treats contracts added before
 // the System, Sales engineer, Final Credit and document became required.
@@ -152,8 +152,8 @@ describe('renewing a contract added before the requirements', () => {
     expect(status.value).toBe('DRAFT')
     expect([...status.options].map((option) => option.textContent)).toEqual(['Active', 'Draft'])
 
-    // A renewal has its own AMC Reference Number (0105).
-    await typeReference(dialog, 'RENEW-OLD-001')
+    // A renewal keeps the AMC Reference Number of the contract it renews (0111).
+    expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveValue('AMC-0100')
     await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '5')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-12-31')
@@ -162,7 +162,7 @@ describe('renewing a contract added before the requirements', () => {
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))
     const body = api.find('POST', '/amc/contracts/100/renewals')[0]?.body as Record<string, unknown>
-    expect(body).toMatchObject({ amcReference: 'RENEW-OLD-001', systemDescription: 'Typed old system', salesEngineerId: '5' })
+    expect(body).toMatchObject({ amcReference: 'AMC-0100', systemDescription: 'Typed old system', salesEngineerId: '5' })
     expect(body).not.toHaveProperty('systemTypeId')
     // A renewal carries its own updated renewal contract document (2026-11-09).
     expect(body).toHaveProperty('contractDocument.fileName', 'renewal-contract.pdf')
