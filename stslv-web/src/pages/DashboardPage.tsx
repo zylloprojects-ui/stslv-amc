@@ -67,7 +67,11 @@ function Panel({ id, icon, eyebrow, title, description, link, className, childre
   )
 }
 
-/** The AMC Operations Dashboard. Every figure comes from the API, which leaves out what the user may not see. */
+/**
+ * The AMC Operations Dashboard. Every figure comes from the API, which leaves out what the user may not see.
+ * The ONE shared Dashboard: /dashboard and /amc/management both render this component (AmcManagementPage only points
+ * here), so the two routes are identical by construction (client requirement, 2026-11-09).
+ */
 function greeting() {
   const hour = new Date().getHours()
 
@@ -167,7 +171,7 @@ export function DashboardPage() {
           icon="calendar"
           eyebrow="Daily operations"
           title="AMC Maintenance Calendar"
-          description={`Today’s scheduled work and the open service obligations ahead. Dates are counted in the server time zone (${data.timeZone}).`}
+          description={`Today’s scheduled work and the open service obligations ahead. Dates are counted in Oman time (${data.timeZone}).`}
           className="mb-6"
         >
           <MaintenanceCalendar

@@ -71,6 +71,7 @@ describe("empty database", () => {
     expect(data.kpis.contracts).toEqual({
       active: 0,
       activePastValidity: 0,
+      activeAwaitingPredecessor: 0,
       activeValue: "0.000",
       finalCreditTotal: "0.000",
       finalCreditRecorded: 0,
@@ -186,20 +187,23 @@ describe("with contracts and visits", () => {
     await pool.query("UPDATE amc_visits SET scheduled_date = current_date, status = 'CANCELLED' WHERE id = $1", [visits[5]?.id]);
   });
 
-  it("counts active contracts and their total value exactly, without annualising", async () => {
+  it("counts each active contract once, within validity, and its total value exactly, without annualising", async () => {
+    // 2026-11-09: an Active contract past its Valid To (PAST) is expired by the approved Oman-time rule and not counted.
     const expected = await one<{ active: number; value: string; past: number }>(
-      `SELECT count(*)::int AS active, sum(contract_value)::numeric(16,3)::text AS value,
-              count(*) FILTER (WHERE valid_to < current_date)::int AS past
+      `SELECT count(*) FILTER (WHERE valid_to >= (now() AT TIME ZONE 'Asia/Muscat')::date)::int AS active,
+              sum(contract_value) FILTER (WHERE valid_to >= (now() AT TIME ZONE 'Asia/Muscat')::date)::numeric(16,3)::text AS value,
+              count(*) FILTER (WHERE valid_to < (now() AT TIME ZONE 'Asia/Muscat')::date)::int AS past
        FROM amc_contracts WHERE status = 'ACTIVE'`
     );
     const { contracts } = (await operations()).body.data.kpis;
 
     expect(contracts.active).toBe(expected.active);
-    expect(contracts.active).toBe(5);
-    // 1000.125 + 2000.000 + 0.375 + 10.000 + 5000.000, to the third decimal.
-    expect(contracts.activeValue).toBe("8010.500");
+    expect(contracts.active).toBe(4);
+    // 1000.125 + 2000.000 + 0.375 + 5000.000 (PAST's 10.000 is not counted), to the third decimal.
+    expect(contracts.activeValue).toBe("8000.500");
     expect(contracts.activeValue).toBe(expected.value);
     expect(contracts.activePastValidity).toBe(1);
+    expect(contracts.activeAwaitingPredecessor).toBe(0);
   });
 
   it("sums final credit as entered on active contracts only, and says how many have one", async () => {
@@ -207,8 +211,8 @@ describe("with contracts and visits", () => {
 
     // 300.500 + 0.001; the draft's credit (if any) is not included.
     expect(contracts.finalCreditTotal).toBe("300.501");
-    // Every active contract records one except EDGE46, an older contract without it; a recorded 0.000 adds nothing.
-    expect(contracts.finalCreditRecorded).toBe(4);
+    // Every counted contract records one except EDGE46, an older contract without it; PAST is not counted (2026-11-09).
+    expect(contracts.finalCreditRecorded).toBe(3);
   });
 
   it("counts contracts expiring within 45 days with both boundaries included, each contract once", async () => {
@@ -375,7 +379,7 @@ describe("permissions", () => {
     const user = await userWith("CONTRACT_VIEW", ["DASHBOARD:VIEW", "AMC_CONTRACTS:VIEW"]);
     const data = (await operations(user)).body.data;
 
-    expect(data.kpis.contracts.active).toBe(5);
+    expect(data.kpis.contracts.active).toBe(4);
     expect(data.kpis.services).toBeNull();
     expect(data.schedule).toBeNull();
     expect(data.kpis.payments).toBeNull();
@@ -545,7 +549,7 @@ describe("12-card dashboard: current month and overall figures", () => {
        FROM amc_visits_all v JOIN amc_contracts_all c ON c.id = v.amc_contract_id WHERE ${COUNTED}`
     );
     const activeAll = await one<{ value: string }>(
-      "SELECT sum(contract_value)::numeric(16,3)::text AS value FROM amc_contracts_all WHERE status = 'ACTIVE' AND deleted_at IS NULL"
+      "SELECT sum(contract_value)::numeric(16,3)::text AS value FROM amc_contracts_all WHERE status = 'ACTIVE' AND deleted_at IS NULL AND valid_to >= (now() AT TIME ZONE 'Asia/Muscat')::date"
     );
     const { services, payments, contracts } = (await operations()).body.data.kpis;
 

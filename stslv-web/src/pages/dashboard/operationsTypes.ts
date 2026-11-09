@@ -56,8 +56,12 @@ export interface OperationsDashboard {
   timeZone: string
   kpis: {
     contracts: {
+      /** Active contract periods counted once: within validity (Oman), not waiting for the period they renew. */
       active: number
+      /** Status Active but past Valid To: expired by the approved rule, not counted. */
       activePastValidity: number
+      /** Active renewals that take over when the period they renew ends; not counted yet. Absent from an older API. */
+      activeAwaitingPredecessor?: number
       activeValue: string
       finalCreditTotal: string
       finalCreditRecorded: number

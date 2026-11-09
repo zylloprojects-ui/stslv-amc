@@ -57,8 +57,9 @@ describe('Finance Executive and AMC Schedule', () => {
         .map((item) => item.label)
     }
 
-    expect(offered(STARTING)).toEqual(['Dashboard', 'Invoice Tracking', 'Accounts'])
-    expect(offered([...STARTING, 'AMC_SCHEDULE:VIEW'])).toEqual(['Dashboard', 'AMC Schedule', 'Invoice Tracking', 'Accounts'])
+    // AMC Management is the shared Dashboard (2026-11-09): offered with Dashboard: View.
+    expect(offered(STARTING)).toEqual(['Dashboard', 'AMC Management', 'Invoice Tracking', 'Accounts'])
+    expect(offered([...STARTING, 'AMC_SCHEDULE:VIEW'])).toEqual(['Dashboard', 'AMC Management', 'AMC Schedule', 'Invoice Tracking', 'Accounts'])
     expect(offered(['INVOICES:VIEW'])).toEqual(['Invoice Tracking'])
     // Master AMC Status and Accounts: only on their own permission.
     expect(offered(['MASTER_AMC_STATUS:VIEW'])).toEqual(['Master AMC Status'])

@@ -233,7 +233,10 @@ describe("with contracts, renewals, visits and invoices", () => {
 
     expect(data.contracts).toEqual(dashboard.kpis.contracts);
     const expected = await one<{ active: number; value: string }>(
-      "SELECT count(*)::int AS active, COALESCE(sum(contract_value), 0)::numeric(16,3)::text AS value FROM amc_contracts WHERE status = 'ACTIVE'"
+      // Counted once (2026-11-09): within validity in Oman, and not a renewal waiting for the period it renews.
+      `SELECT count(*)::int AS active, COALESCE(sum(c.contract_value), 0)::numeric(16,3)::text AS value FROM amc_contracts c
+       WHERE c.status = 'ACTIVE' AND c.valid_to >= (now() AT TIME ZONE 'Asia/Muscat')::date
+         AND NOT EXISTS (SELECT 1 FROM amc_contracts p WHERE p.id = c.renewed_from_id AND p.status = 'ACTIVE' AND p.valid_to >= (now() AT TIME ZONE 'Asia/Muscat')::date)`
     );
     expect(data.contracts.active).toBe(expected.active);
     expect(data.contracts.activeValue).toBe(expected.value);

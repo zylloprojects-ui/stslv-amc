@@ -170,7 +170,8 @@ const MASTER_DATA: HelpTopic[] = [
     title: 'Dashboard',
     group: 'Getting started',
     access: { kind: 'nav', path: '/dashboard' },
-    pages: ['/dashboard'],
+    // AMC Management shows the same Dashboard (2026-11-09), so it opens this topic too.
+    pages: ['/dashboard', '/amc/management'],
     guideChapter: 'Dashboard',
     summary: 'The AMC Operations Dashboard: contracts, this month’s services, invoice numbers and renewals at a glance. Each figure is shown only if your role can view its module.',
     sections: [
@@ -371,32 +372,20 @@ const CONTRACTS: HelpTopic[] = [
     title: 'AMC Management',
     group: 'AMC Operations',
     access: { kind: 'nav', path: '/amc/management' },
-    pages: ['/amc/management'],
+    pages: [],
     guideChapter: 'AMC Management',
-    summary: 'The contract and schedule control centre: contract, schedule and invoice figures, recent contracts, and expiry warnings.',
+    summary: 'AMC Management shows the Dashboard: exactly the same cards, figures, calendar and charts as the Dashboard page (client decision, 2026-11-09).',
     sections: [
       {
-        heading: 'KPI groups',
-        terms: [
-          { term: 'Contract KPIs', meaning: 'Active AMC, Total AMC Value, Total Final Credit, Expiring within 45 days.' },
-          { term: 'Schedule KPIs', meaning: 'Services This Month, Schedule Pending Billing (completed, amount above 0, no Zoho invoice), Current Scheduled Value, Schedule Engine Status.' },
-          { term: 'Invoice KPIs', meaning: 'Paid Invoices, Unpaid Invoices and Paid Invoice Total (manual Invoice No.), Invoice Module Status.' },
-        ],
-      },
-      {
-        heading: 'Customise',
-        text: ['Each group has Customize, Reset KPI Names and Reset KPI Order. Your names and order are kept for you in this browser.'],
-      },
-      {
-        heading: 'Expiry & Renewal',
+        heading: 'One shared Dashboard',
         bullets: [
-          'Critical: contracts expiring within 15 days (red). Not Renewed & Expired (amber).',
-          'Warning bands at 90, 60, 45, 30 and 15 days. "Not renewed · open to renew" opens the contract.',
-          'Contracts are never expired automatically; a user marks them Expired.',
+          'AMC Management and Dashboard open the same page, with the same twelve cards in the same order, the same values and the same sections. See the Dashboard topic.',
+          'It needs the same permission as the Dashboard (Dashboard: View). Each card and panel is shown only if your role can view its module, on both.',
+          'Expiring contracts and renewals are followed on AMC Contracts (Validity filter) and AMC Renewal.',
         ],
       },
     ],
-    related: ['amc-contracts', 'amc-renewal'],
+    related: ['dashboard', 'amc-contracts', 'amc-renewal'],
   },
   {
     id: 'amc-contracts',

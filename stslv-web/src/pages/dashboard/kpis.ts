@@ -79,7 +79,12 @@ export const KPIS: KpiDefinition[] = [
     read: ({ kpis: { contracts } }) =>
       contracts && {
         value: formatCount(contracts.active),
-        detail: 'Contracts with status Active' + (contracts.activePastValidity > 0 ? ` · ${formatCount(contracts.activePastValidity)} past validity` : ''),
+        detail:
+          'Active and within validity' +
+          (contracts.activePastValidity > 0 ? ` · ${formatCount(contracts.activePastValidity)} past validity not counted` : '') +
+          ((contracts.activeAwaitingPredecessor ?? 0) > 0 ? ` · ${formatCount(contracts.activeAwaitingPredecessor ?? 0)} renewal${contracts.activeAwaitingPredecessor === 1 ? '' : 's'} starting later` : ''),
+        hint:
+          'Each contract counts once: status Active with its Valid To today or later (Oman time). An Active contract past its Valid To is expired by the approved rule and is not counted; a renewal is counted from when the period it renews ends.',
       },
   },
   {
@@ -93,8 +98,8 @@ export const KPIS: KpiDefinition[] = [
       contracts && {
         value: formatMoney(contracts.activeValue),
         unit: 'OMR',
-        detail: 'Active contracts, excluding VAT',
-        hint: 'Sum of AMC Value / Year of active contracts, as entered. Older multi-year values may be whole-term amounts: see the Contract Value Review report.',
+        detail: 'Contracts counted in Active AMCs, excluding VAT',
+        hint: 'Sum of AMC Value / Year of the contracts counted in Active AMCs (each contract once), as entered. Older multi-year values may be whole-term amounts: see the Contract Value Review report.',
       },
   },
   {
@@ -109,7 +114,7 @@ export const KPIS: KpiDefinition[] = [
         value: formatMoney(contracts.finalCreditTotal),
         unit: 'OMR',
         detail: `Entered on ${formatCount(contracts.finalCreditRecorded)} of ${plural(contracts.active, 'active contract', 'active contracts')}`,
-        hint: 'Sum of Final Credit Value of active contracts, as entered, excluding VAT.',
+        hint: 'Sum of Final Credit Value of the contracts counted in Active AMCs (each contract once), as entered, excluding VAT. A contract without Final Credit adds nothing; none is invented.',
       },
   },
   {

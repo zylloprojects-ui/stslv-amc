@@ -56,7 +56,8 @@ export const NAVIGATION: NavSection[] = [
   {
     title: 'AMC Operations',
     items: [
-      { label: 'AMC Management', path: '/amc/management', module: 'AMC_CONTRACTS' },
+      // Shows the shared Dashboard (2026-11-09), so it follows the Dashboard's permission.
+      { label: 'AMC Management', path: '/amc/management', module: 'DASHBOARD' },
       { label: 'AMC Contracts', path: '/amc/contracts', module: 'AMC_CONTRACTS' },
       { label: 'Master AMC Status', path: '/amc/master-status', module: 'MASTER_AMC_STATUS' },
       { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },

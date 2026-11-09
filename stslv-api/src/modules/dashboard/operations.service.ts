@@ -63,9 +63,12 @@ export interface PaymentTrendMonth {
 export interface OperationsKpis {
   /** Requires AMC_CONTRACTS:VIEW. */
   contracts: {
+    /** Active contract periods counted once (see countedActiveSql): within validity, and not waiting for a predecessor. */
     active: number;
-    /** Active contracts whose validity has already ended (still marked Active by a user). */
+    /** Status Active but validity ended in Oman: expired by the approved rule (the expiry job is off). Not counted. */
     activePastValidity: number;
+    /** Active renewals whose predecessor period is still counted (they take over when it ends). Not counted. */
+    activeAwaitingPredecessor: number;
     /** Sum of contract_value (AMC Value / Year) over active contracts, as entered. Legacy values are not reinterpreted. */
     activeValue: string;
     /** Sum of final_credit, as entered, over active contracts. An annual Billing Basis option. */
@@ -153,25 +156,45 @@ export function percentOf(count: number, total: number): string | null {
   return `${Math.floor(tenths / 10)}.${tenths % 10}`;
 }
 
+/**
+ * Which Active contract periods the portfolio cards (Active AMCs, Annual AMC Value, Final Credit) count, so that each
+ * contract counts once (client fixes, 2026-11-09):
+ *   * status ACTIVE and still within validity: Valid To today or later in Oman (the approved expiry rule). An Active
+ *     contract past its Valid To is expired by that rule even while the expiry job is switched off, so it is not counted;
+ *   * and not a renewal whose predecessor is itself still counted: while the original period runs, its approved renewal
+ *     (a later version, or an older renewal with its own number) waits, so the same contract is never counted twice.
+ * Both exclusions are returned (activePastValidity, activeAwaitingPredecessor), so the cards say what is left out.
+ */
+function countedActiveSql(renewals: boolean): string {
+  const inValidity = `c.status = 'ACTIVE' AND c.valid_to >= ${BUSINESS_TODAY_SQL}`;
+
+  return renewals
+    ? `(${inValidity} AND NOT EXISTS (SELECT 1 FROM amc_contracts p WHERE p.id = c.renewed_from_id AND p.status = 'ACTIVE' AND p.valid_to >= ${BUSINESS_TODAY_SQL}))`
+    : `(${inValidity})`;
+}
+
 export async function contractKpis(renewals: boolean): Promise<NonNullable<OperationsKpis["contracts"]>> {
   const renewalCount = renewals
     ? `count(*) FILTER (WHERE c.valid_to BETWEEN ${BUSINESS_TODAY_SQL} AND ${BUSINESS_TODAY_SQL} + $1::int
          AND EXISTS (SELECT 1 FROM amc_contracts r WHERE r.renewed_from_id = c.id AND r.status <> 'CANCELLED'))::int`
     : "NULL::int";
+  const counted = countedActiveSql(renewals);
   const result = await pool.query<{
     active: number;
     active_past_validity: number;
+    active_awaiting_predecessor: number;
     active_value: string;
     final_credit_total: string;
     final_credit_recorded: number;
     expiring_soon: number;
     expiring_soon_with_renewal: number | null;
   }>(
-    `SELECT count(*)::int AS active,
+    `SELECT count(*) FILTER (WHERE ${counted})::int AS active,
             count(*) FILTER (WHERE c.valid_to < ${BUSINESS_TODAY_SQL})::int AS active_past_validity,
-            COALESCE(sum(c.contract_value), 0)::numeric(16,3)::text AS active_value,
-            COALESCE(sum(c.final_credit), 0)::numeric(16,3)::text AS final_credit_total,
-            count(c.final_credit)::int AS final_credit_recorded,
+            count(*) FILTER (WHERE c.valid_to >= ${BUSINESS_TODAY_SQL} AND NOT ${counted})::int AS active_awaiting_predecessor,
+            COALESCE(sum(c.contract_value) FILTER (WHERE ${counted}), 0)::numeric(16,3)::text AS active_value,
+            COALESCE(sum(c.final_credit) FILTER (WHERE ${counted}), 0)::numeric(16,3)::text AS final_credit_total,
+            count(c.final_credit) FILTER (WHERE ${counted})::int AS final_credit_recorded,
             count(*) FILTER (WHERE c.valid_to BETWEEN ${BUSINESS_TODAY_SQL} AND ${BUSINESS_TODAY_SQL} + $1::int)::int AS expiring_soon,
             ${renewalCount} AS expiring_soon_with_renewal
      FROM amc_contracts c
@@ -183,6 +206,7 @@ export async function contractKpis(renewals: boolean): Promise<NonNullable<Opera
   return {
     active: row?.active ?? 0,
     activePastValidity: row?.active_past_validity ?? 0,
+    activeAwaitingPredecessor: row?.active_awaiting_predecessor ?? 0,
     activeValue: row?.active_value ?? "0.000",
     finalCreditTotal: row?.final_credit_total ?? "0.000",
     finalCreditRecorded: row?.final_credit_recorded ?? 0,

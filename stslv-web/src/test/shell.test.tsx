@@ -186,7 +186,8 @@ describe('mobile menu', () => {
         .map((link) => link.textContent)
 
     // One group is open at a time; the role has no Administration group and no Settings link.
-    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Master Data Center'])
+    // AMC Management is the shared Dashboard (2026-11-09), so the AMC Operations group appears with it.
+    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Master Data Center', 'AMC Operations'])
     await userEvent.click(within(menu).getByRole('button', { name: 'Master Data Center pages' }))
     expect(links()).toEqual(['Dashboard', 'Master Data Center', 'Clients'])
 

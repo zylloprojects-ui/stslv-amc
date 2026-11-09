@@ -1,5 +1,8 @@
 # Dashboard — 12 KPI cards
 
+> **2026-11-09:** this Dashboard is the one shared Dashboard, shown on both `/dashboard` and `/amc/management`
+> (client requirement: the two must be identical). See STS_ELV_CLIENT_FIXES_20261109.md § 13.
+
 Branch `feature/dashboard-12-kpis` (from alpha e53e6dd). No migration, no schema change.
 
 The dashboard's seven arrangeable KPI cards are replaced by twelve cards in three
@@ -10,9 +13,9 @@ order is fixed: Arrange KPIs, Reset KPI Layout and Reset KPI Names are removed.
 
 | # | Row | Label | Source (GET /api/dashboard/operations) | Rule |
 |---|-----|-------|------|------|
-| 1 | AMC Portfolio | Active AMCs | `kpis.contracts.active` | Contracts with status ACTIVE (unchanged) |
-| 2 | AMC Portfolio | Annual AMC Value (Ex VAT) | `kpis.contracts.activeValue` | Sum of `contract_value` (AMC Value / Year) of active contracts, as entered (unchanged) |
-| 3 | AMC Portfolio | Final Credit (Ex VAT) | `kpis.contracts.finalCreditTotal` | Sum of `final_credit` of active contracts, as entered (unchanged) |
+| 1 | AMC Portfolio | Active AMCs | `kpis.contracts.active` | **Each contract once (2026-11-09):** status ACTIVE, Valid To today or later (Oman), and not a renewal whose predecessor is still counted. `activePastValidity` and `activeAwaitingPredecessor` say what is left out |
+| 2 | AMC Portfolio | Annual AMC Value (Ex VAT) | `kpis.contracts.activeValue` | Sum of `contract_value` (AMC Value / Year) of the contracts counted in card 1, as entered |
+| 3 | AMC Portfolio | Final Credit (Ex VAT) | `kpis.contracts.finalCreditTotal` | Sum of `final_credit` of the contracts counted in card 1, as entered (none invented when missing) |
 | 4 | AMC Portfolio | Expiring ≤45 Days | `kpis.contracts.expiringSoon` | Active, `valid_to` between today and today + 45 (unchanged) |
 | 5 | Current Month | Services This Month | `kpis.services.thisMonth` | Counted visits scheduled this calendar month (unchanged; equals the workload chart's first bar) |
 | 6 | Current Month | Services Pending | `kpis.services.openThisMonth` | Of 5, status SCHEDULED / IN_PROGRESS / POSTPONED (unchanged) |

@@ -39,8 +39,11 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
       {
         module: "DASHBOARD",
         label: "Dashboard",
-        description: "The AMC Operations Dashboard. Each panel also needs view access to its own module.",
-        pages: [{ label: "Dashboard", path: "/dashboard" }],
+        description: "The AMC Operations Dashboard, also shown as AMC Management (one shared Dashboard). Each panel also needs view access to its own module.",
+        pages: [
+          { label: "Dashboard", path: "/dashboard" },
+          { label: "AMC Management (the same Dashboard)", path: "/amc/management" },
+        ],
         actions: { VIEW: "Open the Dashboard" },
       },
     ],
@@ -127,12 +130,11 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         label: "AMC Contracts",
         description: "Contracts and their schedule generation. View also lets contract users read the master lists to pick from.",
         pages: [
-          { label: "AMC Management", path: "/amc/management" },
           { label: "AMC Contracts", path: "/amc/contracts" },
           { label: "Contract details", path: "/amc/contracts/:id" },
         ],
         actions: {
-          VIEW: "See contracts and AMC Management",
+          VIEW: "See contracts",
           CREATE: "Add contracts; the form lists active client names, without the Clients pages",
           EDIT: "Edit contracts, change their status, generate schedules, link master records",
           DELETE: "Cancel contracts, also from AMC Renewal (nothing is deleted; also needs Edit)",

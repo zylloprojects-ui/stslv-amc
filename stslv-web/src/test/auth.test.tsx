@@ -223,7 +223,8 @@ describe('permission-based navigation', () => {
 
     // No Settings link: the role may not view it. Clients makes the Master Data Center hub available.
     expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center'])
-    expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'] })
+    // AMC Management is the shared Dashboard (2026-11-09), so a role that may view the Dashboard may open it too.
+    expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'], 'AMC Operations': ['AMC Management'] })
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })
 
@@ -402,7 +403,7 @@ describe('page search', () => {
     await userEvent.click(await screen.findByRole('combobox', { name: 'Search pages' }))
 
     const options = (await screen.findAllByRole('option')).map((option) => option.querySelector('span.font-semibold')?.textContent)
-    expect(options).toEqual(['Dashboard', 'Master Data Center', 'Clients', 'My Account'])
+    expect(options).toEqual(['Dashboard', 'Master Data Center', 'Clients', 'AMC Management', 'My Account'])
   })
 })
 

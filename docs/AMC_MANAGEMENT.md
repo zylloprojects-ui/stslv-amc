@@ -1,5 +1,12 @@
 # AMC Management
 
+> **Replaced (2026-11-09, client requirement): `/amc/management` now shows the one shared Dashboard.** Both
+> `/dashboard` and `/amc/management` render the same component (`stslv-web/src/pages/DashboardPage.tsx`;
+> `AmcManagementPage.tsx` only points to it) from the same API (`GET /api/dashboard/operations`), with the same
+> permission (DASHBOARD:VIEW). The page described below (its own KPI groups, Recent AMC Contracts and Expiry & Renewal
+> panels) is no longer shown; `GET /api/amc/management/summary` is kept, read only, for compatibility. See
+> [STS_ELV_CLIENT_FIXES_20261109.md](STS_ELV_CLIENT_FIXES_20261109.md) § 13.
+
 > **Superseded in part (2026-11-01):** Paid / Unpaid, the Invoice No. column, row colours, Billing Basis amounts and reconciliation follow [FINANCE_WORKFLOW.md](FINANCE_WORKFLOW.md). Statements below that payment is not recorded or that an invoice number is not Paid no longer apply.
 
 Route: `/amc/management` (navigation: Operations → AMC Management).

@@ -268,3 +268,49 @@ Contracts, Due/Expired, KPIs, Renewal queue, Service Status, AMC Management and 
 fail (verified by stashing the source changes); with this change all pass. `stslv-web/src/test/business-date.test.tsx`
 (6) fixes the browser clock at instants around Oman midnight (e.g. 20:30 UTC on 31 December = 1 January in Oman) and
 checks the helpers and the contracts page's "Ends today" / "Ended 1 day ago".
+
+## 13. One shared Dashboard on /dashboard and /amc/management (client requirement 2026-11-09)
+
+**Before.** Two independent pages.
+
+| | `/dashboard` (DashboardPage) | `/amc/management` (AmcManagementPage) |
+|---|---|---|
+| API | `GET /api/dashboard/operations` | `GET /api/amc/management/summary` |
+| Permission | DASHBOARD:VIEW | AMC_CONTRACTS:VIEW |
+| Cards | 12 fixed cards in 3 rows (client's reference, `DASHBOARD_12_KPIS.md`): Active AMCs, Annual AMC Value, Final Credit, Expiring ≤45 Days; Services This Month, Services Pending, Invoices Generated, Invoices Not Generated; Services Overall, Services Pending, Invoices Generated, Invoices Not Generated | 3 customisable groups of 4 (renamable, reorderable, Reset): Active AMC, Total AMC Value, Total Final Credit, Expiring within 45 days; Services This Month, Schedule Pending Billing, Current Scheduled Value, Schedule Engine Status; Paid Invoices, Unpaid Invoices, Paid Invoice Total, Invoice Module Status |
+| Sections | AMC Maintenance Calendar, Upcoming Service Workload, Payment Trend | Recent AMC Contracts, Expiry & Renewal (bands 90/60/45/30/15, critical, not renewed) |
+| Header | banner, + New AMC, System online, Refresh | Schedule Engine, Invoices, Reports, Alerts, + New AMC |
+
+Only the four contract figures were shared (both read `contractKpis()`); titles, order, the other eight cards,
+sections, actions and permissions all differed.
+
+**After.** One implementation. `/amc/management` renders the same `DashboardPage` component (`AmcManagementPage.tsx`
+only points to it), with the same API (`GET /api/dashboard/operations`), the same permission on the route and in the
+navigation (DASHBOARD:VIEW), the same page meta, Help topic (Dashboard) and user-guide chapter. The reference kept is
+the client-approved 12-card Dashboard. Nothing was added to either page. The AMC Management-only panels are no longer
+shown; `GET /api/amc/management/summary` is kept read-only for compatibility (it returns the same contract figures).
+
+**Permission impact.** Every built-in role that could open AMC Management (Super Admin, Admin, AMC Operations Executive,
+Viewer) also has DASHBOARD:VIEW, so none loses access. Roles with DASHBOARD:VIEW but not AMC_CONTRACTS:VIEW (Finance
+Executive, Master Data Executive, legacy Accountant) now also see AMC Management — the same Dashboard they already
+see, with the same per-card permissions, so no new data is exposed. A custom role with AMC_CONTRACTS:VIEW but without
+DASHBOARD:VIEW no longer opens AMC Management.
+
+**Values fixed at the source (cards 1–3).** Active AMCs, Annual AMC Value and Final Credit summed every contract
+*stored* as Active. With the expiry job off, a contract past its Valid To stayed Active and kept being counted; and an
+approved renewal (Active) was added on top of the original that was still running, so the same contract was counted
+twice. Now each contract counts once: status Active, Valid To today or later in Oman (the approved expiry rule), and
+not a renewal whose predecessor is still counted. The exclusions are returned (`activePastValidity`,
+`activeAwaitingPredecessor`) and shown on the card ("6 past validity not counted · 1 renewal starting later"). Expiring
+≤45 Days is unchanged (Active, Valid To between today and +45, Oman). Invoice cards keep the Paid reference rule over the
+Accounts scope; Zoho records are not read; no value is invented when Billing Basis, Cost per Visit or Final Credit is
+missing (a missing Final Credit adds nothing, and the card says on how many contracts it is entered).
+
+**Tests.** Web `amc-management.test.tsx` (10): renders both routes with the same role, data, date and filters and
+requires the same cards, titles, order, values, classes/colours, sections, links, buttons and the same whole page
+markup, for an administrator, a restricted role, empty data, loading and API error; the same permission on both
+routes (open with DASHBOARD:VIEW without AMC_CONTRACTS, refused without DASHBOARD:VIEW even with AMC_CONTRACTS, no
+API call). API `dashboard-shared-counts.test.ts` (3): a renewal waiting while its original runs, an ended original
+replaced by its renewal, and the summary API agreeing. Browser parity (`/dashboard` vs `/amc/management`, headless Edge,
+isolated stack): admin and restricted role at 1440 px and 390 px — same content, same cards/values, **pixel-identical
+screenshots of the page area** (same SHA-256), no horizontal scroll: 17/17.
