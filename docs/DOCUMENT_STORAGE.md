@@ -1,6 +1,6 @@
 # Document Storage (Supabase Storage)
 
-Branch `feature/r2-document-storage`, 2026-11-04. Not yet deployed.
+Branch `feature/r2-document-storage`, 2026-11-04. Released to production with `c6d8d19` on 2026-11-04 (night); the API reports "A private Supabase Storage bucket" in Security Center. A real production upload/download round-trip has not yet been exercised (Outstanding Issues OI-13).
 
 ## Why
 

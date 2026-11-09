@@ -97,6 +97,13 @@ export function UserMenu() {
               </MenuIcon>
               My Profile
             </Link>
+            <Link to="/help" onClick={() => setOpen(false)} className={ITEM}>
+              <MenuIcon>
+                <circle cx="12" cy="12" r="9" />
+                <path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17h.01" strokeLinecap="round" strokeLinejoin="round" />
+              </MenuIcon>
+              Help &amp; User Guide
+            </Link>
             {auth.can('SUGGESTIONS', 'VIEW') && (
             <Link to="/suggestions" onClick={() => setOpen(false)} className={ITEM}>
               <MenuIcon>

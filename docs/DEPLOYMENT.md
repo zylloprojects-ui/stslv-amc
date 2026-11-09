@@ -4,6 +4,10 @@ How the STSLV AMC review copy is hosted and redeployed on free plans. No secret
 value belongs in this file or anywhere else in the repository: secrets are
 entered in the Neon, Render and Cloudflare dashboards only.
 
+For each release use `docs/handover/DEPLOYMENT_CHECKLIST.md`. Prerequisites for the planned move to a
+Hostinger VPS are in `docs/technical/TECHNICAL_HANDOVER.md` §9. Document storage (Supabase) is described
+in `docs/DOCUMENT_STORAGE.md` and is live since 2026-11-04.
+
 ## Architecture
 
 ```

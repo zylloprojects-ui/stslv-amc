@@ -123,6 +123,7 @@ const PAGES: { prefix: string; meta: PageMeta }[] = [
   { prefix: '/admin/suggestions', meta: { icon: ICON.page, from: '#FF8212', to: '#1B8AD3', description: 'Suggestions and issues from every user · Review · Respond · Resolve' } },
   { prefix: '/suggestions', meta: { icon: ICON.page, from: '#FF8212', to: '#5BAF48', description: 'Your suggestions, their status and the responses to them' } },
   { prefix: '/settings', meta: { icon: ICON.settings, from: '#7E6FAC', to: '#00A6C8', description: 'Application settings' } },
+  { prefix: '/help', meta: { icon: ICON.page, from: '#1B8AD3', to: '#5BAF48', description: 'How each page works, its statuses and the everyday workflows' } },
   { prefix: '/notifications', meta: { icon: ICON.page, from: '#1B8AD3', to: '#F5C622', description: 'Alerts from the current records · Overdue visits · Work waiting for an invoice' } },
   { prefix: '/account', meta: { icon: ICON.person, from: '#1B8AD3', to: '#5BAF48', description: 'Your profile, role and sign-in details' } },
 ]

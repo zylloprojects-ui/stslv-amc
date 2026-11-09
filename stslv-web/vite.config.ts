@@ -1,11 +1,19 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitest/config'
+
+// Tests only: the help test checks the in-app help against docs/user-guide/USER_GUIDE.md, outside this
+// project. The development server keeps Vite's default file access.
+const testFileAccess = process.env.VITEST
+  ? { fs: { allow: [fileURLToPath(new URL('.', import.meta.url)), fileURLToPath(new URL('../docs/user-guide', import.meta.url))] } }
+  : {}
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   server: {
+    ...testFileAccess,
     // Development only: the browser must never keep an old copy of a page's code.
     headers: { 'Cache-Control': 'no-store' },
     // The browser calls /api on the web origin; Vite forwards it to the API.

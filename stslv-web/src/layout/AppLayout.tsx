@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Outlet, useLocation } from 'react-router-dom'
 import { useDialogBehavior } from '../components/hooks'
+import { HelpButton } from '../help/HelpPanel'
 import { cx } from '../lib/format'
 import { usePalette, useSidebarCollapsed, useTheme, type Theme } from '../lib/preferences'
 import { CookieNotice } from './CookieNotice'
@@ -125,6 +126,7 @@ export function AppLayout() {
 
         <div className="flex shrink-0 items-center gap-1 sm:gap-2">
           <NotificationBell />
+          <HelpButton />
           <FeedbackButton />
           <PaletteMenu palette={palette} onChoose={choosePalette} dark={theme === 'dark'} />
           <button

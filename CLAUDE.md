@@ -557,6 +557,8 @@ Imports should eventually support validation/preview before permanent insertion.
 
 Baseline recorded on 2026-10-01, after inspecting the repository.
 
+**Outdated (noted 2026-11-09):** the baseline below describes the starter projects. The application has since been built and released (production at `c6d8d19`, 49 migrations up to 0107). The current architecture, modules, environment variable names and hosting are in `docs/technical/TECHNICAL_HANDOVER.md`; the document index is `docs/README.md`.
+
 Before relying on this section in future sessions, inspect the repository because implementation may have progressed.
 
 Project root:
