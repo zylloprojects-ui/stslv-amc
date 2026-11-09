@@ -5,7 +5,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { isGrantable } from "../../shared/permission-catalog";
 import { ADMIN_ROLE_CODE, holdsPermission, permissionKey, type Action, type Module, type PermissionKey } from "../../shared/permissions";
-import { dependencyProblem, isBuiltInRole, isInRoleScope, isPrivilegedRole, isSuperAdmin, roleScope } from "../../shared/role-model";
+import { dependencyProblem, hasAdminAccess, isBuiltInRole, isInRoleScope, isPrivilegedRole, isSuperAdmin, roleScope, SECURITY_MODULES } from "../../shared/role-model";
 import type { AuthContext } from "../auth/access";
 
 export interface Permission {
@@ -31,16 +31,23 @@ export interface Role {
   isActive: boolean;
   userCount: number;
   permissions: Permission[];
-  /** Whether the signed-in user may change this role's permissions: only Super Admin, and never Super Admin's own. */
+  /**
+   * Whether the signed-in user may change this role's permissions: Super Admin (never Super Admin's own), or Admin
+   * for a custom role within Admin's own permissions (see manageReason).
+   */
   permissionsEditable: boolean;
   /** Why the signed-in user cannot change the permissions, or null. */
   lockedReason: string | null;
+  /** Whether the signed-in user may rename, deactivate, reactivate or delete this role (deleting also needs a custom, unused role). */
+  manageable: boolean;
+  /** Why the signed-in user may not manage this role, or null. */
+  manageReason: string | null;
   /**
    * Identifies the saved permission set. A save sends the version it started from and is refused
    * (409) when the set has changed since, so two administrators never silently overwrite each other.
    */
   permissionsVersion: string;
-  /** Defined by the migrations: never deleted; renamed, deactivated or reactivated only by Super Admin. */
+  /** Defined by the migrations: never deleted; it and its permissions are changed only by Super Admin. */
   builtIn: boolean;
   /** The permissions this role may be given ("MODULE:ACTION"), or null when it may be given any grantable permission. */
   scope: PermissionKey[] | null;
@@ -49,8 +56,10 @@ export interface Role {
 }
 
 const SUPER_ADMIN_LOCKED = "Super Admin always has full access. Its permissions cannot be changed.";
-const SUPER_ADMIN_ONLY = "Only Super Admin can change role permissions.";
-const ROLE_CHANGES_SUPER_ADMIN_ONLY = "Only Super Admin can change roles and their permissions.";
+export const ROLE_ADMINISTRATORS_ONLY = "Only Super Admin, and Admin with Users & Access Edit, can change roles and their permissions.";
+const BUILT_IN_SUPER_ADMIN_ONLY = "Only Super Admin can change a built-in role or its permissions.";
+const OWN_ROLE = "You cannot change a role you hold yourself.";
+const BEYOND_AUTHORITY = "This role grants permissions you do not hold. Only Super Admin can change it.";
 const STALE_PERMISSIONS =
   "These permissions were changed by someone else since you opened them. Load the latest permissions and make your change again.";
 
@@ -64,11 +73,33 @@ const ROLE_SELECT = `
          ) AS permissions
   FROM roles r`;
 
-/** Why the signed-in user may not change this role's permissions: only Super Admin may, and never Super Admin's own. */
-function lockedReason(auth: AuthContext, code: string): string | null {
-  if (code === ADMIN_ROLE_CODE) return SUPER_ADMIN_LOCKED;
-  if (!isSuperAdmin(auth.roles)) return SUPER_ADMIN_ONLY;
+/**
+ * Who manages roles (approved 2026-11-09): Super Admin, and Admin while holding Users & Access Edit. Super Admin
+ * removing that permission from Admin takes role management away from Admin. Nobody else, whatever they hold.
+ */
+export function canManageRoles(auth: AuthContext): boolean {
+  return isSuperAdmin(auth.roles) || (hasAdminAccess(auth.roles) && holdsPermission(auth.permissions, "USERS:EDIT"));
+}
+
+/**
+ * Why the signed-in user may not change this role (its name, status, existence or permissions), or null.
+ * Super Admin may change every role. Admin may change only a custom role that Admin does not hold and whose every
+ * permission Admin holds: built-in roles (Super Admin, Admin, the executive roles, Viewer, the legacy roles) stay
+ * with Super Admin, and a role reaching beyond Admin's own access (set up by Super Admin) cannot be touched.
+ */
+function manageReason(auth: AuthContext, row: Pick<RoleRow, "code" | "permissions">): string | null {
+  if (isSuperAdmin(auth.roles)) return null;
+  if (!canManageRoles(auth)) return ROLE_ADMINISTRATORS_ONLY;
+  if (isBuiltInRole(row.code)) return BUILT_IN_SUPER_ADMIN_ONLY;
+  if (auth.roles.some((role) => role.code === row.code)) return OWN_ROLE;
+  if (!row.permissions.every((permission) => holdsPermission(auth.permissions, keyOf(permission)))) return BEYOND_AUTHORITY;
   return null;
+}
+
+/** Why the signed-in user may not change this role's permissions, or null. Super Admin's own are fixed for everyone. */
+function lockedReason(auth: AuthContext, row: Pick<RoleRow, "code" | "permissions">): string | null {
+  if (row.code === ADMIN_ROLE_CODE) return SUPER_ADMIN_LOCKED;
+  return manageReason(auth, row);
 }
 
 /** A short fingerprint of a permission set, independent of order. */
@@ -78,7 +109,8 @@ export function permissionsVersionOf(permissions: Permission[]): string {
 }
 
 function toRole(auth: AuthContext, row: RoleRow): Role {
-  const locked = lockedReason(auth, row.code);
+  const locked = lockedReason(auth, row);
+  const unmanageable = manageReason(auth, row);
 
   return {
     id: row.id,
@@ -90,6 +122,8 @@ function toRole(auth: AuthContext, row: RoleRow): Role {
     permissions: row.permissions,
     permissionsEditable: locked === null,
     lockedReason: locked,
+    manageable: unmanageable === null,
+    manageReason: unmanageable,
     permissionsVersion: permissionsVersionOf(row.permissions),
     builtIn: isBuiltInRole(row.code),
     scope: roleScope(row.code),
@@ -117,20 +151,30 @@ async function findRole(auth: AuthContext, db: Queryable, id: string): Promise<R
   return toRole(auth, row);
 }
 
-/** Role definitions are changed by Super Admin only (the routes check the same). */
-function assertSuperAdmin(auth: AuthContext): void {
-  if (!isSuperAdmin(auth.roles)) {
-    throw forbidden(ROLE_CHANGES_SUPER_ADMIN_ONLY);
+/** Role definitions are changed by Super Admin, and by Admin with Users & Access Edit (the routes check the same). */
+function assertRoleAdministrator(auth: AuthContext): void {
+  if (!canManageRoles(auth)) {
+    throw forbidden(ROLE_ADMINISTRATORS_ONLY);
+  }
+}
+
+/** Refuses a change to a role the signed-in user may not manage (see manageReason). */
+function assertManageable(role: Role): void {
+  if (role.manageReason) {
+    throw forbidden(role.manageReason);
   }
 }
 
 const keyOf = (permission: Permission): PermissionKey => permissionKey(permission.module, permission.action);
 
 /**
- * Replaces a role's permission set with the given one. Super Admin only. expectedVersion is the
- * permissionsVersion the change started from: a set changed meanwhile is not overwritten (409).
+ * Replaces a role's permission set with the given one. Super Admin for any role but its own; Admin for a custom
+ * role it may manage. expectedVersion is the permissionsVersion the change started from: a set changed meanwhile
+ * is not overwritten (409).
  */
 export function setRolePermissions(auth: AuthContext, roleId: string, permissions: Permission[], expectedVersion: string): Promise<Role> {
+  assertRoleAdministrator(auth);
+
   return withTransaction(async (client) => {
     // Lock the role so two concurrent edits cannot interleave.
     await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
@@ -165,6 +209,14 @@ export function setRolePermissions(auth: AuthContext, roleId: string, permission
 
     if (beyond) {
       throw forbidden(`You cannot change the permission ${keyOf(beyond)} because you do not hold it yourself.`);
+    }
+
+    // Account and access administration is delegated by Super Admin only: Admin cannot create another
+    // user-administering role. Removing such a permission (one Admin holds) stays possible.
+    const security = isSuperAdmin(auth.roles) ? undefined : added.find((permission) => SECURITY_MODULES.includes(permission.module));
+
+    if (security) {
+      throw forbidden(`Only Super Admin can give a role ${keyOf(security)}: account and access administration is delegated by Super Admin only.`);
     }
 
     // Security administration (Users & Access) stays out of the operational roles' reach.
@@ -222,9 +274,17 @@ export interface RoleChanges {
   isActive?: boolean;
 }
 
-/** Adds a custom role. Super Admin only. It starts with no permissions; they are granted separately, so a new role can do nothing until Super Admin decides. */
+/**
+ * Adds a custom role. Super Admin, or Admin with Users & Access Edit. It starts with no permissions; they are
+ * granted separately, so a new role can do nothing until someone who may manage it decides.
+ */
 export function createRole(auth: AuthContext, input: NewRole): Promise<Role> {
-  assertSuperAdmin(auth);
+  assertRoleAdministrator(auth);
+
+  // A built-in code carries fixed meaning (Super Admin, Admin, the scoped roles), so a custom role never takes one.
+  if (isBuiltInRole(input.code)) {
+    throw conflict("This code belongs to a built-in role. Choose another code.");
+  }
 
   return withTransaction(async (client) => {
     const existing = await client.query("SELECT 1 FROM roles WHERE code = $1 OR lower(name) = lower($2)", [input.code, input.name]);
@@ -255,15 +315,18 @@ export function createRole(auth: AuthContext, input: NewRole): Promise<Role> {
 }
 
 /**
- * Changes a role's name, description or status (renaming, deactivating, reactivating). Super Admin
- * only, built-in roles included. Its code never changes: permissions and history refer to it.
+ * Changes a role's name, description or status (renaming, deactivating, reactivating). Super Admin for every
+ * role, built-in roles included; Admin for a custom role it may manage. Its code never changes: permissions and
+ * history refer to it.
  */
 export function updateRole(auth: AuthContext, roleId: string, changes: RoleChanges): Promise<Role> {
-  assertSuperAdmin(auth);
+  assertRoleAdministrator(auth);
 
   return withTransaction(async (client) => {
     await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
     const role = await findRole(auth, client, roleId);
+
+    assertManageable(role);
 
     if (changes.isActive === false && role.isActive) {
       if (role.code === ADMIN_ROLE_CODE) {
@@ -309,14 +372,16 @@ export function updateRole(auth: AuthContext, roleId: string, changes: RoleChang
   });
 }
 
-/** Deletes a custom role that nobody holds. Super Admin only. A built-in role is never deleted. */
+/** Deletes a custom role that nobody holds. Super Admin, or Admin for a role it may manage. A built-in role is never deleted. */
 export function deleteRole(auth: AuthContext, roleId: string): Promise<void> {
-  assertSuperAdmin(auth);
+  assertRoleAdministrator(auth);
 
   return withTransaction(async (client) => {
     await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
     const role = await findRole(auth, client, roleId);
 
+    // A built-in role is never deleted, by anyone: say so rather than "only Super Admin".
+    if (!role.builtIn) assertManageable(role);
     if (role.builtIn) {
       throw forbidden("A built-in role cannot be deleted. Deactivate it instead.");
     }

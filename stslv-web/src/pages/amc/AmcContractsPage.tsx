@@ -6,7 +6,7 @@ import { isSuperAdmin } from '../../auth/roles'
 import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { ExportButtons } from '../../components/ExportButtons'
 import { ActionButton, ActionGroup, ActionLink } from '../../components/IconActions'
-import { Alert, Button, Card, ConfirmDialog, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
+import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import type { Paged } from '../../lib/types'
@@ -15,6 +15,7 @@ import { queryString } from './amcApi'
 import { formatDate, formatMoney } from './amcFormat'
 import { ContractStatusPill, Filter, FilterPanel, Pager, Pill } from './components'
 import { ContractFormModal } from './ContractFormModal'
+import { MoveContractDialog } from './ContractRecycleBinUsage'
 import { StatTile } from '../../components/StatTile'
 import {
   CONTRACT_STATUSES,
@@ -726,19 +727,9 @@ export function AmcContractsPage() {
       </Card>
 
       {dialog.kind === 'delete' && (
-        <ConfirmDialog
-          title="Move contract to the Recycle Bin"
-          message={
-            <>
-              Move the contract for <strong>{label(dialog.contract)}</strong> to the Recycle Bin?
-              <span className="mt-2 block text-sm">
-                It leaves AMC Contracts, schedules, the calendar, Accounts and the dashboard figures. Nothing is removed: its services, service reports,
-                quotations, invoices, documents and history are kept, and Super Admin can restore it from Administration &gt; Recycle Bin.
-              </span>
-            </>
-          }
-          confirmLabel="Move to Recycle Bin"
-          danger
+        <MoveContractDialog
+          contract={dialog.contract}
+          name={label(dialog.contract)}
           loading={remove.isPending}
           error={remove.isError ? errorMessage(remove.error) : null}
           onConfirm={() => remove.mutate(dialog.contract)}

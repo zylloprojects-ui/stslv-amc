@@ -19,6 +19,8 @@ interface Catalogue {
   filters: ReportFilter[]
   /** The choices of the Status filter: the contract's status, or the visit's on a report over visits. */
   statuses?: { value: string; label: string }[]
+  /** Whether this user may export it: Reports Export plus Export of its source module, decided by the API. */
+  canExport?: boolean
 }
 
 type ReportFilter = 'dates' | 'client' | 'engineer' | 'system' | 'status' | 'payment'
@@ -102,7 +104,8 @@ export function ReportsPage() {
   const auth = useAuth()
   // ?report= opens one report directly, as the Dashboard's Expiring Contracts link does. An unknown id loads nothing and asks for a report.
   const [searchParams] = useSearchParams()
-  const [type, setType] = useState(searchParams.get('report') ?? 'contract-summary')
+  // The API lists only the reports this user may open; with no report asked for, the first of them opens.
+  const [requested, setType] = useState(searchParams.get('report'))
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const [clientId, setClientId] = useState('')
@@ -114,7 +117,9 @@ export function ReportsPage() {
   const [exportError, setExportError] = useState<string | null>(null)
 
   const catalogue = useQuery({ queryKey: ['reports', 'catalogue'], queryFn: () => api.get<Catalogue[]>('/reports') })
-  const options = useQuery({ queryKey: ['reports', 'options'], queryFn: () => api.get<FilterOptions>('/reports/options') })
+  const noReports = catalogue.isSuccess && catalogue.data.length === 0
+  const options = useQuery({ queryKey: ['reports', 'options'], queryFn: () => api.get<FilterOptions>('/reports/options'), enabled: catalogue.isSuccess && !noReports })
+  const type = requested ?? catalogue.data?.[0]?.id ?? ''
   const chosen = catalogue.data?.find((item) => item.id === type)
   const offers = (filter: ReportFilter) => chosen?.filters.includes(filter) ?? false
   const statuses = chosen?.statuses ?? []
@@ -148,7 +153,7 @@ export function ReportsPage() {
         title="Reports"
         description="Reports from the live records, with the same figures as the source pages."
         actions={
-          auth.can('REPORTS', 'EXPORT') && !rangeInvalid ? (
+          auth.can('REPORTS', 'EXPORT') && chosen?.canExport === true && !rangeInvalid ? (
             <ExportButtons what={chosen?.title ?? 'report'} fileStem={`report-${type}`} path={(format) => `/reports/${type}/export${queryString({ ...applied, format })}`} onError={setExportError} />
           ) : undefined
         }
@@ -252,6 +257,12 @@ export function ReportsPage() {
         {chosen && <p className="border-b border-slate-200 px-5 py-3 text-sm text-slate-600">{chosen.description}</p>}
         {data && data.kpis && data.kpis.length > 0 && <KpiStrip title={data.title} kpis={data.kpis} />}
 
+        {noReports && (
+          <EmptyState
+            title="No reports available"
+            description="Each report also needs access to its source page (AMC Contracts, AMC Renewal or Accounts). Ask an administrator if you need one."
+          />
+        )}
         {rangeInvalid && <p className="px-5 py-4 text-sm text-red-700">The From date is after the To date.</p>}
         {!rangeInvalid && report.isPending && (chosen || catalogue.isPending) && <Spinner label="Loading report" />}
         {report.isError && (

@@ -180,7 +180,10 @@ export interface Role {
   isActive: boolean
   userCount: number
   permissions: Permission[]
-  /** Whether the signed-in user may change this role's permissions (never Super Admin's; Admin's only by Super Admin). */
+  /**
+   * Whether the signed-in user may change this role's permissions: never Super Admin's; built-in roles only by
+   * Super Admin; custom roles also by Admin, within Admin's own permissions. Decided by the API.
+   */
   permissionsEditable: boolean
   /** Why the permissions cannot be changed, when that comes from the role itself. Absent from an older API. */
   lockedReason?: string | null
@@ -192,10 +195,16 @@ export interface Role {
   permissionsVersion?: string
   /** Defined by the migrations: never deleted. */
   builtIn?: boolean
+  /** Whether the signed-in user may rename, deactivate or delete this role. Absent from an older API. */
+  manageable?: boolean
+  /** Why the signed-in user may not manage this role, or null. Absent from an older API. */
+  manageReason?: string | null
 }
 
 export interface RolesResponse {
   roles: Role[]
+  /** Whether the signed-in user may add roles (Super Admin, or Admin with Users & Access Edit). Absent from an older API. */
+  canManageRoles?: boolean
   modules: Module[]
   actions: Action[]
   /** What each module governs and which of its actions are used (API: shared/permission-catalog.ts). Absent from an older API. */

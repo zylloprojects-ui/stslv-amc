@@ -155,8 +155,71 @@ describe('roles', () => {
     expect(screen.getByRole('dialog', { name: 'Delete role' })).toBeInTheDocument()
   })
 
-  it('shows the buttons only to Super Admin, not to Admin with every user permission', async () => {
+  it('with an older API that sends no decision, offers the buttons to Super Admin only', async () => {
     roleListApi({ ...ADMIN, roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW', 'USERS:CREATE', 'USERS:EDIT'] })
+    await open()
+
+    expect(screen.queryByRole('button', { name: 'Add role' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Edit / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Delete / })).not.toBeInTheDocument()
+  })
+})
+
+// Approved 2026-11-09: Admin manages custom roles within its own permissions. The API decides per role
+// (canManageRoles, manageable, manageReason) and enforces it; the panel shows exactly what it is told.
+describe('roles as Admin', () => {
+  const ADMINISTRATOR: SessionUser = {
+    ...ADMIN,
+    roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }],
+    permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW', 'USERS:CREATE', 'USERS:EDIT'],
+  }
+  const BUILT_IN = 'Only Super Admin can change a built-in role or its permissions.'
+  const BEYOND = 'This role grants permissions you do not hold. Only Super Admin can change it.'
+
+  function adminApi(canManageRoles: boolean) {
+    signIn()
+    const roles: Role[] = [
+      { ...role('1', 'ADMIN', 'Super Admin', 1), builtIn: true, manageable: false, manageReason: BUILT_IN },
+      { ...role('6', 'ADMINISTRATOR', 'Admin', 1), builtIn: true, manageable: false, manageReason: BUILT_IN },
+      { ...role('7', 'WORKSHOP', 'Workshop', 0), builtIn: false, manageable: canManageRoles, manageReason: canManageRoles ? null : 'Only Super Admin, and Admin with Users & Access Edit, can change roles and their permissions.' },
+      { ...role('8', 'ANALYST', 'Analyst', 0), builtIn: false, manageable: false, manageReason: BEYOND },
+    ]
+
+    return mockApi((request) => {
+      if (request.path === '/auth/me') return ok({ user: ADMINISTRATOR })
+      if (request.method === 'GET' && request.path === '/roles') return ok({ roles, canManageRoles, modules: MODULES, actions: ACTIONS })
+      if (request.method === 'POST' && request.path === '/roles') return ok({ ...role('9', 'SITE_OPS', 'Site operations', 0), builtIn: false, manageable: true, manageReason: null }, 201)
+      if (request.method === 'DELETE' && request.path === '/roles/7') return ok(null)
+      return undefined
+    })
+  }
+
+  it('lets Admin add roles and edit or delete the custom roles within its permissions, and nothing else', async () => {
+    const api = adminApi(true)
+    await open()
+
+    expect(screen.getByRole('button', { name: 'Add role' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit Workshop' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete Workshop' })).toBeEnabled()
+    for (const name of ['Super Admin', 'Admin', 'Analyst']) {
+      expect(screen.queryByRole('button', { name: `Edit ${name}` }), name).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: `Delete ${name}` }), name).not.toBeInTheDocument()
+    }
+    // Why a row has no actions is there for screen readers too.
+    expect(screen.getAllByText(BUILT_IN)).toHaveLength(2)
+    expect(screen.getByText(BEYOND)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Add role' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Add role' })
+    await userEvent.type(within(dialog).getByLabelText(/Role code/), 'site_ops')
+    await userEvent.type(within(dialog).getByLabelText(/Role name/), 'Site operations')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add role' }))
+    expect(await screen.findByRole('status')).toHaveTextContent('Site operations was added.')
+    expect(api.find('POST', '/roles')[0]?.body).toMatchObject({ code: 'SITE_OPS' })
+  })
+
+  it('offers nothing when the API says Admin may not manage roles (Users & Access Edit removed)', async () => {
+    adminApi(false)
     await open()
 
     expect(screen.queryByRole('button', { name: 'Add role' })).not.toBeInTheDocument()

@@ -459,7 +459,8 @@ export function SettingsPage({ area, children }: { area?: 'security' | 'backups'
   const organization: NavItem[] = [
     { id: 'company', label: 'Company profile', icon: ICONS.company },
     ...(DIVISIONS_ENABLED ? [{ id: 'divisions' as const, label: 'Divisions', icon: ICONS.divisions }] : []),
-    ...(ROLE_LIST_ENABLED ? [{ id: 'roles' as const, label: 'Role list', icon: ICONS.roles }] : []),
+    // GET /api/roles needs Users & Access view, so the list is offered only to those who can read it.
+    ...(ROLE_LIST_ENABLED && auth.can('USERS', 'VIEW') ? [{ id: 'roles' as const, label: 'Role list', icon: ICONS.roles }] : []),
     { id: 'holidays', label: 'Holidays', icon: ICONS.holidays },
     { id: 'tax', label: 'Tax setup', icon: ICONS.tax },
   ]

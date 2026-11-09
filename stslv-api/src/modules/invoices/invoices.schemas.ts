@@ -101,7 +101,36 @@ export const listBillableSchema = z
 // The contract filter is for the contract page only; the export keeps its own filter set.
 export const exportInvoicesSchema = listInvoicesSchema
   .omit({ page: true, pageSize: true, amcContractId: true })
-  .extend({ format: exportFormatSchema });
+  .extend({
+    format: exportFormatSchema,
+    // Recent Invoices (Dashboard): the columns its table shows ("number,client,total"), so the file shows the same.
+    // Left out, the full Invoice Tracking Report is produced, as before.
+    columns: z
+      .string()
+      .trim()
+      .max(100)
+      .optional()
+      .transform((value, ctx) => {
+        if (value === undefined) return undefined;
+        const ids = value.split(",").map((id) => id.trim()).filter((id) => id !== "");
+        const unknown = ids.filter((id) => !(RECENT_INVOICE_COLUMNS as readonly string[]).includes(id));
+
+        if (unknown.length > 0) {
+          ctx.addIssue({ code: "custom", message: `Unknown column: ${unknown.join(", ")}.` });
+          return z.NEVER;
+        }
+        if (ids.length === 0) {
+          ctx.addIssue({ code: "custom", message: "Choose at least one column." });
+          return z.NEVER;
+        }
+        // Always in the table's order, whatever order was asked for.
+        return RECENT_INVOICE_COLUMNS.filter((id) => ids.includes(id));
+      }),
+  });
+
+/** The columns of the Dashboard's Recent Invoices table, in its order. */
+export const RECENT_INVOICE_COLUMNS = ["number", "client", "date", "total", "status"] as const;
+export type RecentInvoiceColumn = (typeof RECENT_INVOICE_COLUMNS)[number];
 
 /** The pending report lists waiting work only; work that an invoice already covers cannot be asked for. */
 export const exportBillableSchema = z.strictObject({

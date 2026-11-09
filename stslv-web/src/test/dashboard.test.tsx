@@ -599,6 +599,23 @@ describe('recent invoices', () => {
     expect(within(section).getByRole('button', { name: 'Export invoices to PDF' })).toBeInTheDocument()
   })
 
+  it('exports only the columns the table shows, in its order (P2)', async () => {
+    const api = dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    const section = await panel()
+    await within(section).findByText('INV-0091')
+    await userEvent.click(within(section).getByText('Columns'))
+    await userEvent.click(within(section).getByRole('checkbox', { name: 'Status' }))
+    await userEvent.click(within(section).getByRole('checkbox', { name: 'Invoice date' }))
+    await userEvent.click(within(section).getByRole('button', { name: 'Export invoices to Excel' }))
+
+    await waitFor(() => expect(api.find('GET', '/invoices/export')).toHaveLength(1))
+    const query = api.find('GET', '/invoices/export')[0]?.query
+    expect(query?.get('format')).toBe('xlsx')
+    expect(query?.get('columns')).toBe('number,client,total')
+  })
+
   it('is not shown without Invoice Tracking access', async () => {
     const api = dashboardApi(ACCOUNTANT, { operations: () => ok({ ...OPERATIONS, kpis: { contracts: null, services: null, payments: null }, portfolio: null, expiring: null, workload: null, schedule: null, payments: null }) })
     renderApp('/dashboard')

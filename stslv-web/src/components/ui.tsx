@@ -461,11 +461,13 @@ interface ConfirmDialogProps {
   danger?: boolean
   loading?: boolean
   error?: string | null
+  /** The action cannot go ahead (a blocker is shown in the message); Cancel stays available. */
+  confirmDisabled?: boolean
   onConfirm: () => void
   onCancel: () => void
 }
 
-export function ConfirmDialog({ title, message, confirmLabel, danger = false, loading = false, error, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ title, message, confirmLabel, danger = false, loading = false, error, confirmDisabled = false, onConfirm, onCancel }: ConfirmDialogProps) {
   return (
     <Modal
       title={title}
@@ -475,7 +477,7 @@ export function ConfirmDialog({ title, message, confirmLabel, danger = false, lo
           <Button variant="secondary" onClick={onCancel} disabled={loading}>
             Cancel
           </Button>
-          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading}>
+          <Button variant={danger ? 'danger' : 'primary'} onClick={onConfirm} loading={loading} disabled={confirmDisabled}>
             {confirmLabel}
           </Button>
         </>

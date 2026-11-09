@@ -267,19 +267,20 @@ describe('unsaved changes', () => {
 })
 
 describe('Admin and the privileged roles', () => {
-  // As the API answers Admin: no role's permissions are editable; the privileged roles are not assignable.
+  const BUILT_IN = 'Only Super Admin can change a built-in role or its permissions.'
+  // As the API answers Admin: no built-in role's permissions are editable; the privileged roles are not assignable.
   const asAdmin = ROLES.map((candidate) =>
     candidate.code === 'ADMIN'
       ? candidate
       : {
           ...candidate,
           permissionsEditable: false,
-          lockedReason: 'Only Super Admin can change role permissions.',
+          lockedReason: BUILT_IN,
           assignable: candidate.code === 'ADMINISTRATOR' ? false : candidate.assignable,
         },
   )
 
-  it('cannot change any role’s permissions, not even an Executive role’s', async () => {
+  it('cannot change any built-in role’s permissions, not even an Executive role’s', async () => {
     rolesApi(ADMIN_USER, asAdmin)
 
     for (const name of ['Admin', 'Finance Executive', 'AMC Operations Executive']) {
@@ -288,13 +289,42 @@ describe('Admin and the privileged roles', () => {
       } else {
         await userEvent.click(screen.getByRole('tab', { name }))
       }
-      expect(await screen.findByText('Only Super Admin can change role permissions.')).toBeInTheDocument()
+      expect(await screen.findByText(BUILT_IN)).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Save permissions' })).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Select all' })).not.toBeInTheDocument()
       // Every permission box is disabled; the only box left enabled is the list filter, which changes no permission.
       const filter = screen.getByRole('checkbox', { name: 'Only what this role has' })
       for (const box of screen.getAllByRole('checkbox').filter((item) => item !== filter)) expect(box).toBeDisabled()
     }
+  })
+
+  it('edits a custom role the API lets it manage, but never ticks Users & Access, and saves only what it chose', async () => {
+    const workshop = role('12', 'WORKSHOP', 'Workshop', { builtIn: false, manageable: true, manageReason: null, permissions: [{ module: 'DASHBOARD', action: 'VIEW' }], permissionsVersion: 'abababababababab' })
+    const api = rolesApi(ADMIN_USER, [...asAdmin, workshop])
+    await open('Workshop')
+
+    expect(screen.queryByText(BUILT_IN)).not.toBeInTheDocument()
+    // Account and access administration is given to a role by Super Admin only (the API refuses it too).
+    expect(screen.getByRole('checkbox', { name: 'Users & Access: View' })).toBeDisabled()
+    expect(screen.getByRole('checkbox', { name: 'Users & Access: Edit' })).toBeDisabled()
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Clients: View' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Save permissions' }))
+
+    await waitFor(() => expect(api.find('PUT', '/roles/12/permissions')).toHaveLength(1))
+    const [saved] = api.find('PUT', '/roles/12/permissions')
+    const sent = (saved!.body as { permissions: { module: string; action: string }[] }).permissions
+    expect(sent.map((p) => `${p.module}:${p.action}`).sort()).toEqual(['CLIENTS:VIEW', 'DASHBOARD:VIEW'])
+  })
+
+  it('may still remove Users & Access from a custom role that has it', async () => {
+    const helpDesk = role('13', 'HELP_DESK', 'Help Desk', { builtIn: false, manageable: true, permissions: [{ module: 'USERS', action: 'VIEW' }], permissionsVersion: 'cdcdcdcdcdcdcdcd' })
+    rolesApi(ADMIN_USER, [...asAdmin, helpDesk])
+    await open('Help Desk')
+
+    expect(screen.getByRole('checkbox', { name: 'Users & Access: View' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Users & Access: View' })).toBeEnabled()
+    expect(screen.getByRole('checkbox', { name: 'Users & Access: Edit' })).toBeDisabled()
   })
 
   it('cannot manage Super Admin or Admin accounts, and is not offered those roles', async () => {

@@ -216,7 +216,9 @@ describe("permission dependencies", () => {
   });
 });
 
-describe("only Super Admin changes roles and permissions", () => {
+// Approved 2026-11-09: Admin also manages CUSTOM roles (tests/admin-custom-roles.test.ts). Built-in roles and their
+// permissions stay with Super Admin, which these tests keep checking.
+describe("only Super Admin changes built-in roles and their permissions", () => {
   it("Super Admin's permissions are fixed for everyone", async () => {
     const response = await setPermissions(superAdmin, await roleId("ADMIN"), []);
     expect(response.status).toBe(403);
@@ -229,7 +231,7 @@ describe("only Super Admin changes roles and permissions", () => {
       const response = await setPermissions(admin, id, before.filter((key) => key !== "DASHBOARD:VIEW"));
 
       expect(response.status, code).toBe(403);
-      expect(response.body.error.message).toBe("Only Super Admin can change roles and their permissions.");
+      expect(response.body.error.message).toBe("Only Super Admin can change a built-in role or its permissions.");
       expect(await grantsOf(code)).toEqual(before);
     }
   });
@@ -243,10 +245,7 @@ describe("only Super Admin changes roles and permissions", () => {
     expect((await setPermissions(superAdmin, await roleId("ADMINISTRATOR"), (await grantsOf("ADMINISTRATOR")).filter((key) => key !== "CLIENTS:EXPORT"))).status).toBe(200);
   });
 
-  it("Admin cannot add, rename, deactivate, reactivate or delete any role", async () => {
-    const custom = await api().post("/api/roles").set(admin.headers).send({ code: "CUSTOM_ROLE", name: "Custom" });
-    expect(custom.status).toBe(403);
-
+  it("Admin cannot rename, deactivate, reactivate or delete any built-in role", async () => {
     for (const code of ["ADMIN", "ADMINISTRATOR", "FINANCE_EXECUTIVE", "VIEWER", "ACCOUNTANT"]) {
       const id = await roleId(code);
       expect((await api().patch(`/api/roles/${id}`).set(admin.headers).send({ name: "Renamed" })).status, code).toBe(403);
@@ -294,10 +293,15 @@ describe("only Super Admin changes roles and permissions", () => {
     const byCode = (code: string) => asAdmin.find((role) => role.code === code);
 
     expect(byCode("ADMIN")).toMatchObject({ permissionsEditable: false, assignable: false, scope: null, builtIn: true });
-    expect(byCode("ADMINISTRATOR")).toMatchObject({ permissionsEditable: false, assignable: false, lockedReason: "Only Super Admin can change role permissions." });
+    expect(byCode("ADMINISTRATOR")).toMatchObject({
+      permissionsEditable: false,
+      manageable: false,
+      assignable: false,
+      lockedReason: "Only Super Admin can change a built-in role or its permissions.",
+    });
     // Admin may assign the operational roles, but change none of them.
-    expect(byCode("FINANCE_EXECUTIVE")).toMatchObject({ permissionsEditable: false, assignable: true });
-    expect(byCode("AMC_OPERATIONS_EXECUTIVE")).toMatchObject({ permissionsEditable: false, assignable: true });
+    expect(byCode("FINANCE_EXECUTIVE")).toMatchObject({ permissionsEditable: false, manageable: false, assignable: true });
+    expect(byCode("AMC_OPERATIONS_EXECUTIVE")).toMatchObject({ permissionsEditable: false, manageable: false, assignable: true });
     expect(byCode("FINANCE_EXECUTIVE")?.scope).toContain("AMC_SCHEDULE:READ");
     expect(byCode("FINANCE_EXECUTIVE")?.permissionsVersion).toMatch(/^[0-9a-f]{16}$/);
 

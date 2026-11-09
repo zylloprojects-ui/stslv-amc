@@ -66,8 +66,9 @@ describe('Settings', () => {
 
     // Each group is a heading followed directly by its items: no empty slot where Divisions was.
     const organization = await groupOf('Organization')
-    expect(within(organization).getAllByRole('listitem')).toHaveLength(3)
-    expect(within(organization).getAllByRole('button').map((button) => button.textContent)).toEqual(['Company profile', 'Holidays', 'Tax setup'])
+    // Role list is shown again for custom-role management (P2, 2026-11-09), to Users & Access viewers only.
+    expect(within(organization).getAllByRole('listitem')).toHaveLength(4)
+    expect(within(organization).getAllByRole('button').map((button) => button.textContent)).toEqual(['Company profile', 'Role list', 'Holidays', 'Tax setup'])
     expect(within(await sections()).queryByRole('button', { name: 'Divisions' })).not.toBeInTheDocument()
     // The hidden section is not reachable by address: Settings opens on Profile instead.
     expect(within(await sections()).getByRole('button', { name: 'Profile' })).toHaveAttribute('aria-current', 'page')
