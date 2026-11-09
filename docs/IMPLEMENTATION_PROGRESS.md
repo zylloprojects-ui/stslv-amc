@@ -4,7 +4,9 @@ Local development record for the module programme started on 2026-10-26.
 Functional guidance came from an independent reference specification kept
 outside this repository; no reference-system code, data or records are used.
 
-Nothing here has been pushed or deployed. Commits are local only.
+> **Historical record (2026-10-26 programme).** The statuses below were true when written; they are not maintained. Everything listed has since been integrated and released (production runs `c6d8d19`, migration 0107). For the current state see `docs/README.md`, `docs/technical/TECHNICAL_HANDOVER.md` and `docs/handover/RELEASE_NOTES.md`.
+
+At the time of writing nothing here had been pushed or deployed; commits were local only.
 
 ## Checkpoints
 

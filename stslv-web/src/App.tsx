@@ -38,6 +38,7 @@ import { RequiredPasswordChangePage } from './pages/auth/RequiredPasswordChangeP
 import { SignUpPage } from './pages/auth/SignUpPage'
 import { ClientsPage } from './pages/clients/ClientsPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { HelpPage } from './pages/help/HelpPage'
 import { InvoicesPage } from './pages/invoices/InvoicesPage'
 import { AuthLayout, LoginPage } from './pages/LoginPage'
 import { LoaderPreviewPage } from './pages/LoaderPreviewPage'
@@ -382,6 +383,9 @@ export function AppRoutes() {
             }
           />
           <Route path="/account" element={<AccountPage />} />
+          {/* Every signed-in user: the page lists only the topics for pages the user may open. */}
+          <Route path="/help" element={<HelpPage />} />
+          <Route path="/help/:topicId" element={<HelpPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
