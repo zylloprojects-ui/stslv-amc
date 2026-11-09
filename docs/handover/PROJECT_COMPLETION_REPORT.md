@@ -21,14 +21,17 @@ Replace the client's Excel-based AMC tracking with one connected workflow so tha
 | 4.9 Invoice tracking | Yes | Zoho invoices with allocations; separate manual Invoice No. (Paid reference status) approved 2026-11-01 |
 | 4.10 Dashboard and reports | Yes | 12 KPIs, calendar, 12 reports with Excel/PDF |
 | Additional | Yes | AMC Renewal, Master AMC Status, Accounts, Service Sales, Recycle Bin, Audit Log, Login History, Security Center, Suggestions, Notifications, Supabase document storage |
-| Help and documentation | On branch `feature/stslv-p3-handover` (not merged) | In-app Help; user guide; technical, training, UAT and handover documents |
+| Help and documentation | Integrated locally on `integration/stslv-amc-final-20261109` (not released) | In-app Help; user guide; technical, training, UAT and handover documents; updated for P0, P1 and P2 |
+| Production safety (P0) | Integrated locally (not released) | Server-side sessions, password policy, append-only Audit Log (migrations 0108, 0109), scheduled encrypted backups and VPS templates — none active in production |
+| Mandatory fixes (P1) and improvements (P2) | Integrated locally (not released) | Shared service scope, approved expiry and report-number rules (switches off), custom roles for Super Admin and Admin, report permission isolation, calendar By contract, Zoho references export |
 
 ## 3. Quality evidence
 
 | Evidence | Result | Where |
 |---|---|---|
 | Web automated tests (P3 branch, 2026-11-09) | 821 / 821 passed (53 files) with `--maxWorkers=2`; typecheck, lint, build pass. Default-parallel runs on a loaded machine showed timing failures (2, also present on base `c6d8d19`; 29 under heavy load), none reproducible in isolation | `stslv-web` Vitest |
-| API automated tests | Run by each feature session before integration; not re-run by P3 (P3 changed no API code) | `stslv-api/tests` |
+| API automated tests | Run by each feature session, then on the integrated branch against a disposable database: see `docs/integration/TEST_RESULTS.md` | `stslv-api/tests` |
+| Integrated web tests | See `docs/integration/TEST_RESULTS.md` | `stslv-web` Vitest |
 | Release checks | Pre/post-release read-only database comparisons for each production release | Delivery team records |
 | UAT | **Not executed** | `docs/uat/UAT_CHECKLIST.md` |
 | Training | **Not delivered** | `docs/training/TRAINING_GUIDE.md` |
@@ -38,6 +41,8 @@ Replace the client's Excel-based AMC tracking with one connected workflow so tha
 See `docs/handover/OUTSTANDING_ISSUES_REGISTER.md`. Items that block go-live in their current state: **OI-01** (backup ownership). Items needing a plan before sign-off: OI-02 to OI-06, OI-10, OI-11, OI-13, OI-17.
 
 ## 5. Documentation dependent on unfinished work
+
+> **Integration update (2026-11-09):** P0, P1, P2 and P3 were integrated locally on `integration/stslv-amc-final-20261109` and the documents below were re-checked and updated. What changed and what remains: `docs/integration/INTEGRATION_REPORT.md` and `docs/integration/OUTSTANDING_ISSUES.md`. The text below is kept as written for the record.
 
 The user guide and in-app Help describe `c6d8d19`. The parallel P0 (security) and P1 (fixes) branches started from the same commit and were unfinished when this was written. After they are integrated, re-check:
 
@@ -62,7 +67,7 @@ A P2 session (improvements) was also reported running; its changes were not insp
 
 ## 6. Remaining activities before closure
 
-1. Integrate P0, P1 and P3; re-verify the documents in §5.
+1. ~~Integrate P0, P1 and P3; re-verify the documents in §5.~~ Done locally 2026-11-09 (P0, P1, P2, P3); production release still needs approval.
 2. Execute UAT; record results; fix or accept failures.
 3. Deliver training; record attendance.
 4. Complete the Infrastructure Ownership Register, User Access Handover and Admin Handover Checklist.

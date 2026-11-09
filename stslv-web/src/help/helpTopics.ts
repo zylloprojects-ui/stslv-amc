@@ -46,9 +46,11 @@ const GENERAL: HelpTopic[] = [
       {
         heading: 'Your account',
         bullets: [
-          'My Profile (account menu) shows your name, email and role, and lets you change your password.',
+          'My Profile (account menu) shows your name, email and role, lets you change your password, and lists your active sessions so you can sign out one device or all of them.',
+          'A new password needs at least 12 characters, three of lower-case, upper-case, digits and symbols, and must not be a well-known password or contain your name.',
+          'You are signed out after 30 minutes without using the application. A password change or a temporary password signs you out everywhere.',
           'Forgotten password: an administrator issues a temporary password in Users & Access. It is valid for 15 minutes and must be changed at the next sign-in.',
-          'Sign out from the account menu when you leave a shared computer.',
+          'Sign out from the account menu when you leave a shared computer: it ends the session on the server too.',
         ],
       },
     ],
@@ -590,7 +592,8 @@ const OPERATIONS: HelpTopic[] = [
         heading: 'Views',
         bullets: [
           'Year view: Services in year, Scheduled value, Paid and Unpaid, then a card per month with values, Zoho invoiced figures and completed / open / overdue / cancelled counts. Each month can be downloaded in Excel or PDF (needs Export on Monthly Calendar).',
-          'Month view: one card per visit. Card colour = service status; the small square = Paid (green, Invoice No. entered) or Unpaid (blue). A red dot = overdue.',
+          'Month view, By service (default): one card per visit. Card colour = service status; the small square = Paid (green, Invoice No. entered) or Unpaid (blue). A red dot = overdue.',
+          'Month view, By contract: the same services and filters, one entry per AMC contract with its services, state and Services / Paid / Unpaid counts. The switch is only in Month view.',
           'Clicking a visit opens its details, with Edit if your role allows.',
         ],
       },
@@ -630,6 +633,14 @@ const OPERATIONS: HelpTopic[] = [
           'Once saved as Completed, the status, completion date and report are locked for every user, Admin included. There is no reopen.',
           'Before completion the report can be replaced (the earlier version is kept) or removed.',
           'The Service Report No. and work notes can still be saved after completion.',
+        ],
+      },
+      {
+        heading: 'Service Report No. after Paid',
+        bullets: [
+          'Approved rule, switched on at the approved release: once the service is Paid (Invoice No. entered), its Service Report No. is locked.',
+          'Super Admin and Admin can still change it by giving a reason; every change is recorded in the Audit Log. Clearing the Invoice No. unlocks it.',
+          'Until the release the number stays editable as before.',
         ],
       },
       {
@@ -674,7 +685,12 @@ const OPERATIONS: HelpTopic[] = [
       },
       {
         heading: 'Good to know',
-        bullets: ['Zoho invoice numbers appear under the Invoice No. as "Zoho: …" and do not change the colour.', 'Details opens every field of a row.', PAID_NOTE],
+        bullets: [
+          'Zoho invoice numbers appear under the Invoice No. as "Zoho: …" and do not change the colour.',
+          'The export adds Zoho Invoices (Tracking) and, separately, Zoho References (Tracking): each reference beside its invoice, "—" where none was recorded. Hiding Invoice No. hides both.',
+          'Details opens every field of a row.',
+          PAID_NOTE,
+        ],
       },
     ],
     related: ['accounts', 'service-sales'],
@@ -709,6 +725,14 @@ const OPERATIONS: HelpTopic[] = [
       {
         heading: 'Permissions',
         bullets: ['Start Renewal: Create on AMC Renewal.', 'Approve: Edit on AMC Contracts.', 'Cancel: Edit and Delete on AMC Contracts, with a reason.', 'Export: Export on AMC Renewal.'],
+      },
+      {
+        heading: 'Contract expiry',
+        bullets: [
+          'Approved rule, switched on at the approved release: an Active contract becomes Expired on the day after its Valid To date, by Oman time.',
+          'Its services keep their status and values. An open renewal does not stop the old contract from expiring, and the renewal is not changed.',
+          'Until the release, contracts past validity stay Active and are shown as past validity.',
+        ],
       },
     ],
     related: ['contract-360', 'sales-engineers'],
@@ -835,6 +859,14 @@ const FINANCE: HelpTopic[] = [
         steps: ['Choose a report in the Report list.', 'Set the filters it offers (From, To, Client, Sales Engineer, System, Status…).', 'Read the results on screen, or export to Excel or PDF (needs Export on Reports). Exports include the filters and a total line.'],
       },
       {
+        heading: 'Who sees which report',
+        bullets: [
+          'Each report also needs View of its source page; exporting it also needs Export of that page. The list shows only the reports you may open.',
+          'AMC Contracts: AMC Contract Summary, Contract Value Review. AMC Renewal: AMC Renewal, Expiry & Renewal Due, Renewal History.',
+          'Accounts: Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise and Sales Engineer-wise Summary.',
+        ],
+      },
+      {
         heading: 'Available reports',
         bullets: [
           'AMC Contract Summary · Billing Schedule (with Paid / Unpaid) · Completed Services · Pending Services · Monthly Maintenance',
@@ -879,9 +911,10 @@ const ADMINISTRATION: HelpTopic[] = [
         heading: 'Rules',
         bullets: [
           'Only Super Admin manages Super Admin and Admin accounts and assigns those roles.',
+          'Super Admin and Admin may assign a custom role; Admin only one whose every permission Admin holds.',
           'You cannot change your own role or deactivate yourself.',
           'The last active Super Admin cannot lose the role.',
-          'Changes apply on the user’s next request.',
+          'Changes apply on the user’s next request. Deactivation or a temporary password signs the user out everywhere; Security Center lists and ends open sessions.',
           'Statuses: Active, Inactive, Pending approval (amber), Rejected (grey); a temporary password shows its expiry.',
         ],
       },
@@ -895,7 +928,7 @@ const ADMINISTRATION: HelpTopic[] = [
     access: { kind: 'nav', path: '/admin/roles' },
     pages: ['/admin/roles'],
     guideChapter: 'Users and Roles',
-    summary: 'What each role may do, module by module. Only Super Admin changes permissions.',
+    summary: 'What each role may do, module by module. Super Admin changes every role; Admin changes custom roles within its own permissions.',
     sections: [
       {
         heading: 'Built-in roles',
@@ -916,6 +949,15 @@ const ADMINISTRATION: HelpTopic[] = [
           'Starting grants are only a starting point; Super Admin may change them. Users permissions never go to the four operational roles.',
           'Saved permissions apply immediately. If someone else saved first, nothing is overwritten.',
           'Fixed access (Audit Log, Recycle Bin, Security Center, Backup) cannot be changed here.',
+        ],
+      },
+      {
+        heading: 'Custom roles: who may change what',
+        bullets: [
+          'Add custom roles in Settings → Organization → Role list; set their permissions here.',
+          'Super Admin: every role, except Super Admin’s own permissions; may give a role Users & Access.',
+          'Admin (needs Edit on Users & Access): adds custom roles and changes those whose every permission Admin holds. Never a built-in role, never its own role, never Super Admin or Admin, and never gives a role Users & Access (may remove it).',
+          'Nobody grants, removes or assigns a permission they do not hold. The server enforces every rule; a role you may not change shows why.',
         ],
       },
     ],
@@ -1006,7 +1048,7 @@ const ADMINISTRATION: HelpTopic[] = [
     access: { kind: 'nav', path: '/settings/security' },
     pages: ['/settings/security', '/admin/security'],
     guideChapter: 'Security Center',
-    summary: 'Access, sign-in activity and the security settings in force. Read only; Super Admin and Admin.',
+    summary: 'Access, sign-in activity, open sessions and the security settings in force. Super Admin and Admin.',
     sections: [
       {
         heading: 'Health checks',
@@ -1022,6 +1064,14 @@ const ADMINISTRATION: HelpTopic[] = [
           'Settings in force: sign-in duration, password hashing, request limits, allowed web addresses, document storage.',
           'Security events of the last 30 days, filtered by type.',
           'Deactivating a user or changing a role takes effect on their next request.',
+        ],
+      },
+      {
+        heading: 'Active sessions',
+        bullets: [
+          'Every open session: user, device, address, when it signed in and when it was last used.',
+          'Sign out ends that session at once; the person must sign in again. Sessions also end after 30 minutes without use.',
+          'Before the release with migration 0108 the panel says server-side sessions are not enabled.',
         ],
       },
     ],
@@ -1048,6 +1098,12 @@ const ADMINISTRATION: HelpTopic[] = [
           'Back up now (Super Admin) runs a backup and verifies it. History shows Running (blue), Verified (green) or Failed (red), size, tables and checksum.',
           'Only verified backups whose checksum still matches can be downloaded. A backup holds every record, including password hashes: store it securely.',
           'There are no automatic backups, no automatic expiry and no restore from this screen. Restoring is a manual procedure into a new database.',
+        ],
+      },
+      {
+        heading: 'Scheduled off-site backups (prepared, not active)',
+        text: [
+          'Encrypted daily backups of the database and the private documents, with retention, verification, alerts and restore drills into an isolated copy, are prepared for the Hostinger server. They are not switched on and have not been run against production; switching them on needs the owner’s approval.',
         ],
       },
     ],

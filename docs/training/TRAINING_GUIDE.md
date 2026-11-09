@@ -115,10 +115,12 @@ b) Upload `TRN-report-1.pdf`, choose Completed, enter Service Report No. `TRN-SR
 **AD-2 Temporary password** — Generate a temporary password for `trn.view@…` after the verification tick. *Expected:* shown once; works 15 minutes; user must change it.
 **AD-3 Login History and Audit Log** — Find the failed sign-in of a wrong password; find the FN-2 Invoice No. change. *Expected:* both found with user and time.
 **AD-4 Security Center** — Read the checks; explain "Backups are not available from this application here" in the training environment.
+**AD-5 Custom role (approved 2026-11-09)** — Settings → Organization → Role list → Add role `TRN_SITE`; in Roles & Permissions give it Dashboard View and AMC Schedule View; assign it to `trn.view@…`; then try to give it Users & Access View and try to rename Viewer. *Expected:* role created and assigned; the Users & Access grant and the Viewer change are refused (Super Admin only).
+**AD-6 Sessions** — Security Center → Active sessions: sign out the trainee's second browser. *Expected:* that browser must sign in again. Explain the 30-minute inactivity sign-out and that a password change signs out everywhere.
 
 ### Super Admin (track A)
 
-**SA-1 Roles & Permissions** — Give the Finance training role *Reports: View* and save; try saving *AMC Contracts: Delete* without *Edit*. *Expected:* saved / refused with the dependency message.
+**SA-1 Roles & Permissions** — Give the Finance training role *Reports: View* and save; try saving *AMC Contracts: Delete* without *Edit*. *Expected:* saved / refused with the dependency message. As the Finance trainee, open Reports. *Expected:* only the Accounts-sourced reports are listed (each report also needs View of its source page).
 **SA-2 Admin-only management** — As Admin (trainee second account) try to change a Super Admin's role. *Expected:* "Only Super Admin can manage Super Admin and Admin accounts."
 **SA-3 Recycle Bin** — Move client `TRN Delta Stores` (unused) to the Recycle Bin, restore it, move it again and **Delete permanently** by typing its code. *Expected:* each step succeeds; Deletion History lists them.
 **SA-4 Cancel a contract** — Cancel `TRN-AMC-003` with reason "TRN cancellation", ticking "Also cancel the scheduled and postponed visits". *Expected:* Cancelled (red); open services cancelled; nothing deleted.

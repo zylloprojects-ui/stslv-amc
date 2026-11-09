@@ -1,6 +1,6 @@
 # User Acceptance Test Checklist — STSLEV AMC Phase 1
 
-Prepared 2026-11-09 against commit `c6d8d19` + `feature/stslv-p3-handover`. **No test in this checklist has been executed.** Actual result, Pass/Fail, Tester and Date are left blank on purpose; fill them only when the test is run. Never mark a test Passed that was not executed.
+Prepared 2026-11-09 against commit `c6d8d19` + `feature/stslv-p3-handover`; section 20 added at the final local integration (`integration/stslv-amc-final-20261109`) for the P0, P1 and P2 changes. **No test in this checklist has been executed.** Actual result, Pass/Fail, Tester and Date are left blank on purpose; fill them only when the test is run. Never mark a test Passed that was not executed.
 
 ## How to use
 
@@ -181,7 +181,7 @@ UAT environment: ____________ Application version: ____________ Test period: ___
 | USR-03 | C | SA | Only one active Super Admin | Remove own Super Admin role | Refused ("This is the only active Super Admin…") | | | | | |
 | USR-04 | C | SA | — | Grant Viewer *Reports: View*, save; sign in as Viewer | Reports visible immediately | | | | | |
 | USR-05 | H | SA | — | Grant *AMC Contracts: Delete* without Edit | "… also needs … Grant both, or neither." | | | | | |
-| USR-06 | H | AD | — | Try to change role permissions | Not allowed (Super Admin only) | | | | | |
+| USR-06 | H | AD | — | Try to change a **built-in** role's permissions (e.g. Viewer) | Not allowed: "Only Super Admin can change a built-in role or its permissions." | | | | | |
 | USR-07 | C | SA | User active | Deactivate; user makes a request | Refused on next request | | | | | |
 
 ## 15. Security Center, Login History, Audit Log
@@ -227,6 +227,34 @@ UAT environment: ____________ Application version: ____________ Test period: ___
 | GEN-02 | M | Any | — | Dark mode; open Help, Accounts, Calendar | Readable contrast | | | | | |
 | GEN-03 | M | Any | Unsaved form | Navigate away | Asked to confirm | | | | | |
 | GEN-04 | H | Any | — | Reload a deep link (e.g. /amc/contracts) | Page loads | | | | | |
+
+## 20. Integration additions (P0 security, P1 rules, P2 improvements)
+
+Rules marked *switch* need `SERVICE_REPORT_NO_LOCK_ENABLED=true` or `AMC_CONTRACT_EXPIRY_ENABLED=true` **in the UAT environment only**; both stay off in production until approved.
+
+| Test ID | Pri | Role | Preconditions | Test steps | Expected result | Actual result | Pass/Fail | Tester | Date | Comments |
+|---|---|---|---|---|---|---|---|---|---|---|
+| INT-01 | C | any | Signed in before the 0108 release | After the release, open any page | Asked to sign in again (once) | | | | | |
+| INT-02 | C | any | Signed in | Leave the application unused for 30 minutes, then click | "You were signed out after 30 minutes of inactivity. Please sign in again." | | | | | |
+| INT-03 | C | any | Signed in on two browsers | My Profile → Active sessions → sign out the other device | The other browser is signed out on its next request | | | | | |
+| INT-04 | C | AD | Another user signed in | Security Center → Active sessions → sign that session out | That user must sign in again | | | | | |
+| INT-05 | H | any | — | Change password to `Welcome@123`, then to a 12+ character varied password | First refused with the rule; second accepted; other sessions signed out | | | | | |
+| INT-06 | H | SA | — | Try to edit or delete an Audit Log entry (any route or tool available to the application) | Not possible; entries are only added | | | | | |
+| INT-07 | C | AD | AD holds Users & Access Edit | Settings → Role list → Add role `UAT_SITE`; give it Dashboard View and AMC Schedule View; assign to a test user | Saved; the user sees only those pages | | | | | |
+| INT-08 | C | AD | INT-07 | Try to give `UAT_SITE` Users & Access View | Refused: only Super Admin can give a role Users & Access | | | | | |
+| INT-09 | C | AD | — | Try to rename or change permissions of Viewer, Admin or Super Admin; try to assign Super Admin to a user | All refused | | | | | |
+| INT-10 | C | SA | A custom role with Reports View exists (Admin lacks Reports) | As Admin, try to rename, delete or assign that role | Refused; the row says the role grants permissions Admin does not hold | | | | | |
+| INT-11 | H | SA | — | Remove Users & Access Edit from Admin; as Admin open Role list | No Add/Edit/Delete; server refuses role changes. Restore afterwards | | | | | |
+| INT-12 | C | VW+ | Viewer granted Reports View, not Accounts View | Open Reports | Only reports of permitted source pages listed; Monthly Maintenance needs Accounts View | | | | | |
+| INT-13 | H | OPS | Calendar data | Monthly Calendar → Month → By contract; then Year view | One entry per contract with counts; no switch in Year view | | | | | |
+| INT-14 | H | OPS | A service with two Zoho invoices, one with a reference | Master AMC Status → Export Excel | Zoho Invoices (Tracking) and Zoho References (Tracking) columns, reference beside its invoice, "—" for the other | | | | | |
+| INT-15 | C | OPS/AD | *switch* SERVICE_REPORT_NO_LOCK; a Paid service | Change its Service Report No. as OPS; then as Admin with a reason | OPS refused; Admin succeeds only with a reason; Audit Log entry | | | | | |
+| INT-16 | C | SA | *switch* AMC_CONTRACT_EXPIRY; contract with Valid To = yesterday (Oman) and an open renewal; contract with Valid To = today | Run the expiry job | Yesterday's contract Expired; today's still Active; services and the renewal unchanged; Audit Log entry | | | | | |
+| INT-17 | C | FIN | A cancelled contract with a Completed+Paid service and an open service | Compare Dashboard, Accounts, Service Status, Master AMC Status, Service Sales | The Paid service counted everywhere; the open one nowhere | | | | | |
+| INT-18 | H | VW | — | Open Help on several pages | Only topics for pages the role may open; Help text matches the screen | | | | | |
+| INT-19 | M | any | Phone (about 390 px wide) and desktop (about 1440 px) | Help panel, Role list, Active sessions, Calendar By contract | Usable on both, no horizontal page scroll | | | | | |
+
+---
 
 ## Summary (fill after execution)
 

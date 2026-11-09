@@ -32,7 +32,7 @@ The same content, shortened, is available inside the application: click the **?*
 23. [Suggestions](#suggestions)
 24. [Backup status](#backup-status)
 25. [Settings](#settings)
-26. [Sections awaiting integration review](#sections-awaiting-integration-review)
+26. [Integration review (2026-11-09)](#integration-review-2026-11-09)
 
 Conventions used in every chapter:
 
@@ -70,6 +70,8 @@ Master Data ─► AMC Contract ─► Generated services ─► Service complet
 2. If an administrator gave you a **temporary password**, you are asked to choose a new password before anything else. A temporary password is valid for 15 minutes.
 3. New users can **Sign up**; the account waits until an administrator approves it and assigns a role.
 4. **Forgot password?** STSLEV AMC sends no email. Ask an administrator to issue a temporary password in Users & Access.
+5. **Sessions.** Each sign-in is a session the server keeps. You are signed out after **30 minutes without using the application** ("You were signed out after 30 minutes of inactivity. Please sign in again.") and, at the latest, when the sign-in itself expires. Signing out ends the session on the server at once. **My Profile → Active sessions** lists your devices and can sign out one or all of them. A password change, a temporary password or deactivation signs the account out everywhere.
+6. **Password rules** (for every new password): at least **12 characters**; at least three of lower-case, upper-case, digits and symbols/spaces; at least 5 different characters; not a well-known password with digits added (such as "Welcome@123"); not containing your name or email name. Existing passwords keep working until you change them.
 
 ### The screen
 
@@ -89,6 +91,7 @@ Master Data ─► AMC Contract ─► Generated services ─► Service complet
 |---|---|
 | Access denied | Your role does not include this page. Ask an administrator. |
 | Cannot reach the server | The API is not reachable (for example waking up after idle time). Click **Try again**. |
+| "You were signed out after 30 minutes of inactivity…" / "This session has been signed out. Please sign in again." | The session ended (inactivity, sign-out elsewhere, an administrator, a password change). Sign in again. |
 | "…changed by someone else after the page was loaded…" | Another user saved the same record. Reload and save again. |
 
 ### FAQs
@@ -383,8 +386,9 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 
 **Page:** `/amc/calendar`. **Permissions:** *Monthly Calendar: View*; Export for month downloads.
 
-- **Year view:** Services in year, Scheduled value, Paid, Unpaid; a card per month with values, Zoho invoiced / not yet invoiced and completed / open / overdue / cancelled counts; per-month **Excel / PDF**.
-- **Month view:** card colour = status (Scheduled sky, In progress amber, Postponed violet, Completed green, Cancelled grey struck through, Historical grey); square = Paid (green) / Unpaid (blue); red dot = overdue. Click a visit for details (Edit with *AMC Schedule: Edit*).
+- **Year view:** Services in year, Scheduled value, Paid, Unpaid (blue, as in Month view); a card per month with values, Zoho invoiced / not yet invoiced and completed / open / overdue / cancelled counts; per-month **Excel / PDF**. No By service / By contract switch here.
+- **Month view — By service / By contract:** *By service* (default) is the calendar grid below. *By contract* lists the same services, with the same filters, as one entry per AMC contract: reference (opens the contract), client, system, engineer, state (Open, Partly completed, All completed, Overdue, Cancelled), each service with its date and status, and Services / Paid / Unpaid counts. The choice is kept in the address (`group=contract`).
+- **Month view (By service):** card colour = status (Scheduled sky, In progress amber, Postponed violet, Completed green, Cancelled grey struck through, Historical grey); square = Paid (green) / Unpaid (blue); red dot = overdue. Click a visit for details (Edit with *AMC Schedule: Edit*).
 - **Filters:** search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid, Billing status (Zoho).
 - **Renewal warnings:** contracts ending within 45 days, or past validity and still Active.
 
@@ -415,6 +419,13 @@ Search, Client, Sales Engineer, System, Maintenance Frequency, Scheduled month a
 3. **Save** in the row ("Unsaved changes" → "Saved"). Today is recorded as the completion date.
 
 Without a report: popup **"Service report required" — "Please upload service report."**, nothing saved. After saving: lock icon, "Completed services are locked: the status cannot be changed." Before completion a report can be replaced (earlier version kept) or removed.
+
+### Service Report No. after Paid (approved 2026-11-09; switched on at release)
+Once a service is **Paid** (an Invoice No. is entered in Accounts), its Service Report No. is **locked**: "Locked: this service is Paid (an Invoice No. is entered). Only an administrator can change the report number, with a reason." **Super Admin and Admin** may still change it by giving a **reason** (required); every such change is written to the Audit Log. Other roles are refused, also through the API. Clearing the Invoice No. (Unpaid) unlocks it again.
+> This rule is approved but **switched off** until the approved production release (`SERVICE_REPORT_NO_LOCK_ENABLED`). While it is off, the number stays editable as before.
+
+### Which services are counted
+Scheduled, In progress, Postponed and Completed services count. On a **cancelled** contract only services already **Completed or Paid** count: they stay in Service Status, Accounts, Master AMC Status, Service Sales and the Dashboard; its open, unpaid services are left out. Historical services that are Paid but were never completed are kept exactly as they are (no automatic correction).
 
 ### Errors
 "Only PDF, DOC and DOCX files can be uploaded as a service report." · "The chosen file is empty." · "Service reports can be at most N MB." · "This service is completed and locked, so its service report cannot be changed."
@@ -491,6 +502,8 @@ Requires a reason; the record is kept but excluded from totals, the work becomes
 
 KPIs: Total Services, Green/Blue/Yellow/Red Rows, Total Value (Ex VAT). Filters (Apply/Reset): search, Client, Sales Engineer, Scheduled month and year, Service Status, Paid / Unpaid, Quotation Status, Row Colour. Details opens every field ("Paid / Unpaid: Paid (reference status)", Zoho invoices, Quote No.).
 
+**Export (Excel / PDF):** the shown columns, plus after Invoice No. two Invoice Tracking columns: **Zoho Invoices (Tracking)** — the Zoho invoice numbers covering the service — and **Zoho References (Tracking)** — each of those invoices' Zoho reference in the same order, "—" for an invoice recorded without one. Hiding Invoice No. hides both. They never decide Paid or Unpaid.
+
 ---
 
 ## AMC Renewal
@@ -510,11 +523,15 @@ Due / Expired (amber) · Under Client Approval (light blue, draft renewal) · Re
 
 Errors: "A renewal needs an active sales engineer." · "This contract already has a renewal. Open it above, or cancel it to renew again."
 
+**Contract expiry (approved 2026-11-09; switched on at release):** an Active contract becomes **Expired on the day after its Valid To date**, by Oman time (Asia/Muscat). Its services keep their status and values; an open renewal does not stop the old contract from expiring, and the renewal itself is not changed. It runs as a scheduled job, once per day, and each change is in the Audit Log. Until the approved release the job only runs as a dry run (`AMC_CONTRACT_EXPIRY_ENABLED` off), so contracts past validity stay Active and show as "past validity".
+
+**Moving a contract to the Recycle Bin:** the dialog lists what is kept (services by status, Paid services, invoices, documents, the contract it renews). A contract that has been renewed cannot be moved; the dialog names the renewal.
+
 ---
 
 ## Reports
 
-**Page:** `/reports`. **Permissions:** *Reports: View / Export* (no built-in role starts with Reports; Super Admin grants it).
+**Page:** `/reports`. **Permissions:** *Reports: View / Export* (no built-in role starts with Reports; Super Admin grants it), **plus the source page of each report**: opening a report also needs *View* of its source, exporting also needs *Export* of its source. Sources: **AMC Contracts** — AMC Contract Summary, Contract Value Review; **AMC Renewal** — AMC Renewal, Expiry & Renewal Due, Renewal History; **Accounts** — Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise and Sales Engineer-wise Summary. The list shows only the reports you may open; "No reports available" when there is none. The server refuses the rest.
 
 Choose a report; only its filters are shown (From, To, Client, Sales Engineer, System, Status…). "The From date is after the To date." Exports carry the filters and a "Total (N rows)" line.
 
@@ -542,16 +559,28 @@ Choose a report; only its filters are shown (From, To, Client, Sales Engineer, S
 - **Columns:** #, Name ("(you)"), Email, Role (amber "Several roles: choose one" for older data), Status, Last sign-in, Actions.
 - **Filters:** search (name, email, role), Status: All / Active / Inactive / Pending / Rejected.
 - **Statuses:** Active, Inactive, Pending approval (amber), Rejected (grey); "Temporary password · expires …" (amber).
-- **Create User:** Full name, Email, Temporary password (≥10 characters), Role (one per user).
+- **Create User:** Full name, Email, Temporary password (meets the password rules: 12+ characters, see *Getting started*), Role (one per user).
 
 **Workflow — approve a sign-up:** filter Pending → Change role → Approve. A pending account cannot sign in. Reject when the request is not genuine.
 
 **Workflow — forgotten password:** Generate temporary password → tick "I have verified that the person asking is <name>…" → hand over the password shown once (format `xxxx-xxxx-xxxx-xxxx`). It replaces the old password at once, signs the user out everywhere, works for **15 minutes** and one sign-in, and must be changed at sign-in. Limit: 10 per administrator per 15 minutes.
 
-**Rules and messages:** "Only Super Admin can manage Super Admin and Admin accounts." · "Assign a role before approving this user." · "You cannot manage a user who holds permissions you do not hold." · "This is the only active Super Admin. Assign the Super Admin role to another active user first." · You cannot change your own role or deactivate yourself. Changes apply on the user's next request; there is no forced sign-out of other users except via a temporary password.
+**Rules and messages:** "Only Super Admin can manage Super Admin and Admin accounts." · "Assign a role before approving this user." · "You cannot manage a user who holds permissions you do not hold." · "This is the only active Super Admin. Assign the Super Admin role to another active user first." · You cannot change your own role or deactivate yourself. Changes apply on the user's next request. A temporary password, a password change or deactivation signs the user out everywhere; administrators can also end any session in **Security Center → Active sessions**.
 
-### Roles & Permissions (`/admin/roles`)
-Anyone with *Users: View* can see roles; **only Super Admin** creates, renames, deactivates roles or changes permissions.
+### Roles & Permissions (`/admin/roles`) and the Role list (Settings → Organization → Role list)
+Anyone with *Users: View* can see roles. Who may change them (approved 2026-11-09, enforced by the server):
+
+| | Super Admin | Admin (needs *Users: Edit*) | Any other role |
+|---|---|---|---|
+| Add a custom role | Yes | Yes | No |
+| Rename, deactivate, reactivate, delete a custom role | Yes | Only a role whose every permission Admin holds | No |
+| Change a custom role's permissions | Yes | Only within Admin's own permissions | No |
+| Give a role *Users & Access* permissions | Yes | No (may remove them) | No |
+| Change a built-in role or its permissions | Yes (never Super Admin's) | No | No |
+| Assign a custom role to a user | Yes | Only if Admin holds all its permissions | No |
+| Assign Super Admin or Admin | Yes | No | No |
+
+Nobody changes their own role. A custom role cannot use a built-in code or an existing name. Built-in roles are never deleted. If Super Admin removes *Users: Edit* from Admin, Admin can no longer manage roles. Where you may not change a role, its row has no actions and says why.
 
 | Role | Starts with |
 |---|---|
@@ -564,7 +593,7 @@ Anyone with *Users: View* can see roles; **only Super Admin** creates, renames, 
 
 Reports is granted by Super Admin on purpose (no built-in role starts with it). The four operational roles can never hold *Users* permissions. Full matrix: `docs/technical/ROLE_PERMISSION_MATRIX.md`.
 
-- **Fixed access:** Super Admin only — role permissions, roles, Super Admin/Admin accounts, running and downloading backups. Super Admin and Admin — Audit Log, Recycle Bin, Backup status, Security Center. Everyone — Notifications, My account, Help.
+- **Fixed access:** Super Admin only — built-in roles and their permissions, giving a role *Users & Access*, Super Admin/Admin accounts, running and downloading backups, the Recycle Bin view and its actions. Super Admin and Admin — custom roles (as above), Audit Log, Deletion History, Backup status, Security Center (including Active sessions). Everyone — Notifications, My account (including your Active sessions), Help.
 - **Saving:** "Permissions saved. They apply immediately." If someone else saved first: "Not saved: someone else changed these permissions since you opened them. Nothing was overwritten."
 - **Messages:** "X also needs Y. Grant both, or neither." · "A built-in role cannot be deleted. Deactivate it instead." · "N people still have this role. Move them to another role first."
 
@@ -583,7 +612,9 @@ Reports is granted by Super Admin on purpose (no built-in role starts with it). 
 | Node runtime · HTTPS · Run mode · Security headers | Run mode is Attention outside production |
 | Document storage | Shows the storage in use (Supabase Storage in production) |
 
-Also: user access tiles (active, inactive, administrators, awaiting approval, must change password, active without a role), roles with user counts, settings in force (sign-in duration, password hashing, request limits, allowed web addresses, document storage), and security events of the last 30 days. Links to Users & Access, Roles & Permissions, Login History, Audit Log, Recycle Bin, Backup & Restore.
+Also: user access tiles (active, inactive, administrators, awaiting approval, must change password, active without a role), roles with user counts, settings in force (sign-in duration, inactivity limit, password hashing, request limits, allowed web addresses, document storage), and security events of the last 30 days.
+
+**Active sessions:** every open session (user, device, address, signed in, last active). An administrator can sign out one session — "Signing out another device ends its session at once; it must sign in again." Before migration 0108 is released the panel says "Server-side sessions are not enabled". Links to Users & Access, Roles & Permissions, Login History, Audit Log, Recycle Bin, Backup & Restore.
 
 ---
 
@@ -634,7 +665,8 @@ Useful entries: `amc_contract.schedule_regenerated` (reason and old/new amounts)
 
 - **Current hosted copy:** in-app backups are **not configured**. The page says "Manual backups are not available here." with the reason, and tiles show *Not available / Not configured / None yet*. Database backups are taken by the system owner with `pg_dump` outside the application (see `docs/technical/TECHNICAL_HANDOVER.md` §8 and the Infrastructure Ownership Register).
 - **When configured:** *Back up now* runs `pg_dump`, verifies with `pg_restore --list`, records size, tables and SHA-256. History: Running (blue), Verified (green), Failed (red). Only verified backups whose checksum still matches can be downloaded. Configuration checks: storage, durability, writable, pg_dump, pg_restore, tool version, free space.
-- **Not provided:** automatic backups, retention/expiry, restore from the screen.
+- **Not provided on this page:** automatic backups, retention/expiry, restore from the screen.
+- **Scheduled off-site backups (prepared, not active):** encrypted daily database backups and private-document backups with 7 daily / 4 weekly / 12 monthly retention, verification, alerts and restore drills into isolated copies are prepared for the Hostinger server (`docs/BACKUP_AUTOMATION.md`). They are **not switched on** and have **not been run against production**; activation needs the owner's approval.
 - A backup holds every record, including password hashes — store downloads securely.
 
 ---
@@ -649,17 +681,12 @@ Useful entries: `amc_contract.schedule_regenerated` (reason and old/new amounts)
 
 ---
 
-## Sections awaiting integration review
+## Integration review (2026-11-09)
 
-This guide was written against commit `c6d8d19`. The P0 (security) and P1 (fixes) branches were in progress at the same time. After they are integrated, re-check:
+This guide was written against `c6d8d19` and updated during the final local integration of P0, P1, P2 and P3 (branch `integration/stslv-amc-final-20261109`). Updated chapters: Getting started (sessions, password rules), Monthly Calendar (By service / By contract), Service Status (Service Report No. lock, counted services), Master AMC Status (Zoho columns in the export), AMC Renewal (contract expiry, Recycle Bin check), Reports (source-page permissions), Users and Roles (custom-role management by Super Admin and Admin, active sessions), Security Center (Active sessions), Backup status (prepared off-site backups).
 
-| Chapter | Why |
-|---|---|
-| Getting started (sign-in, temporary passwords), Users and Roles, Security Center, Login History | Most likely to change with P0 security work (sessions, rate limits, password rules, headers) |
-| Backup status, Security Center checks | Any change to backup configuration or hosting |
-| Service Status, AMC Schedule, Accounts, Contract 360 | Any P1 fix to completion, Invoice No., Regenerate or colours |
-| Reports, Dashboard | Any P1 fix to figures or labels |
+**Approved but switched off until the approved production release:** contract expiry (`AMC_CONTRACT_EXPIRY_ENABLED`) and the Service Report No. lock (`SERVICE_REPORT_NO_LOCK_ENABLED`). This guide describes both; while they are off, contracts past validity stay Active and report numbers stay editable.
 
-Known so far: the P1 commit `3e2cb28` (not merged) changes which services of a **cancelled** contract are counted (Dashboard, Service Status, Accounts, Master AMC Status, Service Sales), and adds two switches that are **off**: controlled contract expiry and a Service Report No. lock after Paid. This guide describes the behaviour with both switches off. Details: `docs/handover/PROJECT_COMPLETION_REPORT.md` §5.
+**At the release with migration 0108, every user signs in once more:** sign-ins made before it carry no server-side session and are refused.
 
 The in-app Help (`stslv-web/src/help/helpTopics.ts`) mirrors these chapters and must be updated together.

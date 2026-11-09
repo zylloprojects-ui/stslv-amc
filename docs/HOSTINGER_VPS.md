@@ -42,7 +42,7 @@ journald logs, and timers for backups/monitoring).
 | `scripts/csp-hash.sh` | admin tool |
 | `ssh/50-stslv-hardening.conf` | `/etc/ssh/sshd_config.d/` |
 | `firewall/ufw-setup.sh` | run once by hand |
-| `fail2ban/stslv.local` | `/etc/fail2ban/jail.d/` |
+| `fail2ban/stslv-jail.conf` | `/etc/fail2ban/jail.d/stslv.local` |
 | `logrotate/stslv-amc` | `/etc/logrotate.d/` |
 | `journald/stslv-journald.conf` | `/etc/systemd/journald.conf.d/` |
 | `certbot/reload-nginx.sh` | `/etc/letsencrypt/renewal-hooks/deploy/` |

@@ -2,7 +2,7 @@
 
 Source: `stslv-api/src/shared/permission-catalog.ts` (what each permission does) and `stslv-api/src/shared/role-model.ts` `defaultGrants()` (the grants each built-in role **starts** with, as seeded by migrations 0087, 0090 and 0092), at commit `c6d8d19`.
 
-> **These are starting grants, not necessarily the live grants.** Super Admin can change any role's permissions in Administration → Roles & Permissions, and the saved `role_permissions` rows decide access. Before handover, record the live grants of the production database (Roles & Permissions page, or a read-only query of `role_permissions`) in `docs/handover/USER_ACCESS_HANDOVER.md`.
+> **These are starting grants, not necessarily the live grants.** Super Admin can change any role's permissions in Administration → Roles & Permissions (Admin only custom roles, within its own permissions), and the saved `role_permissions` rows decide access. Before handover, record the live grants of the production database (Roles & Permissions page, or a read-only query of `role_permissions`) in `docs/handover/USER_ACCESS_HANDOVER.md`.
 
 Legend: **V** View · **C** Create · **E** Edit · **D** Delete · **A** Approve · **X** Export · **R** Data read (the module's data inside another page, without its own pages) · — none · *n/a* the action does not exist for the module.
 
@@ -34,7 +34,7 @@ Legend: **V** View · **C** Create · **E** Edit · **D** Delete · **A** Approv
 
 Notes:
 
-- **Reports** came after the role migrations; no built-in role except Super Admin starts with it. Grant it deliberately.
+- **Reports** came after the role migrations; no built-in role except Super Admin starts with it. Grant it deliberately. Each report also needs View of its source module (Export for its export): AMC Contracts (AMC Contract Summary, Contract Value Review), AMC Renewal (AMC Renewal, Expiry & Renewal Due, Renewal History), Accounts (Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise, Sales Engineer-wise). Enforced by the API (P2, 2026-11-09).
 - **AMC Execution: Approve** has no effect at present (completed services are locked and cannot be reopened). Retiring it is an open decision (Outstanding Issues OI-08).
 - **Service Sales** is listed under Finance but starts with AMC Operations Executive, as originally seeded; moving a module in the catalog never changes starting grants.
 - **Users** permissions can never be given to the four operational roles (Finance, Master Data, AMC Operations, Viewer).
@@ -52,8 +52,9 @@ Notes:
 
 | Who | What |
 |---|---|
-| Super Admin only | Change role permissions; add, rename, deactivate or reactivate roles; manage Super Admin and Admin accounts and assign those roles; use the Recycle Bin (move in, restore, delete permanently); run and download backups; move contracts, clients, system types and sales engineers to the Recycle Bin |
-| Super Admin and Admin | Audit Log, Deletion History, Security Center, Backup & Restore status, temporary passwords, user and login-history exports |
+| Super Admin only | Change built-in roles and their permissions (never Super Admin's own); give any role Users & Access permissions; manage Super Admin and Admin accounts and assign those roles; use the Recycle Bin (move in, restore, delete permanently); run and download backups; move contracts, clients, system types and sales engineers to the Recycle Bin |
+| Super Admin and Admin | Custom roles: add, rename, deactivate, reactivate, delete and set permissions — Admin only with Users & Access Edit, only for custom roles whose every permission Admin holds, never its own role, never adding Users & Access (removing is allowed); assign custom roles within one's own permissions (approved 2026-11-09). Audit Log, Deletion History, Security Center (including Active sessions), Backup & Restore status, temporary passwords, user and login-history exports |
+| No other role | Manages roles, whatever Users & Access permissions it holds |
 | Every signed-in user | Notifications, My account, Help |
 
 ## 4. Cross-module page requirements

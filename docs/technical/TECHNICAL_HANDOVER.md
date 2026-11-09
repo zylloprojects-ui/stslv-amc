@@ -50,13 +50,13 @@ Business rules worth knowing before changing code: `docs/FINANCE_WORKFLOW.md` (B
 
 ## 3. Database and migrations
 
-- **49 migrations**, `0001_access_control.sql` … `0107_amc_reference_history.sql`. Never edit an applied file; add a higher-numbered migration.
+- **51 migrations**, `0001_access_control.sql` … `0109_activity_logs_append_only.sql` (49 up to 0107 are in production; **0108_user_sessions** and **0109_activity_logs_append_only** are new in the integrated branch, verified on disposable databases only, see `docs/integration/MIGRATION_READINESS.md`). Never edit an applied file; add a higher-numbered migration.
 - **Runner** (`src/db/migrate.ts`, `migrate-cli.ts`): table `schema_migrations` (version, name, checksum, applied_at); SHA-256 checksum of each file (CRLF normalised); refuses an edited or missing applied file, duplicate versions, or a pending migration numbered below the last applied one; `pg_advisory_lock` prevents concurrent runs (hence Neon's **direct** host, not the pooler); each migration in its own transaction.
 - **Commands:** `npm run migrate` (apply), `npm run migrate:status` (dry run). In production the start command applies pending migrations before the server starts; a failure keeps the previous release running.
 - Security Center → *Database updates* shows "All N database updates applied" and the latest migration.
 - An older API refuses a database with newer migrations, so a code rollback after a migration needs a database restore (see the Deployment Checklist).
 
-Key constraints and triggers: one open renewal per contract (`amc_contracts_one_open_renewal_uq`), completion lock (`amc_visits_completion_lock`), one current service report per visit, unique AMC references across history (`amc_contract_references`).
+Key constraints and triggers: `activity_logs` append-only (0109: UPDATE/DELETE/TRUNCATE refused); `user_sessions` (0108); one open renewal per contract (`amc_contracts_one_open_renewal_uq`), completion lock (`amc_visits_completion_lock`), one current service report per visit, unique AMC references across history (`amc_contract_references`).
 
 ## 4. API
 
@@ -99,12 +99,13 @@ From `docs/DOCUMENT_STORAGE.md`:
 |---|---|---|
 | Database | Manual `pg_dump --format=custom --schema=public --no-owner --no-privileges` from a trusted machine before every release, restore-tested into a scratch database, SHA-256 recorded | System owner: routine schedule, retention, off-site copy, quarterly restore test |
 | In-app Backup & Restore | Off in production (`BACKUP_DIR` unset; no durable disk on Render) | Decide whether to enable on the VPS with a durable folder |
-| Documents bucket | No second copy | System owner |
+| Documents bucket | No second copy in production | System owner |
+| Scheduled off-site backups (P0, prepared) | Implemented in `stslv-api/src/ops` (`dist/ops/cli.js`; `npm run ops -- <command>`) with systemd timers in `deploy/hostinger/systemd`: encrypted daily database and document backups, 7/4/12 retention, verification, alerts, heartbeats, isolated restore drills. **Not active anywhere; tested on disposable resources only** (`docs/BACKUP_AUTOMATION.md`) | System owner: bucket, keys, activation (approval) |
 | Restore | Never over the live database: restore into a new database, compare counts and totals, switch only with written approval (`docs/BACKUP_RESTORE.md`) | System owner with project owner approval |
 
 ## 9. Hostinger VPS deployment prerequisites
 
-Nothing is deployed on a VPS yet. Before moving production there, the following must be in place (decisions marked **Decide**):
+Nothing is deployed on a VPS yet. Configuration templates for every item below now exist in `deploy/hostinger/` (P0; Nginx, TLS renewal, security headers and CSP, UFW, SSH hardening, systemd units and timers, logrotate, journald, monitoring, least-privilege database roles) and are described in `docs/HOSTINGER_VPS.md` and `docs/integration/HOSTINGER_READINESS.md`. They contain placeholders only and have not been applied to any server. Before moving production there, the following must be in place (decisions marked **Decide**):
 
 **Server**
 - [ ] VPS plan with ≥ 2 vCPU, ≥ 4 GB RAM, SSD sized for database + backups (**Decide** plan).
@@ -131,7 +132,7 @@ Nothing is deployed on a VPS yet. Before moving production there, the following 
 - [ ] Planned stop; final `pg_dump` from Neon; restore into the VPS database; compare counts and money totals; point the API at it; verify; then decommission Neon only with approval.
 
 **Operations**
-- [ ] Nightly `pg_dump` with retention and an off-site copy; restore test procedure.
+- [ ] Nightly `pg_dump` with retention and an off-site copy; restore test procedure — implemented as `stslv-amc-db-backup.timer` / `stslv-amc-docs-backup.timer` (`docs/BACKUP_AUTOMATION.md`), to be activated with approval.
 - [ ] Log rotation for API and proxy logs; disk-space monitoring; uptime check on `/api/health`.
 - [ ] Documented SSH/console access owners in the Infrastructure Ownership Register.
 
@@ -143,18 +144,20 @@ Nothing is deployed on a VPS yet. Before moving production there, the following 
 |---|---|
 | Runtime | `NODE_ENV`, `PORT`, `NODE_VERSION` (host) |
 | Database | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `PGSSLMODE`; `DB_SCHEMA` (tests only) |
-| Sign-in | `JWT_SECRET`, `JWT_EXPIRES_IN`, `BCRYPT_ROUNDS` |
+| Sign-in | `JWT_SECRET`, `JWT_EXPIRES_IN`, `BCRYPT_ROUNDS`, `SESSION_IDLE_TIMEOUT_MINUTES` (default 30, 5–1440) |
+| Business-rule switches (approved, **off** until release) | `SERVICE_REPORT_NO_LOCK_ENABLED` (API); `AMC_CONTRACT_EXPIRY_ENABLED` (scheduled expiry job only, never the web server) |
 | Web access | `CORS_ORIGIN`, `APP_URL`, `TRUST_PROXY` |
 | Mail | `MAIL_TRANSPORT` (`none` in production) |
 | Rate limits | `LOGIN_RATE_LIMIT`, `LOGIN_FAILURE_LIMIT`, `PUBLIC_AUTH_RATE_LIMIT`, `TEMPORARY_PASSWORD_RATE_LIMIT` |
 | Documents — Supabase | `SUPABASE_PROJECT_REF`, `SUPABASE_S3_REGION`, `SUPABASE_S3_BUCKET`, `SUPABASE_S3_ACCESS_KEY_ID`, `SUPABASE_S3_SECRET_ACCESS_KEY`, `SUPABASE_S3_ENDPOINT` |
 | Documents — R2 (alternative) | `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_ENDPOINT` |
 | Documents — local (alternative) | `ATTACHMENTS_DIR`; size limit `ATTACHMENT_MAX_MB` |
-| Backups | `BACKUP_DIR`, `BACKUP_STORAGE_DURABLE`, `PG_DUMP_PATH`, `PG_RESTORE_PATH` |
+| Backups (in-app page) | `BACKUP_DIR`, `BACKUP_STORAGE_DURABLE`, `PG_DUMP_PATH`, `PG_RESTORE_PATH` |
+| Scheduled backups (ops CLI, own environment file) | see `deploy/hostinger/env/backup.env.example` (`BACKUP_*`, GnuPG recipient fingerprint, off-site bucket, alert webhook, heartbeat URLs) — never in the API's environment |
 
 **Web (`stslv-web`, build time)**: `VITE_API_BASE_URL`, `VITE_SHOW_DASHBOARD_DETAIL_PANELS` (optional); development only: `VITE_API_PROXY_TARGET`.
 
-Secrets (`DB_PASSWORD`, `JWT_SECRET`, storage keys) live only in the host's environment. Changing `JWT_SECRET` signs everyone out.
+Secrets (`DB_PASSWORD`, `JWT_SECRET`, storage keys) live only in the host's environment. Changing `JWT_SECRET` signs everyone out. Releasing migration 0108 also signs everyone out once (tokens issued before it carry no session).
 
 ## 11. Troubleshooting
 
@@ -167,7 +170,9 @@ Secrets (`DB_PASSWORD`, `JWT_SECRET`, storage keys) live only in the host's envi
 | "Contract documents … could not be saved" / 503 STORAGE_ERROR | Bucket unreachable or key revoked | `npm run storage:check`; Security Center → Document storage; rotate keys |
 | `FEATURE_UNAVAILABLE` (503) on a page | A migration that page needs is not applied | Security Center → Database updates; apply pending migrations |
 | Users report "Too many attempts" | Sign-in rate limit; or `TRUST_PROXY` wrong so all users share one address | Wait 15 minutes; check `metadata.ip` of `auth.login_failed` in the Audit Log |
-| A user cannot see a page | Role lacks View | Roles & Permissions (Super Admin) |
+| A user cannot see a page | Role lacks View | Roles & Permissions (Super Admin; Admin for custom roles) |
+| "You were signed out after 30 minutes of inactivity" / "This session has been signed out" | Inactivity limit, sign-out elsewhere, administrator, password change | Sign in again; Security Center → Active sessions |
+| An Audit Log change fails with "append-only" | Migration 0109 protects `activity_logs` | Expected; audit entries are never changed or deleted |
 | Forgotten password | — | Users & Access → Generate temporary password (15 minutes) |
 | No Super Admin can sign in | — | `docs/AUTH_SIGNUP_AND_RECOVERY.md` recovery procedure (`npm run admin:create` creates a **Super Admin** — role code `ADMIN` — on a machine with database access) |
 | "Complete the service before entering an invoice number." | Service not Completed | Complete it on Service Status first |

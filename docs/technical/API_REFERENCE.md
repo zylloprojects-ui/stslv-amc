@@ -46,7 +46,10 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | POST | `/login` | Public, rate-limited |
 | POST | `/signup` | Public, rate-limited; 202, account pending |
 | GET | `/me` | Signed in (temporary session allowed) |
-| POST | `/logout` | Signed in (temporary session allowed) |
+| POST | `/logout` | Signed in (temporary session allowed); revokes this session on the server (0108) |
+| POST | `/logout-all` | Signed in (temporary session allowed); revokes every session of the account |
+| GET | `/sessions` | Signed in — own open sessions |
+| DELETE | `/sessions/:sessionId` | Signed in — revoke one of own sessions |
 | POST | `/complete-password-change` | Temporary session |
 | POST | `/change-password` | Signed in |
 
@@ -62,13 +65,16 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | POST | `/:id/reject` | P(USERS,APPROVE) |
 | PUT | `/:id/roles` | P(USERS,EDIT); privileged roles SA only |
 | POST | `/:id/temporary-password` | P(USERS,EDIT) + Admin; rate-limited; `Cache-Control: no-store` |
+| GET | `/:id/sessions` | P(USERS,VIEW) — that user's open sessions |
+| POST | `/:id/sessions/revoke` | P(USERS,EDIT) — sign the user out everywhere (user-management rules apply) |
+| DELETE | `/:id/sessions/:sessionId` | P(USERS,EDIT) — revoke one session |
 
 ### Roles — `/api/roles`
 | Method | Path | Access |
 |---|---|---|
-| GET | `/` | P(USERS,VIEW) — roles, catalog, fixed access |
-| POST | `/` · PATCH `/:id` · DELETE `/:id` | SA |
-| PUT | `/:id/permissions` | SA; body has `expectedVersion` (refused if changed meanwhile) |
+| GET | `/` | P(USERS,VIEW) — roles (with `permissionsEditable`, `lockedReason`, `manageable`, `manageReason`, `assignable`), `canManageRoles`, catalog, fixed access |
+| POST | `/` · PATCH `/:id` · DELETE `/:id` | SA, or Admin with P(USERS,EDIT): custom roles only, within Admin's own permissions, never its own role (2026-11-09) |
+| PUT | `/:id/permissions` | Same as above; Admin cannot add USERS permissions; body has `expectedVersion` (refused if changed meanwhile) |
 
 ### Audit — `/api/audit`
 | Method | Path | Access |
@@ -81,6 +87,7 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/overview`, `/events`, `/deletions`, `/deletions/export` | Security Center, Deletion History |
+| GET | `/sessions` | Every open session (0108), for Security Center → Active sessions |
 | GET | `/recycle-bin`, `/recycle-bin/amc-contracts`, `/recycle-bin/:type/:id/check` | SA |
 | POST | `/recycle-bin/:type/:id/restore` | SA |
 | DELETE | `/recycle-bin/:type/:id` | SA, body `{confirm}`; refused for contracts |
@@ -121,6 +128,7 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | GET | `/contracts/:id/schedule/generations` | AMC_SCHEDULE VIEW |
 | POST | `/contracts` | CREATE (with contract document) |
 | PATCH | `/contracts/:id` | EDIT |
+| GET | `/contracts/:id/usage` | AMC_CONTRACTS DELETE + SA — what a Recycle Bin move keeps, and whether a renewal blocks it |
 | POST | `/contracts/:id/status` | EDIT (Cancelled also DELETE) |
 | POST | `/contracts/:id/schedule/generate` | EDIT — adds missing visits only |
 | GET / POST | `/contracts/:id/schedule/regenerate` | EDIT — preview / apply with `reason` (3–300) |
@@ -149,7 +157,7 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | GET | `/service-status/export` | SERVICE_STATUS VIEW + EXPORT |
 | PATCH | `/service-status/:id` | AMC_EXECUTION EDIT |
 | POST / DELETE | `/service-status/:id/report` | AMC_EXECUTION EDIT — raw body, `X-File-Name` (URI-encoded) |
-| GET | `/master-status`, `/master-status/options` (+ `/export`) | MASTER_AMC_STATUS VIEW (+ EXPORT) |
+| GET | `/master-status`, `/master-status/options` (+ `/export`) | MASTER_AMC_STATUS VIEW (+ EXPORT). Items carry `invoiceNumbers` and `invoiceReferences` (same order); the export adds Zoho Invoices (Tracking) and Zoho References (Tracking), hidden with Invoice No. |
 
 ### Finance
 | Method | Path | Access |
@@ -164,7 +172,7 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | PATCH | `/api/services-sales/:id` | SERVICES_SALES EDIT — quotation number on completed services |
 
 ### Reports — `/api/reports`
-`GET /`, `/options`, `/:type` — REPORTS VIEW. `GET /:type/export` — + EXPORT. Types: AMC Contract Summary, `scheduled-services` (Billing Schedule), Completed Services, Pending Services, Monthly Maintenance, AMC Renewal, Expiry & Renewal Due, Renewal History, Accounts summary, Client-wise, Sales Engineer-wise, Contract Value Review (ids listed by `GET /`).
+`GET /`, `/options`, `/:type` — REPORTS VIEW **and** VIEW of the report's source module (AMC_CONTRACTS, AMC_RENEWAL or ACCOUNTS; P2). `GET /:type/export` — + REPORTS EXPORT **and** the source module's EXPORT. `GET /` lists only the reports the user may open, each with `canExport`; a refused report answers 403 with no figures. Types: AMC Contract Summary, `scheduled-services` (Billing Schedule), Completed Services, Pending Services, Monthly Maintenance, AMC Renewal, Expiry & Renewal Due, Renewal History, Accounts summary, Client-wise, Sales Engineer-wise, Contract Value Review (ids listed by `GET /`).
 
 ### Master data — `/api/masters`
 | Method | Path | Access |
