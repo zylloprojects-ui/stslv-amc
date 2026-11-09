@@ -316,7 +316,7 @@ describe("POST /api/auth/logout", () => {
     expect((await api().post("/api/auth/logout")).status).toBe(401);
   });
 
-  it("records the sign-out, with no token, and revokes nothing", async () => {
+  it("records the sign-out, with no token, and ends the session on the server", async () => {
     const logged = vi.spyOn(console, "log");
     const errors = vi.spyOn(console, "error");
     const token = await loginToken("manager@example.com");
@@ -329,8 +329,10 @@ describe("POST /api/auth/logout", () => {
     expect(entry).toMatchObject({ user_id: manager.id, metadata: { userAgent: BROWSER } });
     expect(JSON.stringify(entry)).not.toContain(token);
 
-    // Still valid: this only records the event.
-    expect((await api().get("/api/auth/me").set(bearer(token))).status).toBe(200);
+    // From migration 0108 signing out revokes the session: the same token is refused at once.
+    const after = await api().get("/api/auth/me").set(bearer(token));
+    expect(after.status).toBe(401);
+    expect(after.body.error.code).toBe("SESSION_REVOKED");
 
     const printed = [...logged.mock.calls, ...errors.mock.calls].flat().map(String).join(" ");
     expect(printed).not.toContain(token);

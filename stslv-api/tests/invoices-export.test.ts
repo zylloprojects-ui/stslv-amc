@@ -5,7 +5,7 @@ import { TRACKING_DISCLAIMER } from "../src/modules/invoices/invoices.export";
 import { HEADER_ROW } from "../src/shared/export/excel";
 import { EMPTY_MESSAGE, EXPORT_ROW_LIMITS } from "../src/shared/export/report";
 import { grant } from "./amc-helpers";
-import { api, closePool, signedIn } from "./helpers";
+import { api, closePool, signedIn, withAuditLogUnlocked } from "./helpers";
 import {
   cancelInvoice,
   completeVisit,
@@ -360,7 +360,7 @@ describe("Pending Invoices report", () => {
 
 describe("audit", () => {
   it("records each export with who made it, the format, the filters and the row count, and nothing for a refused one", async () => {
-    await pool.query("DELETE FROM activity_logs WHERE action LIKE 'invoices.%exported'");
+    await withAuditLogUnlocked("DELETE FROM activity_logs WHERE action LIKE 'invoices.%exported'");
     await exportInvoices({ format: "pdf", status: "ISSUED" });
     await exportPending({ format: "xlsx", clientId: fixture.clientId });
     await exportInvoices({ format: "xlsx" }, invoicing);

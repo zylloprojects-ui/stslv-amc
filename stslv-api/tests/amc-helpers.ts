@@ -5,7 +5,7 @@ import { createNewContract } from "../src/modules/amc/contracts.service";
 import { discardStoredFile } from "../src/modules/attachments/attachments.service";
 import { loadUserPermissions, loadUserRoles, type AuthContext } from "../src/modules/auth/access";
 import { AppError } from "../src/shared/errors";
-import { api, signedIn } from "./helpers";
+import { api, signedIn, withAuditLogUnlocked } from "./helpers";
 
 export type Session = Awaited<ReturnType<typeof signedIn>>;
 
@@ -216,7 +216,7 @@ export async function legacyContract(session: Session, clientId: string, overrid
   await pool.query("UPDATE amc_contracts_all SET sales_engineer_id = NULL, system_type_id = NULL, system_description = $2, final_credit = $3 WHERE id = $1", [id, systemDescription, finalCredit]);
   const documents = await pool.query<{ storage_key: string }>("DELETE FROM attachments WHERE entity_type = 'amc_contracts' AND entity_id = $1 RETURNING storage_key", [id]);
   for (const row of documents.rows) await discardStoredFile(row.storage_key);
-  await pool.query("DELETE FROM activity_logs WHERE entity_type = 'amc_contracts' AND entity_id = $1 AND action IN ('amc_contract.masters_linked', 'attachment.uploaded')", [id]);
+  await withAuditLogUnlocked("DELETE FROM activity_logs WHERE entity_type = 'amc_contracts' AND entity_id = $1 AND action IN ('amc_contract.masters_linked', 'attachment.uploaded')", [id]);
   await pool.query("DELETE FROM system_types t WHERE t.name = $1 AND NOT EXISTS (SELECT 1 FROM amc_contracts_all c WHERE c.system_type_id = t.id)", [LEGACY_PLACEHOLDER]);
 
   return id;

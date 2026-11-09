@@ -15,7 +15,8 @@
     "legacy-import:dry-run": "tsx src/scripts/legacy-import.ts",
     "legacy-import:apply": "tsx src/scripts/legacy-import-apply.ts",
     "export:sample": "tsx src/scripts/export-sample.ts",
-    "storage:check": "tsx src/scripts/storage-check.ts"
+    "storage:check": "tsx src/scripts/storage-check.ts",
+    "ops": "tsx src/ops/cli.ts"
   },
   "keywords": [],
   "author": "",

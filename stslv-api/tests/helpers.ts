@@ -17,6 +17,34 @@ const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_per
 const seedSql = SEED_MIGRATIONS.map((name) => loadMigrationFiles().find((migration) => migration.name === name)?.sql ?? "").join("\n");
 const seedsFound = SEED_MIGRATIONS.every((name) => loadMigrationFiles().some((migration) => migration.name === name));
 
+/**
+ * Runs SQL that empties or deletes from activity_logs, which migration 0109 makes append-only. Test schema only.
+ * The two protecting triggers are disabled and re-enabled inside one transaction, so no other connection ever
+ * sees the table unprotected. This is the same deliberate step an owner would need; the application never takes it.
+ */
+export async function withAuditLogUnlocked(sql: string, params: unknown[] = []): Promise<void> {
+  const client = await pool.connect();
+
+  try {
+    const schema = await client.query<{ schema: string }>("SELECT current_schema() AS schema");
+
+    if (schema.rows[0]?.schema !== "stslv_test") {
+      throw new Error("Refusing to unlock the audit log: not connected to the stslv_test schema.");
+    }
+
+    await client.query("BEGIN");
+    await client.query("ALTER TABLE activity_logs DISABLE TRIGGER activity_logs_no_update_delete, DISABLE TRIGGER activity_logs_no_truncate");
+    await client.query(sql, params);
+    await client.query("ALTER TABLE activity_logs ENABLE TRIGGER activity_logs_no_update_delete, ENABLE TRIGGER activity_logs_no_truncate");
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /** Empties every table and restores the seeded roles and permissions. */
 export async function resetData(): Promise<void> {
   const schema = await pool.query<{ schema: string }>("SELECT current_schema() AS schema");
@@ -25,7 +53,7 @@ export async function resetData(): Promise<void> {
     throw new Error("Refusing to reset data: not connected to the stslv_test schema.");
   }
 
-  await pool.query("TRUNCATE activity_logs, clients_all, user_roles, users RESTART IDENTITY CASCADE");
+  await withAuditLogUnlocked("TRUNCATE activity_logs, clients_all, user_roles, users RESTART IDENTITY CASCADE");
   await pool.query("DELETE FROM role_permissions");
   await pool.query(
     "DELETE FROM roles WHERE code NOT IN ('ADMIN', 'ADMINISTRATOR', 'FINANCE_EXECUTIVE', 'MASTER_DATA_EXECUTIVE', 'AMC_OPERATIONS_EXECUTIVE', 'VIEWER', 'ACCOUNTANT', 'PROCUREMENT', 'EXECUTION', 'INVOICING')"

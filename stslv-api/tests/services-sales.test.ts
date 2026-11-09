@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { activeContract, createClient, logsFor, referenceOf, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
-import { api, closePool, resetData, signedIn } from "./helpers";
+import { api, closePool, resetData, signedIn, withAuditLogUnlocked } from "./helpers";
 
 // Services Sales: migrations 0078 (quotation number, module) and 0079 (grants).
 
@@ -75,7 +75,7 @@ describe("Services Sales", () => {
 
   beforeEach(async () => {
     // Visit ids restart, so the audit entries of earlier tests go too.
-    await pool.query("TRUNCATE activity_logs, amc_visits_all, amc_contracts_all, clients_all, sales_engineers_all, system_types_all RESTART IDENTITY CASCADE");
+    await withAuditLogUnlocked("TRUNCATE activity_logs, amc_visits_all, amc_contracts_all, clients_all, sales_engineers_all, system_types_all RESTART IDENTITY CASCADE");
     const alphaId = await createClient(admin, "Alpha Towers");
     const betaId = await createClient(admin, "Beta Mall");
     const esha = await insertMaster("sales_engineers", "Esha Engineer");

@@ -1,0 +1,18 @@
+# STSLV AMC — log rotation for the Nginx site logs. TEMPLATE. Install as /etc/logrotate.d/stslv-amc.
+# The API and backup jobs log to the systemd journal (size-limited by journald/stslv-journald.conf), not files.
+# Access logs hold client addresses: 30 days, then deleted.
+
+/var/log/nginx/stslv-amc.access.log /var/log/nginx/stslv-amc.error.log {
+    daily
+    rotate 30
+    missingok
+    notifempty
+    compress
+    delaycompress
+    dateext
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        [ -s /run/nginx.pid ] && kill -USR1 "$(cat /run/nginx.pid)"
+    endscript
+}

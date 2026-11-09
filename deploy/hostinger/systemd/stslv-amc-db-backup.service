@@ -1,0 +1,41 @@
+# STSLV AMC — daily encrypted database backup. TEMPLATE: NOT YET DEPLOYED, NOT SCHEDULED.
+# Started by stslv-amc-db-backup.timer. Run by hand:  systemctl start stslv-amc-db-backup
+# Result:  journalctl -u stslv-amc-db-backup   and   /var/lib/stslv-amc-backup/state/db-backup.json
+#
+# Runs as its own user "stslv-backup", separate from the API user, so the API cannot read the backup
+# bucket key and the backup job cannot write to the application. Settings: /etc/stslv-amc/backup.env
+# (owner root, group stslv-backup, mode 0640). The GPG keyring holds the PUBLIC key only: this server can
+# encrypt backups but cannot decrypt them. See docs/BACKUP_AUTOMATION.md.
+
+[Unit]
+Description=STSLV AMC encrypted database backup (pg_dump -> GPG -> off-site)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=stslv-backup
+Group=stslv-backup
+EnvironmentFile=/etc/stslv-amc/backup.env
+Environment=NODE_ENV=production
+Environment=GNUPGHOME=/var/lib/stslv-amc-backup/gnupg
+ExecStart=/usr/bin/node /opt/stslv-amc/api/current/dist/ops/cli.js db-backup
+# A dump of a small database takes seconds; anything near this limit is reported as a failure.
+TimeoutStartSec=45min
+Nice=10
+IOSchedulingClass=idle
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/stslv-amc-backup
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077

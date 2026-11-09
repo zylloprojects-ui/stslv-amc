@@ -55,6 +55,8 @@ describe("migrations", () => {
       "system_types",
       "system_types_all",
       "user_roles",
+      // Server-side sessions (migration 0108, P0 security).
+      "user_sessions",
       "users",
       "v_amc_visit_billing",
       "v_project_financials",

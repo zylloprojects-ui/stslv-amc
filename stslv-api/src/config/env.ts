@@ -138,6 +138,9 @@ export const env = {
   // Failed sign-ins allowed per 15 minutes for one email from one address. Counted per
   // address as well as email, so a stranger cannot lock a real user out of their own account.
   loginFailureLimit: readWholeNumber("LOGIN_FAILURE_LIMIT", 5, 1, 100_000),
+  // Minutes without any use of the application after which a session ends (migration 0108). The session's
+  // absolute lifetime stays JWT_EXPIRES_IN. 30 by default (P0 security requirement, 2026-11-09).
+  sessionIdleTimeoutMinutes: readWholeNumber("SESSION_IDLE_TIMEOUT_MINUTES", 30, 5, 1440),
   // How many reverse proxies stand between the internet and this API. 0 (the default)
   // means none: forwarded-address headers are ignored, which is right for local
   // development. A hosting platform's load balancer counts as one.

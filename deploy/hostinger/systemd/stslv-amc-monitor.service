@@ -1,0 +1,26 @@
+# STSLV AMC — resource and health monitor (disk, memory, API health, failed units, backup age). TEMPLATE.
+# Started every 5 minutes by stslv-amc-monitor.timer. Alerts go to MONITOR_ALERT_WEBHOOK_URL.
+
+[Unit]
+Description=STSLV AMC resource and health monitor
+
+[Service]
+Type=oneshot
+User=stslv-monitor
+Group=stslv-monitor
+# systemd-journal lets the monitor read unit state; it needs no other privilege.
+SupplementaryGroups=systemd-journal
+EnvironmentFile=/etc/stslv-amc/monitor.env
+ExecStart=/usr/local/lib/stslv-amc/monitor.sh
+TimeoutStartSec=2min
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/stslv-amc-monitor
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=
+UMask=0077

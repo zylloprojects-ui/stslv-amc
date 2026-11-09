@@ -4,7 +4,8 @@ import { adminOnly } from "../../middleware/admin-only";
 import { authenticate, requireAuth } from "../../middleware/authenticate";
 import { authorize } from "../../middleware/authorize";
 import { rateLimit } from "../../middleware/rate-limit";
-import { forbidden } from "../../shared/errors";
+import { z } from "zod";
+import { forbidden, notFound } from "../../shared/errors";
 import { parseIdParam } from "../../shared/validation";
 import { sendExport } from "../../shared/export/send";
 import { buildUsersExport } from "./users.export";
@@ -12,13 +13,23 @@ import { createUserSchema, exportUsersSchema, issueTemporaryPasswordSchema, list
 import {
   createUser,
   issueTemporaryPassword,
+  listSessionsOfUser,
   listUsers,
   listUsersPage,
   rejectRegistration,
+  revokeSessionsOfUser,
   setUserActive,
   setUserRoles,
   updateUser,
 } from "./users.service";
+
+const parseSessionId = (value: unknown): string => {
+  const parsed = z.uuid().safeParse(value);
+
+  if (!parsed.success) throw notFound("That session is not open.");
+
+  return parsed.data;
+};
 
 // Temporary passwords one administrator may issue per 15 minutes, whatever the network address.
 const temporaryPasswordLimit = rateLimit({
@@ -99,4 +110,21 @@ usersRouter.post("/:id/temporary-password", authorize("USERS", "EDIT"), temporar
 
   res.set("Cache-Control", "no-store");
   res.json({ success: true, data: issued });
+});
+
+// Sessions of a user (migration 0108). Administrators only, checked in the service on top of the permission.
+usersRouter.get("/:id/sessions", authorize("USERS", "VIEW"), async (req, res) => {
+  res.json({ success: true, data: await listSessionsOfUser(requireAuth(req), parseIdParam(req.params.id)) });
+});
+
+// Signs a user out of every device.
+usersRouter.post("/:id/sessions/revoke", authorize("USERS", "EDIT"), async (req, res) => {
+  res.json({ success: true, data: { sessionsEnded: await revokeSessionsOfUser(requireAuth(req), parseIdParam(req.params.id), null) } });
+});
+
+// Signs out one session of a user.
+usersRouter.delete("/:id/sessions/:sessionId", authorize("USERS", "EDIT"), async (req, res) => {
+  const ended = await revokeSessionsOfUser(requireAuth(req), parseIdParam(req.params.id), parseSessionId(req.params.sessionId));
+
+  res.json({ success: true, data: { sessionsEnded: ended } });
 });

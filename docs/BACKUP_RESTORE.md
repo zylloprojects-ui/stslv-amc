@@ -1,5 +1,9 @@
 # Backup & Restore
 
+> Scheduled, encrypted, off-site backups of the database and the document bucket, with retention, alerts and a
+> restore runbook, are prepared separately (not yet active): see [BACKUP_AUTOMATION.md](BACKUP_AUTOMATION.md).
+> This page describes only the manual in-app backup.
+
 Page: `/settings/backups`, under Settings (the old `/admin/backups` redirects there). API: `/api/security/backups`. Everything below is off until configured. Nothing has been changed on the live hosting.
 
 ## What the application does

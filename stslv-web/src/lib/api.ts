@@ -51,7 +51,55 @@ export function setToken(token: string | null): void {
   }
 }
 
-// Called when the API rejects the session (expired, deactivated, password changed),
+// --- Inactivity --------------------------------------------------------------------------------
+// The API ends a session after SESSION_IDLE_TIMEOUT_MINUTES without use (30 by default). Background requests
+// (the permission refresh every minute, notifications) are not use, so every request reports how long ago the
+// person last pressed a key, clicked, touched or scrolled, in ANY tab of this browser (shared via localStorage).
+// The API records "now minus that" as the last activity. Nothing about the input itself is recorded or sent.
+const ACTIVITY_KEY = 'stslv-amc.lastActivity'
+const ACTIVITY_SHARE_MS = 5_000
+let lastActivity = Date.now()
+let lastShared = 0
+
+function markActive(): void {
+  const now = Date.now()
+
+  lastActivity = now
+  if (now - lastShared < ACTIVITY_SHARE_MS) return
+  lastShared = now
+  try {
+    localStorage.setItem(ACTIVITY_KEY, String(now))
+  } catch {
+    // Storage unavailable: this tab's own activity still counts.
+  }
+}
+
+if (typeof window !== 'undefined') {
+  for (const event of ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll'] as const) {
+    window.addEventListener(event, markActive, { passive: true, capture: true })
+  }
+}
+
+/** Whole seconds since the person last used the application in any tab. */
+export function idleSeconds(now = Date.now()): number {
+  let shared = 0
+
+  try {
+    shared = Number(localStorage.getItem(ACTIVITY_KEY) ?? 0) || 0
+  } catch {
+    shared = 0
+  }
+
+  return Math.max(0, Math.floor((now - Math.max(lastActivity, shared)) / 1000))
+}
+
+/** A sign-in is activity: a session starts fresh. */
+export function resetActivity(): void {
+  lastShared = 0
+  markActive()
+}
+
+// Called when the API rejects the session (expired, deactivated, password changed, signed out elsewhere, idle),
 // with the refusal, so the sign-in page can say why when that matters.
 let unauthorizedHandler: ((error: ApiError) => void) | null = null
 
@@ -78,6 +126,7 @@ async function request<T>(method: string, path: string, body?: unknown, raw?: Ra
 
   if (token) {
     headers.Authorization = `Bearer ${token}`
+    headers['X-Idle-Seconds'] = String(idleSeconds())
   }
   if (raw) {
     Object.assign(headers, raw.headers)
@@ -149,7 +198,7 @@ export async function download(path: string): Promise<DownloadedFile> {
   let response: Response
 
   try {
-    response = await fetch(apiUrl(`/api${path}`), { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    response = await fetch(apiUrl(`/api${path}`), { headers: token ? { Authorization: `Bearer ${token}`, 'X-Idle-Seconds': String(idleSeconds()) } : {} })
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the server. Check your connection and try again.')
   }

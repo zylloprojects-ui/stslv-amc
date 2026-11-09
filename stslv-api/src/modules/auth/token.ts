@@ -9,6 +9,8 @@ export interface TokenClaims {
   issuedAt: number;
   /** Issued by signing in with a temporary password: only good for choosing a new one. */
   passwordChange: boolean;
+  /** The server-side session (migration 0108), or null for a token issued without one. */
+  sessionId: string | null;
 }
 
 export interface IssuedToken {
@@ -16,11 +18,13 @@ export interface IssuedToken {
   expiresAt: string;
 }
 
-// The token carries only the user id, plus "pc" when it was issued for a
-// temporary password. Roles and permissions are read from the database on
-// every request, so changes take effect immediately.
-export function issueToken(userId: string, options: { passwordChange?: boolean } = {}): IssuedToken {
-  const token = jwt.sign(options.passwordChange ? { pc: true } : {}, env.jwtSecret, {
+// The token carries only the user id, "pc" when it was issued for a temporary
+// password, and "sid", the server-side session it belongs to. Roles and
+// permissions are read from the database on every request, so changes take
+// effect immediately; the session row decides whether the token still counts.
+export function issueToken(userId: string, options: { passwordChange?: boolean; sessionId?: string | null } = {}): IssuedToken {
+  const claims = { ...(options.passwordChange ? { pc: true } : {}), ...(options.sessionId ? { sid: options.sessionId } : {}) };
+  const token = jwt.sign(claims, env.jwtSecret, {
     algorithm: ALGORITHM,
     subject: userId,
     expiresIn: env.jwtExpirySeconds,
@@ -41,7 +45,12 @@ export function verifyToken(token: string): TokenClaims | null {
       return null;
     }
 
-    return { userId: payload.sub, issuedAt: payload.iat, passwordChange: payload.pc === true };
+    return {
+      userId: payload.sub,
+      issuedAt: payload.iat,
+      passwordChange: payload.pc === true,
+      sessionId: typeof payload.sid === "string" ? payload.sid : null,
+    };
   } catch {
     return null;
   }

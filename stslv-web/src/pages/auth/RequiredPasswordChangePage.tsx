@@ -77,7 +77,7 @@ export function RequiredPasswordChangePage() {
       <PasswordField
         label="New password"
         autoComplete="new-password"
-        placeholder="At least 10 characters"
+        placeholder="At least 12 characters"
         autoFocus
         required
         error={errors.newPassword?.message}

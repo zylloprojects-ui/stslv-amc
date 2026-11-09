@@ -1,6 +1,8 @@
 import type { RequestHandler } from "express";
 import { pool } from "../config/database";
+import { env } from "../config/env";
 import { loadUserPermissions, loadUserRoles, type AuthContext } from "../modules/auth/access";
+import { checkSession, reportedIdleSeconds, sessionsEnabled } from "../modules/auth/sessions.service";
 import { verifyToken } from "../modules/auth/token";
 import { AppError, unauthorized } from "../shared/errors";
 
@@ -66,6 +68,27 @@ function createAuthenticate(options: { allowPasswordChange: boolean }): RequestH
     if (user.must_change_password && user.temporary_password_expired) {
       throw new AppError(401, "TEMPORARY_PASSWORD_EXPIRED", TEMPORARY_PASSWORD_EXPIRED_MESSAGE);
     }
+
+    // Server-side session (migration 0108). Once the table exists, a token must name an open session: signing
+    // out, an administrator, a password change or inactivity ends it at once. Tokens issued before the table
+    // existed name none and are refused, so everyone signs in once after the release.
+    let sessionId: string | null = null;
+
+    if (await sessionsEnabled()) {
+      const state = claims.sessionId ? await checkSession(claims.sessionId, user.id, reportedIdleSeconds(req.headers["x-idle-seconds"])) : "missing";
+
+      if (state === "idle") {
+        throw new AppError(401, "SESSION_IDLE_TIMEOUT", `You were signed out after ${env.sessionIdleTimeoutMinutes} minutes of inactivity. Please sign in again.`);
+      }
+      if (state === "revoked") {
+        throw new AppError(401, "SESSION_REVOKED", "This session has been signed out. Please sign in again.");
+      }
+      if (state !== "open") {
+        throw unauthorized("Your session is no longer valid. Please sign in again.");
+      }
+      sessionId = claims.sessionId;
+    }
+
     if (user.must_change_password && !options.allowPasswordChange) {
       throw new AppError(403, "PASSWORD_CHANGE_REQUIRED", "Choose a new password before continuing.");
     }
@@ -80,6 +103,7 @@ function createAuthenticate(options: { allowPasswordChange: boolean }): RequestH
       roles,
       permissions,
       mustChangePassword: user.must_change_password,
+      sessionId,
     };
 
     next();

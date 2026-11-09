@@ -14,6 +14,8 @@ export interface AuthContext {
   permissions: ReadonlySet<PermissionKey>;
   /** Signed in with a temporary password: only the change-password screen is open to them. */
   mustChangePassword: boolean;
+  /** The server-side session of this request (migration 0108), or null/absent before it. */
+  sessionId?: string | null;
 }
 
 /** Active roles assigned to a user. */

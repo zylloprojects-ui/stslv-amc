@@ -3,7 +3,8 @@ import { pool } from "../../config/database";
 import { env } from "../../config/env";
 import { describeStorage } from "../../config/storage-config";
 import { dateSchema, pagingSchema } from "../../shared/money";
-import { escapeLike, idSchema } from "../../shared/validation";
+import { escapeLike, idSchema, PASSWORD_MIN_LENGTH } from "../../shared/validation";
+import { sessionsEnabled } from "../auth/sessions.service";
 import { logActivity } from "../../shared/activity-log";
 import { assertExportSize, exportFormatSchema, type ReportDefinition } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
@@ -16,6 +17,8 @@ import { backupStatus } from "./backups.service";
 const SECURITY_ACTIONS = [
   "auth.login_failed",
   "auth.logout",
+  "auth.logout_all",
+  "auth.session_revoked",
   "auth.password_changed",
   "auth.temporary_password_replaced",
   "user.created",
@@ -24,6 +27,8 @@ const SECURITY_ACTIONS = [
   "user.registration_approved",
   "user.registration_rejected",
   "user.temporary_password_issued",
+  "user.session_revoked",
+  "user.sessions_revoked",
   "role.created",
   "role.updated",
   "role.deleted",
@@ -127,6 +132,10 @@ export async function getSecurityOverview(transport: RequestTransport | null = n
     // Settings in force, as values safe to show. No secret, address or connection detail.
     configuration: {
       sessionHours: Math.round((env.jwtExpirySeconds / 3600) * 10) / 10,
+      // Server-side sessions (migration 0108): whether they are in force, and the inactivity limit.
+      serverSessions: await sessionsEnabled(),
+      sessionIdleMinutes: env.sessionIdleTimeoutMinutes,
+      passwordMinLength: PASSWORD_MIN_LENGTH,
       passwordHashRounds: env.bcryptRounds,
       loginRequestsPer15Min: env.loginRateLimit,
       failedLoginsPer15Min: env.loginFailureLimit,

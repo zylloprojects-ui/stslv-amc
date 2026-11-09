@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { useAuth } from '../../auth/context'
 import { Alert, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
-import { passwordRule } from '../../lib/password'
+import { PASSWORD_HINT, passwordRule } from '../../lib/password'
 
 const changePasswordSchema = z
   .object({
@@ -105,7 +105,7 @@ export function ChangePasswordForm({ id, onPending, onChanged }: ChangePasswordF
         type="password"
         required
         autoComplete="new-password"
-        hint="At least 10 characters."
+        hint={PASSWORD_HINT}
         error={errors.newPassword?.message}
         {...register('newPassword')}
       />

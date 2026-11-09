@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { exportFormatSchema } from "../../shared/export/report";
 import { pagingSchema } from "../../shared/money";
-import { emailSchema, idSchema, newPasswordSchema, requiredText } from "../../shared/validation";
+import { emailSchema, idSchema, newPasswordSchema, refinePersonalPassword, requiredText } from "../../shared/validation";
 
 export const ONE_ROLE_MESSAGE = "Select exactly one role.";
 
@@ -12,12 +12,14 @@ const roleIds = z
   .transform((ids) => [...new Set(ids)])
   .refine((ids) => ids.length === 1, { message: ONE_ROLE_MESSAGE });
 
-export const createUserSchema = z.strictObject({
-  email: emailSchema,
-  fullName: requiredText("Full name", 200),
-  password: newPasswordSchema,
-  roleIds,
-});
+export const createUserSchema = z
+  .strictObject({
+    email: emailSchema,
+    fullName: requiredText("Full name", 200),
+    password: newPasswordSchema,
+    roleIds,
+  })
+  .superRefine(refinePersonalPassword);
 
 export const updateUserSchema = z.strictObject({
   fullName: requiredText("Full name", 200),

@@ -3,9 +3,11 @@ import { TEMPORARY_PASSWORD_EXPIRED_MESSAGE } from "../../middleware/authenticat
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction } from "../../shared/db";
 import { AppError, unauthorized, validationError } from "../../shared/errors";
+import { assertPasswordAllowed } from "../../shared/validation";
 import { loadUserPermissions, loadUserRoles, toSessionUser, type AuthContext } from "./access";
 import { hashPassword, verifyAgainstDummy, verifyPassword } from "./password";
 import { revokeResetTokens } from "./password-reset.service";
+import { createSession, revokeSession, revokeUserSessions } from "./sessions.service";
 import { issueToken } from "./token";
 
 // One message for every failure, so the response does not reveal whether the email exists.
@@ -103,19 +105,33 @@ export async function login(email: string, password: string, context: LoginConte
     metadata: user.must_change_password ? { ...connectionDetails(context), temporaryPassword: true } : connectionDetails(context),
   });
 
+  // One server-side session per sign-in (null on a database without migration 0108).
+  const sessionId = await createSession(pool, {
+    userId: user.id,
+    passwordChange: user.must_change_password,
+    ip: context.ip,
+    userAgent: context.userAgent ?? null,
+  });
   const [roles, permissions] = await Promise.all([loadUserRoles(pool, user.id), loadUserPermissions(pool, user.id)]);
   const auth: AuthContext = {
     user: { id: user.id, email: user.email, fullName: user.full_name },
     roles,
     permissions,
     mustChangePassword: user.must_change_password,
+    sessionId,
   };
 
-  return { ...issueToken(user.id, { passwordChange: user.must_change_password }), user: toSessionUser(auth) };
+  return { ...issueToken(user.id, { passwordChange: user.must_change_password, sessionId }), user: toSessionUser(auth) };
 }
 
-/** Records that a user signed out. It ends nothing: the web application discards its own token, and that token stays valid until it expires. */
+/**
+ * Signs the user out: their session ends on the server, so the token stops working at once even if a copy of it
+ * survives somewhere. (Before migration 0108 this only recorded the sign-out.)
+ */
 export async function recordLogout(auth: AuthContext, context: LoginContext): Promise<void> {
+  if (auth.sessionId) {
+    await revokeSession(pool, { sessionId: auth.sessionId, userId: auth.user.id, reason: "LOGOUT", by: auth.user.id });
+  }
   await logActivity(pool, {
     userId: auth.user.id,
     action: "auth.logout",
@@ -142,6 +158,7 @@ export async function completeRequiredPasswordChange(auth: AuthContext, newPassw
   if (!row) {
     throw unauthorized();
   }
+  assertPasswordAllowed(newPassword, { email: auth.user.email, fullName: auth.user.fullName });
   if (await verifyPassword(newPassword, row.password_hash)) {
     throw validationError("Choose a password different from the temporary one.", [
       { field: "newPassword", message: "Choose a password different from the temporary one." },
@@ -165,6 +182,7 @@ export async function completeRequiredPasswordChange(auth: AuthContext, newPassw
     }
 
     await revokeResetTokens(client, auth.user.id);
+    await revokeUserSessions(client, { userId: auth.user.id, reason: "PASSWORD_CHANGED", by: auth.user.id });
     await logActivity(client, {
       userId: auth.user.id,
       action: "auth.temporary_password_replaced",
@@ -195,6 +213,7 @@ export async function changeOwnPassword(auth: AuthContext, currentPassword: stri
       { field: "newPassword", message: "The new password must be different from the current password." },
     ]);
   }
+  assertPasswordAllowed(newPassword, { email: auth.user.email, fullName: auth.user.fullName });
 
   const passwordHash = await hashPassword(newPassword);
 
@@ -206,6 +225,8 @@ export async function changeOwnPassword(auth: AuthContext, currentPassword: stri
     ]);
     // A reset link requested before this change must not be able to undo it.
     await revokeResetTokens(client, auth.user.id);
+    // Every other device is signed out; this one continues.
+    const otherSessions = await revokeUserSessions(client, { userId: auth.user.id, reason: "PASSWORD_CHANGED", by: auth.user.id, exceptSessionId: auth.sessionId ?? null });
     await logActivity(client, {
       userId: auth.user.id,
       action: "auth.password_changed",
@@ -213,9 +234,10 @@ export async function changeOwnPassword(auth: AuthContext, currentPassword: stri
       entityType: "users",
       entityId: auth.user.id,
       description: `${auth.user.fullName} changed their own password.`,
+      ...(otherSessions > 0 ? { metadata: { otherSessionsEnded: otherSessions } } : {}),
     });
   });
 
-  // A fresh token so the current session continues.
-  return issueToken(auth.user.id);
+  // A fresh token for the same session, so this device continues.
+  return issueToken(auth.user.id, { sessionId: auth.sessionId ?? null });
 }

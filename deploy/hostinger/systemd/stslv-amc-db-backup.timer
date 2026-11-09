@@ -1,0 +1,16 @@
+# STSLV AMC — schedule for the daily database backup. TEMPLATE: enable only with approval.
+#   systemctl enable --now stslv-amc-db-backup.timer
+#   systemctl list-timers stslv-amc-*
+# Times are the server's time zone (check with timedatectl). 02:15 is outside office hours in Oman.
+
+[Unit]
+Description=Daily STSLV AMC database backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+# Spreads the start a little, and runs a missed backup after the server was off at that time.
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
