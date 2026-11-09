@@ -16,7 +16,8 @@
     "legacy-import:apply": "tsx src/scripts/legacy-import-apply.ts",
     "export:sample": "tsx src/scripts/export-sample.ts",
     "storage:check": "tsx src/scripts/storage-check.ts",
-    "ops": "tsx src/ops/cli.ts"
+    "ops": "tsx src/ops/cli.ts",
+    "contracts:expire": "tsx src/scripts/expire-contracts.ts"
   },
   "keywords": [],
   "author": "",

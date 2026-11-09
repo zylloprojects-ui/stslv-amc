@@ -66,7 +66,7 @@ Money is `numeric(14,3)` everywhere. It travels through the API as text (`"405.0
 
 - Created as `DRAFT` (no schedule) or `ACTIVE` (schedule generated in the same transaction).
 - A contract can only be given a client that exists and is active.
-- Status changes are made by a user, never automatically. A contract whose validity has ended is flagged (`isPastValidity`) but stays `ACTIVE` until someone changes it — whether contracts expire by themselves is unconfirmed.
+- Status changes are made by a user, never automatically. A contract whose validity has ended is flagged (`isPastValidity`) but stays `ACTIVE` until someone changes it — whether contracts expire by themselves is unconfirmed. A controlled, idempotent expiry run exists since 2026-11-09 but applying it is switched off pending approval: see [CONTRACT_EXPIRY.md](CONTRACT_EXPIRY.md).
 - Allowed transitions: `DRAFT → ACTIVE | CANCELLED`, `ACTIVE → EXPIRED | CANCELLED`, `EXPIRED → ACTIVE`, `CANCELLED → ACTIVE`.
 - Marking a contract `EXPIRED` or `CANCELLED` leaves its visits alone unless the user ticks "also cancel the scheduled and postponed visits". Completed and in-progress visits are never changed by a contract status change.
 - The validity period and frequency can be edited only while the contract is `DRAFT` or `ACTIVE`.

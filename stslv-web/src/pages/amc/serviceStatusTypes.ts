@@ -39,6 +39,13 @@ export interface ServiceStatusItem {
   serviceReport: ServiceReport | null
   /** Completed and saved: the status and completion date can no longer change. */
   locked: boolean
+  /** Paid (manual Invoice No. entered): a reference status that does not verify payment. Absent from an older API. */
+  paid?: boolean
+  /**
+   * The Service Report No. is locked: the lock is switched on and the service is Paid. Only an administrator may
+   * change it, with a reason recorded in the Audit Log. Absent (unlocked) from an older API.
+   */
+  reportNumberLocked?: boolean
   updatedAt: string
 }
 
@@ -73,6 +80,8 @@ export interface ServiceStatusList {
   /** False until database update 0104: reports cannot be uploaded, so services cannot be completed. */
   serviceReportsAvailable: boolean
   serviceReportLimits: { maxMb: number; allowedTypes: string }
+  /** Whether the Service Report No. lock after Paid is switched on (proposed rule, off until approved). */
+  reportNumberLockEnabled?: boolean
 }
 
 export interface ServiceStatusOptions {

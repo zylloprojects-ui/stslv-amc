@@ -2,6 +2,7 @@ import { pool } from "../../config/database";
 import { CONTRACT_STATUSES, type ContractStatus, type VisitStatus } from "../amc/amc.constants";
 import { getWorkload, type WorkloadMonth } from "../amc/reports.service";
 import { IN_SCOPE } from "../amc/service-status.service";
+import { SERVICE_IN_SCOPE_VISIT_ONLY } from "../amc/service-scope";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import type { AuthContext } from "../auth/access";
 import { schemaHas } from "../../shared/schema-features";
@@ -261,10 +262,11 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
   };
 }
 
-// The visits the dashboard counts: dated (not historical), not cancelled, on a contract that is not cancelled.
-// The same rule as the workload report, so "Services This Month" equals the workload chart's first bar.
-export const COUNTED_VISIT = `v.status NOT IN ('CANCELLED', 'HISTORICAL')
-  AND EXISTS (SELECT 1 FROM amc_contracts cc WHERE cc.id = v.amc_contract_id AND cc.status <> 'CANCELLED')`;
+// The visits the dashboard counts: the shared service scope (service-scope.ts), the same visits as
+// Service Status and Accounts and the workload report. Not cancelled, not historical; on a cancelled
+// contract only the completed and Paid ones. So "Services Overall" equals Invoices Generated + Not
+// Generated, and "Services This Month" equals the workload chart's first bar.
+export const COUNTED_VISIT = SERVICE_IN_SCOPE_VISIT_ONLY;
 
 const UPCOMING_DAYS = 7;
 

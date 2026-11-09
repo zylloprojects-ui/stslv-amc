@@ -639,3 +639,61 @@ describe('service status view', () => {
     await waitFor(() => expect(api.find('GET', '/amc/service-status/500/report/download')).toHaveLength(1))
   })
 })
+
+// Service Report No. lock after Paid (proposed rule, switched on by the API only when approved).
+describe('service report number lock', () => {
+  const PAID_LOCKED = { ...DONE, reportNumber: 'SR-9', paid: true, reportNumberLocked: true }
+
+  it('shows a locked number read-only to a non-administrator', async () => {
+    serviceApi(EXECUTION, { items: [PAID_LOCKED] })
+    renderApp('/amc/service-status')
+    const row = within(await rowOf(DONE.reference))
+
+    expect(row.queryByLabelText(/^Service report number of/)).not.toBeInTheDocument()
+    expect(row.getByLabelText('SR-9, locked')).toBeInTheDocument()
+  })
+
+  it('lets an administrator override only with a reason, which is sent with the change', async () => {
+    const api = serviceApi(ADMIN, { items: [PAID_LOCKED] })
+    renderApp('/amc/service-status')
+    const row = within(await rowOf(DONE.reference))
+    const input = row.getByLabelText(/^Service report number of/)
+
+    await userEvent.clear(input)
+    await userEvent.type(input, 'SR-10')
+    await userEvent.click(row.getByRole('button', { name: new RegExp(`^Save ${DONE.reference}`) }))
+    expect(await row.findByText(/Enter the reason for the change/)).toBeInTheDocument()
+    expect(api.requests.filter((request) => request.method === 'PATCH')).toHaveLength(0)
+
+    await userEvent.type(row.getByLabelText(/^Reason for changing the locked report number/), 'Typo on the report')
+    await userEvent.click(row.getByRole('button', { name: new RegExp(`^Save ${DONE.reference}`) }))
+    await waitFor(() => expect(api.requests.filter((request) => request.method === 'PATCH')).toHaveLength(1))
+    expect(api.requests.find((request) => request.method === 'PATCH')?.body).toEqual({
+      reportNumber: 'SR-10',
+      reportNumberOverrideReason: 'Typo on the report',
+      expectedUpdatedAt: DONE.updatedAt,
+    })
+  })
+
+  it('gives Admin (not only Super Admin) the override reason field', async () => {
+    const ADMINISTRATOR: SessionUser = { ...ADMIN, id: '6', email: 'office@example.com', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }] }
+    serviceApi(ADMINISTRATOR, { items: [PAID_LOCKED] })
+    renderApp('/amc/service-status')
+    const row = within(await rowOf(DONE.reference))
+    const input = row.getByLabelText(/^Service report number of/)
+
+    await userEvent.type(input, 'X')
+    expect(row.getByLabelText(/^Reason for changing the locked report number/)).toBeInTheDocument()
+  })
+
+  it('leaves an unlocked number editable as before, with no reason asked', async () => {
+    const api = serviceApi(EXECUTION, { items: [{ ...DONE, reportNumber: 'SR-1', paid: true, reportNumberLocked: false }] })
+    renderApp('/amc/service-status')
+    const row = within(await rowOf(DONE.reference))
+
+    await userEvent.type(row.getByLabelText(/^Service report number of/), '1')
+    expect(row.queryByLabelText(/^Reason for changing the locked report number/)).not.toBeInTheDocument()
+    await userEvent.click(row.getByRole('button', { name: new RegExp(`^Save ${DONE.reference}`) }))
+    await waitFor(() => expect(api.requests.find((request) => request.method === 'PATCH')?.body).toEqual({ reportNumber: 'SR-11', expectedUpdatedAt: DONE.updatedAt }))
+  })
+})

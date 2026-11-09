@@ -1,10 +1,12 @@
 import { pool } from "../../config/database";
 import type { ExpiringContractsQuery, WorkloadQuery } from "./amc.schemas";
 import { referenceStaticSql } from "./contract-reference";
+import { SERVICE_IN_SCOPE_VISIT_ONLY, SERVICE_PENDING } from "./service-scope";
 
 // Read-only report figures, computed from the stored contracts and visits on
 // every request. Nothing here changes a contract's status: expiry is set by a
-// user, never automatically (see CONTRACT_TRANSITIONS).
+// user (see CONTRACT_TRANSITIONS), or by the controlled expiry run, which is off
+// until approved (contract-expiry.service.ts).
 
 export interface ExpiringContract {
   id: string;
@@ -89,9 +91,10 @@ export interface WorkloadMonth {
 }
 
 /**
- * Visits per month by planned date, from the current month forward. Visits of
- * cancelled contracts are left out, as on the dashboard. Historical rows have
- * no recorded date and are never counted.
+ * Visits per month by planned date, from the current month forward, over the shared
+ * service scope (service-scope.ts) of the Dashboard, Service Status and Accounts: open
+ * unpaid work of cancelled contracts is left out, completed and Paid services stay.
+ * Historical rows have no recorded date and are never counted. planned = completed + open.
  */
 export async function getWorkload(query: WorkloadQuery) {
   const result = await pool.query<{ month: string; planned: number; completed: number; open: number }>(
@@ -100,12 +103,11 @@ export async function getWorkload(query: WorkloadQuery) {
        FROM generate_series(0, $1::int - 1) AS n
      )
      SELECT m.month,
-            count(v.id) FILTER (WHERE v.status <> 'CANCELLED')::int AS planned,
+            count(v.id)::int AS planned,
             count(v.id) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
-            count(v.id) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED'))::int AS open
+            count(v.id) FILTER (WHERE ${SERVICE_PENDING})::int AS open
      FROM months m
-     LEFT JOIN amc_visits v ON to_char(v.scheduled_date, 'YYYY-MM') = m.month AND v.status <> 'HISTORICAL'
-       AND EXISTS (SELECT 1 FROM amc_contracts c WHERE c.id = v.amc_contract_id AND c.status <> 'CANCELLED')
+     LEFT JOIN amc_visits v ON to_char(v.scheduled_date, 'YYYY-MM') = m.month AND ${SERVICE_IN_SCOPE_VISIT_ONLY}
      GROUP BY m.month
      ORDER BY m.month`,
     [query.months]

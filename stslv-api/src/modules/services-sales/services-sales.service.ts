@@ -8,6 +8,7 @@ import type { AuthContext } from "../auth/access";
 import { readStoredFile } from "../attachments/attachments.service";
 import type { ContractStatus, VisitStatus } from "../amc/amc.constants";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
+import { SERVICE_IN_SCOPE } from "../amc/service-scope";
 import type { ListServicesSalesQuery, SalesStatus, SaveQuotationInput, ServiceStatus } from "./services-sales.schemas";
 
 // The Services Sales page: one row per scheduled maintenance visit (amc_visits),
@@ -21,9 +22,9 @@ import type { ListServicesSalesQuery, SalesStatus, SaveQuotationInput, ServiceSt
 
 
 // The visits on the page, the same as on Service Status: cancelled and
-// historical visits are left out, and so is outstanding work of a cancelled
-// contract. Completed work always stays.
-const IN_SCOPE = "v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED') AND (v.status = 'COMPLETED' OR c.status <> 'CANCELLED')";
+// historical visits are left out, and so is outstanding unpaid work of a cancelled
+// contract. Completed and Paid services always stay (service-scope.ts).
+const IN_SCOPE = SERVICE_IN_SCOPE;
 
 const SERVICE_STATUS_SQL = "CASE WHEN v.status = 'COMPLETED' THEN 'COMPLETED' ELSE 'NOT_COMPLETED' END";
 

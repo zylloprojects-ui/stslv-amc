@@ -396,7 +396,9 @@ describe("every page reads the same status", () => {
               count(*) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS unpaid,
               COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS unpaid_value
        FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
-       WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED') AND (v.status = 'COMPLETED' OR c.status <> 'CANCELLED')`
+       WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED', 'COMPLETED')
+         -- P1 fixes 2026-11-09: a Paid service of a cancelled contract stays counted (service-scope.ts).
+         AND (v.status = 'COMPLETED' OR v.manual_invoice_no IS NOT NULL OR c.status <> 'CANCELLED')`
     );
     const expected = rows[0]!;
 
