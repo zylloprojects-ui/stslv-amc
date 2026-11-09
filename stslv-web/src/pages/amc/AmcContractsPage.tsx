@@ -17,6 +17,7 @@ import { ContractStatusPill, Filter, FilterPanel, Pager, Pill } from './componen
 import { ContractFormModal } from './ContractFormModal'
 import { MoveContractDialog } from './ContractRecycleBinUsage'
 import { StatTile } from '../../components/StatTile'
+import { businessToday, daysBetween } from '../../lib/businessDate'
 import {
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
@@ -222,10 +223,8 @@ function validityNote(contract: Contract): { text: string; ended: boolean } | nu
     return null
   }
 
-  const end = Date.parse(`${contract.validTo}T00:00:00Z`)
-  const now = new Date()
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
-  const days = Math.round((end - today) / 86_400_000)
+  // Valid through its Valid To date in Oman; "ended" from the next Oman calendar day.
+  const days = daysBetween(businessToday(), contract.validTo)
 
   if (Number.isNaN(days)) {
     return null
@@ -244,7 +243,9 @@ function validityElapsed(contract: Contract): number {
 
   if (Number.isNaN(from) || Number.isNaN(to) || to <= from) return 0
 
-  return Math.min(100, Math.max(0, Math.round(((Date.now() - from) / (to - from)) * 100)))
+  const today = Date.parse(`${businessToday()}T00:00:00Z`)
+
+  return Math.min(100, Math.max(0, Math.round(((today - from) / (to - from)) * 100)))
 }
 
 const STATUS_EDGE: Record<ContractStatus, string> = {

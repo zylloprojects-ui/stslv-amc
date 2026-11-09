@@ -12,6 +12,7 @@ import type {
   ProcurementStatus,
   UpdateProcurementInput,
 } from "./procurement.schemas";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 interface ProcurementRow {
   id: string;
@@ -296,7 +297,7 @@ export function changeProcurementStatus(
     let deliveredDate: string | null = null;
 
     if (input.status === "DELIVERED") {
-      const today = await client.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
+      const today = await client.query<{ today: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today`);
       deliveredDate = input.deliveredDate ?? before.deliveredDate ?? (today.rows[0] as { today: string }).today;
     }
 

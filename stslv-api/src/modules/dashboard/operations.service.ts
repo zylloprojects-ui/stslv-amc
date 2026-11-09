@@ -6,12 +6,13 @@ import { SERVICE_IN_SCOPE_VISIT_ONLY } from "../amc/service-scope";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import type { AuthContext } from "../auth/access";
 import { schemaHas } from "../../shared/schema-features";
+import { BUSINESS_TIME_ZONE, BUSINESS_TODAY_SQL, businessDateSql } from "../../shared/business-date";
 
 // The AMC Operations Dashboard. Every figure is an aggregate query over the
 // stored contracts, visits and invoices at the moment of the request; nothing
 // is stored, estimated or annualised. A section the user may not see is null.
 //
-// "Today" and "this month" are the database's current date (current_date), the
+// "Today" and "this month" are Oman's (Asia/Muscat) business date (BUSINESS_TODAY_SQL, shared/business-date.ts), the
 // same date every other STSLV module measures due, overdue and expiry against,
 // so the dashboard never disagrees with the schedule or the reports. The time
 // zone in use is returned with the figures.
@@ -154,7 +155,7 @@ export function percentOf(count: number, total: number): string | null {
 
 export async function contractKpis(renewals: boolean): Promise<NonNullable<OperationsKpis["contracts"]>> {
   const renewalCount = renewals
-    ? `count(*) FILTER (WHERE c.valid_to BETWEEN current_date AND current_date + $1::int
+    ? `count(*) FILTER (WHERE c.valid_to BETWEEN ${BUSINESS_TODAY_SQL} AND ${BUSINESS_TODAY_SQL} + $1::int
          AND EXISTS (SELECT 1 FROM amc_contracts r WHERE r.renewed_from_id = c.id AND r.status <> 'CANCELLED'))::int`
     : "NULL::int";
   const result = await pool.query<{
@@ -167,11 +168,11 @@ export async function contractKpis(renewals: boolean): Promise<NonNullable<Opera
     expiring_soon_with_renewal: number | null;
   }>(
     `SELECT count(*)::int AS active,
-            count(*) FILTER (WHERE c.valid_to < current_date)::int AS active_past_validity,
+            count(*) FILTER (WHERE c.valid_to < ${BUSINESS_TODAY_SQL})::int AS active_past_validity,
             COALESCE(sum(c.contract_value), 0)::numeric(16,3)::text AS active_value,
             COALESCE(sum(c.final_credit), 0)::numeric(16,3)::text AS final_credit_total,
             count(c.final_credit)::int AS final_credit_recorded,
-            count(*) FILTER (WHERE c.valid_to BETWEEN current_date AND current_date + $1::int)::int AS expiring_soon,
+            count(*) FILTER (WHERE c.valid_to BETWEEN ${BUSINESS_TODAY_SQL} AND ${BUSINESS_TODAY_SQL} + $1::int)::int AS expiring_soon,
             ${renewalCount} AS expiring_soon_with_renewal
      FROM amc_contracts c
      WHERE c.status = 'ACTIVE'`,
@@ -212,7 +213,7 @@ async function portfolio(): Promise<NonNullable<OperationsDashboard["portfolio"]
 export async function expiring(renewals: boolean): Promise<NonNullable<OperationsDashboard["expiring"]>> {
   // Same contract dates as the KPI, a wider window. Active contracts already past
   // validity are listed first: they are the most urgent and are still marked Active.
-  const window = "c.status = 'ACTIVE' AND c.valid_to <= current_date + $1::int";
+  const window = `c.status = 'ACTIVE' AND c.valid_to <= ${BUSINESS_TODAY_SQL} + $1::int`;
   const storedReference = await hasStoredReference();
   const renewalSelect = renewals
     ? `(SELECT json_build_object('id', r.id::text, 'reference', ${referenceSql("r", storedReference)}, 'status', r.status) FROM amc_contracts r
@@ -220,7 +221,7 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
     : "NULL::json";
   const [totals, rows] = await Promise.all([
     pool.query<{ total: number; past: number }>(
-      `SELECT count(*)::int AS total, count(*) FILTER (WHERE c.valid_to < current_date)::int AS past
+      `SELECT count(*)::int AS total, count(*) FILTER (WHERE c.valid_to < ${BUSINESS_TODAY_SQL})::int AS past
        FROM amc_contracts c WHERE ${window}`,
       [EXPIRING_LIST_DAYS]
     ),
@@ -235,7 +236,7 @@ export async function expiring(renewals: boolean): Promise<NonNullable<Operation
       renewal: { id: string; reference: string; status: ContractStatus } | null;
     }>(
       `SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.id AS client_id, cl.name AS client_name, c.system_description,
-              c.valid_to::text AS valid_to, (c.valid_to - current_date)::int AS days_left,
+              c.valid_to::text AS valid_to, (c.valid_to - ${BUSINESS_TODAY_SQL})::int AS days_left,
               ${renewalSelect} AS renewal
        FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
        WHERE ${window}
@@ -285,9 +286,10 @@ export async function overallServiceCounts(): Promise<{ overall: number; openOve
 }
 
 export async function paymentFigures(): Promise<PaymentFigures> {
-  const paidThisMonth = "v.manual_invoice_no IS NOT NULL AND date_trunc('month', v.manual_invoice_at) = date_trunc('month', now())";
-  // Scheduled this month, by the same current_date as Services This Month.
-  const scheduledThisMonth = "date_trunc('month', v.scheduled_date) = date_trunc('month', current_date)";
+  // The Oman month the Invoice No. was entered in (manual_invoice_at is an absolute timestamp).
+  const paidThisMonth = `v.manual_invoice_no IS NOT NULL AND date_trunc('month', ${businessDateSql("v.manual_invoice_at")}) = date_trunc('month', ${BUSINESS_TODAY_SQL})`;
+  // Scheduled this month, by the same Oman business date as Services This Month.
+  const scheduledThisMonth = `date_trunc('month', v.scheduled_date) = date_trunc('month', ${BUSINESS_TODAY_SQL})`;
   const result = await pool.query<{
     paid: number;
     paid_value: string;
@@ -335,12 +337,12 @@ export async function paymentFigures(): Promise<PaymentFigures> {
 async function paymentTrend(): Promise<PaymentTrendMonth[]> {
   const result = await pool.query<PaymentTrendMonth>(
     `SELECT to_char(m.month, 'YYYY-MM') AS month, count(s.id)::int AS count, COALESCE(sum(s.visit_amount), 0)::numeric(16,3)::text AS value
-     FROM generate_series(date_trunc('month', now()) - make_interval(months => $1::int - 1), date_trunc('month', now()), interval '1 month') AS m (month)
+     FROM generate_series(date_trunc('month', ${BUSINESS_TODAY_SQL}::timestamp) - make_interval(months => $1::int - 1), date_trunc('month', ${BUSINESS_TODAY_SQL}::timestamp), interval '1 month') AS m (month)
      LEFT JOIN (
        SELECT v.id, v.visit_amount, v.manual_invoice_at
        FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
        WHERE ${IN_SCOPE} AND v.manual_invoice_no IS NOT NULL
-     ) s ON date_trunc('month', s.manual_invoice_at) = m.month
+     ) s ON date_trunc('month', ${businessDateSql("s.manual_invoice_at")}::timestamp) = m.month
      GROUP BY m.month
      ORDER BY m.month`,
     [CHART_MONTHS]
@@ -353,7 +355,7 @@ async function schedule(): Promise<NonNullable<OperationsDashboard["schedule"]>>
   const select = `
     SELECT v.id, v.amc_contract_id, cl.id AS client_id, cl.name AS client_name, c.system_description,
            v.scheduled_date::text AS scheduled_date, COALESCE(v.assigned_to, c.responsible_engineer) AS assigned_to, v.status,
-           (v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < current_date) AS is_overdue
+           (v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < ${BUSINESS_TODAY_SQL}) AS is_overdue
     FROM amc_visits v
     JOIN amc_contracts c ON c.id = v.amc_contract_id
     JOIN clients cl ON cl.id = c.client_id`;
@@ -369,9 +371,9 @@ async function schedule(): Promise<NonNullable<OperationsDashboard["schedule"]>>
     is_overdue: boolean;
   };
   // Upcoming work is outstanding work only; today's list also shows what was already completed today.
-  const todayWhere = `${COUNTED_VISIT} AND v.scheduled_date = current_date`;
+  const todayWhere = `${COUNTED_VISIT} AND v.scheduled_date = ${BUSINESS_TODAY_SQL}`;
   const upcomingWhere = `${COUNTED_VISIT} AND v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED')
-    AND v.scheduled_date > current_date AND v.scheduled_date <= current_date + $1::int`;
+    AND v.scheduled_date > ${BUSINESS_TODAY_SQL} AND v.scheduled_date <= ${BUSINESS_TODAY_SQL} + $1::int`;
   const [today, upcoming, totals] = await Promise.all([
     pool.query<Row>(`${select} WHERE ${todayWhere} ORDER BY lower(cl.name), v.id LIMIT $1`, [LIST_LIMIT]),
     pool.query<Row>(`${select} WHERE ${upcomingWhere} ORDER BY v.scheduled_date, lower(cl.name), v.id LIMIT $2`, [
@@ -412,7 +414,7 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
   const renewals = canContracts ? await schemaHas(["amc_contracts.renewed_from_id"]) : false;
 
   const [clock, contracts, statusBreakdown, expiringList, workload, todayWork, payments, trend, overallServices] = await Promise.all([
-    pool.query<{ today: string; time_zone: string }>("SELECT current_date::text AS today, current_setting('TimeZone') AS time_zone"),
+    pool.query<{ today: string; time_zone: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today, '${BUSINESS_TIME_ZONE}'::text AS time_zone`),
     canContracts ? contractKpis(renewals) : null,
     canContracts ? portfolio() : null,
     canContracts ? expiring(renewals) : null,
@@ -459,7 +461,7 @@ export async function getCalendarMonth(month: string): Promise<{ month: string; 
             count(*)::int AS total,
             count(*) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
             count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED'))::int AS open,
-            count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < current_date)::int AS overdue
+            count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < ${BUSINESS_TODAY_SQL})::int AS overdue
      FROM amc_visits v
      WHERE ${COUNTED_VISIT}
        AND v.scheduled_date >= to_date($1, 'YYYY-MM')

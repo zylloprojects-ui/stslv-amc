@@ -2,6 +2,7 @@ import { pool } from "../../config/database";
 import { notFound } from "../../shared/errors";
 import type { RenewalHistoryQuery } from "./amc.schemas";
 import { hasStoredReference, referenceSql } from "./contract-reference";
+import { businessDateSql } from "../../shared/business-date";
 
 // Read-only views of renewal links (migration 0072).
 
@@ -77,14 +78,14 @@ export const RENEWAL_HISTORY_FROM = `FROM amc_contracts c
      JOIN amc_contracts s ON s.id = c.renewed_from_id`;
 
 const historySql = (storedReference: boolean) => `SELECT ${summarySql(storedReference)}, s.id AS source_id, ${referenceSql("s", storedReference)} AS source_reference, s.valid_from::text AS source_valid_from, s.valid_to::text AS source_valid_to, s.status AS source_status,
-            c.created_at::date::text AS created_on
+            ${businessDateSql("c.created_at")}::text AS created_on
      ${RENEWAL_HISTORY_FROM}
      ORDER BY c.created_at DESC, c.id DESC`;
 
 function toHistoryItem(row: HistoryRow) {
   return {
     renewal: toSummary(row),
-    /** The day the renewal was made, in the database's time zone (the same day current_date gives). */
+    /** The Oman (Asia/Muscat) day the renewal was made. */
     createdOn: row.created_on,
     source: { id: row.source_id, reference: row.source_reference, validFrom: row.source_valid_from, validTo: row.source_valid_to, status: row.source_status },
   };

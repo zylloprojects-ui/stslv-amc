@@ -1,6 +1,7 @@
 import { pool } from "../../config/database";
 import { escapeLike } from "../../shared/validation";
 import type { ActivityFilters, ListActivityQuery, ListLoginsQuery, LoginFilters } from "./audit.schemas";
+import { businessDayStartSql } from "../../shared/business-date";
 
 // Read-only views over activity_logs. Only the parts of an entry's details that
 // are meant to be read are returned (field changes, a reason, a sign-in's
@@ -22,11 +23,11 @@ function asChanges(value: unknown): Changes | null {
 function dateConditions(query: { from?: string | undefined; to?: string | undefined }, params: unknown[], conditions: string[]) {
   if (query.from) {
     params.push(query.from);
-    conditions.push(`l.created_at >= $${params.length}::date`);
+    conditions.push(`l.created_at >= ${businessDayStartSql(`$${params.length}::date`)}`);
   }
   if (query.to) {
     params.push(query.to);
-    conditions.push(`l.created_at < ($${params.length}::date + 1)`);
+    conditions.push(`l.created_at < ${businessDayStartSql(`$${params.length}::date + 1`)}`);
   }
 }
 

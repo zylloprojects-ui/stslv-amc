@@ -1,3 +1,4 @@
+import { businessToday } from './businessDate'
 const dateTime = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 const time = new Intl.DateTimeFormat('en-GB', { timeStyle: 'short' })
 const count = new Intl.NumberFormat('en-GB', { maximumFractionDigits: 0 })
@@ -29,11 +30,9 @@ export function formatJobDate(project: { jobDate: string; jobDatePrecision: 'DAY
   return project.jobDatePrecision === 'MONTH' ? formatMonth(project.jobDate) : formatDate(project.jobDate)
 }
 
-/** Today's date on this computer, as YYYY-MM-DD. */
+/** Today's business date in Oman (Asia/Muscat), as YYYY-MM-DD, whatever this computer's time zone. */
 export function todayIso(): string {
-  const now = new Date()
-
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return businessToday()
 }
 
 export function formatTime(value: number | Date): string {

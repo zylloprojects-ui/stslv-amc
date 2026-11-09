@@ -15,6 +15,7 @@ import { SERVICE_REPORT_JSON_SQL, SERVICE_REPORT_TYPES_TEXT, serviceReportsAvail
 import { applyExecution } from "./visits.service";
 import { hasStoredReference, referenceSql } from "./contract-reference";
 import { SERVICE_IN_SCOPE } from "./service-scope";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // The Service Status page: one row per scheduled maintenance visit (amc_visits),
 // never one per contract. It reads the same visit records as the AMC Schedule
@@ -69,7 +70,7 @@ export function serviceStatusSql(f: Pick<Features, "renewals">): string {
 
   return `CASE
     WHEN v.status = 'COMPLETED' THEN 'COMPLETED'
-    WHEN (c.status = 'EXPIRED' OR c.valid_to < current_date) ${noOpenRenewal} THEN 'WAITING_FOR_RENEWAL'
+    WHEN (c.status = 'EXPIRED' OR c.valid_to < ${BUSINESS_TODAY_SQL}) ${noOpenRenewal} THEN 'WAITING_FOR_RENEWAL'
     ELSE 'NOT_COMPLETED'
   END`;
 }
@@ -99,7 +100,7 @@ function selectSql(f: Features): string {
          (to_jsonb(v) ->> 'cycle_no')::int AS cycle_no, to_jsonb(v) ->> 'service_code' AS service_code,
          v.period_start::text AS period_start, v.period_end::text AS period_end, v.scheduled_date::text AS scheduled_date,
          v.status, v.completed_date::text AS completed_date,
-         (v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < current_date) AS is_overdue,
+         (v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < ${BUSINESS_TODAY_SQL}) AS is_overdue,
          ${f.masters ? "se.id AS sales_engineer_id, se.name AS sales_engineer_name" : "NULL::bigint AS sales_engineer_id, NULL::text AS sales_engineer_name"},
          ${f.reportNumber ? "v.service_report_no" : "NULL::text"} AS service_report_no,
          ${f.engineerName ? "v.sales_engineer_name" : "NULL::text"} AS manual_engineer_name,
@@ -481,7 +482,7 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
       // The page no longer asks for a date: completion is recorded on today's date (the database's), as before when
       // the page pre-filled today. A request may still name the date when it completes the visit.
       const completedDate =
-        input.completedDate ?? (row.status === "COMPLETED" ? undefined : (await client.query<{ today: string }>("SELECT current_date::text AS today")).rows[0]?.today);
+        input.completedDate ?? (row.status === "COMPLETED" ? undefined : (await client.query<{ today: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today`)).rows[0]?.today);
 
       await applyExecution(client, auth, id, { status: "COMPLETED", ...(completedDate !== undefined ? { completedDate } : {}) });
     } else if (input.status === "NOT_COMPLETED" && row.status === "COMPLETED") {

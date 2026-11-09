@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { BUSINESS_TIME_ZONE } from "../business-date";
 
 // The one place that says how an exported document is branded.
 //
@@ -27,8 +28,8 @@ export const BRAND = {
   white: "FFFFFF",
 } as const;
 
-/** Report times are printed in the business time zone. */
-export const REPORT_TIME_ZONE = "Asia/Muscat";
+/** Report times are printed in the business time zone (shared/business-date.ts). */
+export const REPORT_TIME_ZONE = BUSINESS_TIME_ZONE;
 export const REPORT_TIME_ZONE_LABEL = "Oman time";
 
 const BRANDING_DIR = path.resolve(__dirname, "..", "..", "..", "assets", "branding");

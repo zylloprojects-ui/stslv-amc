@@ -1,3 +1,4 @@
+import { businessToday } from '../../lib/businessDate'
 // Formatting for AMC dates and money. Both arrive as text and are formatted as
 // text: money is never turned into a floating-point number, and a calendar day
 // is never shifted by a time zone.
@@ -36,9 +37,8 @@ const pad = (value: number) => String(value).padStart(2, '0')
 
 /** Today in the user's own time zone, as "YYYY-MM-DD". */
 export function todayIso(): string {
-  const now = new Date()
-
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  // Oman's business date (Asia/Muscat), the same "today" as the API, whatever this computer's time zone.
+  return businessToday()
 }
 
 /** The current month as "YYYY-MM". */

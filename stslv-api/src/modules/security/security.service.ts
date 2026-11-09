@@ -10,6 +10,7 @@ import { assertExportSize, exportFormatSchema, type ReportDefinition } from "../
 import type { AuthContext } from "../auth/access";
 import { getReadiness, type RequestTransport } from "../dashboard/readiness.service";
 import { backupStatus } from "./backups.service";
+import { businessDayStartSql } from "../../shared/business-date";
 
 // Security Center and Deletion Log: read-only views over what the application
 // already records. Nothing here writes, and only recorded events are shown.
@@ -61,8 +62,8 @@ export async function listSecurityEvents(query: z.infer<typeof listSecurityEvent
     const p = add(`%${escapeLike(query.search)}%`);
     conditions.push(`(l.description ILIKE ${p} OR u.full_name ILIKE ${p} OR l.metadata ->> 'ip' ILIKE ${p})`);
   }
-  if (query.from) conditions.push(`l.created_at >= ${add(query.from)}::date`);
-  if (query.to) conditions.push(`l.created_at < ${add(query.to)}::date + 1`);
+  if (query.from) conditions.push(`l.created_at >= ${businessDayStartSql(`${add(query.from)}::date`)}`);
+  if (query.to) conditions.push(`l.created_at < ${businessDayStartSql(`${add(query.to)}::date + 1`)}`);
 
   const from = "FROM activity_logs l LEFT JOIN users u ON u.id = l.user_id";
   const where = conditions.join(" AND ");
@@ -239,8 +240,8 @@ function deletionFilter(query: Omit<z.infer<typeof listDeletionsSchema>, "page" 
     const p = add(`%${escapeLike(query.search)}%`);
     conditions.push(`(l.description ILIKE ${p} OR l.entity_id::text = ${add(query.search)} OR u.full_name ILIKE ${p})`);
   }
-  if (query.from) conditions.push(`l.created_at >= ${add(query.from)}::date`);
-  if (query.to) conditions.push(`l.created_at < ${add(query.to)}::date + 1`);
+  if (query.from) conditions.push(`l.created_at >= ${businessDayStartSql(`${add(query.from)}::date`)}`);
+  if (query.to) conditions.push(`l.created_at < ${businessDayStartSql(`${add(query.to)}::date + 1`)}`);
 
   return { where: conditions.join(" AND "), params };
 }

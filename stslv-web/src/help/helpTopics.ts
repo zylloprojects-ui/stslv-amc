@@ -34,6 +34,7 @@ const GENERAL: HelpTopic[] = [
           'The search box in the header finds the pages you may open (use each page’s own search for records).',
           'The bell shows alerts for your work: overdue services, contracts past validity and work waiting for an invoice.',
           'The question-mark button opens help for the page you are on. Help & User Guide in your account menu opens the whole guide.',
+          'Dates follow Oman time (Asia/Muscat) everywhere: "today", due and overdue services, contract expiry and "this month" change at midnight in Oman, wherever you are. A contract is valid through its Valid To date and shows as expired from the next day.',
           'The light-bulb button (if your role allows suggestions) sends an idea or a problem report to the administrators.',
         ],
       },

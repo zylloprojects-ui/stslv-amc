@@ -14,6 +14,7 @@ import { MaintenanceCalendar } from './dashboard/MaintenanceCalendar'
 import type { OperationsDashboard } from './dashboard/operationsTypes'
 import { RecentInvoices } from './dashboard/RecentInvoices'
 import { ExpiringContracts, PaymentTrend, PortfolioStatus, WorkloadChart } from './dashboard/Widgets'
+import { businessToday, formatBusinessDayLong } from '../lib/businessDate'
 
 // AMC Portfolio Status, Expiring Contracts and Recent Invoices are hidden on the dashboard by default. Set VITE_SHOW_DASHBOARD_DETAIL_PANELS=true to bring them back.
 // Read on each render (not once at load) so tests can check both settings.
@@ -95,7 +96,7 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-6 px-6 py-6 sm:px-8">
           <div className="min-w-0">
             <p className="bn-eyebrow text-xs font-semibold uppercase tracking-[0.2em]">
-              {(data ? new Date(data.asOf) : new Date()).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              {formatBusinessDayLong(data ? data.asOf : businessToday())}
             </p>
             <h1 className="bn-strong mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">AMC Operations Dashboard</h1>
             <p className="bn-sub mt-1 break-words text-sm">{`${greeting()}, ${auth.user?.fullName ?? ''}. Contracts, scheduled maintenance, invoicing and renewals at a glance.`}</p>

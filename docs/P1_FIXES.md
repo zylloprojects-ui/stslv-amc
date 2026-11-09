@@ -72,6 +72,10 @@ setting it on the API's database connections (for example `options: -c timezone=
 `config/database.ts`) or on the production database (`ALTER DATABASE … SET timezone = 'Asia/Muscat'`). That
 changes every `current_date` calculation at once and must be regression-tested as its own change.
 
+> **2026-11-09 (owner approval): done** on `feature/sts-elv-client-fixes-20261109`, without changing the database or
+> session time zone: every business-date expression now uses the Oman date explicitly (`shared/business-date.ts`;
+> web `lib/businessDate.ts`). See docs/STS_ELV_CLIENT_FIXES_20261109.md § 12.
+
 ## Final verification (2026-11-09)
 
 Run one suite at a time, on the isolated test database `stslv_amc_test_p1_fixes` (never `stslv_amc_dev` or Neon):

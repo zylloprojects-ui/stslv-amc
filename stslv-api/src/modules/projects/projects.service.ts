@@ -15,6 +15,7 @@ import type {
   ProjectStatus,
   UpdateProjectInput,
 } from "./projects.schemas";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 interface ProjectRow {
   id: string;
@@ -458,7 +459,7 @@ export function changeProjectStatus(auth: AuthContext, id: string, input: Change
     let completedDate: string | null = null;
 
     if (input.status === "COMPLETED") {
-      const today = await client.query<{ today: string }>("SELECT CURRENT_DATE::text AS today");
+      const today = await client.query<{ today: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today`);
       completedDate = input.completedDate ?? (today.rows[0] as { today: string }).today;
 
       // Both are YYYY-MM-DD, so text order is date order.

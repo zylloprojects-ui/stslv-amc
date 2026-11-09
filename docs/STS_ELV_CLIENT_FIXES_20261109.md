@@ -221,9 +221,50 @@ Not exercised in the browser: dark mode, real phones, the Hostinger CSP (the E2E
 ## 11. Outstanding
 
 1. Same visible contract number on renewal — **done** (section 3a, migration 0111).
-2. App-wide "today" in Asia/Muscat instead of the database time zone — touches the Dashboard (section 2).
+2. App-wide "today" in Asia/Muscat — **done** (section 12), Dashboard included.
 3. Development Admin login `admin@stslev.com` — change only with approval (section 1).
 4. Service Sales money totals — **done** (section 7).
 6. Renewals made before 0111 keep their own numbers (not renumbered). If the client wants them merged under one number,
    that is a data change on real records and needs separate approval.
 5. PDF preview under the Hostinger CSP (`object-src 'none'`): verify in UAT; the viewer always offers Download.
+
+## 12. Oman business dates everywhere (owner approval 2026-11-09)
+
+**Before.** Every "today" was PostgreSQL `current_date`, which follows the database session's time zone (local:
+Asia/Calcutta; Neon: UTC, so "today" changed at 04:00 Oman time). The Dashboard's "paid this month" and payment chart
+grouped stored timestamps by the session's month; "Renewed on" and date-range filters on logs used the session's day;
+the web app used the browser's clock for its default month, calendar "today" and "days left". Only the P1 expiry job
+used Oman time, so modules could disagree for up to four hours a day.
+
+**Now.** One business calendar, Oman (Asia/Muscat), whatever the server, database or browser time zone:
+
+| Where | Helper |
+|---|---|
+| API SQL "today" (~60 places: Dashboard, AMC Management, AMC Contracts, Renewal queue and reports, Service Status, Schedule/visits, Calendar summaries, Client 360, Sales Engineers, Reports, Procurement and Projects default dates) | `BUSINESS_TODAY_SQL` = `(now() AT TIME ZONE 'Asia/Muscat')::date` |
+| Day or month of a stored timestamp ("Renewed on", Renewal History report filter, Dashboard "paid this month" and payment chart) | `businessDateSql(ts)` |
+| Date-range filters on stored timestamps (Audit Log, Security Center logs, Suggestions, Recycle Bin) | `businessDayStartSql(date)`: an Oman day starts at 20:00 UTC the evening before |
+| Reports' printed time zone, contract expiry job | `BUSINESS_TIME_ZONE` (`REPORT_TIME_ZONE` and `CONTRACT_TIME_ZONE` point at it) |
+| Web "today", default month, calendar today, contract "days left", Dashboard heading date, log quick ranges | `lib/businessDate.ts` (`businessToday`, `businessDateOf`, `daysBetween`, `addCalendarDays`, `formatBusinessDayLong`); `todayIso()` in `lib/format.ts` and `amcFormat.ts` delegate to it |
+
+API: `stslv-api/src/shared/business-date.ts`. Web: `stslv-web/src/lib/businessDate.ts`. The Dashboard and AMC
+Management now report `timeZone: "Asia/Muscat"`.
+
+**Unchanged.** Stored timestamps stay `timestamptz` (absolute instants; Audit Log and other times display as before).
+Date-only fields (Valid From/To, scheduled, completed, invoice dates) are calendar dates and are never shifted or
+reinterpreted. No data is changed and **no migration** is needed; the database/session time zone is not changed
+(it is not reliable through connection poolers, so every expression is explicit). Renewal, invoice, service-counting,
+Paid reference and permission rules, historical numbers and records, Backup & Restore, Invoice Acknowledgements,
+Hostinger settings and both production switches are unchanged; the expiry job stays switched off.
+
+**Rule.** A contract is valid through its Valid To date in Oman and expired (Validity → Expired, Expired figure,
+"Waiting for Renewal", past validity) from the next Oman calendar day; a service is overdue from the Oman day after
+its scheduled date; "this month" is the Oman month.
+
+**Tests.** `stslv-api/tests/business-date-oman.test.ts` (9) runs its database sessions in a time zone that is on a
+different calendar day from Oman at that moment (UTC−12 or UTC+14: one always is), and checks Oman midnight
+(19:59:59Z / 20:00:00Z), month end, year end, 29 February, day starts for filters, Valid To today vs yesterday across
+Contracts, Due/Expired, KPIs, Renewal queue, Service Status, AMC Management and Dashboard, overdue and completion date,
+"Renewed on", and "paid this month" at 00:30 on the 1st vs one minute before. Against the previous code 4 of these
+fail (verified by stashing the source changes); with this change all pass. `stslv-web/src/test/business-date.test.tsx`
+(6) fixes the browser clock at instants around Oman midnight (e.g. 20:30 UTC on 31 December = 1 January in Oman) and
+checks the helpers and the contracts page's "Ends today" / "Ended 1 day ago".

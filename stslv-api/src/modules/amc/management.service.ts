@@ -14,6 +14,7 @@ import {
 import type { ContractStatus } from "./amc.constants";
 import { getWorkload } from "./reports.service";
 import { hasStoredReference, referenceSql } from "./contract-reference";
+import { BUSINESS_TIME_ZONE, BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // AMC Management: the read-only summary behind the AMC Management page. Every
 // figure is an aggregate over the stored contracts, visits and invoices at the
@@ -90,9 +91,9 @@ export async function getExpiryFigures(): Promise<ExpiryFigures> {
 
   const [inWindow, expired] = await Promise.all([
     pool.query<{ id: string; days_left: number; renewed: boolean }>(
-      `SELECT c.id, (c.valid_to - current_date)::int AS days_left, ${renewed} AS renewed
+      `SELECT c.id, (c.valid_to - ${BUSINESS_TODAY_SQL})::int AS days_left, ${renewed} AS renewed
        FROM amc_contracts c
-       WHERE c.status = 'ACTIVE' AND c.valid_to BETWEEN current_date AND current_date + $1::int
+       WHERE c.status = 'ACTIVE' AND c.valid_to BETWEEN ${BUSINESS_TODAY_SQL} AND ${BUSINESS_TODAY_SQL} + $1::int
        ORDER BY c.id`,
       [maxBand]
     ),
@@ -100,7 +101,7 @@ export async function getExpiryFigures(): Promise<ExpiryFigures> {
       `SELECT count(*) FILTER (WHERE c.status = 'EXPIRED')::int AS expired_status,
               count(*) FILTER (WHERE c.status = 'ACTIVE')::int AS active_past_validity
        FROM amc_contracts c
-       WHERE (c.status = 'EXPIRED' OR (c.status = 'ACTIVE' AND c.valid_to < current_date))
+       WHERE (c.status = 'EXPIRED' OR (c.status = 'ACTIVE' AND c.valid_to < ${BUSINESS_TODAY_SQL}))
          AND NOT ${renewed}`
     ),
   ]);
@@ -230,7 +231,7 @@ async function scheduleFigures(canAmounts: boolean): Promise<ScheduleFigures> {
         }>(
           `WITH month_visits AS (
              SELECT v.visit_amount FROM amc_visits v
-             WHERE ${COUNTED_VISIT} AND date_trunc('month', v.scheduled_date) = date_trunc('month', current_date)
+             WHERE ${COUNTED_VISIT} AND date_trunc('month', v.scheduled_date) = date_trunc('month', ${BUSINESS_TODAY_SQL})
            )
            SELECT b.ready_count, b.ready_amount, b.amount_required,
                   m.month_amount, m.month_visits, m.month_missing
@@ -308,7 +309,7 @@ export async function getAmcManagementSummary(auth: AuthContext): Promise<AmcMan
   const renewals = await schemaHas(["amc_contracts.renewed_from_id"]);
 
   const [clock, contracts, schedule, invoices, expiry, list, recent] = await Promise.all([
-    pool.query<{ today: string; time_zone: string }>("SELECT current_date::text AS today, current_setting('TimeZone') AS time_zone"),
+    pool.query<{ today: string; time_zone: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today, '${BUSINESS_TIME_ZONE}'::text AS time_zone`),
     contractKpis(renewals),
     canVisits ? scheduleFigures(canAmounts) : null,
     canInvoices ? invoiceFigures() : null,

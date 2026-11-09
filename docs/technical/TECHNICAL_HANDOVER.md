@@ -77,7 +77,7 @@ From `docs/DEPLOYMENT.md` and `render.yaml`:
 | Connection | **Direct** host (no `-pooler`), TLS required: `PGSSLMODE=require` |
 | Credentials | Entered only in the Render dashboard (`DB_HOST`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`; `DB_PORT` 5432) |
 | Schema | `public` (tests use a separate schema via `DB_SCHEMA`, never in production) |
-| Time zone | Neon default (UTC). "Today" for due/overdue uses the database `current_date` — see Outstanding Issues OI-12 |
+| Time zone | Database session may stay UTC (Neon default). Every business date ("today", due/overdue, expiry, "this month", date filters) is computed in Asia/Muscat by `stslv-api/src/shared/business-date.ts` and `stslv-web/src/lib/businessDate.ts`; timestamps stay timestamptz. OI-12 resolved 2026-11-09 |
 | Exposure | Reachable from the internet with password + TLS: accepted for the client-review copy only |
 | Backups | Free plan short history; real backups are manual `pg_dump` (§8) |
 

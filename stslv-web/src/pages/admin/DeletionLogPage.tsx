@@ -16,6 +16,7 @@ import { ColumnsMenu } from '../clients/ColumnsMenu'
 import { useHiddenColumns } from './useHiddenColumns'
 import { actionLabel, fieldLabel } from './auditTypes'
 import { RecycleBin } from './RecycleBin'
+import { addCalendarDays, businessDateOf } from '../../lib/businessDate'
 
 type CurrentStatus = 'LIVE' | 'INACTIVE' | 'CANCELLED' | 'ARCHIVED' | 'IN_RECYCLE_BIN' | 'PERMANENTLY_DELETED'
 
@@ -91,7 +92,8 @@ function Stat({ label, value, icon, from, to, children }: { label: string; value
   )
 }
 
-const isoDay = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+// Oman calendar days, the same days the API filters by (Asia/Muscat).
+const isoDay = (date: Date) => businessDateOf(date)
 
 type View = 'bin' | 'history'
 
@@ -207,10 +209,9 @@ function DeletionHistory() {
   }
 
   const rangeFrom = (days: number) => {
-    const start = new Date()
-    start.setDate(start.getDate() - days)
-    setFrom(isoDay(start))
-    setTo(isoDay(new Date()))
+    const today = isoDay(new Date())
+    setFrom(addCalendarDays(today, -days))
+    setTo(today)
     setPage(1)
   }
   const onPage = (type: DeletionEntry['kind']) => (data?.items ?? []).filter((entry) => entry.kind === type).length

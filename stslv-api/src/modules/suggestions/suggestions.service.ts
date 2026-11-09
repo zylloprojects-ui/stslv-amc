@@ -29,6 +29,7 @@ import {
   type SuggestionCategory,
   type SuggestionStatus,
 } from "./suggestions.workflow";
+import { businessDayStartSql } from "../../shared/business-date";
 
 // Suggestions & feedback. Every signed-in user submits suggestions and sees
 // their own; reviewers (isReviewer) see and manage all of them. A suggestion
@@ -210,11 +211,11 @@ export async function listForReview(query: ListManageQuery) {
   // Calendar days in the database's time zone, both ends included.
   if (query.from) {
     params.push(query.from);
-    conditions.push(`s.created_at >= $${params.length}::date`);
+    conditions.push(`s.created_at >= ${businessDayStartSql(`$${params.length}::date`)}`);
   }
   if (query.to) {
     params.push(query.to);
-    conditions.push(`s.created_at < $${params.length}::date + 1`);
+    conditions.push(`s.created_at < ${businessDayStartSql(`$${params.length}::date + 1`)}`);
   }
 
   const [list, counts] = await Promise.all([

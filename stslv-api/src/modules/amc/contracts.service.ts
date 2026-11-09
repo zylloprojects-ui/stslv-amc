@@ -39,6 +39,7 @@ import type {
   UpdateContractInput,
   BillingBasis,
 } from "./amc.schemas";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 interface ContractRow {
   id: string;
@@ -182,7 +183,7 @@ const contractSelect = (withMonths: boolean, storedReference: boolean) => `
          c.maintenance_frequency,
          ${withMonths ? "(SELECT array_agg(m.month::int ORDER BY m.month) FROM amc_contract_custom_months m WHERE m.amc_contract_id = c.id)" : "NULL::int[]"} AS custom_months,
          c.default_visit_amount, c.status,
-         (c.valid_to < current_date) AS is_past_validity, c.schedule_cutover_date::text AS schedule_cutover_date,
+         (c.valid_to < ${BUSINESS_TODAY_SQL}) AS is_past_validity, c.schedule_cutover_date::text AS schedule_cutover_date,
          c.notes, c.created_at, c.updated_at,
          c.created_by AS created_by_id, cb.full_name AS created_by_name, c.updated_by AS updated_by_id, ub.full_name AS updated_by_name,
          s.first_service_date, s.visit_count, s.completed_count, s.open_count, s.historical_count, s.cancelled_count, s.amount_missing_count,
@@ -417,12 +418,12 @@ export async function listContractHistory(id: string, query: ContractHistoryQuer
  *   expired  the Expired figure's rule (getContractKpis, AMC Management "not renewed / expired"): status Expired, or
  *            Active with Valid To before today. A renewed contract still shows: a renewal never hides the original.
  *   due      Active, Valid To today or within RENEWAL_WARNING_DAYS (45) days: the AMC Renewal queue's warning window.
- * "Today" is the database's current_date, as on AMC Management, AMC Renewal and the Dashboard, so the figures agree.
+ * "Today" is Oman's business date (BUSINESS_TODAY_SQL), as on AMC Management, AMC Renewal and the Dashboard, so the figures agree.
  * Reading never changes the stored status.
  */
 export const CONTRACT_VALIDITY_FILTERS = {
-  expired: "(c.status = 'EXPIRED' OR (c.status = 'ACTIVE' AND c.valid_to < current_date))",
-  due: `(c.status = 'ACTIVE' AND c.valid_to BETWEEN current_date AND current_date + ${RENEWAL_WARNING_DAYS})`,
+  expired: `(c.status = 'EXPIRED' OR (c.status = 'ACTIVE' AND c.valid_to < ${BUSINESS_TODAY_SQL}))`,
+  due: `(c.status = 'ACTIVE' AND c.valid_to BETWEEN ${BUSINESS_TODAY_SQL} AND ${BUSINESS_TODAY_SQL} + ${RENEWAL_WARNING_DAYS})`,
 } as const;
 
 export async function listContracts(query: ListContractsQuery) {

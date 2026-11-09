@@ -36,7 +36,7 @@ cards and actions. No permission was added or widened.
 
 ## KPI formulas
 
-Dates are the database's `current_date`, as everywhere else in STSLV AMC.
+Dates are the Oman business date (`BUSINESS_TODAY_SQL` = `(now() AT TIME ZONE 'Asia/Muscat')::date`, `stslv-api/src/shared/business-date.ts`), as everywhere else in STS-ELV AMC (2026-11-09).
 
 ### Contract KPIs (same query as the dashboard: `contractKpis` in `dashboard/operations.service.ts`)
 

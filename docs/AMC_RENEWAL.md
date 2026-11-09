@@ -21,10 +21,10 @@ The AMC reference is derived from the contract id (`AMC-0042`), so a renewal alw
 | Under Client Approval | the open renewal is a Draft |
 | Renewed | the open renewal is Active or Expired |
 | Cancelled | every renewal made was cancelled; stays here until a new renewal is started |
-| Due / Expired | no renewal; the source is Active or Expired and `valid_to <= current_date + 45` (ended contracts included, no look-back limit) |
+| Due / Expired | no renewal; the source is Active or Expired and `valid_to <= business today + 45` (Oman date) (ended contracts included, no look-back limit) |
 
 Contracts matching none (e.g. Draft or Cancelled sources with no renewal, or ending in 46+ days) are not on the queue.
-Eligibility is computed from `current_date` on every request: no scheduled job.
+Eligibility is computed from the Oman business date (`BUSINESS_TODAY_SQL` = `(now() AT TIME ZONE 'Asia/Muscat')::date`, `stslv-api/src/shared/business-date.ts`) on every request: no scheduled job.
 
 Decisions confirmed by the user on 2026-10-28: Cancelled stays Cancelled; Expired-status contracts are included;
 Remarks shows contract notes read-only (the open renewal's notes, otherwise the source's); on this page a renewal
@@ -69,7 +69,7 @@ no engineer. A new contract that is not a renewal is unchanged: its engineer sta
 - `GET /api/amc/renewals/queue?search&renewalStatus&page&pageSize` — rows, `kpis {due, underApproval, renewed, cancelled}` (over the search, not the status filter), `windowDays`, `today`. AMC_CONTRACTS:VIEW.
 - `GET /api/amc/renewals/queue/export?format=xlsx|pdf&search&renewalStatus&hidden` — VIEW + EXPORT; audit `amc_renewal_queue.exported`.
 - `GET /api/amc/reports/renewals/export?format=xlsx|pdf` — VIEW + EXPORT; audit `amc_renewal_history.exported`.
-- `GET /api/amc/reports/renewals` (existing) now also returns `createdOn`, the creation day in the database time zone.
+- `GET /api/amc/reports/renewals` (existing) now also returns `createdOn`, the Oman (Asia/Muscat) day the renewal was made.
 
 ## Eligibility across modules (open: shared rule proposed, not applied)
 

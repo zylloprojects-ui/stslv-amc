@@ -28,7 +28,7 @@ order is fixed: Arrange KPIs, Reset KPI Layout and Reset KPI Names are removed.
 - "Invoices Generated" is the approved manual Invoice No. reference status (shown as Paid in Accounts). It does not verify payment, and the card's hover text says so. Zoho invoices (Invoice Tracking) are not read.
 - Amounts are `visit_amount` / contract values, OMR excluding VAT, three decimals. No VAT is read or added.
 - Contracts in the Recycle Bin (0101) and their services are excluded through the `amc_contracts` / `amc_visits` views.
-- "This month" for cards 5–8 is by **scheduled date** (`current_date`). The older "Paid This Month" (`paidThisMonth`, by date the number was entered) is still returned but no longer shown.
+- "This month" for cards 5–8 is by **scheduled date** in the Oman calendar month (business date, Asia/Muscat). The older "Paid This Month" (`paidThisMonth`, by date the number was entered) is still returned but no longer shown.
 
 ## API changes (additive, backward-compatible)
 

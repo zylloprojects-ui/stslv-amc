@@ -4,6 +4,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { validationError } from "../../shared/errors";
 import { REPORT_TIME_ZONE } from "../../shared/export/branding";
 import { hasStoredReference, referenceSql } from "./contract-reference";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // Controlled contract expiry (P1 fixes, 2026-11-09). RULE APPROVED BY THE OWNER 2026-11-09:
 // an ACTIVE contract becomes EXPIRED on the first day after its Valid To date, measured in
@@ -77,7 +78,7 @@ export async function businessDateAt(instant: Date | string, db: Queryable = poo
 
 /** Today in the business time zone (the database clock's now(), read as Oman time). */
 export async function businessToday(db: Queryable = pool): Promise<string> {
-  const result = await db.query<{ today: string }>("SELECT (now() AT TIME ZONE $1)::date::text AS today", [CONTRACT_TIME_ZONE]);
+  const result = await db.query<{ today: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today`);
 
   return (result.rows[0] as { today: string }).today;
 }

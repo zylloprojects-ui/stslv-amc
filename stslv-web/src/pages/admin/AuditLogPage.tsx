@@ -12,6 +12,7 @@ import { IconTile, type IconName } from '../dashboard/icons'
 import { ColumnsMenu } from '../clients/ColumnsMenu'
 import { useHiddenColumns } from './useHiddenColumns'
 import { actionLabel, changeValue, fieldLabel, moduleLabel, type ActivityList, type ActivityOptions, type ActivityRecord } from './auditTypes'
+import { addCalendarDays, businessDateOf } from '../../lib/businessDate'
 
 const PAGE_SIZE = 25
 // The log is a list, not a table, so its "columns" are the parts of each entry. The action, time and description always show.
@@ -153,7 +154,8 @@ function Stat({ label, value, icon, from, to, children }: { label: string; value
   )
 }
 
-const isoDay = (date: Date) => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+// Oman calendar days, the same days the API filters by (Asia/Muscat).
+const isoDay = (date: Date) => businessDateOf(date)
 
 /** The activity recorded by every module, newest first. Read-only; for the Admin role. */
 export function AuditLogPage() {
@@ -194,10 +196,9 @@ export function AuditLogPage() {
   }
 
   const rangeFrom = (days: number) => {
-    const start = new Date()
-    start.setDate(start.getDate() - days)
-    setFrom(isoDay(start))
-    setTo(isoDay(new Date()))
+    const today = isoDay(new Date())
+    setFrom(addCalendarDays(today, -days))
+    setTo(today)
     setPage(1)
   }
   const today = isoDay(new Date())

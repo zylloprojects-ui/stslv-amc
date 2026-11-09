@@ -127,8 +127,9 @@ reliably honour a per-job time zone.
 
 ## Date consistency (known, not changed here)
 
-Expiry uses the Oman date. Most other screens (Dashboard expiring and past-validity figures, AMC Renewal
-due dates, Service Status "Waiting for Renewal", overdue flags, completion dates) use the database's
-`current_date`, which follows the database session's time zone; the web app's default month uses the
-browser's clock. See `docs/P1_FIXES.md` § Date consistency for the windows where they can differ and the
-recommended follow-up.
+Expiry uses the Oman date, and since 2026-11-09 so does every other screen: Dashboard expiring and
+past-validity figures, AMC Renewal due dates, Service Status "Waiting for Renewal", overdue flags, completion
+dates, "this month" figures and the web app's default month all use the Oman business date
+(`stslv-api/src/shared/business-date.ts`, `stslv-web/src/lib/businessDate.ts`), whatever the database session's
+or the browser's time zone. A contract is valid through its Valid To date in Oman and expired from the next Oman
+day; the manual and automatic rules therefore agree.

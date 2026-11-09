@@ -6,6 +6,7 @@ import type { PermissionKey } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
 import type { ExportSalesEngineersQuery } from "./masters.schemas";
 import { getMaster, listAllMasters, SALES_ENGINEERS } from "./masters.service";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // Engineer 360, the engineer list export and the accounts an engineer may be
 // linked to. Every figure is counted by PostgreSQL from the contracts linked
@@ -84,9 +85,9 @@ async function contractFigures(engineerId: string): Promise<EngineerContractFigu
 
 async function visitFigures(engineerId: string): Promise<EngineerVisitFigures> {
   const result = await pool.query<{ upcoming: number; overdue: number; next_visit: string | null }>(
-    `SELECT count(*) FILTER (WHERE ${OPEN_VISIT} AND v.scheduled_date >= current_date)::int AS upcoming,
-            count(*) FILTER (WHERE ${OPEN_VISIT} AND v.scheduled_date < current_date)::int AS overdue,
-            (min(v.scheduled_date) FILTER (WHERE ${OPEN_VISIT} AND v.scheduled_date >= current_date))::text AS next_visit
+    `SELECT count(*) FILTER (WHERE ${OPEN_VISIT} AND v.scheduled_date >= ${BUSINESS_TODAY_SQL})::int AS upcoming,
+            count(*) FILTER (WHERE ${OPEN_VISIT} AND v.scheduled_date < ${BUSINESS_TODAY_SQL})::int AS overdue,
+            (min(v.scheduled_date) FILTER (WHERE ${OPEN_VISIT} AND v.scheduled_date >= ${BUSINESS_TODAY_SQL}))::text AS next_visit
      FROM amc_visits v
      JOIN amc_contracts c ON c.id = v.amc_contract_id
      WHERE c.sales_engineer_id = $1`,
@@ -114,7 +115,7 @@ async function upcomingVisits(engineerId: string, total: number) {
      FROM amc_visits v
      JOIN amc_contracts c ON c.id = v.amc_contract_id
      JOIN clients cl ON cl.id = c.client_id
-     WHERE c.sales_engineer_id = $1 AND ${OPEN_VISIT} AND v.scheduled_date >= current_date
+     WHERE c.sales_engineer_id = $1 AND ${OPEN_VISIT} AND v.scheduled_date >= ${BUSINESS_TODAY_SQL}
      ORDER BY v.scheduled_date, v.id
      LIMIT $2`,
     [engineerId, UPCOMING_LIMIT]
@@ -139,7 +140,7 @@ export async function getEngineerSummary(auth: AuthContext, id: string): Promise
 
   const viewSchedule = can(auth, "AMC_SCHEDULE:VIEW");
   const [today, contracts, visits] = await Promise.all([
-    pool.query<{ today: string }>("SELECT current_date::text AS today"),
+    pool.query<{ today: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today`),
     can(auth, "AMC_CONTRACTS:VIEW") ? contractFigures(id) : null,
     viewSchedule ? visitFigures(id) : null,
   ]);

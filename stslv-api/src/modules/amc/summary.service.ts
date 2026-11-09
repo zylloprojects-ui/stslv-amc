@@ -1,5 +1,6 @@
 import { pool } from "../../config/database";
 import type { AuthContext } from "../auth/access";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // AMC figures for the dashboard and reports. Every number is a query over
 // amc_contracts and amc_visits at the moment of the request; nothing is stored
@@ -63,7 +64,7 @@ export async function getAmcSummary(auth: AuthContext, upcomingDays: number): Pr
   const canAmounts = auth.permissions.has("AMC_SCHEDULE:VIEW");
   const canVisits = canAmounts || auth.permissions.has("AMC_EXECUTION:VIEW");
 
-  const today = await pool.query<{ today: string }>("SELECT current_date::text AS today");
+  const today = await pool.query<{ today: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today`);
   const summary: AmcSummary = {
     asOf: today.rows[0]?.today ?? "",
     contracts: null,
@@ -80,7 +81,7 @@ export async function getAmcSummary(auth: AuthContext, upcomingDays: number): Pr
       cancelled: number;
     }>(
       `SELECT count(*) FILTER (WHERE status = 'ACTIVE')::int AS active,
-              count(*) FILTER (WHERE status = 'ACTIVE' AND valid_to < current_date)::int AS active_past_validity,
+              count(*) FILTER (WHERE status = 'ACTIVE' AND valid_to < ${BUSINESS_TODAY_SQL})::int AS active_past_validity,
               count(*) FILTER (WHERE status = 'DRAFT')::int AS draft,
               count(*) FILTER (WHERE status = 'EXPIRED')::int AS expired,
               count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled
@@ -118,13 +119,13 @@ export async function getAmcSummary(auth: AuthContext, upcomingDays: number): Pr
          FROM amc_visits v
          JOIN amc_contracts c ON c.id = v.amc_contract_id
        )
-       SELECT count(*) FILTER (WHERE outstanding AND scheduled_date <= current_date)::int AS due,
-              count(*) FILTER (WHERE outstanding AND status IN ('SCHEDULED', 'POSTPONED') AND scheduled_date < current_date)::int AS overdue,
-              count(*) FILTER (WHERE outstanding AND scheduled_date > current_date AND scheduled_date <= current_date + $1::int)::int AS upcoming,
-              count(*) FILTER (WHERE status NOT IN ('CANCELLED', 'HISTORICAL') AND date_trunc('month', scheduled_date) = date_trunc('month', current_date))::int AS due_this_month,
+       SELECT count(*) FILTER (WHERE outstanding AND scheduled_date <= ${BUSINESS_TODAY_SQL})::int AS due,
+              count(*) FILTER (WHERE outstanding AND status IN ('SCHEDULED', 'POSTPONED') AND scheduled_date < ${BUSINESS_TODAY_SQL})::int AS overdue,
+              count(*) FILTER (WHERE outstanding AND scheduled_date > ${BUSINESS_TODAY_SQL} AND scheduled_date <= ${BUSINESS_TODAY_SQL} + $1::int)::int AS upcoming,
+              count(*) FILTER (WHERE status NOT IN ('CANCELLED', 'HISTORICAL') AND date_trunc('month', scheduled_date) = date_trunc('month', ${BUSINESS_TODAY_SQL}))::int AS due_this_month,
               count(*) FILTER (WHERE outstanding AND status = 'IN_PROGRESS')::int AS in_progress,
               count(*) FILTER (WHERE outstanding AND status = 'POSTPONED')::int AS postponed,
-              count(*) FILTER (WHERE status = 'COMPLETED' AND date_trunc('month', completed_date) = date_trunc('month', current_date))::int AS completed_this_month,
+              count(*) FILTER (WHERE status = 'COMPLETED' AND date_trunc('month', completed_date) = date_trunc('month', ${BUSINESS_TODAY_SQL}))::int AS completed_this_month,
               count(*) FILTER (WHERE status = 'COMPLETED')::int AS completed_total,
               count(*) FILTER (WHERE status = 'HISTORICAL')::int AS historical
        FROM visits`,

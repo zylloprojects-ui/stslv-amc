@@ -2,6 +2,7 @@ import { pool } from "../../config/database";
 import type { PermissionKey } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
 import { getClient } from "./clients.service";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // Client 360: one client's figures, computed by PostgreSQL from the records
 // that reference the client on every request. Nothing is stored, estimated or
@@ -112,11 +113,11 @@ async function contractFigures(clientId: string): Promise<ClientContractFigures>
 
 /** The AMC expiry report's rule for one client: active contracts ending within the window, or already past validity. */
 async function renewals(clientId: string) {
-  const condition = "client_id = $1 AND status = 'ACTIVE' AND valid_to <= current_date + $2::int";
+  const condition = `client_id = $1 AND status = 'ACTIVE' AND valid_to <= ${BUSINESS_TODAY_SQL} + $2::int`;
   const total = await pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM amc_contracts WHERE ${condition}`, [clientId, RENEWAL_WINDOW_DAYS]);
   const rows = await pool.query<{ id: string; system_description: string; valid_from: string; valid_to: string; days_left: number; contract_value: string }>(
     `SELECT id, system_description, valid_from::text AS valid_from, valid_to::text AS valid_to,
-            (valid_to - current_date)::int AS days_left, contract_value
+            (valid_to - ${BUSINESS_TODAY_SQL})::int AS days_left, contract_value
      FROM amc_contracts WHERE ${condition}
      ORDER BY valid_to, id
      LIMIT $3`,
@@ -139,11 +140,11 @@ async function renewals(clientId: string) {
 
 async function visitFigures(clientId: string): Promise<ClientVisitFigures> {
   const result = await pool.query<{ upcoming: number; overdue: number; completed: number; ready: number; next_visit: string | null }>(
-    `SELECT count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED') AND v.scheduled_date >= current_date)::int AS upcoming,
-            count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED') AND v.scheduled_date < current_date)::int AS overdue,
+    `SELECT count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED') AND v.scheduled_date >= ${BUSINESS_TODAY_SQL})::int AS upcoming,
+            count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED') AND v.scheduled_date < ${BUSINESS_TODAY_SQL})::int AS overdue,
             count(*) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
             count(*) FILTER (WHERE b.invoice_eligibility = 'READY_FOR_INVOICE')::int AS ready,
-            (min(v.scheduled_date) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED') AND v.scheduled_date >= current_date))::text AS next_visit
+            (min(v.scheduled_date) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED') AND v.scheduled_date >= ${BUSINESS_TODAY_SQL}))::text AS next_visit
      FROM amc_visits v
      JOIN amc_contracts c ON c.id = v.amc_contract_id
      JOIN v_amc_visit_billing b ON b.amc_visit_id = v.id
@@ -188,7 +189,7 @@ export async function getClientSummary(auth: AuthContext, id: string): Promise<C
 
   const viewContracts = can(auth, "AMC_CONTRACTS:VIEW");
   const [today, contracts, renewalList, visits, invoices] = await Promise.all([
-    pool.query<{ today: string }>("SELECT current_date::text AS today"),
+    pool.query<{ today: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today`),
     viewContracts ? contractFigures(id) : null,
     viewContracts ? renewals(id) : null,
     can(auth, "AMC_SCHEDULE:VIEW") ? visitFigures(id) : null,

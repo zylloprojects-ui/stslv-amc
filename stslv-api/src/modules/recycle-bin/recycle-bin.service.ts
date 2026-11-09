@@ -10,6 +10,7 @@ import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import { contractParents, restoreBlockers, restoreWarnings } from "./contract-parents";
 import { MASTER_KINDS, TYPE_LABELS, type MasterKind, type MasterRecycleType, type RecycleType } from "./recycle-bin.kinds";
 import type { ListRecycleBinQuery } from "./recycle-bin.schemas";
+import { businessDayStartSql } from "../../shared/business-date";
 
 // Recycle Bin for clients, system types and sales engineers (approved 2026-11-04,
 // migration 0106), alongside AMC contracts (0101). Rules:
@@ -526,8 +527,8 @@ export async function listRecycleBin(auth: AuthContext, query: ListRecycleBinQue
 
   if (query.type) conditions.push(`b.type = ${add(query.type)}`);
   if (query.deletedBy) conditions.push(`b.deleted_by = ${add(query.deletedBy)}`);
-  if (query.from) conditions.push(`b.deleted_at >= ${add(query.from)}::date`);
-  if (query.to) conditions.push(`b.deleted_at < ${add(query.to)}::date + 1`);
+  if (query.from) conditions.push(`b.deleted_at >= ${businessDayStartSql(`${add(query.from)}::date`)}`);
+  if (query.to) conditions.push(`b.deleted_at < ${businessDayStartSql(`${add(query.to)}::date + 1`)}`);
   if (query.search) {
     const p = add(`%${escapeLike(query.search)}%`);
     conditions.push(`(b.reference ILIKE ${p} OR b.name ILIKE ${p} OR b.details ILIKE ${p})`);

@@ -28,7 +28,7 @@ Code: `stslv-api/src/modules/dashboard/operations.service.ts`, `readiness.servic
 
 ### 0.2 Calculation rules
 
-"Today" and "this month" are PostgreSQL `current_date`, the same date every module uses; the server time zone is returned and shown on the page (local database: Asia/Calcutta; the business time zone is still an open decision).
+"Today" and "this month" are the Oman business date (Asia/Muscat, `BUSINESS_TODAY_SQL`), the same date every module uses, whatever the database session's time zone (approved 2026-11-09). The page shows "Asia/Muscat" as the time zone. "Paid this month" and the payment chart group by the Oman month the Invoice No. was entered.
 
 | KPI / widget | Permission | Rule |
 |---|---|---|

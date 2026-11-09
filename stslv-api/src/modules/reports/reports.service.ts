@@ -15,6 +15,7 @@ import { RENEWAL_HISTORY_FROM } from "../amc/renewals.service";
 import { EXPIRING_LIST_DAYS } from "../dashboard/operations.service";
 import { PAID_STATUS_NOTE } from "../amc/manual-invoice.service";
 import { IN_SCOPE } from "../amc/service-status.service";
+import { BUSINESS_TODAY_SQL, businessDateSql } from "../../shared/business-date";
 
 // Consolidated reports: each one is a single read-only query over the same
 // records and scope as its source module, so its totals match that module. All
@@ -200,7 +201,7 @@ export const REPORTS = {
              CASE c.billing_basis WHEN 'CONTRACT_VALUE' THEN 'AMC Value / Year' WHEN 'FINAL_CREDIT' THEN 'Final Credit' WHEN 'CUSTOM' THEN 'Custom' END AS billing_basis,
              (SELECT count(*)::int FROM amc_visits v WHERE v.amc_contract_id = c.id AND v.status <> 'CANCELLED') AS services,
              (SELECT count(*)::int FROM amc_visits v WHERE v.amc_contract_id = c.id AND v.status = 'COMPLETED') AS completed,
-             (SELECT COALESCE(sum(v.visit_amount), 0)::numeric(16,3) FROM amc_visits v WHERE v.amc_contract_id = c.id AND date_trunc('year', v.scheduled_date) = date_trunc('year', current_date) AND ${IN_SCOPE}) AS scheduled_current_year,
+             (SELECT COALESCE(sum(v.visit_amount), 0)::numeric(16,3) FROM amc_visits v WHERE v.amc_contract_id = c.id AND date_trunc('year', v.scheduled_date) = date_trunc('year', ${BUSINESS_TODAY_SQL}) AND ${IN_SCOPE}) AS scheduled_current_year,
              (SELECT COALESCE(sum(v.visit_amount), 0)::numeric(16,3) FROM amc_visits v WHERE v.amc_contract_id = c.id AND v.manual_invoice_no IS NULL AND ${IN_SCOPE}) AS unpaid_amount
       FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
       LEFT JOIN sales_engineers se ON se.id = c.sales_engineer_id
@@ -308,7 +309,7 @@ export const REPORTS = {
       JOIN amc_contracts c ON c.id = q.id
       LEFT JOIN sales_engineers se ON se.id = c.sales_engineer_id
       WHERE ${where}`,
-    where: (query, add) => [`c.status = 'ACTIVE' AND c.valid_to <= current_date + ${EXPIRING_LIST_DAYS}`, ...contractWhere(query, add)],
+    where: (query, add) => [`c.status = 'ACTIVE' AND c.valid_to <= ${BUSINESS_TODAY_SQL} + ${EXPIRING_LIST_DAYS}`, ...contractWhere(query, add)],
     orderBy: "valid_to, client, reference",
     notes: ["A renewal is a separate contract; the contract it renews is not changed. Not Yet Due: no renewal has been started and the contract is outside the renewal window.", "Amounts are OMR excluding VAT."],
   },
@@ -324,7 +325,7 @@ export const REPORTS = {
     ],
     sql: (where, ctx) => `
       SELECT ${ctx.reference("c")} AS reference, ${ctx.reference("s")} AS renewed_from, cl.name AS client, c.system_description AS system, se.name AS engineer,
-             s.valid_to::text AS source_valid_to, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to, initcap(c.status) AS status, c.created_at::date::text AS created_on,
+             s.valid_to::text AS source_valid_to, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to, initcap(c.status) AS status, ${businessDateSql("c.created_at")}::text AS created_on,
              s.contract_value AS source_value, c.contract_value, c.id AS sort_id
       ${RENEWAL_HISTORY_FROM}
       LEFT JOIN sales_engineers se ON se.id = c.sales_engineer_id
@@ -332,8 +333,8 @@ export const REPORTS = {
     // The period is the day the renewal was made.
     where: (query, add) => {
       const out = contractWhere(query, add);
-      if (query.from) out.push(`c.created_at::date >= ${add(query.from)}::date`);
-      if (query.to) out.push(`c.created_at::date <= ${add(query.to)}::date`);
+      if (query.from) out.push(`${businessDateSql("c.created_at")} >= ${add(query.from)}::date`);
+      if (query.to) out.push(`${businessDateSql("c.created_at")} <= ${add(query.to)}::date`);
       return out;
     },
     orderBy: "created_on DESC, sort_id DESC",

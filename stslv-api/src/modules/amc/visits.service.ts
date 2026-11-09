@@ -20,6 +20,7 @@ import type {
   UpdateVisitInput,
   VisitYearSummaryQuery,
 } from "./amc.schemas";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 interface VisitRow {
   color_override: string | null;
@@ -116,7 +117,7 @@ export interface ScheduleVisit extends ExecutionVisit {
   colorState: ColorState;
 }
 
-const OVERDUE_SQL = "(v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < current_date)";
+const OVERDUE_SQL = `(v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < ${BUSINESS_TODAY_SQL})`;
 
 /**
  * The billing status of BILLING_STATUSES, from the visit status and the
@@ -644,11 +645,11 @@ export async function listExecutionVisits(query: ListExecutionQuery) {
   let order = "v.scheduled_date, lower(cl.name), v.id";
 
   if (query.scope === "due") {
-    conditions.push(`${outstanding} AND v.scheduled_date <= current_date`);
+    conditions.push(`${outstanding} AND v.scheduled_date <= ${BUSINESS_TODAY_SQL}`);
   } else if (query.scope === "upcoming") {
     params.push(query.days);
     conditions.push(
-      `${outstanding} AND v.scheduled_date > current_date AND v.scheduled_date <= current_date + $${params.length}::int`
+      `${outstanding} AND v.scheduled_date > ${BUSINESS_TODAY_SQL} AND v.scheduled_date <= ${BUSINESS_TODAY_SQL} + $${params.length}::int`
     );
   } else if (query.scope === "open") {
     conditions.push(outstanding);
@@ -731,7 +732,7 @@ export async function applyExecution(client: Queryable, auth: AuthContext, id: s
     }
 
     // One day of tolerance, because the server's date can be behind the user's.
-    const allowed = await client.query<{ ok: boolean }>("SELECT $1::date <= current_date + 1 AS ok", [completedDate]);
+    const allowed = await client.query<{ ok: boolean }>(`SELECT $1::date <= ${BUSINESS_TODAY_SQL} + 1 AS ok`, [completedDate]);
 
     if (!allowed.rows[0]?.ok) {
       throw fieldError("completedDate", "The completion date cannot be in the future.");

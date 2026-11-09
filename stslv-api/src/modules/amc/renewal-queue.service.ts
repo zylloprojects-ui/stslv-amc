@@ -4,10 +4,11 @@ import type { ContractStatus } from "./amc.constants";
 import { RENEWAL_WARNING_DAYS } from "./management.service";
 import type { ListRenewalQueueQuery, RenewalState } from "./renewal-queue.schemas";
 import { hasStoredReference, referenceSql } from "./contract-reference";
+import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // The AMC Renewal queue: one row per contract that is due for renewal or has a
 // renewal (migration 0072). Read-only. Eligibility is worked out from
-// current_date on every request, so no scheduled job is needed.
+// Oman's business date (BUSINESS_TODAY_SQL) on every request, so no scheduled job is needed.
 //
 // A renewal is a separate contract; the contract it renews is never changed by
 // this queue. The renewal state is derived (RENEWAL_STATES), never stored.
@@ -35,7 +36,7 @@ const STATE_SQL = `CASE
     WHEN o.status = 'DRAFT' THEN 'UNDER_APPROVAL'
     WHEN o.id IS NOT NULL THEN 'RENEWED'
     WHEN x.id IS NOT NULL THEN 'CANCELLED'
-    WHEN c.status IN ('ACTIVE', 'EXPIRED') AND c.valid_to <= current_date + ${RENEWAL_WARNING_DAYS} THEN 'DUE'
+    WHEN c.status IN ('ACTIVE', 'EXPIRED') AND c.valid_to <= ${BUSINESS_TODAY_SQL} + ${RENEWAL_WARNING_DAYS} THEN 'DUE'
   END`;
 
 const ORDER = `ORDER BY CASE renewal_state WHEN 'DUE' THEN 0 WHEN 'UNDER_APPROVAL' THEN 1 WHEN 'CANCELLED' THEN 2 ELSE 3 END,
@@ -45,7 +46,7 @@ const ORDER = `ORDER BY CASE renewal_state WHEN 'DUE' THEN 0 WHEN 'UNDER_APPROVA
 const baseSql = (storedReference: boolean) => `(
   SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.id AS client_id, cl.name AS client_name, c.system_description, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
-         c.valid_from::text AS valid_from, c.valid_to::text AS valid_to, (c.valid_to - current_date)::int AS days_left,
+         c.valid_from::text AS valid_from, c.valid_to::text AS valid_to, (c.valid_to - ${BUSINESS_TODAY_SQL})::int AS days_left,
          c.status, c.contract_value::text AS contract_value,
          CASE WHEN o.id IS NOT NULL THEN o.notes ELSE c.notes END AS remarks,
          COALESCE(o.id, x.id) AS renewal_id, CASE WHEN o.id IS NOT NULL THEN o.reference ELSE x.reference END AS renewal_reference,
@@ -201,7 +202,7 @@ export async function listRenewalQueue(query: ListRenewalQueueQuery) {
   const [figures, total, today, rows] = await Promise.all([
     kpis(base, cardWhere, params, searchParamCount(query, params)),
     count(base, where, params),
-    pool.query<{ today: string }>("SELECT current_date::text AS today"),
+    pool.query<{ today: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today`),
     pool.query<QueueRow>(`SELECT q.*, s.scheduled, s.completed FROM ${base} ${SERVICES} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
