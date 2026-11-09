@@ -10,6 +10,7 @@ import { cx } from '../../lib/format'
 import { fetchClients, queryString } from './amcApi'
 import { currentMonth, formatDate, monthLabel, monthRange, shiftMonth, todayIso } from './amcFormat'
 import { BILLING_STATUSES, BILLING_STATUS_LABELS, type CalendarFilters, type CalendarOptions } from './calendar/calendarTypes'
+import { ContractMonthView } from './calendar/ContractMonthView'
 import { RenewalWarnings } from './calendar/RenewalWarnings'
 import { YearView } from './calendar/YearView'
 import { Filter, FilterPanel, RestrictedFilter, VisitStatusPill } from './components'
@@ -38,6 +39,8 @@ const CHIP: Record<VisitStatus, string> = {
 }
 
 type View = 'year' | 'month'
+/** Month view: one entry per visit on its day (By service, the original view), or one per AMC contract. */
+type Grouping = 'service' | 'contract'
 
 /** Every visit of the month that matches the filters, reading further pages while there are more. */
 async function fetchMonth(params: Record<string, string>): Promise<{ items: ScheduleVisit[]; total: number; truncated: boolean }> {
@@ -109,6 +112,7 @@ export function AmcCalendarPage() {
   const auth = useAuth()
   const [params, setParams] = useSearchParams()
   const view: View = params.get('view') === 'month' ? 'month' : 'year'
+  const grouping: Grouping = params.get('group') === 'contract' ? 'contract' : 'service'
   const monthParam = params.get('month')
   const month = monthParam && /^\d{4}-(0[1-9]|1[0-2])$/.test(monthParam) ? monthParam : currentMonth()
   const year = Number(month.slice(0, 4))
@@ -175,6 +179,8 @@ export function AmcCalendarPage() {
     return map
   }, [visits.data])
 
+  const contractCount = useMemo(() => new Set((visits.data?.items ?? []).map((visit) => visit.contract.id)).size, [visits.data])
+
   const thisYear = Number(currentMonth().slice(0, 4))
   const years = [
     ...new Set([...(options.data?.years ?? []), ...Array.from({ length: YEARS_BACK + YEARS_AHEAD + 1 }, (_, index) => thisYear - YEARS_BACK + index), year]),
@@ -185,12 +191,14 @@ export function AmcCalendarPage() {
   const daysWithVisits = [...byDay.keys()].sort()
   const selectedVisits = selectedDay ? (byDay.get(selectedDay) ?? []) : []
   const open = (visitId: string) => setDialog({ kind: 'view', visitId })
-  const navigate = (next: { view?: View; month?: string }) => {
+  const navigate = (next: { view?: View; month?: string; grouping?: Grouping }) => {
     setParams(
       (previous) => {
         const updated = new URLSearchParams(previous)
         updated.set('view', next.view ?? view)
         updated.set('month', next.month ?? month)
+        if ((next.grouping ?? grouping) === 'contract') updated.set('group', 'contract')
+        else updated.delete('group')
 
         return updated
       },
@@ -282,9 +290,31 @@ export function AmcCalendarPage() {
           )}
 
           {view === 'month' && (
-            <p className="rounded-full bg-sky-50 px-3 py-1 text-sm font-semibold text-[#0b3b66] ring-1 ring-sky-100">
-              {visits.data ? `${visits.data.total} visit${visits.data.total === 1 ? '' : 's'} this month` : 'Loading…'}
-            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <div role="group" aria-label="Group the month" className="inline-flex rounded-xl border border-slate-200 bg-slate-100 p-1 shadow-inner">
+                {(['service', 'contract'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={grouping === value}
+                    onClick={() => navigate({ grouping: value })}
+                    className={cx(
+                      'rounded-lg px-3 py-1 text-sm font-semibold transition-all focus-visible:outline-2 focus-visible:outline-[#1479BD]',
+                      grouping === value ? 'bg-white text-[#0b3b66] shadow' : 'text-slate-600 hover:text-slate-900',
+                    )}
+                  >
+                    {value === 'service' ? 'By service' : 'By contract'}
+                  </button>
+                ))}
+              </div>
+              <p className="rounded-full bg-sky-50 px-3 py-1 text-sm font-semibold text-[#0b3b66] ring-1 ring-sky-100">
+                {visits.data
+                  ? grouping === 'contract'
+                    ? `${contractCount} contract${contractCount === 1 ? '' : 's'} · ${visits.data.total} visit${visits.data.total === 1 ? '' : 's'}`
+                    : `${visits.data.total} visit${visits.data.total === 1 ? '' : 's'} this month`
+                  : 'Loading…'}
+              </p>
+            </div>
           )}
         </div>
 
@@ -411,7 +441,7 @@ export function AmcCalendarPage() {
         <ul aria-label="Calendar colours" className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-600">
           <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-emerald-600" aria-hidden="true" />Square: Paid (Invoice No. entered)</li>
           <li className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[#1479BD]" aria-hidden="true" />Square: Unpaid (no Invoice No.)</li>
-          <li>Card colour: service status</li>
+          <li>{grouping === 'contract' ? 'Service colour: service status' : 'Card colour: service status'}</li>
         </ul>
       )}
 
@@ -425,7 +455,16 @@ export function AmcCalendarPage() {
             </p>
           )}
 
-          {visits.data && (
+          {visits.data && grouping === 'contract' && (
+            <>
+              <ContractMonthView visits={visits.data.items} monthName={monthLabel(month)} onOpenVisit={open} />
+              {visits.data.items.length === 0 && (
+                <EmptyState title="No visits this month" description={filtered ? 'Try different filters or another month.' : 'Move to another month to see its visits.'} />
+              )}
+            </>
+          )}
+
+          {visits.data && grouping === 'service' && (
             <>
               {/* Month grid, from small tablets up. */}
               <div className="hidden p-3 sm:block" role="group" aria-label={`Visits in ${monthLabel(month)}`}>

@@ -1,4 +1,4 @@
-import { colorState, type ColorState } from "./amc.schedule";
+import { colorState, FIRST_SERVICE_SQL, type ColorState } from "./amc.schedule";
 import type { SetVisitColorInput } from "./amc.schemas";
 import { pool } from "../../config/database";
 import { featureUnavailable } from "../../middleware/require-schema";
@@ -147,7 +147,7 @@ const VISIT_SELECT = `
          v.manual_invoice_no, v.manual_invoice_at,
          -- Migration 0078 column, read the same way so a database without it still lists visits (null).
          to_jsonb(v) ->> 'quotation_no' AS quotation_no,
-         NOT EXISTS (SELECT 1 FROM amc_visits e WHERE e.amc_contract_id = v.amc_contract_id AND e.sequence_no < v.sequence_no AND e.status <> 'HISTORICAL') AS first_service`;
+         ${FIRST_SERVICE_SQL} AS first_service`;
 
 const VISIT_FROM = `
   FROM amc_visits v

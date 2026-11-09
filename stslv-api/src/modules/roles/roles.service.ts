@@ -226,6 +226,11 @@ export interface RoleChanges {
 export function createRole(auth: AuthContext, input: NewRole): Promise<Role> {
   assertSuperAdmin(auth);
 
+  // A built-in code carries fixed meaning (Super Admin, Admin, the scoped roles), so a custom role never takes one.
+  if (isBuiltInRole(input.code)) {
+    throw conflict("This code belongs to a built-in role. Choose another code.");
+  }
+
   return withTransaction(async (client) => {
     const existing = await client.query("SELECT 1 FROM roles WHERE code = $1 OR lower(name) = lower($2)", [input.code, input.name]);
 

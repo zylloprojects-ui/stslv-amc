@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
+import { Link } from 'react-router-dom'
 import { z } from 'zod'
 import { useAuth } from '../../auth/context'
 import { isSuperAdmin } from '../../auth/roles'
@@ -236,7 +237,10 @@ export function RoleListPanel() {
                       <span className="inline-block rounded-md bg-slate-100 px-2 py-1 font-mono text-[11px] font-semibold tracking-wide text-slate-700 ring-1 ring-inset ring-slate-200">{role.code}</span>
                     </td>
                     <td className={`${TABLE.td} min-w-56`}>
-                      <span className="block font-semibold text-slate-900">{role.name}</span>
+                      <span className="flex flex-wrap items-center gap-2 font-semibold text-slate-900">
+                        {role.name}
+                        {role.builtIn === false ? <Badge tone="blue">Custom</Badge> : <Badge>Built-in</Badge>}
+                      </span>
                       <span className="block text-xs text-slate-500">{role.description ?? 'No description'}</span>
                     </td>
                     <td className={TABLE.td}>{role.isActive ? <Badge tone="green">Active</Badge> : <Badge>Inactive</Badge>}</td>
@@ -272,7 +276,11 @@ export function RoleListPanel() {
       </div>
 
       <p className="text-xs text-slate-500">
-        What a role may do is set under Roles &amp; access. A new role starts with no permissions. Only Super Admin changes roles. A role that still has people, and any built-in role, cannot be deleted.
+        What a role may do is set in{' '}
+        <Link to="/admin/roles" className="font-semibold text-[#1479BD] hover:underline">
+          Roles &amp; Permissions
+        </Link>
+        . A new role starts with no permissions, so it opens nothing until permissions are given. Only Super Admin adds or changes roles. A role that still has people, and any built-in role, cannot be deleted.
       </p>
 
       {dialog.kind === 'add' && (

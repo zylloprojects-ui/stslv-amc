@@ -25,6 +25,7 @@ import {
   type SchedulePeriod,
   type SchedulePlan,
   type ServiceLabel,
+  FIRST_SERVICE_VALID,
 } from "./amc.schedule";
 import { findContractFrequency, hasFrequencyRules, monthsKey, monthsOf, resolveTerms, type ResolvedTerms } from "./contract-frequency.service";
 import type {
@@ -181,7 +182,7 @@ const contractSelect = (withMonths: boolean, storedReference: boolean) => `
   LEFT JOIN users ub ON ub.id = c.updated_by
   CROSS JOIN LATERAL (
     SELECT count(*) FILTER (WHERE v.status <> 'CANCELLED')::int AS visit_count,
-           (min(v.scheduled_date) FILTER (WHERE v.status NOT IN ('CANCELLED', 'HISTORICAL')))::text AS first_service_date,
+           (min(v.scheduled_date) FILTER (WHERE ${FIRST_SERVICE_VALID("v")}))::text AS first_service_date,
            count(*) FILTER (WHERE v.status = 'COMPLETED')::int AS completed_count,
            count(*) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED'))::int AS open_count,
            count(*) FILTER (WHERE v.status = 'HISTORICAL')::int AS historical_count,
@@ -1442,6 +1443,67 @@ function assertSuperAdmin(auth: AuthContext): void {
 }
 
 const isUniqueViolation = (error: unknown) => (error as { code?: unknown } | null)?.code === "23505";
+
+export interface ContractUsage {
+  /** Every service of the contract, by status; all are kept with it in the Recycle Bin. */
+  services: { total: number; completed: number; open: number; cancelled: number; historical: number };
+  /** Services with a manual Invoice No. (Paid, a reference status). */
+  paidServices: number;
+  /** Invoices in Invoice Tracking covering its services, cancelled ones included; all are kept. */
+  invoices: number;
+  /** Current documents (signed contract and others); all are kept. */
+  documents: number;
+  /** The renewal of this contract, which blocks the move (the approved rule of deleteContract). */
+  renewal: { id: string; reference: string } | null;
+  /** The contract this one renews, if any; moving this one does not change it. */
+  renewedFrom: { id: string; reference: string } | null;
+  /** Why the move would be refused; null when it is allowed. */
+  blockedReason: string | null;
+}
+
+/**
+ * What moving a contract to the Recycle Bin would keep, and whether it would be refused: for the delete
+ * dialog, read before anything is changed. It adds no rule: the blocker is deleteContract's own.
+ */
+export async function contractUsage(auth: AuthContext, id: string): Promise<ContractUsage> {
+  assertSuperAdmin(auth);
+  const contract = await findContract(pool, id);
+  const stored = await hasStoredReference();
+
+  const [counts, renewal, source] = await Promise.all([
+    pool.query<{ total: number; completed: number; open: number; cancelled: number; historical: number; paid: number; invoices: number; documents: number }>(
+      `SELECT count(v.id)::int AS total,
+              count(v.id) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
+              count(v.id) FILTER (WHERE v.status IN ('SCHEDULED', 'IN_PROGRESS', 'POSTPONED'))::int AS open,
+              count(v.id) FILTER (WHERE v.status = 'CANCELLED')::int AS cancelled,
+              count(v.id) FILTER (WHERE v.status = 'HISTORICAL')::int AS historical,
+              count(v.id) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS paid,
+              (SELECT count(DISTINCT al.invoice_id)::int FROM invoice_allocations al JOIN amc_visits x ON x.id = al.amc_visit_id WHERE x.amc_contract_id = $1) AS invoices,
+              (SELECT count(*)::int FROM attachments a WHERE a.entity_type = 'amc_contracts' AND a.entity_id = $1 AND a.is_current) AS documents
+       FROM amc_visits v WHERE v.amc_contract_id = $1`,
+      [id]
+    ),
+    pool.query<{ id: string; reference: string }>(`SELECT c.id, ${referenceSql("c", stored)} AS reference FROM amc_contracts c WHERE c.renewed_from_id = $1 ORDER BY c.id LIMIT 1`, [id]),
+    pool.query<{ id: string; reference: string }>(
+      `SELECT s.id, ${referenceSql("s", stored)} AS reference FROM amc_contracts c JOIN amc_contracts s ON s.id = c.renewed_from_id WHERE c.id = $1`,
+      [id]
+    ),
+  ]);
+  const row = counts.rows[0] ?? { total: 0, completed: 0, open: 0, cancelled: 0, historical: 0, paid: 0, invoices: 0, documents: 0 };
+  const renewalRow = renewal.rows[0] ?? null;
+
+  return {
+    services: { total: row.total, completed: row.completed, open: row.open, cancelled: row.cancelled, historical: row.historical },
+    paidServices: row.paid,
+    invoices: row.invoices,
+    documents: row.documents,
+    renewal: renewalRow,
+    renewedFrom: source.rows[0] ?? null,
+    blockedReason: renewalRow
+      ? `The contract for "${contract.client.name}" (${contract.systemDescription}) was renewed as ${renewalRow.reference}. Move the renewal to the Recycle Bin first, or cancel this contract instead.`
+      : null,
+  };
+}
 
 /** Moves a contract to the Recycle Bin. Refused while a renewal of it exists, which would lose its source. */
 export async function deleteContract(auth: AuthContext, id: string): Promise<void> {

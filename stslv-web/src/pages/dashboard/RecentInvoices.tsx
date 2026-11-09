@@ -119,9 +119,10 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
         {canExport && (
           <ExportButtons
             what="invoices"
-            fileStem="invoice-tracking"
+            fileStem="recent-invoices"
             size="sm"
-            path={(format) => `/invoices/export${queryString({ format, search, status })}`}
+            // The file carries the same columns as the table above, in the same order.
+            path={(format) => `/invoices/export${queryString({ format, search, status, columns: COLUMN_IDS.filter((id) => shown(id)).join(',') })}`}
             onError={setExportError}
           />
         )}

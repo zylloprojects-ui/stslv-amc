@@ -6,6 +6,8 @@ import { validationError } from "../../shared/errors";
 import { dateSchema } from "../../shared/money";
 import { idSchema } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
+import { forbidden } from "../../shared/errors";
+import { permissionKey, type Module, type PermissionKey } from "../../shared/permissions";
 import { CONTRACT_STATUSES, VISIT_STATUSES } from "../amc/amc.constants";
 import { renewalQueueSql } from "../amc/renewal-queue.service";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
@@ -123,6 +125,12 @@ interface ReportKpi {
 interface ReportSpec {
   title: string;
   description: string;
+  /**
+   * The modules whose pages own this report's records and figures. Reading the report needs
+   * REPORTS:VIEW and View of every one of them; exporting it also needs REPORTS:EXPORT and
+   * Export of every one of them. Reports thus never show more than the source pages would.
+   */
+  sources: readonly Module[];
   /** The filters the page should offer. */
   filters: ReportFilter[];
   /** The statuses the Status filter accepts. A report without the filter accepts none. */
@@ -153,6 +161,7 @@ const PAYMENT_NOTE = PAID_STATUS_NOTE;
 export const REPORTS = {
   "contract-summary": {
     title: "AMC Contract Summary",
+    sources: ["AMC_CONTRACTS"],
     description: "Every contract with its validity, amounts and service progress.",
     filters: STANDARD_FILTERS,
     statuses: CONTRACT_STATUSES,
@@ -192,6 +201,7 @@ export const REPORTS = {
   },
   "scheduled-services": {
     title: "Billing Schedule",
+    sources: ["ACCOUNTS"],
     description: "Every scheduled service, completed or not, with its value and whether it is Paid or Unpaid.",
     filters: [...STANDARD_FILTERS, "payment"],
     statuses: VISIT_REPORT_STATUSES,
@@ -208,6 +218,7 @@ export const REPORTS = {
   },
   "completed-services": {
     title: "Completed Services",
+    sources: ["ACCOUNTS"],
     description: "Services marked completed.",
     filters: ["dates", "client", "engineer", "system"],
     columns: VISIT_REPORT_COLUMNS,
@@ -218,6 +229,7 @@ export const REPORTS = {
   },
   "pending-services": {
     title: "Pending Services",
+    sources: ["ACCOUNTS"],
     description: "Services not yet completed.",
     filters: STANDARD_FILTERS,
     statuses: OPEN_REPORT_STATUSES,
@@ -228,6 +240,7 @@ export const REPORTS = {
   },
   "monthly-maintenance": {
     title: "Monthly Maintenance",
+    sources: ["ACCOUNTS"],
     description: "Services per scheduled month.",
     filters: STANDARD_FILTERS,
     statuses: VISIT_REPORT_STATUSES,
@@ -239,6 +252,7 @@ export const REPORTS = {
   },
   renewal: {
     title: "AMC Renewal",
+    sources: ["AMC_RENEWAL"],
     description: "Contracts due for renewal or with a renewal, as on AMC Renewal.",
     filters: ["client", "system", "status"],
     statuses: CONTRACT_STATUSES,
@@ -262,6 +276,7 @@ export const REPORTS = {
   // The Dashboard's Expiring Contracts rule, so both give the same total. Every row is Active, so there is no Status filter.
   "expiry-renewal": {
     title: "Expiry & Renewal Due",
+    sources: ["AMC_RENEWAL"],
     description: `Active contracts ending within ${EXPIRING_LIST_DAYS} days or already past validity, with days left and renewal state.`,
     filters: ["client", "engineer", "system"],
     columns: [
@@ -282,6 +297,7 @@ export const REPORTS = {
   },
   "renewal-history": {
     title: "Renewal History",
+    sources: ["AMC_RENEWAL"],
     description: "Every renewal made, newest first, as on AMC Renewal: the renewal contract and the contract it renews.",
     filters: STANDARD_FILTERS,
     statuses: CONTRACT_STATUSES,
@@ -308,6 +324,7 @@ export const REPORTS = {
   },
   accounts: {
     title: "Accounts / Paid and Unpaid Summary",
+    sources: ["ACCOUNTS"],
     description: "Services by whether they are completed and Paid (a manual Invoice No. is entered), over the same rows as Accounts.",
     filters: STANDARD_FILTERS,
     statuses: VISIT_REPORT_STATUSES,
@@ -323,6 +340,7 @@ export const REPORTS = {
   },
   "client-summary": {
     title: "Client-wise Summary",
+    sources: ["ACCOUNTS"],
     description: "Services and values per client.",
     filters: STANDARD_FILTERS,
     statuses: VISIT_REPORT_STATUSES,
@@ -334,6 +352,7 @@ export const REPORTS = {
   },
   "engineer-summary": {
     title: "Sales Engineer-wise Summary",
+    sources: ["ACCOUNTS"],
     description: "Services and values per sales engineer.",
     filters: STANDARD_FILTERS,
     statuses: VISIT_REPORT_STATUSES,
@@ -345,6 +364,7 @@ export const REPORTS = {
   },
   "contract-value-review": {
     title: "Contract Value Review",
+    sources: ["AMC_CONTRACTS"],
     description: "Multi-year contracts whose value may be a whole-term amount rather than an annual one. Nothing is changed by this report.",
     filters: ["client", "engineer", "system", "status"],
     statuses: ["DRAFT", "ACTIVE", "EXPIRED"],
@@ -381,14 +401,40 @@ export const REPORTS = {
 export type ReportType = keyof typeof REPORTS;
 export const reportTypeSchema = z.enum(Object.keys(REPORTS) as [ReportType, ...ReportType[]], { error: "Select a report." });
 
-export function reportCatalogue() {
-  return Object.entries(REPORTS).map(([id, spec]: [string, ReportSpec]) => ({
-    id,
-    title: spec.title,
-    description: spec.description,
-    filters: spec.filters,
-    statuses: (spec.statuses ?? []).map((value) => ({ value, label: statusLabel(value) })),
-  }));
+type Held = ReadonlySet<PermissionKey>;
+const holdsAll = (held: Held, keys: PermissionKey[]) => keys.every((key) => held.has(key));
+
+/** REPORTS:VIEW and View of every source module. */
+export function canViewReport(held: Held, type: ReportType): boolean {
+  const spec: ReportSpec = REPORTS[type];
+  return holdsAll(held, [permissionKey("REPORTS", "VIEW"), ...spec.sources.map((module) => permissionKey(module, "VIEW"))]);
+}
+
+/** What canViewReport needs, plus REPORTS:EXPORT and Export of every source module. */
+export function canExportReport(held: Held, type: ReportType): boolean {
+  const spec: ReportSpec = REPORTS[type];
+  return canViewReport(held, type) && holdsAll(held, [permissionKey("REPORTS", "EXPORT"), ...spec.sources.map((module) => permissionKey(module, "EXPORT"))]);
+}
+
+/** Refuses (403) a report the user may not read, or not export. A refusal names no figure. */
+export function assertReportAccess(held: Held, type: ReportType, action: "VIEW" | "EXPORT") {
+  if (!(action === "VIEW" ? canViewReport(held, type) : canExportReport(held, type))) {
+    throw forbidden(action === "VIEW" ? "You do not have permission to open this report." : "You do not have permission to export this report.");
+  }
+}
+
+/** The reports this user may open, each with whether they may export it. Reports they may not open are left out. */
+export function reportCatalogue(held: Held) {
+  return (Object.entries(REPORTS) as [ReportType, ReportSpec][])
+    .filter(([id]) => canViewReport(held, id))
+    .map(([id, spec]) => ({
+      id,
+      title: spec.title,
+      description: spec.description,
+      filters: spec.filters,
+      statuses: (spec.statuses ?? []).map((value) => ({ value, label: statusLabel(value) })),
+      canExport: canExportReport(held, id),
+    }));
 }
 
 /** "IN_PROGRESS" as "In Progress". */

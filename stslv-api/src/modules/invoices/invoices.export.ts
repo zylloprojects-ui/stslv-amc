@@ -15,7 +15,7 @@ import {
 } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
 import type { InvoiceState } from "../projects/projects.schemas";
-import type { ExportBillableQuery, ExportInvoicesQuery, InvoiceStatus } from "./invoices.schemas";
+import type { ExportBillableQuery, ExportInvoicesQuery, InvoiceStatus, RecentInvoiceColumn } from "./invoices.schemas";
 import { listAllInvoices, listBillableWork, type Invoice, type InvoiceAllocation } from "./invoices.service";
 
 // Invoice Tracking as reports. Both are records of what this system tracks:
@@ -161,8 +161,12 @@ export async function buildInvoicesExport(
   auth: AuthContext,
   query: ExportInvoicesQuery
 ): Promise<{ report: ReportDefinition; recordExport: RecordExport }> {
-  const { format, ...filters } = query;
+  const { format, columns, ...filters } = query;
   const { items, total, totals } = await listAllInvoices(filters, (count) => assertExportSize(format, count));
+
+  if (columns) {
+    return buildRecentInvoicesExport(auth, query, columns, { items, total, totals });
+  }
 
   const report: ReportDefinition = {
     title: "Invoice Tracking Report",
@@ -215,8 +219,72 @@ export async function buildInvoicesExport(
       module: "INVOICES",
       entityType: "invoices",
       entityId: null,
-      description: `Exported the invoice tracking report as ${formatName(format)} (${plural(total, "invoice", "invoices")}).`,
-      metadata: { format, filters, rowCount: total },
+      description: `Exported the invoice tracking report as ${formatName(format)} (${plural(total, "invoice", "invoices")}).`,      metadata: { format, filters, rowCount: total },
+    });
+
+  return { report, recordExport };
+}
+
+// ---------------------------------------------------------------------------
+// Recent Invoices (Dashboard): the same records, only the columns its table shows
+// ---------------------------------------------------------------------------
+
+/** Each Recent Invoices column and the report column it shows, with the same header as the table. */
+const RECENT_COLUMN_MAP: Record<RecentInvoiceColumn, ReportColumn> = {
+  number: { key: "invoiceNumber", header: "Invoice no.", kind: "identifier", width: 18 },
+  client: { key: "client", header: "Client", kind: "text", width: 30, wrap: true },
+  date: { key: "invoiceDate", header: "Invoice date", kind: "date", width: 15 },
+  total: { key: "totalAmount", header: "Total", kind: "money", width: 15 },
+  status: { key: "status", header: "Status", kind: "text", width: 12 },
+};
+
+async function buildRecentInvoicesExport(
+  auth: AuthContext,
+  query: ExportInvoicesQuery,
+  visible: readonly RecentInvoiceColumn[],
+  list: Awaited<ReturnType<typeof listAllInvoices>>
+): Promise<{ report: ReportDefinition; recordExport: RecordExport }> {
+  const { format, columns: _columns, ...filters } = query;
+  const { items, total, totals } = list;
+  const columns = visible.map((id) => RECENT_COLUMN_MAP[id]);
+  const showsTotal = visible.includes("total");
+  // A cancelled invoice is listed but never counted: the workbook formula needs the Status column to tell them apart.
+  const formula = showsTotal && visible.includes("status") ? { totalAmount: (range: (key: string) => string) => `SUMIFS(${range("totalAmount")},${range("status")},${NOT_CANCELLED})` } : undefined;
+
+  const report: ReportDefinition = {
+    title: "Recent Invoices",
+    period: displayPeriod(query.dateFrom, query.dateTo),
+    filters: await describeInvoiceFilters(query),
+    generatedAt: new Date(),
+    generatedBy: auth.user.fullName,
+    orientation: "portrait",
+    disclaimer: TRACKING_DISCLAIMER,
+    fileStem: "recent-invoices",
+    tables: [
+      {
+        name: "Recent Invoices",
+        columns,
+        rows: items.map(invoiceRow),
+        ...(showsTotal
+          ? { totals: { label: `Total (${plural(total, "invoice", "invoices")})`, values: { totalAmount: totals.totalAmount }, ...(formula ? { excelFormulas: formula } : {}) } }
+          : {}),
+        notes: [
+          "Zoho invoice records from Invoice Tracking, newest first, with the columns shown on the Dashboard. Totals include VAT as entered and exclude cancelled invoices.",
+          "Paid and Unpaid follow the manual Invoice No. on each service, not this list.",
+        ],
+      },
+    ],
+  };
+
+  const recordExport = () =>
+    logActivity(pool, {
+      userId: auth.user.id,
+      action: "invoices.exported",
+      module: "INVOICES",
+      entityType: "invoices",
+      entityId: null,
+      description: `Exported Recent Invoices as ${formatName(format)} (${plural(total, "invoice", "invoices")}).`,
+      metadata: { format, filters, columns: visible, rowCount: total },
     });
 
   return { report, recordExport };

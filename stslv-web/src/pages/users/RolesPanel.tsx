@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { isSuperAdmin } from '../../auth/roles'
 import { Alert, Button, Card, ConfirmDialog, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { Icon, IconTile } from '../dashboard/icons'
@@ -663,6 +665,7 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
   const [pendingId, setPendingId] = useState<string | null>(null)
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const role = catalogue.roles.find((candidate) => candidate.id === selectedId) ?? null
+  const superAdmin = isSuperAdmin(useAuth().user)
 
   // The page is told too, so it can warn before its other tab replaces this panel.
   useEffect(() => {
@@ -703,6 +706,15 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
 
   return (
     <div className="space-y-4">
+      {superAdmin && (
+        <p className="text-sm text-slate-600">
+          To add a custom role, or rename, deactivate or delete one, open{' '}
+          <Link to="/settings?section=roles" className="font-semibold text-[#1479BD] hover:underline">
+            Settings › Role list
+          </Link>
+          . A new role starts with no permissions; give them here.
+        </p>
+      )}
       <div role="tablist" aria-label="Roles" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {active.map((candidate, index) => {
           const on = candidate.id === selectedId
@@ -726,7 +738,10 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
             >
               <IconTile icon="shield" from={on ? '#0b3b66' : '#64748B'} to={on ? '#1479BD' : '#94A3B8'} className="h-10 w-10 rounded-xl" />
               <span className="min-w-0 flex-1" aria-hidden="true">
-                <span className="block truncate text-sm font-bold text-slate-900">{candidate.name}</span>
+                <span className="block truncate text-sm font-bold text-slate-900">
+                  {candidate.name}
+                  {candidate.builtIn === false && <span className="ml-1.5 rounded bg-sky-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold uppercase tracking-wide text-[#0b3b66]">Custom</span>}
+                </span>
                 <span className="mt-0.5 block text-xs text-slate-500">
                   {candidate.userCount} {candidate.userCount === 1 ? 'user' : 'users'} · {candidate.permissions.length} permissions
                 </span>

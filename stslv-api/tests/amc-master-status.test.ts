@@ -322,16 +322,19 @@ describe("Master AMC Status", () => {
       await workbook.xlsx.load(response.body as unknown as ExcelJS.Buffer);
       const sheet = workbook.getWorksheet("Master AMC Status") as ExcelJS.Worksheet;
       const header = (sheet.getRow(6).values as unknown[]).slice(1);
-      expect(header).toEqual(["#", "AMC Reference", "Client", "Frequency", "Service", "Scheduled Month", "Value (Ex VAT)", "Service Status", "Invoice No.", "Quote No.", "Row Colour"]);
+      // Zoho Invoices (Tracking) follows Invoice No. (P2, 2026-11-09) and is hidden with it.
+      expect(header).toEqual(["#", "AMC Reference", "Client", "Frequency", "Service", "Scheduled Month", "Value (Ex VAT)", "Service Status", "Invoice No.", "Zoho Invoices (Tracking)", "Quote No.", "Row Colour"]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
       expect(rows.map((row) => row[2])).toEqual(["Alpha Towers", "Alpha Towers", "Alpha Towers", "Alpha Towers"]);
       expect(rows[0]?.[7]).toBe("Completed");
       expect(String(rows[0]?.[8])).toBe("INV-9");
+      // No Zoho invoice recorded in Invoice Tracking for this visit.
+      expect(rows[0]?.[9] ?? null).toBeNull();
       // A formula-like number is written as text, never run.
-      expect(rows[0]?.[9]).not.toBe("=QT-1");
-      expect(String(rows[0]?.[9])).toContain("QT-1");
-      expect(rows[0]?.[10]).toBe("Green · Paid and quoted");
-      expect(rows[1]?.[10]).toBe("Red · Not completed");
+      expect(rows[0]?.[10]).not.toBe("=QT-1");
+      expect(String(rows[0]?.[10])).toContain("QT-1");
+      expect(rows[0]?.[11]).toBe("Green · Paid and quoted");
+      expect(rows[1]?.[11]).toBe("Red · Not completed");
 
       const audit = await pool.query<{ metadata: { rowCount: number; hidden: string[] } }>(
         "SELECT metadata FROM activity_logs WHERE action = 'master_amc_status.exported' ORDER BY id DESC LIMIT 1"

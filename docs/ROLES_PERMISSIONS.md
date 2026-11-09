@@ -48,7 +48,7 @@ Migrations 0080, 0081 and 0082 are **not applied** to `stslv_amc_dev` or Neon. T
 | Retired | PROCUREMENT | none; API live | View, Create, Edit |
 | Retired | EXPENSES | none; API live | View, Create, Edit, Delete (= void) |
 | Retired | HISTORICAL_DATA | none; API live | View |
-| Reporting | REPORTS | Reports page and exports. Only Super Admin holds it until granted | Superseded the earlier "retired" entry |
+| Reporting | REPORTS | Reports page and exports. Only Super Admin holds it until granted. From 2026-11-09 (P2) each report also needs View of its source module (AMC Contracts, AMC Renewal or Accounts), and its export that module's Export: see [P2_IMPROVEMENTS.md](P2_IMPROVEMENTS.md) | Superseded the earlier "retired" entry |
 
 Shared read access, unchanged in effect: anyone with AMC_CONTRACTS View may read the four master lists (contract pickers); Sales Engineers View may read Departments, and Departments View may read Sales Engineers (each page needs the other list). The visit list and its export serve both AMC Schedule and Monthly Calendar; the visit filter options serve Schedule, Calendar and Service Status.
 

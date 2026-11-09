@@ -186,6 +186,20 @@ export function serviceLabel(validFrom: string, rule: ScheduleRule, prefix: stri
 export const COLOR_PRIORITY_RULE = "Manual → Cancelled → Invoice Pending → First Service → Normal";
 export type ColorState = "MANUAL" | "CANCELLED" | "INVOICE_PENDING" | "FIRST_SERVICE" | "NORMAL";
 
+/**
+ * A contract's first service: its earliest valid visit by scheduled date. Cancelled and historical
+ * visits are never it and never stand in its way, so cancelling, postponing or re-dating a visit
+ * moves "first" to whichever valid visit is now earliest. Ties: the lower sequence number, then id.
+ * AMC Contracts (First Service date) and AMC Schedule (First Service colour) both use these.
+ */
+export const FIRST_SERVICE_VALID = (alias: string) => `${alias}.status NOT IN ('CANCELLED', 'HISTORICAL')`;
+
+/** SQL: whether visit `v` is its contract's first service, by the rule above. */
+export const FIRST_SERVICE_SQL = `(${FIRST_SERVICE_VALID("v")} AND NOT EXISTS (
+  SELECT 1 FROM amc_visits e
+  WHERE e.amc_contract_id = v.amc_contract_id AND e.id <> v.id AND ${FIRST_SERVICE_VALID("e")}
+    AND (e.scheduled_date, e.sequence_no, e.id) < (v.scheduled_date, v.sequence_no, v.id)))`;
+
 export function colorState(row: { override: string | null; cancelled: boolean; invoiceRecorded: boolean; firstService: boolean }): ColorState {
   if (row.override !== null) return "MANUAL";
   if (row.cancelled) return "CANCELLED";

@@ -38,6 +38,8 @@ const COLUMNS: (ReportColumn & { hideable?: MasterStatusColumn })[] = [
   { key: "visitValue", header: "Value (Ex VAT)", kind: "money", width: 14, hideable: "visitValue" },
   { key: "serviceStatus", header: "Service Status", kind: "text", width: 18, hideable: "serviceStatus" },
   { key: "invoiceNo", header: "Invoice No.", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
+  // The Zoho invoice numbers recorded in Invoice Tracking for the visit, as on Accounts. Shown and hidden with Invoice No.
+  { key: "zohoInvoices", header: "Zoho Invoices (Tracking)", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   { key: "quotationNo", header: "Quote No.", kind: "identifier", width: 15, hideable: "quotationNo" },
   { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
   { key: "colour", header: "Row Colour", kind: "text", width: 24 },
@@ -67,6 +69,7 @@ function toRow(item: MasterStatusItem, index: number): ReportRow {
     visitValue: item.visitValue,
     serviceStatus: SERVICE_STATUS_LABELS[item.serviceStatus],
     invoiceNo: item.manualInvoiceNo,
+    zohoInvoices: item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(", ") : null,
     quotationNo: item.quotationNo,
     salesEngineer: item.salesEngineer?.name ?? null,
     colour: ROW_COLOUR_LABELS[item.colour],
@@ -104,6 +107,7 @@ export async function buildMasterStatusExport(
     `Total services ${kpis.total} · Green ${kpis.green} · Blue ${kpis.blue} · Yellow ${kpis.yellow} · Red ${kpis.red} · Total value (Ex VAT) ${displayMoney(kpis.totalValue)}.`,
     "Red: not completed. Yellow: completed, no invoice recorded. Blue: completed and invoiced, no quotation number. Green: completed, invoiced and quoted.",
     PAID_STATUS_NOTE,
+    "Zoho Invoices (Tracking) are the invoice numbers recorded in Invoice Tracking for each service; cancelled ones are not listed. They do not decide Paid or Unpaid.",
   ];
 
   if (kpis.valueMissing > 0) {

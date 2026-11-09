@@ -317,11 +317,12 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
       {
         module: "REPORTS",
         label: "Reports",
-        description: "The consolidated reports. Needs no other module's permission.",
+        description:
+          "The consolidated reports. Each report also needs View of its source module (AMC Contracts, AMC Renewal or Accounts); exporting also needs that module's Export.",
         pages: [{ label: "Reports", path: "/reports" }],
         actions: {
-          VIEW: "Open Reports and read every report",
-          EXPORT: "Export a report to Excel or PDF",
+          VIEW: "Open Reports and read the reports whose source modules the role may view",
+          EXPORT: "Export a report to Excel or PDF, where the role may also export its source module",
         },
       },
     ],

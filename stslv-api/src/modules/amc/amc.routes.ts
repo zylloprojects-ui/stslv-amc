@@ -34,6 +34,7 @@ import {
 } from "./amc.schemas";
 import {
   changeContractStatus,
+  contractUsage,
   deleteContract,
   createContract,
   createNewContract,
@@ -260,6 +261,12 @@ amcRouter.patch("/contracts/:id", authorize("AMC_CONTRACTS", "EDIT"), async (req
   const contract = await updateContract(requireAuth(req), parseIdParam(req.params.id), updateContractSchema.parse(req.body));
 
   res.json({ success: true, data: contract });
+});
+
+// What moving the contract to the Recycle Bin would keep, and whether a renewal blocks it: for the delete dialog.
+// Read-only. Same guard as the move itself: AMC_CONTRACTS:DELETE, and Super Admin (checked in contractUsage).
+amcRouter.get("/contracts/:id/usage", authorize("AMC_CONTRACTS", "DELETE"), async (req, res) => {
+  res.json({ success: true, data: await contractUsage(requireAuth(req), parseIdParam(req.params.id)) });
 });
 
 // Moves the contract to the Recycle Bin (nothing is removed). Super Admin only: 403 for anyone else,
