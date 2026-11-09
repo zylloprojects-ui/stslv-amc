@@ -179,6 +179,7 @@ describe('Accounts page', () => {
       'Service Report No.',
       'Value (Ex VAT, OMR)',
       'Invoice No.',
+      'Zoho Invoice Value (Ex VAT, OMR)',
       'Sales Engineer',
     ])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
@@ -296,7 +297,7 @@ describe('Accounts page', () => {
     const buttons = screen.getAllByRole('button', { name: /Hide Columns/ })
     expect(buttons).toHaveLength(1)
     const filters = within(screen.getByRole('form', { name: 'Filters' }))
-    expect(filters.getByRole('button', { name: 'Hide Columns · 10 of 10 shown' })).toBe(buttons[0])
+    expect(filters.getByRole('button', { name: 'Hide Columns · 11 of 11 shown' })).toBe(buttons[0])
     expect(filters.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
     expect(filters.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
     // Excel and PDF stay in the header, outside the filters.
@@ -306,7 +307,7 @@ describe('Accounts page', () => {
     // Opening the column chooser does not submit the filters, and Actions is not a choice.
     await userEvent.click(buttons[0])
     const dialog = within(screen.getByRole('dialog'))
-    expect(dialog.getAllByRole('checkbox')).toHaveLength(10)
+    expect(dialog.getAllByRole('checkbox')).toHaveLength(11)
     expect(dialog.queryByRole('checkbox', { name: 'Actions' })).not.toBeInTheDocument()
   })
 
@@ -326,7 +327,7 @@ describe('Accounts page', () => {
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(headers()).not.toContain('Actions')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 8 of 10 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 9 of 11 shown' })).toBeInTheDocument()
 
     view.unmount()
     renderPage()
@@ -379,7 +380,7 @@ describe('Accounts page', () => {
     expect(screen.queryByRole('link', { name: /View contract/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Record a Zoho invoice/ })).not.toBeInTheDocument()
     // Every row has exactly one cell per header.
-    for (const row of screen.getAllByRole('row').slice(1)) expect(within(row).getAllByRole('cell')).toHaveLength(headers().length)
+    for (const row of screen.getAllByRole('row').slice(1).filter((row) => row.closest('tfoot') === null)) expect(within(row).getAllByRole('cell')).toHaveLength(headers().length)
   })
 
   it('lets the Invoice No. be entered only on a completed service, each service on its own', async () => {

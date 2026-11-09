@@ -23,7 +23,7 @@ const WEAK_BASES = new Set([
   "qwerty", "qwertyuiop", "asdf", "asdfgh", "asdfghjkl", "zxcvbn", "zxcvbnm", "abc", "abcd", "abcdef", "abcdefg", "abcdefgh", "letmein", "changeme",
   "secret", "default", "temp", "temporary", "newpassword", "mypassword", "iloveyou", "monkey", "dragon", "sunshine", "princess", "football",
   "baseball", "master", "trustno", "summer", "winter", "spring", "autumn", "january", "december", "company", "office", "oman", "muscat",
-  "stslv", "stslev", "stslvamc", "stslevamc", "amc", "",
+  "stslv", "stslev", "stselv", "stslvamc", "stslevamc", "stselvamc", "amc", "",
 ]);
 
 const SUBSTITUTIONS: Record<string, string> = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "8": "b", "@": "a", "$": "s", "!": "i", "|": "i" };

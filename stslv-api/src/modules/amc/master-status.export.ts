@@ -120,6 +120,7 @@ export async function buildMasterStatusExport(
     PAID_STATUS_NOTE,
     "Zoho Invoices (Tracking) are the invoice numbers recorded in Invoice Tracking for each service; cancelled ones are not listed. They do not decide Paid or Unpaid.",
     "Zoho References (Tracking) are those invoices' Zoho references, in the same order; — marks an invoice recorded without one.",
+    `Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)} · Zoho Invoice Value (Invoice Tracking, Ex VAT) ${displayMoney(kpis.invoiceValue)}.`,
   ];
 
   if (kpis.valueMissing > 0) {

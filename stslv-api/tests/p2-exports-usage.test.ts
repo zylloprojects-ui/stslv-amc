@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { HEADER_ROW } from "../src/shared/export/excel";
-import { activeContract, contractBody, createClient, renewalEngineer, testReference, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer, testReference, today, visitsOf, withServiceReport, type Session, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -124,7 +124,7 @@ describe("Contract Recycle Bin dependency check", () => {
     const renewal = await api()
       .post(`/api/amc/contracts/${source}/renewals`)
       .set(admin.headers)
-      .send(contractBody(clientId, { validFrom: addDays(await today(), 21), validTo: addDays(await today(), 380), status: "DRAFT", salesEngineerId: await renewalEngineer() }));
+      .send(withRenewalDocument(contractBody(clientId, { validFrom: addDays(await today(), 21), validTo: addDays(await today(), 380), status: "DRAFT", salesEngineerId: await renewalEngineer() })));
     expect(renewal.status).toBe(201);
 
     const usage = (await get(`/api/amc/contracts/${source}/usage`)).body.data;

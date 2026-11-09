@@ -403,7 +403,7 @@ function StatusPanel() {
         <StatusLine label="Database" state={stateOf(dbHealth)} detail={dbHealth.data?.database ? `PostgreSQL database: ${dbHealth.data.database}` : undefined} />
       </div>
       <div className="mt-6 rounded-xl border border-sky-100 bg-sky-50/60 p-4">
-        <p className="text-sm font-semibold text-[#0b3b66]">STSLEV AMC</p>
+        <p className="text-sm font-semibold text-[#0b3b66]">STS-ELV AMC</p>
         <p className="text-xs text-slate-600">Smart Technical Service LLC · Operations Suite</p>
       </div>
     </Panel>

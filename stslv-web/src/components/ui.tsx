@@ -417,7 +417,7 @@ export function Modal({ title, onClose, children, footer, size = 'md' }: ModalPr
               </h2>
               <p className="app-modal-sub mt-0.5 flex items-center gap-1.5 text-xs font-medium">
                 <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
-                <span className="truncate">STSLEV AMC · Smart Technical Service LLC</span>
+                <span className="truncate">STS-ELV AMC · Smart Technical Service LLC</span>
               </p>
             </div>
             <button type="button" onClick={onClose} aria-label="Close" className="app-modal-x group shrink-0 rounded-full p-2 transition-all">

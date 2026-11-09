@@ -13,7 +13,7 @@ import path from "node:path";
 /** The company as the application names it. Used only in file properties, never printed over the artwork. */
 export const COMPANY_NAME = "Smart Technical Service LLC";
 /** The system name as the application shows it. */
-export const SYSTEM_NAME = "STSLEV AMC";
+export const SYSTEM_NAME = "STS-ELV AMC";
 
 /** Colours of the application's default theme, as RRGGBB. */
 export const BRAND = {

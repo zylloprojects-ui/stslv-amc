@@ -15,6 +15,7 @@ import { hasStoredReference, referenceOfIdSql, referenceSql, rethrowDuplicateRef
 import { contractParents, restoreBlockers } from "../recycle-bin/contract-parents";
 import { amountForService, expectedTermTotal, serviceAmounts, servicesPerCycle, subtractMoney } from "./amc.billing";
 import { applyContractMasters } from "./contract-masters.service";
+import { RENEWAL_WARNING_DAYS } from "./management.service";
 import { CONTRACT_TRANSITIONS, MAX_CONTRACT_YEARS, type ContractStatus, type VisitStatus } from "./amc.constants";
 import {
   addMonths,
@@ -396,6 +397,21 @@ export async function listContractHistory(id: string, query: ContractHistoryQuer
   return listEntityHistory("amc_contracts", id, query.page, query.pageSize);
 }
 
+/**
+ * The register's Validity filter (client fixes, 2026-11-09). The stored status filter alone missed contracts whose
+ * Valid To had passed while they were still stored as Active (the automatic expiry run stays switched off,
+ * AMC_CONTRACT_EXPIRY_ENABLED), so the register and its Expired figure disagreed. Existing rules, reused:
+ *   expired  the Expired figure's rule (getContractKpis, AMC Management "not renewed / expired"): status Expired, or
+ *            Active with Valid To before today. A renewed contract still shows: a renewal never hides the original.
+ *   due      Active, Valid To today or within RENEWAL_WARNING_DAYS (45) days: the AMC Renewal queue's warning window.
+ * "Today" is the database's current_date, as on AMC Management, AMC Renewal and the Dashboard, so the figures agree.
+ * Reading never changes the stored status.
+ */
+export const CONTRACT_VALIDITY_FILTERS = {
+  expired: "(c.status = 'EXPIRED' OR (c.status = 'ACTIVE' AND c.valid_to < current_date))",
+  due: `(c.status = 'ACTIVE' AND c.valid_to BETWEEN current_date AND current_date + ${RENEWAL_WARNING_DAYS})`,
+} as const;
+
 export async function listContracts(query: ListContractsQuery) {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -403,6 +419,9 @@ export async function listContracts(query: ListContractsQuery) {
   if (query.status !== "all") {
     params.push(query.status);
     conditions.push(`c.status = $${params.length}`);
+  }
+  if (query.validity && query.validity !== "all") {
+    conditions.push(CONTRACT_VALIDITY_FILTERS[query.validity]);
   }
   if (query.clientId) {
     params.push(query.clientId);
@@ -484,7 +503,7 @@ export async function getContractKpis(): Promise<ContractKpis> {
             COALESCE(sum(c.contract_value), 0)::numeric(16,3) AS contract_value,
             COALESCE(sum(c.final_credit), 0)::numeric(16,3) AS final_credit,
             count(*) FILTER (WHERE c.final_credit IS NULL)::int AS final_credit_missing,
-            count(*) FILTER (WHERE c.status = 'EXPIRED' OR (c.status = 'ACTIVE' AND c.valid_to < current_date))::int AS expired
+            count(*) FILTER (WHERE ${CONTRACT_VALIDITY_FILTERS.expired})::int AS expired
      FROM amc_contracts c`
   );
   const row = result.rows[0];
@@ -1108,6 +1127,43 @@ export async function createNewContract(auth: AuthContext, input: CreateNewContr
     return await createContract(auth, { ...fields, systemDescription: fields.systemDescription ?? "" }, {
       attach: async (db, contractId) => {
         await attachStoredDocument(db, auth, contractId, stored);
+      },
+    });
+  } catch (error) {
+    await discardStoredFile(stored.key);
+    throw error;
+  }
+}
+
+/** Title of the document a renewal is created with, so it is told apart from the renewed contract's own document. */
+export const RENEWAL_DOCUMENT_TITLE = "Renewal contract document";
+
+/**
+ * Start Renewal (client fixes, 2026-11-09): the renewal is created as before (a separate contract, linked to the one
+ * it renews, which stays unchanged), and it must carry its own updated renewal contract document. The document is
+ * checked (type, size, content) before anything is stored, recorded in the renewal's own transaction with an Audit
+ * Log entry, and removed from storage again if the renewal is not created. The renewed contract's document is never
+ * copied or reused.
+ */
+export async function createRenewalWithDocument(
+  auth: AuthContext,
+  sourceId: string,
+  input: CreateContractInput & { contractDocument: { fileName: string; contentBase64: string } },
+  renewalNotes: string | null
+): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
+  const { contractDocument, ...fields } = input;
+  const prepared = prepareContractDocument(contractDocument.fileName, Buffer.from(contractDocument.contentBase64, "base64"));
+  assertValidity(fields.validFrom, fields.validTo);
+  // A missing source is reported before the file is written, so it leaves nothing behind.
+  await findContract(pool, sourceId);
+  const stored = await storePreparedDocument(prepared);
+
+  try {
+    return await createContract(auth, fields, {
+      renewedFromId: sourceId,
+      renewalNotes,
+      attach: async (db, contractId) => {
+        await attachStoredDocument(db, auth, contractId, stored, RENEWAL_DOCUMENT_TITLE);
       },
     });
   } catch (error) {

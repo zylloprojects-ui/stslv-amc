@@ -16,6 +16,7 @@ export const COLUMN_IDS = [
   'serviceReportNo',
   'visitValue',
   'invoiceNo',
+  'invoiceValue',
   'salesEngineer',
 ] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
@@ -30,6 +31,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceStatus: 'Service Status',
   serviceReportNo: 'Service Report No.',
   invoiceNo: 'Invoice No.',
+  invoiceValue: 'Zoho Invoice Value (Ex VAT, OMR)',
   salesEngineer: 'Sales Engineer',
 }
 

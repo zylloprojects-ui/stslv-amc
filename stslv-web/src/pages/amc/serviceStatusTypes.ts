@@ -35,6 +35,10 @@ export interface ServiceStatusItem {
   completedDate: string | null
   salesEngineer: { id: string; name: string } | null
   reportNumber: string | null
+  /** The Sales Engineer Name typed on this service (database update 0110). Not the contract's Sales Engineer link. */
+  salesEngineerName?: string | null
+  /** The contract's AMC Value / Year (OMR, excluding VAT); null when this user may not see contract values. */
+  amcValue?: string | null
   /** The uploaded Service Report document (database update 0104), or null. */
   serviceReport: ServiceReport | null
   /** Completed and saved: the status and completion date can no longer change. */
@@ -82,6 +86,10 @@ export interface ServiceStatusList {
   serviceReportLimits: { maxMb: number; allowedTypes: string }
   /** Whether the Service Report No. lock after Paid is switched on (proposed rule, off until approved). */
   reportNumberLockEnabled?: boolean
+  /** Database update 0110: the manual Sales Engineer Name is stored. Absent from an older API. */
+  salesEngineerNameAvailable?: boolean
+  /** The signed-in user may see contract values (AMC Contracts: View), so the AMC Value column is offered. */
+  amcValueVisible?: boolean
 }
 
 export interface ServiceStatusOptions {

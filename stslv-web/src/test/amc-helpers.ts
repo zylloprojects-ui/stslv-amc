@@ -1,6 +1,8 @@
 import type { Invoice } from '../lib/invoiceTypes'
 import type { Contract, ContractHistoryEntry, ExecutionVisit, SchedulePreview, ScheduleVisit } from '../pages/amc/types'
 import type { SessionUser } from '../lib/types'
+import { waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { afterPageSplit, fail, makeClient, mockApi, ok, signIn, type MockReply, type MockRequest } from './helpers'
 
 /** The seeded Execution role: sees contracts and the schedule, updates execution only. */
@@ -44,6 +46,17 @@ export const SALES_ENGINEERS = [{ id: '5', name: 'Test Sales Engineer', employee
 /** A file the contract form accepts as the contract document. */
 export function contractPdf(name = 'signed-contract.pdf', size = 2048): File {
   return new File([new Uint8Array(size)], name, { type: 'application/pdf' })
+}
+
+/** Start Renewal requires the updated renewal contract document (2026-11-09): attaches one in the open dialog. */
+export async function attachRenewalDocument(name = 'renewal-contract.pdf'): Promise<void> {
+  const input = await waitFor(() => {
+    const found = document.querySelector('[role="dialog"] input[type="file"]')
+    if (!found) throw new Error('No document field in the open dialog.')
+    return found as HTMLInputElement
+  })
+
+  await userEvent.upload(input, contractPdf(name))
 }
 
 export function makeContract(overrides: Partial<Contract> = {}): Contract {

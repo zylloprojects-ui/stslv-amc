@@ -20,6 +20,7 @@ import {
   TEST_PDF,
   visitsOf,
   type Session,
+  withRenewalDocument,
 } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
@@ -353,7 +354,7 @@ describe("status (2026-11-04: Add AMC Contract adds Active)", () => {
     const source = await activeContract(admin, clientId, { systemDescription: "RENEWAL SOURCE", validFrom: "2026-01-01", validTo: "2026-12-31" });
     const body = await newContractBody(clientId, { systemDescription: "RENEWAL SOURCE", validFrom: "2027-01-01", validTo: "2027-12-31", status: undefined });
     const { contractDocument: _document, finalCredit: _finalCredit, ...renewal } = body as Record<string, unknown>;
-    const created = await api().post(`/api/amc/contracts/${source}/renewals`).set(admin.headers).send(renewal);
+    const created = await api().post(`/api/amc/contracts/${source}/renewals`).set(admin.headers).send(withRenewalDocument(renewal));
 
     expect(created.status).toBe(201);
     expect(created.body.data.status).toBe("DRAFT");
@@ -365,7 +366,7 @@ describe("status (2026-11-04: Add AMC Contract adds Active)", () => {
     const source = await activeContract(admin, clientId, { systemDescription: "RENEWAL SOURCE 2", validFrom: "2026-01-01", validTo: "2026-12-31" });
     const body = await newContractBody(clientId, { systemDescription: "RENEWAL SOURCE 2", validFrom: "2027-01-01", validTo: "2027-12-31", status: "DRAFT" });
     const { contractDocument: _document, finalCredit: _finalCredit, ...renewal } = body as Record<string, unknown>;
-    const created = await api().post(`/api/amc/contracts/${source}/renewals`).set(admin.headers).send(renewal);
+    const created = await api().post(`/api/amc/contracts/${source}/renewals`).set(admin.headers).send(withRenewalDocument(renewal));
 
     expect(created.status).toBe(201);
     expect(created.body.data.status).toBe("DRAFT");

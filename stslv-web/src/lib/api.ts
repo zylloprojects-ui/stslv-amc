@@ -1,4 +1,4 @@
-// Single entry point for calls to the STSLEV AMC API.
+// Single entry point for calls to the STS-ELV AMC API.
 // Every API response is { success: true, data } or { success: false, error }.
 
 const TOKEN_KEY = 'stslv-amc.token'

@@ -11,7 +11,7 @@ import {
   contractHistorySchema,
   contractMastersSchema,
   createNewContractSchema,
-  createRenewalSchema,
+  createRenewalWithDocumentSchema,
   expiringContractsSchema,
   renewalHistorySchema,
   saveServiceStatusSchema,
@@ -36,8 +36,8 @@ import {
   changeContractStatus,
   contractUsage,
   deleteContract,
-  createContract,
   createNewContract,
+  createRenewalWithDocument,
   getContractKpis,
   generateSchedule,
   previewRegeneration,
@@ -58,7 +58,7 @@ import { listScheduleGenerations } from "./schedule-generations.service";
 import { buildMonthlyScheduleExport, exportMonthlyScheduleSchema, getMonthlySchedule, monthlyScheduleSchema } from "./schedule-monthly.service";
 import { buildMasterStatusExport } from "./master-status.export";
 import { exportMasterStatusSchema, listMasterStatusSchema } from "./master-status.schemas";
-import { getMasterStatusOptions, listMasterStatus } from "./master-status.service";
+import { getMasterStatusOptions, listMasterStatus, masterStatusAccess } from "./master-status.service";
 import { buildRenewalHistoryExport, buildRenewalQueueExport } from "./renewal.export";
 import { exportRenewalHistorySchema, exportRenewalQueueSchema, listRenewalQueueSchema } from "./renewal-queue.schemas";
 import { listRenewalQueue } from "./renewal-queue.service";
@@ -66,7 +66,7 @@ import { getContractRenewals, listRenewalHistory } from "./renewals.service";
 import { getWorkload, listExpiringContracts } from "./reports.service";
 import { buildScheduleExport } from "./schedule.export";
 import { buildServiceStatusExport } from "./service-status.export";
-import { getCalendarOptions, getServiceStatusItem, getServiceStatusOptions, listServiceStatus, saveServiceStatus } from "./service-status.service";
+import { getCalendarOptions, getServiceStatusItem, getServiceStatusOptions, listServiceStatus, saveServiceStatus, serviceStatusAccess } from "./service-status.service";
 import { readServiceReport, removeServiceReport, uploadServiceReport } from "./service-reports.service";
 import { canViewSummary, getAmcSummary } from "./summary.service";
 import {
@@ -227,15 +227,6 @@ amcRouter.get("/contracts/:id/renewals", authorize("AMC_CONTRACTS", "VIEW"), ren
   res.json({ success: true, data: await getContractRenewals(parseIdParam(req.params.id)) });
 });
 
-// A renewal is a new contract (same fields and checks as adding one), linked to this contract, which stays unchanged.
-// Renewing is an AMC Renewal action (AMC_RENEWAL:CREATE), from the AMC Renewal page or the contract page.
-amcRouter.post("/contracts/:id/renewals", authorize("AMC_RENEWAL", "CREATE"), renewalsReady, async (req, res) => {
-  const { renewalNotes, ...input } = createRenewalSchema.parse(req.body);
-  const renewal = await createContract(requireAuth(req), input, { renewedFromId: parseIdParam(req.params.id), renewalNotes });
-
-  res.status(201).json({ success: true, data: renewal });
-});
-
 // Read-only: the activity recorded against one contract (the contract page's history).
 amcRouter.get("/contracts/:id/history", authorize("AMC_CONTRACTS", "VIEW"), async (req, res) => {
   res.json({
@@ -249,12 +240,32 @@ amcRouter.get("/contracts/:id/history", authorize("AMC_CONTRACTS", "VIEW"), asyn
 // contracts, with room for the largest allowed file (base64 adds a third) plus the contract's own fields.
 // app.ts leaves this one route out of the global JSON parser, whose default limit is 100 kB.
 export const CONTRACT_CREATE_PATH = "/api/amc/contracts";
+/** Start Renewal also carries its renewal contract document (client fixes, 2026-11-09). */
+const RENEWAL_CREATE_PATH = /^\/api\/amc\/contracts\/[1-9]\d{0,17}\/renewals$/;
+
+/** Whether a POST path is one of the two routes that read their own, larger JSON body (with the contract document). */
+export function carriesContractDocument(path: string): boolean {
+  const clean = path.replace(/\/+$/, "");
+  return clean === CONTRACT_CREATE_PATH || RENEWAL_CREATE_PATH.test(clean);
+}
+
 const contractWithDocument = express.json({ limit: Math.ceil(env.attachmentMaxMb * 1.34 + 1) * 1024 * 1024 });
 
 amcRouter.post("/contracts", authorize("AMC_CONTRACTS", "CREATE"), contractWithDocument, async (req, res) => {
   const contract = await createNewContract(requireAuth(req), createNewContractSchema.parse(req.body));
 
   res.status(201).json({ success: true, data: contract });
+});
+
+// A renewal is a new contract (same fields and checks as adding one), linked to this contract, which stays unchanged.
+// Renewing is an AMC Renewal action (AMC_RENEWAL:CREATE), from the AMC Renewal page or the contract page. It carries
+// its own updated renewal contract document (required, client fixes 2026-11-09); the body is read only after the
+// permission check, with room for the document.
+amcRouter.post("/contracts/:id/renewals", authorize("AMC_RENEWAL", "CREATE"), renewalsReady, contractWithDocument, async (req, res) => {
+  const { renewalNotes, ...input } = createRenewalWithDocumentSchema.parse(req.body);
+  const renewal = await createRenewalWithDocument(requireAuth(req), parseIdParam(req.params.id), input, renewalNotes ?? null);
+
+  res.status(201).json({ success: true, data: renewal });
 });
 
 amcRouter.patch("/contracts/:id", authorize("AMC_CONTRACTS", "EDIT"), async (req, res) => {
@@ -388,7 +399,7 @@ amcRouter.patch("/execution/visits/:id", authorize("AMC_EXECUTION", "EDIT"), asy
 // execution, so it needs AMC_EXECUTION:EDIT. Completing needs the visit's service
 // report and a completed visit is locked (checked by the execution rules).
 amcRouter.get("/service-status", authorize("SERVICE_STATUS", "VIEW"), async (req, res) => {
-  res.json({ success: true, data: await listServiceStatus(listServiceStatusSchema.parse(req.query)) });
+  res.json({ success: true, data: await listServiceStatus(listServiceStatusSchema.parse(req.query), serviceStatusAccess(requireAuth(req))) });
 });
 
 // The filter lists (sales engineers, frequencies, years on visits), shared with the Monthly Calendar.
@@ -411,7 +422,7 @@ amcRouter.get("/service-status/export", authorize("SERVICE_STATUS", "VIEW"), aut
 
 // One service, by its visit id, for the read-only View dialog.
 amcRouter.get("/service-status/:id", authorize("SERVICE_STATUS", "VIEW"), async (req, res) => {
-  res.json({ success: true, data: await getServiceStatusItem(parseIdParam(req.params.id)) });
+  res.json({ success: true, data: await getServiceStatusItem(parseIdParam(req.params.id), serviceStatusAccess(requireAuth(req))) });
 });
 
 // The Service Report document of one service (migration 0104). Viewing or downloading it needs SERVICE_STATUS:VIEW;
@@ -467,7 +478,7 @@ const masterStatusReady = requireSchema(["amc_visits.quotation_no"]);
 const masterStatusView = [authorize("MASTER_AMC_STATUS", "VIEW"), masterStatusReady];
 
 amcRouter.get("/master-status", ...masterStatusView, async (req, res) => {
-  res.json({ success: true, data: await listMasterStatus(listMasterStatusSchema.parse(req.query)) });
+  res.json({ success: true, data: await listMasterStatus(listMasterStatusSchema.parse(req.query), masterStatusAccess(requireAuth(req))) });
 });
 
 amcRouter.get("/master-status/options", ...masterStatusView, async (_req, res) => {

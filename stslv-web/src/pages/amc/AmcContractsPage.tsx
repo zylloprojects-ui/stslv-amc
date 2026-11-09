@@ -1,6 +1,6 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ChangeEvent, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { isSuperAdmin } from '../../auth/roles'
 import { refreshOperationalData } from '../../lib/refreshOperationalData'
@@ -28,8 +28,24 @@ import {
 
 const PAGE_SIZE = 25
 
-/** The columns a user may hide; the same ids the export accepts. # , Client and Actions always stay. */
-type ColumnKey = 'reference' | 'system' | 'engineer' | 'validity' | 'frequency' | 'contractValue' | 'finalCredit' | 'visits' | 'status'
+/**
+ * The columns a user may hide. # , Client and Actions always stay. "contract" (the Upload Contract link, shown to users
+ * who may edit) is a page column only: the export has no such column, so it is never sent to the export.
+ */
+type ColumnKey = 'reference' | 'system' | 'engineer' | 'validity' | 'frequency' | 'contractValue' | 'finalCredit' | 'visits' | 'contract' | 'status'
+
+/** Page-only columns, left out of the export's hidden list (the export does not know them). */
+const PAGE_ONLY_COLUMNS: ReadonlySet<ColumnKey> = new Set(['contract'])
+
+/** The Validity filter (2026-11-09): computed from Valid To, independent of the stored contract status. */
+type ValidityFilter = 'all' | 'due' | 'expired'
+const VALIDITY_FILTERS: ValidityFilter[] = ['all', 'due', 'expired']
+const VALIDITY_LABELS: Record<ValidityFilter, string> = {
+  all: 'Any validity',
+  due: 'Due: active, ending within 45 days',
+  expired: 'Expired: status Expired or validity ended',
+}
+const isValidityFilter = (value: string | null): value is ValidityFilter => VALIDITY_FILTERS.includes(value as ValidityFilter)
 
 const COLUMN_OPTIONS: ColumnOption<ColumnKey>[] = [
   { key: 'reference', label: 'AMC Reference' },
@@ -40,6 +56,7 @@ const COLUMN_OPTIONS: ColumnOption<ColumnKey>[] = [
   { key: 'contractValue', label: 'Contract value' },
   { key: 'finalCredit', label: 'Credit' },
   { key: 'visits', label: 'Visits' },
+  { key: 'contract', label: 'Contract' },
   { key: 'status', label: 'Status' },
 ]
 
@@ -258,6 +275,12 @@ export function AmcContractsPage() {
   const [searchInput, setSearchInput] = useState('')
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<ContractStatus | 'all'>('all')
+  // Starts from ?validity=due|expired, so a link (or the Help guide) can open the register already filtered.
+  const [searchParams] = useSearchParams()
+  const [validity, setValidity] = useState<ValidityFilter>(() => {
+    const initial = searchParams.get('validity')
+    return isValidityFilter(initial) ? initial : 'all'
+  })
   const [clientId, setClientId] = useState('')
   const [frequency, setFrequency] = useState('')
   const [system, setSystem] = useState('')
@@ -283,10 +306,10 @@ export function AmcContractsPage() {
   const options = useQuery({ queryKey: ['amc', 'contracts', 'filter-options'], queryFn: () => api.get<ContractFilterOptions>('/amc/contracts/filter-options') })
 
   const contracts = useQuery({
-    queryKey: ['amc', 'contracts', 'list', { search, status, clientId, system, year, salesEngineerId, frequency, page }],
+    queryKey: ['amc', 'contracts', 'list', { search, status, validity, clientId, system, year, salesEngineerId, frequency, page }],
     queryFn: () =>
       api.get<ContractList>(
-        `/amc/contracts${queryString({ search, status, clientId, system, year, salesEngineerId, frequency, page, pageSize: PAGE_SIZE })}`,
+        `/amc/contracts${queryString({ search, status, validity: validity === 'all' ? '' : validity, clientId, system, year, salesEngineerId, frequency, page, pageSize: PAGE_SIZE })}`,
       ),
     placeholderData: keepPreviousData,
   })
@@ -299,7 +322,7 @@ export function AmcContractsPage() {
   const canDelete = isSuperAdmin(auth.user)
 
   const data = contracts.data
-  const filtered = search !== '' || status !== 'all' || clientId !== '' || system !== '' || year !== '' || salesEngineerId !== '' || frequency !== ''
+  const filtered = search !== '' || status !== 'all' || validity !== 'all' || clientId !== '' || system !== '' || year !== '' || salesEngineerId !== '' || frequency !== ''
   // A changed filter starts again from the first page.
   const choose = (set: (value: string) => void) => (event: ChangeEvent<HTMLSelectElement>) => {
     set(event.target.value)
@@ -309,6 +332,7 @@ export function AmcContractsPage() {
     setSearchInput('')
     setSearch('')
     setStatus('all')
+    setValidity('all')
     setClientId('')
     setSystem('')
     setYear('')
@@ -331,7 +355,8 @@ export function AmcContractsPage() {
   })
   // The Filtered Total row: the label spans every column before the first amount.
   const leadingColumns = 2 + (['reference', 'system', 'engineer', 'validity', 'frequency'] as const).filter(show).length
-  const trailingColumns = 1 + (show('visits') ? 1 : 0) + (canEdit ? 1 : 0) + (show('status') ? 1 : 0)
+  const showContract = canEdit && show('contract')
+  const trailingColumns = 1 + (show('visits') ? 1 : 0) + (showContract ? 1 : 0) + (show('status') ? 1 : 0)
 
   return (
     <>
@@ -345,7 +370,7 @@ export function AmcContractsPage() {
               <ExportButtons
                 what="AMC Contracts"
                 fileStem="amc-contracts"
-                path={(format) => `/amc/contracts/export${queryString({ search, status, clientId, system, year, salesEngineerId, frequency, format, hidden: [...hiddenColumns].join(',') })}`}
+                path={(format) => `/amc/contracts/export${queryString({ search, status, validity: validity === 'all' ? '' : validity, clientId, system, year, salesEngineerId, frequency, format, hidden: [...hiddenColumns].filter((key) => !PAGE_ONLY_COLUMNS.has(key)).join(',') })}`}
                 onError={setExportError}
               />
             )}
@@ -470,6 +495,25 @@ export function AmcContractsPage() {
               </select>
             )}
           </Filter>
+          <Filter label="Validity">
+            {(id, className) => (
+              <select
+                id={id}
+                value={validity}
+                onChange={(event) => {
+                  setValidity(event.target.value as ValidityFilter)
+                  setPage(1)
+                }}
+                className={className}
+              >
+                {VALIDITY_FILTERS.map((value) => (
+                  <option key={value} value={value}>
+                    {VALIDITY_LABELS[value]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </Filter>
           <Filter label="Contract status">
             {(id, className) => (
               <select
@@ -495,7 +539,7 @@ export function AmcContractsPage() {
               Reset filters
             </Button>
             <ColumnsMenu
-              options={COLUMN_OPTIONS}
+              options={canEdit ? COLUMN_OPTIONS : COLUMN_OPTIONS.filter((option) => option.key !== 'contract')}
               hidden={hiddenColumns}
               onChange={(next) => {
                 setHiddenColumns(next)
@@ -583,7 +627,7 @@ export function AmcContractsPage() {
                         Visits
                       </th>
                     )}
-                    {canEdit && (
+                    {showContract && (
                       <th scope="col" className={TABLE.th}>
                         Contract
                       </th>
@@ -673,7 +717,7 @@ export function AmcContractsPage() {
                           </span>
                         )}
                       </td>}
-                      {canEdit && (
+                      {showContract && (
                         <td className={`${TABLE.td} whitespace-nowrap`}>
                           <Link to={`/amc/contracts/${contract.id}?tab=documents`} aria-label={`Upload Contract for ${label(contract)}`} className="text-sm font-semibold text-[#1479BD] hover:underline">
                             Upload Contract

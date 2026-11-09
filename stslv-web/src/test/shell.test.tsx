@@ -35,32 +35,32 @@ describe('application shell', () => {
     renderApp('/dashboard')
 
     await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
-    expect(document.title).toBe('Dashboard · STSLEV AMC')
+    expect(document.title).toBe('Dashboard · STS-ELV AMC')
 
     const nav = screen.getByRole('navigation', { name: 'Main' })
     await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
     await userEvent.click(within(nav).getByRole('link', { name: 'Invoice Tracking' }))
 
     await screen.findByRole('heading', { name: 'Invoice Tracking' })
-    expect(document.title).toBe('Invoice Tracking · STSLEV AMC')
+    expect(document.title).toBe('Invoice Tracking · STS-ELV AMC')
   })
 
   it('names the tab on the login, access-denied and not-found pages', async () => {
     mockApi(() => undefined)
     const login = renderApp('/login')
     await screen.findByRole('button', { name: 'Login' })
-    expect(document.title).toBe('Sign in · STSLEV AMC')
+    expect(document.title).toBe('Sign in · STS-ELV AMC')
     login.unmount()
 
     session(ACCOUNTANT)
     const denied = renderApp('/admin/users')
     await screen.findByRole('heading', { name: 'Access denied' })
-    expect(document.title).toBe('Access denied · STSLEV AMC')
+    expect(document.title).toBe('Access denied · STS-ELV AMC')
     denied.unmount()
 
     renderApp('/no-such-page')
     await screen.findByRole('heading', { name: 'Page not found' })
-    expect(document.title).toBe('Page not found · STSLEV AMC')
+    expect(document.title).toBe('Page not found · STS-ELV AMC')
   })
 
   it('moves keyboard focus to the new page after navigation', async () => {
@@ -280,8 +280,10 @@ describe('shared dialog', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Open form' }))
 
-    expect(screen.getByRole('dialog', { name: 'Form' })).toHaveTextContent('STSLEV AMC · Smart Technical Service LLC')
+    expect(screen.getByRole('dialog', { name: 'Form' })).toHaveTextContent('STS-ELV AMC · Smart Technical Service LLC')
     expect(document.body).not.toHaveTextContent('STSLEV ERP')
+    // STS-ELV is the client's confirmed name (2026-11-09); the earlier STSLEV spelling is gone.
+    expect(document.body).not.toHaveTextContent('STSLEV')
   })
 
   it('lets Escape close only the dialog on top', async () => {

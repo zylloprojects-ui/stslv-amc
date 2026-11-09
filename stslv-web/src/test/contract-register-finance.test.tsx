@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { Attachment } from '../components/AttachmentsPanel'
 import { ADMIN, ok, renderApp, type MockRequest } from './helpers'
-import { amcApi, EXECUTION, makeContract, makeVisit } from './amc-helpers'
+import { amcApi, EXECUTION, makeContract, makeVisit, attachRenewalDocument } from './amc-helpers'
 
 // Contract register totals and columns, Contract 360 links and figures, the schedule's
 // Paid / Unpaid, the consolidated filters, month cards, cancel reasons, renewal notes,
@@ -106,7 +106,7 @@ describe('Contract 360', () => {
     const toolbar = screen.getByRole('navigation', { name: 'Contract links' })
     expect(within(toolbar).getByRole('link', { name: 'Monthly Calendar' })).toHaveAttribute('href', '/amc/calendar')
     expect(within(toolbar).getByRole('link', { name: 'All Schedules' })).toHaveAttribute('href', '/amc/schedule?contractId=100')
-    expect(await within(toolbar).findByRole('button', { name: 'Renew' })).toBeInTheDocument()
+    expect(await within(toolbar).findByRole('button', { name: 'Start Renewal' })).toBeInTheDocument()
 
     const linked = screen.getByRole('region', { name: 'Linked Modules' })
     expect(await within(linked).findByText('2 current document(s)')).toBeInTheDocument()
@@ -167,7 +167,7 @@ describe('Contract 360', () => {
     const toolbar = await screen.findByRole('navigation', { name: 'Contract links' })
     expect(within(toolbar).queryByRole('link', { name: 'Monthly Calendar' })).not.toBeInTheDocument()
     expect(within(toolbar).queryByRole('link', { name: 'All Schedules' })).not.toBeInTheDocument()
-    expect(within(toolbar).queryByRole('button', { name: 'Renew' })).not.toBeInTheDocument()
+    expect(within(toolbar).queryByRole('button', { name: 'Start Renewal' })).not.toBeInTheDocument()
   })
 })
 
@@ -260,7 +260,7 @@ describe('Renewal form and client code', () => {
     renderApp('/amc/contracts/100')
 
     const toolbar = await screen.findByRole('navigation', { name: 'Contract links' })
-    await userEvent.click(await within(toolbar).findByRole('button', { name: 'Renew' }))
+    await userEvent.click(await within(toolbar).findByRole('button', { name: 'Start Renewal' }))
     const dialog = await screen.findByRole('dialog', { name: 'Renew AMC Contract' })
 
     expect(await within(dialog).findByRole('option', { name: 'Test Hotel One (CL-00010)' })).toBeInTheDocument()
@@ -269,6 +269,7 @@ describe('Renewal form and client code', () => {
     await userEvent.type(within(dialog).getByLabelText('Valid to', { exact: false }), '2028-12-31')
     await userEvent.type(within(dialog).getByLabelText('Renewal notes'), 'Two more sites')
     await within(dialog).findByRole('option', { name: 'Raghu' })
+    await attachRenewalDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))

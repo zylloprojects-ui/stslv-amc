@@ -46,6 +46,12 @@ export interface MasterStatusItem {
   quotationNo: string | null
   salesEngineer: { id: string; name: string } | null
   colour: RowColour
+  /** Zoho invoice amounts allocated to the visit in Invoice Tracking (OMR, ex VAT); null when none. Absent from an older API. */
+  invoiceValue?: string | null
+  /** No value because the contract has neither a Billing Basis nor a Cost per Visit (nothing is invented). */
+  valueSourceMissing?: boolean
+  /** The contract's AMC Value / Year; null unless the user may see contract values (AMC Contracts: View). */
+  amcValue?: string | null
 }
 
 export interface MasterStatusKpis {
@@ -56,6 +62,10 @@ export interface MasterStatusKpis {
   red: number
   totalValue: string
   valueMissing: number
+  /** Value of the filtered services with an Invoice No. entered (Paid reference status). */
+  paidValue?: string
+  /** Zoho invoice amounts allocated to the filtered services (Invoice Tracking). */
+  invoiceValue?: string
 }
 
 export interface MasterStatusList {

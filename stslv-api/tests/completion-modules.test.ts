@@ -8,7 +8,7 @@ import { env } from "../src/config/env";
 import { addDays } from "../src/modules/amc/amc.schedule";
 import { REPORTS } from "../src/modules/reports/reports.service";
 import { waitForBackups } from "../src/modules/security/backups.service";
-import { activeContract, contractBody, createClient, legacyContract, newContractBody, renewalEngineer, testReference, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, legacyContract, newContractBody, renewalEngineer, testReference, today, visitsOf, withServiceReport, type Session, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -117,7 +117,7 @@ describe("Reports", () => {
     // One contract within the renewal window.
     const due = await activeContract(admin, clientId, contract({ systemDescription: "DUE", validFrom: addDays(await today(), -300), validTo: addDays(await today(), 20) }));
     // One renewal made, for the Renewal History report.
-    const renewal = await api().post(`/api/amc/contracts/${due}/renewals`).set(admin.headers).send(contractBody(clientId, { validFrom: addDays(await today(), 21), validTo: addDays(await today(), 380), status: "DRAFT", salesEngineerId: await renewalEngineer() }));
+    const renewal = await api().post(`/api/amc/contracts/${due}/renewals`).set(admin.headers).send(withRenewalDocument(contractBody(clientId, { validFrom: addDays(await today(), 21), validTo: addDays(await today(), 380), status: "DRAFT", salesEngineerId: await renewalEngineer() })));
     expect(renewal.status).toBe(201);
   });
 

@@ -178,7 +178,7 @@ function Brand({ label, size, announce }: Required<LoaderProps>) {
 
       {size === 'lg' && (
         <div className="text-center leading-tight">
-          <p className="text-xl font-bold tracking-wide text-[#0b3b66]">STSLEV AMC</p>
+          <p className="text-xl font-bold tracking-wide text-[#0b3b66]">STS-ELV AMC</p>
           <p className="mt-0.5 text-xs text-slate-500">Smart Technical Service LLC</p>
         </div>
       )}

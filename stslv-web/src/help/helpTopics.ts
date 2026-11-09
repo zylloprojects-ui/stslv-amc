@@ -13,7 +13,7 @@ const GENERAL: HelpTopic[] = [
     pages: ['/account', '/notifications'],
     guideChapter: 'Getting started',
     summary:
-      'STSLEV AMC keeps every AMC contract, its scheduled services, their completion and their invoice numbers in one place, so no visit and no invoice is missed.',
+      'STS-ELV AMC keeps every AMC contract, its scheduled services, their completion and their invoice numbers in one place, so no visit and no invoice is missed.',
     sections: [
       {
         heading: 'The everyday flow',
@@ -145,7 +145,7 @@ const GENERAL: HelpTopic[] = [
           'Entered on a completed service in Accounts, AMC Schedule or the contract page. Entering a number makes the service Paid; clearing it makes it Unpaid.',
           'A number can be entered or changed only after the service is Completed ("Complete the service before entering an invoice number."). Clearing is allowed at any time.',
           'No invoice is generated, no VAT is calculated, and no date or amount is asked for.',
-          'Paid is a reference status. It does not verify that money was received: STSLEV AMC has no bank or receipt records.',
+          'Paid is a reference status. It does not verify that money was received: STS-ELV AMC has no bank or receipt records.',
           'Accounts, Master AMC Status, the Calendar, the Dashboard payment figures and Reports use this number for Paid / Unpaid.',
         ],
       },
@@ -155,7 +155,7 @@ const GENERAL: HelpTopic[] = [
           'Official invoices are still created in Zoho. Their number, date, amounts and status are recorded in Invoice Tracking and allocated to the visits or projects they bill.',
           'A Zoho record does not make a service Paid. Accounts and Master AMC Status show it beneath the Invoice No. as "Zoho: …".',
           'Ready for Invoice, Invoiced, Pending Billing and the Calendar billing filter follow Invoice Tracking.',
-          'Confirming that money was actually received is done in Zoho / the bank, not in STSLEV AMC.',
+          'Confirming that money was actually received is done in Zoho / the bank, not in STS-ELV AMC.',
         ],
       },
     ],
@@ -428,7 +428,11 @@ const CONTRACTS: HelpTopic[] = [
       {
         heading: 'Filters and export',
         bullets: [
-          'Search by reference, client, system or engineer; filter by Client, System, Year, Sales engineer, Frequency and Status. Reset filters clears them.',
+          'Search by reference, client, system or engineer; filter by Client, System, Year, Sales engineer, Frequency, Validity and Status. Reset filters clears them.',
+          'Validity → Due: Active contracts ending today or within 45 days (the AMC Renewal window).',
+          'Validity → Expired: status Expired, or Active with its Valid To date passed. This is the same rule as the Expired figure, so the list and the figure always agree. A renewed contract still shows; its renewal never hides it.',
+          'The Status filter uses the stored status only: an Active contract past its end date is listed under Validity → Expired, not under Status → Expired, until its status changes.',
+          'Hide Columns can also hide the Contract column (the Upload Contract link). Your choice is remembered in this browser.',
           'Export (Excel or PDF) covers every filtered row and leaves out hidden columns.',
           'The footer shows the Filtered Total.',
         ],
@@ -658,6 +662,14 @@ const OPERATIONS: HelpTopic[] = [
           'Saving, uploading and Actions need Edit on AMC Execution. Export needs Export on Service Status.',
         ],
       },
+      {
+        heading: 'AMC Value and Sales Engineer Name',
+        bullets: [
+          'AMC Value (OMR): the AMC Value / Year of the service’s contract, excluding VAT, to plan manpower and days. Shown only to users who may view AMC Contracts; it is the contract’s value repeated on each service, so it is not added up.',
+          'Sales Engineer Name: typed by hand beside the Service Report No. and saved with the row’s Save (up to 120 characters). It is separate from the Sales Engineer column, which comes from the contract’s Sales Engineer master record.',
+          'Changing the Sales Engineer Name needs Edit on AMC Execution and is recorded in the Audit Log. It is not locked by the Paid rule.',
+        ],
+      },
     ],
     related: ['amc-schedule', 'accounts', 'service-sales'],
   },
@@ -692,6 +704,13 @@ const OPERATIONS: HelpTopic[] = [
           PAID_NOTE,
         ],
       },
+      {
+        heading: 'Values',
+        bullets: [
+          'The Value cell shows the service amount, the Zoho invoice amount allocated to it (Zoho:) and, for users who may view AMC Contracts, the contract’s AMC Value / Year.',
+          'The Total Filtered row adds up every matching service on every page: service value, Paid (Invoice No.) value and Zoho Invoice Value. Services without a value are counted and left out of the sum.',
+        ],
+      },
     ],
     related: ['accounts', 'service-sales'],
   },
@@ -707,8 +726,10 @@ const OPERATIONS: HelpTopic[] = [
       {
         heading: 'Renew a contract',
         steps: [
-          'On Renewal Queue, find the contract (ending within 45 days or already ended) and click Start Renewal.',
+          'On Renewal Queue, find the contract (ending within 45 days or already ended) and click Start Renewal. On a contract page, Start Renewal opens the same form.',
+          'The form is the Add AMC Contract form, filled from the contract being renewed (client, system, frequency, values). The contract being renewed is shown at the top.',
           'Enter a new AMC Reference Number, check the dates, value and active sales engineer, and add renewal notes.',
+          'Attach the updated renewal contract document (PDF or Word, up to 12 MB). It is required; the old contract’s document is never reused.',
           'Click Create renewal. It is saved as a draft, Under Client Approval, with no schedule yet.',
           'When the client approves, click Approve: the renewal becomes Active and its services are generated.',
         ],
@@ -732,6 +753,13 @@ const OPERATIONS: HelpTopic[] = [
           'Approved rule, switched on at the approved release: an Active contract becomes Expired on the day after its Valid To date, by Oman time.',
           'Its services keep their status and values. An open renewal does not stop the old contract from expiring, and the renewal is not changed.',
           'Until the release, contracts past validity stay Active and are shown as past validity.',
+        ],
+      },
+      {
+        heading: 'Why the renewal has its own number',
+        bullets: [
+          'Each AMC Reference Number belongs to one contract only, for life (approved 2026-11-04), so a renewal cannot reuse the number of the contract it renews.',
+          'Keeping the same visible number for renewals needs an owner decision on how contract periods are told apart. Until then, type a new number; the link to the original contract is kept and shown on both contracts.',
         ],
       },
     ],
@@ -775,6 +803,23 @@ const FINANCE: HelpTopic[] = [
         ],
       },
       { heading: 'Paid is a reference status', text: [PAID_NOTE, 'A Zoho record alone (shown as "Zoho: …") never makes a row green.'] },
+      {
+        heading: 'View Service Report',
+        bullets: [
+          'View Service Report (under the Service Report No.) opens the report uploaded on Service Status in a read-only viewer. Download is inside the viewer.',
+          'A Word report cannot be previewed in the browser: the viewer offers Download. "No report uploaded" means none is on file yet.',
+          'Viewing needs only View on Accounts. The file is fetched with your sign-in; there is no public link.',
+        ],
+      },
+      {
+        heading: 'Filtered totals and invoice values',
+        bullets: [
+          'The Total Filtered row adds up every service that matches the filters, on every page, not only the rows shown.',
+          'Total Filtered Service Value (OMR): the scheduled service amounts, excluding VAT. Paid (Invoice No.) is the part with an Invoice No. entered: a reference status, not proof of payment.',
+          'Total Filtered Invoice Value (OMR): the Zoho invoice amounts allocated to those services in Invoice Tracking. Cancelled invoices are left out. It is not the contract value.',
+          'An empty Value with "No Billing Basis or Cost per Visit on the contract" means the contract gives no amount; no value is invented. Set a Billing Basis or Cost per Visit on the contract and Regenerate.',
+        ],
+      },
     ],
     related: ['paid-vs-zoho', 'invoice-tracking'],
   },
@@ -785,7 +830,7 @@ const FINANCE: HelpTopic[] = [
     access: { kind: 'nav', path: '/invoices' },
     pages: ['/invoices'],
     guideChapter: 'Invoice Tracking',
-    summary: 'Invoices raised in Zoho, recorded against the completed visits and projects they cover. STSLEV AMC does not create invoices.',
+    summary: 'Invoices raised in Zoho, recorded against the completed visits and projects they cover. STS-ELV AMC does not create invoices.',
     sections: [
       {
         heading: 'Record a Zoho invoice',
@@ -842,6 +887,12 @@ const FINANCE: HelpTopic[] = [
           { term: 'Green', meaning: 'Completed with Quote No.' },
         ],
       },
+      {
+        heading: 'Totals',
+        bullets: [
+          'Service Sales shows quotation numbers only and has no amount column, so it has no money totals. Service values and their totals are on Accounts and Master AMC Status.',
+        ],
+      },
     ],
     related: ['service-status', 'master-amc-status'],
   },
@@ -876,6 +927,14 @@ const FINANCE: HelpTopic[] = [
         ],
       },
       { heading: 'Paid in reports', text: [PAID_NOTE] },
+      {
+        heading: 'Monthly invoice values',
+        bullets: [
+          'Monthly Maintenance (and the client and sales engineer summaries) show, per scheduled month: Value, Unpaid Value, Paid Value (Invoice No. entered), Zoho Invoice Value (Invoice Tracking) and Services Without Value.',
+          'They use the same services as Accounts, so for the same filters and period the totals match Accounts. An Invoice No. is a reference status, not proof that money was received.',
+          'A report opens only with View on Reports and View on its source page (Accounts for these reports); exporting also needs Export on both.',
+        ],
+      },
     ],
     related: ['billing-basis', 'accounts'],
   },

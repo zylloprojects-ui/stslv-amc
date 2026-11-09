@@ -17,7 +17,7 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>
 
-// Brand colours taken from the STSLEV logo.
+// Brand colours taken from the STS-ELV logo.
 const BRAND = ['#F5C622', '#EFA33A', '#FF8212', '#D1428C', '#7E6FAC', '#1B8AD3', '#00A6C8', '#5BAF48']
 
 const COPYRIGHT_YEAR = new Date().getFullYear()
@@ -26,10 +26,10 @@ const HEADINGS = {
   signin: {
     eyebrow: 'Secure sign in',
     title: 'Welcome back',
-    text: 'Sign in to STSLEV AMC to manage contracts, projects and invoices.',
+    text: 'Sign in to STS-ELV AMC to manage contracts, projects and invoices.',
   },
   signup: {
-    eyebrow: 'New to STSLEV AMC',
+    eyebrow: 'New to STS-ELV AMC',
     title: 'Get your account',
     text: 'Access is granted by your administrator so every action stays auditable.',
   },
@@ -171,7 +171,7 @@ export function AuthLayout() {
                 Smart Technical
                 <span className="block bg-gradient-to-r from-[#4DB8FF] to-[#7ED36B] bg-clip-text text-transparent">Service LLC</span>
               </p>
-              <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.28em] text-sky-200/70">STSLEV AMC · Operations Suite</p>
+              <p className="mt-2 text-[11px] font-medium uppercase tracking-[0.28em] text-sky-200/70">STS-ELV AMC · Operations Suite</p>
             </div>
           </div>
 

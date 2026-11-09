@@ -65,7 +65,10 @@ const VISITS = `
   LEFT JOIN sales_engineers se ON se.id = c.sales_engineer_id
   LEFT JOIN maintenance_frequencies mf ON mf.code = c.maintenance_frequency
   LEFT JOIN LATERAL (
-    SELECT string_agg(i.invoice_number, ', ' ORDER BY i.invoice_date, i.id) AS numbers
+    SELECT string_agg(i.invoice_number, ', ' ORDER BY i.invoice_date, i.id) AS numbers,
+           -- The amounts of those invoices allocated to this visit, OMR excluding VAT. One allocation per invoice and
+           -- visit (0060), and one row per visit here, so a grouped sum never counts an invoice twice.
+           sum(al.allocated_amount)::numeric(16,3) AS amount
     FROM invoice_allocations al JOIN invoices i ON i.id = al.invoice_id
     WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
   ) inv ON true`;
@@ -74,11 +77,12 @@ const visitColumns = (ctx: SqlContext) => `${ctx.reference("c")} AS reference, c
   COALESCE(mf.label, c.maintenance_frequency) AS frequency, v.service_code AS service, v.scheduled_date::text AS scheduled_date,
   initcap(replace(v.status, '_', ' ')) AS status, v.service_report_no AS report_no, v.manual_invoice_no AS invoice_no,
   CASE WHEN v.manual_invoice_no IS NULL THEN 'Unpaid' ELSE 'Paid' END AS payment, inv.numbers AS zoho_invoices,
-  se.name AS engineer, v.visit_amount AS value`;
+  se.name AS engineer, v.visit_amount AS value, inv.amount AS zoho_invoice_value`;
 const VISIT_REPORT_COLUMNS = [
   IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("frequency", "Frequency", 15),
   IDENT("service", "Service"), DATE("scheduled_date", "Scheduled Date"), TEXT("status", "Status", 13), IDENT("report_no", "Service Report No."),
   IDENT("invoice_no", "Invoice No."), TEXT("payment", "Paid / Unpaid", 9), IDENT("zoho_invoices", "Zoho Invoices"), TEXT("engineer", "Sales Engineer", 16), MONEY("value", "Value (Ex VAT)"),
+  MONEY("zoho_invoice_value", "Zoho Invoice Value"),
 ];
 
 type Where = (query: Filters, add: (value: unknown) => string) => string[];
@@ -150,12 +154,25 @@ const groupedVisits = (keyColumns: string, group: string) => (where: string) => 
          count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS paid,
          count(*) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS unpaid,
          COALESCE(sum(v.visit_amount), 0)::numeric(16,3) AS value,
-         COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL), 0)::numeric(16,3) AS unpaid_value
+         COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL), 0)::numeric(16,3) AS unpaid_value,
+         -- Client fixes, 2026-11-09: the invoiced side of each group, which the report did not show.
+         COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3) AS paid_value,
+         COALESCE(sum(inv.amount), 0)::numeric(16,3) AS zoho_invoice_value,
+         count(*) FILTER (WHERE v.visit_amount IS NULL)::int AS no_value
   ${VISITS} WHERE ${where} GROUP BY ${group}`;
 const GROUP_COLUMNS = [
   COUNT("contracts", "Contracts"), COUNT("services", "Services"), COUNT("completed", "Completed"), COUNT("pending", "Pending"),
   COUNT("paid", "Paid"), COUNT("unpaid", "Unpaid"), MONEY("value", "Value (Ex VAT)"), MONEY("unpaid_value", "Unpaid Value"),
+  MONEY("paid_value", "Paid Value (Invoice No. Entered)"), MONEY("zoho_invoice_value", "Zoho Invoice Value (Tracking)"), COUNT("no_value", "Services Without Value"),
 ];
+/**
+ * What the grouped value columns mean (client fixes, 2026-11-09). Paid Value is the reference status, not money received;
+ * Zoho Invoice Value is what Invoice Tracking allocates to the services; a service with no amount adds nothing.
+ */
+const GROUP_VALUE_NOTE =
+  "Value is each service's scheduled amount (OMR excluding VAT), grouped by its scheduled month. Paid Value: services with an Invoice No. entered (a reference status, not proof of payment). " +
+  "Zoho Invoice Value: amounts of active Zoho invoices allocated to those services in Invoice Tracking; cancelled invoices are left out. " +
+  "Services Without Value: no amount, because the contract has no Billing Basis and no Cost per Visit; no value is invented for them.";
 const PAYMENT_NOTE = PAID_STATUS_NOTE;
 
 export const REPORTS = {
@@ -248,7 +265,7 @@ export const REPORTS = {
     sql: groupedVisits("to_char(v.scheduled_date, 'YYYY-MM') AS month", "to_char(v.scheduled_date, 'YYYY-MM')"),
     where: visitWhere,
     orderBy: "month",
-    notes: [PAYMENT_NOTE],
+    notes: [PAYMENT_NOTE, GROUP_VALUE_NOTE],
   },
   renewal: {
     title: "AMC Renewal",

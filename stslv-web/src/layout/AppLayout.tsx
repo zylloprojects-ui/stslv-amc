@@ -119,7 +119,7 @@ export function AppLayout() {
           </button>
           <span className="flex items-center gap-2 whitespace-nowrap text-base font-semibold text-[#0b3b66] md:hidden">
             <img src="/stslv-logo.png" alt="" className="h-7 w-7 object-contain" />
-            <span className="max-[430px]:sr-only">STSLEV AMC</span>
+            <span className="max-[430px]:sr-only">STS-ELV AMC</span>
           </span>
           <HeaderSearch />
         </div>

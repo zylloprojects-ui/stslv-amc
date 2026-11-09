@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, newContractBody, renewalEngineer } from "./amc-helpers";
+import { activeContract, contractBody, createClient, newContractBody, renewalEngineer, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -21,7 +21,7 @@ const renew = (id: string, overrides: Record<string, unknown> = {}, session: Ses
   api()
     .post(`/api/amc/contracts/${id}/renewals`)
     .set(session.headers)
-    .send(contractBody(clientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: defaultEngineerId, ...overrides }));
+    .send(withRenewalDocument(contractBody(clientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: defaultEngineerId, ...overrides })));
 
 beforeAll(async () => {
   await resetProjectData();

@@ -11,6 +11,7 @@ import { TABLE } from '../../components/table'
 import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
+import { formatMoney } from '../../lib/money'
 import { queryString } from './amcApi'
 import { formatDate, todayIso } from './amcFormat'
 import { Filter, FilterPanel, Pager } from './components'
@@ -35,6 +36,8 @@ import './serviceStatus.css'
 
 const PAGE_SIZE = 50
 const REPORT_NUMBER_MAX = 50
+/** The API's limit for the manual Sales Engineer Name (database update 0110). */
+const ENGINEER_NAME_MAX = 120
 
 // --- Status colours of the badges and the legend. Row colours are in serviceStatus.css,
 // keyed on the row's data-status, so they hold on odd and even rows alike. ---
@@ -110,10 +113,14 @@ const COLUMNS = [
   { key: 'system', label: 'System' },
   { key: 'frequency', label: 'Frequency' },
   { key: 'service', label: 'Service' },
+  // The linked contract's AMC Value / Year: offered only to users who may see contract values (AMC Contracts: View).
+  { key: 'amcValue', label: 'AMC Value (OMR)' },
   { key: 'due', label: 'Scheduled Month / Due Date' },
   { key: 'status', label: 'Service Status' },
   { key: 'engineer', label: 'Sales Engineer' },
   { key: 'report', label: 'Service Report No.' },
+  // Typed by hand beside the report number (database update 0110); not the contract's Sales Engineer link.
+  { key: 'engineerName', label: 'Sales Engineer Name' },
   { key: 'serviceReport', label: 'Service Report' },
 ] as const
 type ColumnKey = (typeof COLUMNS)[number]['key']
@@ -124,9 +131,14 @@ const COLUMN_KEYS = COLUMNS.map((column) => column.key)
 interface Draft {
   status: ServiceStatus
   reportNumber: string
+  salesEngineerName: string
 }
 
-const draftOf = (item: ServiceStatusItem): Draft => ({ status: item.serviceStatus, reportNumber: item.reportNumber ?? '' })
+const draftOf = (item: ServiceStatusItem): Draft => ({
+  status: item.serviceStatus,
+  reportNumber: item.reportNumber ?? '',
+  salesEngineerName: item.salesEngineerName ?? '',
+})
 
 /** The API's minimum length of an override reason. */
 const OVERRIDE_REASON_MIN = 5
@@ -148,6 +160,8 @@ interface RowProps {
   canOverrideReportNumber: boolean
   canViewContracts: boolean
   reportNumberAvailable: boolean
+  /** Database update 0110: the manual Sales Engineer Name can be saved. */
+  engineerNameAvailable: boolean
   serviceReportsAvailable: boolean
   reportMaxMb: number
   onSaved: (item: ServiceStatusItem) => void
@@ -167,6 +181,7 @@ function ServiceRow({
   canOverrideReportNumber,
   canViewContracts,
   reportNumberAvailable,
+  engineerNameAvailable,
   serviceReportsAvailable,
   reportMaxMb,
   onSaved,
@@ -187,7 +202,8 @@ function ServiceRow({
 
   const statusChanged = draft.status !== item.serviceStatus
   const reportChanged = reportNumberAvailable && draft.reportNumber.trim() !== (item.reportNumber ?? '')
-  const dirty = statusChanged || reportChanged
+  const engineerNameChanged = engineerNameAvailable && draft.salesEngineerName.trim() !== (item.salesEngineerName ?? '')
+  const dirty = statusChanged || reportChanged || engineerNameChanged
   // Paid and the lock switched on: read-only, except an administrator's override with a reason.
   const reportNumberLocked = item.reportNumberLocked === true
   const reportNumberEditable = canSave && reportNumberAvailable && (!reportNumberLocked || canOverrideReportNumber)
@@ -226,6 +242,7 @@ function ServiceRow({
     setSavedAt(null)
     if (statusChanged && draft.status === 'COMPLETED' && !item.serviceReport) return askForReport()
     if (draft.reportNumber.trim().length > REPORT_NUMBER_MAX) return setProblem(`The report number can have at most ${REPORT_NUMBER_MAX} characters.`)
+    if (draft.salesEngineerName.trim().length > ENGINEER_NAME_MAX) return setProblem(`The Sales Engineer Name can have at most ${ENGINEER_NAME_MAX} characters.`)
     if (needsOverrideReason && overrideReason.trim().length < OVERRIDE_REASON_MIN) {
       return setProblem(`This service is Paid, so its report number is locked. Enter the reason for the change (at least ${OVERRIDE_REASON_MIN} characters).`)
     }
@@ -234,6 +251,7 @@ function ServiceRow({
       ...(statusChanged ? { status: draft.status } : {}),
       ...(reportChanged ? { reportNumber: draft.reportNumber.trim() } : {}),
       ...(needsOverrideReason ? { reportNumberOverrideReason: overrideReason.trim() } : {}),
+      ...(engineerNameChanged ? { salesEngineerName: draft.salesEngineerName.trim() } : {}),
       expectedUpdatedAt: item.updatedAt,
     })
   }
@@ -265,7 +283,11 @@ function ServiceRow({
           item.reference
         )}
       </td>
-      {shown('client') && <td className={cx(TABLE.td, TABLE.text, 'font-medium text-slate-900')}>{item.client.name}</td>}
+      {shown('client') && (
+        <td className={cx(TABLE.td, 'min-w-32 max-w-[13rem] font-medium text-slate-900')} title={item.client.name}>
+          <span className="line-clamp-2 break-words">{item.client.name}</span>
+        </td>
+      )}
       {shown('system') && (
         <td className={cx(TABLE.td, 'min-w-32')}>
           {item.system.typeName ?? item.system.description}
@@ -274,6 +296,11 @@ function ServiceRow({
       )}
       {shown('frequency') && <td className={cx(TABLE.td, 'whitespace-nowrap')}>{item.frequency.label}</td>}
       {shown('service') && <td className={cx(TABLE.td, 'whitespace-nowrap')}>{serviceLabel(item.service)}</td>}
+      {shown('amcValue') && (
+        <td className={cx(TABLE.td, 'whitespace-nowrap text-right font-semibold tabular-nums text-slate-900')} title="AMC Value / Year of the contract, OMR excluding VAT">
+          {item.amcValue === null || item.amcValue === undefined ? <span className="text-slate-400">—</span> : formatMoney(item.amcValue)}
+        </td>
+      )}
       {shown('due') && (
         <td className={cx(TABLE.td, 'whitespace-nowrap')}>
           <div className="font-medium text-slate-900">{MONTH_NAMES[Number(item.scheduledDate.slice(5, 7)) - 1]} {item.scheduledDate.slice(0, 4)}</div>
@@ -284,7 +311,7 @@ function ServiceRow({
         </td>
       )}
       {shown('status') && (
-        <td className={cx(TABLE.td, 'min-w-44')}>
+        <td className={cx(TABLE.td, 'min-w-40')}>
           {statusLocked ? (
             <span
               className="inline-flex items-center gap-1.5"
@@ -304,7 +331,7 @@ function ServiceRow({
               value={draft.status}
               onChange={(event) => chooseStatus(event.target.value as ServiceStatus)}
               disabled={mutation.isPending}
-              className="block w-full min-w-[11.5rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm"
+              className="block w-full min-w-[10rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm"
             >
               <option value={openChoice}>{SERVICE_STATUS_LABELS[openChoice]}</option>
               <option value="COMPLETED">{SERVICE_STATUS_LABELS.COMPLETED}</option>
@@ -312,9 +339,13 @@ function ServiceRow({
           )}
         </td>
       )}
-      {shown('engineer') && <td className={cx(TABLE.td, 'whitespace-nowrap')}>{item.salesEngineer?.name ?? <span className="text-slate-400">—</span>}</td>}
+      {shown('engineer') && (
+        <td className={cx(TABLE.td, 'max-w-[11rem]')} title={item.salesEngineer?.name}>
+          {item.salesEngineer ? <span className="line-clamp-2 break-words">{item.salesEngineer.name}</span> : <span className="text-slate-400">—</span>}
+        </td>
+      )}
       {shown('report') && (
-        <td className={cx(TABLE.td, 'min-w-40')}>
+        <td className={cx(TABLE.td, 'min-w-32')}>
           {reportNumberEditable ? (
             <>
               <span className="flex items-center gap-1.5">
@@ -329,7 +360,7 @@ function ServiceRow({
                   disabled={mutation.isPending}
                   placeholder="Report no."
                   title={reportNumberLocked ? REPORT_NUMBER_LOCKED_HINT : undefined}
-                  className="block w-full min-w-[9rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm placeholder:text-slate-400"
+                  className="block w-full min-w-[7.5rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm placeholder:text-slate-400"
                 />
                 {reportNumberLocked && (
                   <span className="text-slate-500" title={REPORT_NUMBER_LOCKED_HINT}>
@@ -358,6 +389,31 @@ function ServiceRow({
             </span>
           ) : (
             (item.reportNumber ?? <span className="text-slate-400" title={reportNumberAvailable ? undefined : 'Available after database update 0077'}>—</span>)
+          )}
+        </td>
+      )}
+      {shown('engineerName') && (
+        <td className={cx(TABLE.td, 'min-w-36')}>
+          {canSave && engineerNameAvailable ? (
+            <input
+              aria-label={`Sales Engineer Name of ${label}`}
+              value={draft.salesEngineerName}
+              maxLength={ENGINEER_NAME_MAX}
+              onChange={(event) => {
+                setSavedAt(null)
+                setDraft({ ...draft, salesEngineerName: event.target.value })
+              }}
+              disabled={mutation.isPending}
+              placeholder="Engineer name"
+              title={draft.salesEngineerName || undefined}
+              className="block w-full min-w-[8rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm placeholder:text-slate-400"
+            />
+          ) : item.salesEngineerName ? (
+            <span className="line-clamp-2 break-words" title={item.salesEngineerName}>
+              {item.salesEngineerName}
+            </span>
+          ) : (
+            <span className="text-slate-400">—</span>
           )}
         </td>
       )}
@@ -542,7 +598,12 @@ export function ServiceStatusPage() {
   const reportNumberAvailable = data?.reportNumberAvailable ?? opts?.reportNumberAvailable ?? false
   const serviceReportsAvailable = data?.serviceReportsAvailable ?? opts?.serviceReportsAvailable ?? false
   const reportMaxMb = data?.serviceReportLimits.maxMb ?? 12
-  const shown = (key: ColumnKey) => !hidden.has(key)
+  const amcValueVisible = data?.amcValueVisible === true
+  const engineerNameAvailable = data?.salesEngineerNameAvailable === true
+  // Columns this user and database can have at all; the rest of the choice is the user's Hide Columns setting.
+  const availableColumns = COLUMNS.filter((column) => (column.key !== 'amcValue' || amcValueVisible) && (column.key !== 'engineerName' || engineerNameAvailable))
+  const shown = (key: ColumnKey) => availableColumns.some((column) => column.key === key) && !hidden.has(key)
+  const hiddenCount = availableColumns.filter((column) => hidden.has(column.key)).length
   const years = [...new Set([...(opts?.years ?? []), Number(todayIso().slice(0, 4))])].sort((a, b) => a - b)
   const period = filters.month && filters.year ? `${MONTH_NAMES[Number(filters.month) - 1]} ${filters.year}` : filters.year || (filters.month ? `${MONTH_NAMES[Number(filters.month) - 1]}, every year` : 'All dates')
 
@@ -733,12 +794,12 @@ export function ServiceStatusPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                aria-label={`Hide Columns: ${COLUMNS.length - hidden.size} of ${COLUMNS.length} columns shown`}
+                aria-label={`Hide Columns: ${availableColumns.length - hiddenCount} of ${availableColumns.length} columns shown`}
                 onClick={() => setDialog('columns')}
               >
                 Hide Columns
                 <span className="font-normal text-slate-500">
-                  · {COLUMNS.length - hidden.size} of {COLUMNS.length} shown
+                  · {availableColumns.length - hiddenCount} of {availableColumns.length} shown
                 </span>
               </Button>
               <Button variant="secondary" size="sm" onClick={resetFilters}>
@@ -805,7 +866,7 @@ export function ServiceStatusPage() {
                       AMC Reference
                     </th>
                     {COLUMNS.filter((column) => shown(column.key)).map((column) => (
-                      <th key={column.key} scope="col" className={TABLE.th}>
+                      <th key={column.key} scope="col" className={cx(TABLE.th, column.key === 'amcValue' && 'text-right')}>
                         {column.label}
                       </th>
                     ))}
@@ -825,6 +886,7 @@ export function ServiceStatusPage() {
                       canOverrideReportNumber={canOverrideReportNumber}
                       canViewContracts={canViewContracts}
                       reportNumberAvailable={reportNumberAvailable}
+                      engineerNameAvailable={engineerNameAvailable}
                       serviceReportsAvailable={serviceReportsAvailable}
                       reportMaxMb={reportMaxMb}
                       onSaved={onSaved}
@@ -862,7 +924,7 @@ export function ServiceStatusPage() {
         <VisitActionsDialog visitId={dialog.visitId} onClose={() => setDialog('none')} onSaved={() => setDialog('none')} />
       )}
 
-      {dialog === 'columns' && <HideColumnsDialog options={[...COLUMNS]} hidden={hidden} onChange={setHidden} onClose={() => setDialog('none')} />}
+      {dialog === 'columns' && <HideColumnsDialog options={[...availableColumns]} hidden={hidden} onChange={setHidden} onClose={() => setDialog('none')} />}
     </>
   )
 }

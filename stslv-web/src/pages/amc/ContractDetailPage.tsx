@@ -364,7 +364,7 @@ export function ContractDetailPage() {
         </button>
         {canRenew && renewals.isSuccess && !openRenewal && (
           <button type="button" onClick={() => setDialog({ kind: 'renew' })} className={TOOLBAR_LINK}>
-            Renew
+            Start Renewal
           </button>
         )}
         {canViewCalendar && (

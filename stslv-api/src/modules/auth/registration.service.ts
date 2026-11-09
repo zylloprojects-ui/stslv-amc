@@ -114,9 +114,9 @@ async function recordDuplicateRegistration(email: string): Promise<void> {
   // The owner of the address is told privately; the person at the keyboard is not.
   sendInBackground({
     to: email,
-    subject: "STSLEV AMC account request",
+    subject: "STS-ELV AMC account request",
     text: [
-      "Someone asked for a new STSLEV AMC account using this email address.",
+      "Someone asked for a new STS-ELV AMC account using this email address.",
       "",
       "An account with this address already exists, so nothing was changed.",
       "If you have forgotten your password, ask your system administrator for a temporary password.",

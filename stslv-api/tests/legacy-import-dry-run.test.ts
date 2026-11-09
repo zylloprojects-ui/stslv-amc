@@ -276,7 +276,7 @@ describe("dry run against the database", () => {
     for (let section = 1; section <= 23; section += 1) {
       expect(report).toMatch(new RegExp(`^## ${section}\\. `, "m"));
     }
-    expect(report).toContain("# STSLEV AMC HISTORICAL EXCEL IMPORT DRY-RUN REPORT");
+    expect(report).toContain("# STS-ELV AMC HISTORICAL EXCEL IMPORT DRY-RUN REPORT");
     expect(report).toContain("Generated without a source row | 0 |");
     expect(report).toMatch(/## 22\. No Excel business data was imported\n\nConfirmed\./);
     expect(report).toMatch(/## 23\. Source workbooks unchanged\n\nConfirmed\./);

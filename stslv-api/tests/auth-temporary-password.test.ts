@@ -424,7 +424,7 @@ describe("email delivery boundary", () => {
   });
 
   it("does not print the content or the recipient when email is not configured", async () => {
-    const message = { to: "member@example.com", subject: "STSLEV AMC account request", text: "SECRET body" };
+    const message = { to: "member@example.com", subject: "STS-ELV AMC account request", text: "SECRET body" };
     const outputs = [vi.spyOn(console, "warn"), vi.spyOn(console, "log"), vi.spyOn(console, "error"), vi.spyOn(console, "info")];
 
     for (const output of outputs) {

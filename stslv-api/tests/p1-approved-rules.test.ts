@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { businessDateAt, businessToday, runContractExpiry } from "../src/modules/amc/contract-expiry.service";
-import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer, today, visitsOf, withRenewalDocument, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -109,7 +109,7 @@ describe("approved contract expiry", () => {
 
     // An open (draft) renewal of a contract that ended three days ago.
     const engineer = await renewalEngineer();
-    const renewal = await post(`/amc/contracts/${ids.renewed}/renewals`, contractBody(clientId, { validFrom: addDays(now, -2), validTo: addDays(now, 362), status: "DRAFT", salesEngineerId: engineer }));
+    const renewal = await post(`/amc/contracts/${ids.renewed}/renewals`, withRenewalDocument(contractBody(clientId, { validFrom: addDays(now, -2), validTo: addDays(now, 362), status: "DRAFT", salesEngineerId: engineer })));
     expect(renewal.status).toBe(201);
     ids.renewal = renewal.body.data.id;
   });

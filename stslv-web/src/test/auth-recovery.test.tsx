@@ -34,16 +34,18 @@ describe('login page design', () => {
     renderApp('/login')
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Welcome back' })).toBeInTheDocument()
-    expect(document.title).toBe('Sign in · STSLEV AMC')
+    expect(document.title).toBe('Sign in · STS-ELV AMC')
     expect(screen.getByLabelText(/Email/)).toHaveFocus()
 
     // Brand panel and product naming.
     expect(screen.getByText('Service LLC').parentElement).toHaveTextContent('Smart TechnicalService LLC')
-    expect(screen.getByText('STSLEV AMC · Operations Suite')).toBeInTheDocument()
+    expect(screen.getByText('STS-ELV AMC · Operations Suite')).toBeInTheDocument()
     expect(screen.getByText(/Smart Technical Service LLC\. All rights reserved\./)).toBeInTheDocument()
     expect(document.querySelectorAll('img[src="/stslv-logo.png"]')).toHaveLength(2)
     expect(document.body).not.toHaveTextContent('STSLV AMC')
     expect(document.body).not.toHaveTextContent('STSLEV ERP')
+    // STS-ELV is the client's confirmed name (2026-11-09); the earlier STSLEV spelling is gone.
+    expect(document.body).not.toHaveTextContent('STSLEV')
 
     const tabs = within(screen.getByRole('tablist', { name: 'Account' })).getAllByRole('tab')
 
@@ -87,21 +89,21 @@ describe('navigation between the auth pages', () => {
     const api = mockApi(() => undefined)
     renderApp('/login')
 
-    const brand = await screen.findByText('STSLEV AMC · Operations Suite')
+    const brand = await screen.findByText('STS-ELV AMC · Operations Suite')
 
     await userEvent.click(screen.getByRole('tab', { name: 'Sign up' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Get your account' })).toBeInTheDocument()
     expect(screen.getByRole('tab', { name: 'Sign up' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByLabelText(/Full name/)).toBeInTheDocument()
-    expect(document.title).toBe('Sign up · STSLEV AMC')
+    expect(document.title).toBe('Sign up · STS-ELV AMC')
     // The frame was not rebuilt.
-    expect(screen.getByText('STSLEV AMC · Operations Suite')).toBe(brand)
+    expect(screen.getByText('STS-ELV AMC · Operations Suite')).toBe(brand)
 
     await userEvent.click(screen.getByRole('tab', { name: 'Sign in' }))
 
     expect(await screen.findByRole('button', { name: 'Login' })).toBeInTheDocument()
-    expect(document.title).toBe('Sign in · STSLEV AMC')
+    expect(document.title).toBe('Sign in · STS-ELV AMC')
     expect(api.requests).toHaveLength(0)
   })
 
@@ -112,7 +114,7 @@ describe('navigation between the auth pages', () => {
     await userEvent.click(await screen.findByRole('link', { name: 'Forgot password?' }))
 
     expect(await screen.findByRole('heading', { level: 1, name: 'Forgot your password?' })).toBeInTheDocument()
-    expect(document.title).toBe('Forgot password · STSLEV AMC')
+    expect(document.title).toBe('Forgot password · STS-ELV AMC')
     // The tabs make no sense while recovering an account, so the frame hides them.
     expect(screen.getByRole('tablist', { hidden: true })).toHaveClass('hidden')
     expect(screen.getByRole('status')).toHaveTextContent(FORGOT_MESSAGE)
@@ -356,7 +358,7 @@ describe('required password change after a temporary password', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Choose a new password' })).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('You signed in with a temporary password for accountant@example.com.')
     expect(screen.getByRole('tablist', { hidden: true })).toHaveClass('hidden')
-    expect(document.title).toBe('Change your password · STSLEV AMC')
+    expect(document.title).toBe('Change your password · STS-ELV AMC')
     // Nothing of the application was loaded.
     expect(appRequests(api.requests)).toEqual([])
   })

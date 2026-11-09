@@ -1,4 +1,4 @@
-# STSLEV AMC — User Guide
+# STS-ELV AMC — User Guide
 
 Version: handover draft, 2026-11-09. Describes the application at commit `c6d8d19` plus the in-app Help added on branch `feature/stslv-p3-handover`.
 Chapters listed under **Sections awaiting integration review** may change when parallel work (P0 security, P1 fixes) is merged; see §26.
@@ -47,9 +47,9 @@ Conventions used in every chapter:
 
 ### Purpose
 
-STSLEV AMC replaces the AMC Excel trackers. It holds every AMC contract, generates its maintenance services, records their completion and the invoice numbers raised for them, and warns about renewals, so that no visit and no invoice is missed.
+STS-ELV AMC replaces the AMC Excel trackers. It holds every AMC contract, generates its maintenance services, records their completion and the invoice numbers raised for them, and warns about renewals, so that no visit and no invoice is missed.
 
-STSLEV AMC does **not** create official invoices. Invoices are still raised in Zoho; their numbers are recorded here.
+STS-ELV AMC does **not** create official invoices. Invoices are still raised in Zoho; their numbers are recorded here.
 
 ### The everyday flow
 
@@ -69,7 +69,7 @@ Master Data ─► AMC Contract ─► Generated services ─► Service complet
 1. Open the application address and enter your email and password.
 2. If an administrator gave you a **temporary password**, you are asked to choose a new password before anything else. A temporary password is valid for 15 minutes.
 3. New users can **Sign up**; the account waits until an administrator approves it and assigns a role.
-4. **Forgot password?** STSLEV AMC sends no email. Ask an administrator to issue a temporary password in Users & Access.
+4. **Forgot password?** STS-ELV AMC sends no email. Ask an administrator to issue a temporary password in Users & Access.
 5. **Sessions.** Each sign-in is a session the server keeps. You are signed out after **30 minutes without using the application** ("You were signed out after 30 minutes of inactivity. Please sign in again.") and, at the latest, when the sign-in itself expires. Signing out ends the session on the server at once. **My Profile → Active sessions** lists your devices and can sign out one or all of them. A password change, a temporary password or deactivation signs the account out everywhere.
 6. **Password rules** (for every new password): at least **12 characters**; at least three of lower-case, upper-case, digits and symbols/spaces; at least 5 different characters; not a well-known password with digits added (such as "Welcome@123"); not containing your name or email name. Existing passwords keep working until you change them.
 
@@ -152,7 +152,7 @@ A service is completed on **Service Status** (§11) after its Service Report is 
 | Used by | Accounts colours, Master AMC Status, Calendar squares, Dashboard payment figures, AMC Management invoice KPIs, Reports Paid/Unpaid | Ready for Invoice / Invoiced, Pending Billing, Calendar "Billing status (Zoho)", Client 360 invoice figures |
 
 > **Paid means a manual Invoice No. is entered on the service. It is a reference status and does not verify that money was received.**
-> STSLEV AMC holds no bank or receipt records. Confirming that a client actually paid is done in Zoho / the bank statement.
+> STS-ELV AMC holds no bank or receipt records. Confirming that a client actually paid is done in Zoho / the bank statement.
 
 Where a Zoho record exists it is shown beneath the Invoice No. as "Zoho: INV-…", for reference only.
 
@@ -263,6 +263,11 @@ Department code * (permanent, e.g. AMC, FIN), Department name *, Description. No
 ---
 
 ## AMC Contracts
+
+> **Validity filter and Contract column (2026-11-09).** *Validity → Expired* lists contracts with status Expired or an
+> Active contract whose Valid To has passed (the same rule as the Expired figure). *Validity → Due* lists Active contracts
+> ending today or within 45 days. The Status filter still uses the stored status. Hide Columns can hide the Contract
+> (Upload Contract) column.
 
 **Page:** `/amc/contracts`. **Permissions:** View; Create to add; Edit to edit, change status, generate; Delete (+Edit) to cancel; Export.
 
@@ -396,6 +401,11 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 
 ## Service Status
 
+> **AMC Value and Sales Engineer Name (2026-11-09).** *AMC Value (OMR)* shows the contract's AMC Value / Year on each
+> service, only to users who may view AMC Contracts; it is not added up. *Sales Engineer Name* is typed beside the
+> Service Report No. and saved with the row (up to 120 characters, recorded in the Audit Log). It is separate from the
+> Sales Engineer column, which comes from the contract.
+
 **Page:** `/amc/service-status`. **Permissions:** *Service Status: View*; *AMC Execution: Edit* to save, upload and use Actions; *Service Status: Export*.
 
 ### Purpose
@@ -451,6 +461,12 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 
 ## Accounts
 
+> **Service Report viewer and filtered totals (2026-11-09).** *View Service Report* opens the uploaded report in a
+> read-only viewer with Download inside it (Word documents: Download only). The *Total Filtered* row adds up every
+> matching service on every page: Total Filtered Service Value (OMR), its Paid (Invoice No.) part, and Total Filtered
+> Invoice Value (OMR) — the Zoho amounts allocated in Invoice Tracking (cancelled invoices excluded). A service with no
+> value whose contract has no Billing Basis or Cost per Visit says so; no value is invented.
+
 **Page:** `/finance/accounts`. **Permissions:** *Accounts: View / Export*; *Invoice Tracking: Edit* to change the Invoice No.
 
 - **Purpose:** billing reconciliation of every scheduled service; enter the Invoice No. to mark a service Paid.
@@ -491,6 +507,9 @@ Requires a reason; the record is kept but excluded from totals, the work becomes
 
 ## Master AMC Status
 
+> **Values (2026-11-09).** The Value cell also shows the Zoho invoice amount and, for users who may view AMC Contracts,
+> the contract's AMC Value / Year. A Total Filtered row covers every matching service on every page.
+
 **Page:** `/amc/master-status`. **Permissions:** *Master AMC Status: View / Export*. Read only.
 
 | Row colour (first rule wins) | Meaning |
@@ -507,6 +526,11 @@ KPIs: Total Services, Green/Blue/Yellow/Red Rows, Total Value (Ex VAT). Filters 
 ---
 
 ## AMC Renewal
+
+> **Start Renewal (2026-11-09).** The renewal form is the Add AMC Contract form, filled from the contract being renewed,
+> which is named at the top. An **updated renewal contract document is required**; the old contract's document is never
+> reused. A renewal still needs its own AMC Reference Number (each number belongs to one contract); keeping the same
+> visible number is awaiting an owner decision.
 
 **Page:** `/amc/renewal`. A renewal is a **new contract**; the contract it renews is never changed.
 
@@ -530,6 +554,10 @@ Errors: "A renewal needs an active sales engineer." · "This contract already ha
 ---
 
 ## Reports
+
+> **Monthly invoice values (2026-11-09).** Monthly Maintenance and the client and sales engineer summaries show Value,
+> Unpaid Value, Paid Value (Invoice No. entered, a reference status), Zoho Invoice Value and Services Without Value per
+> month, over the same services as Accounts, so the totals match Accounts for the same filters.
 
 **Page:** `/reports`. **Permissions:** *Reports: View / Export* (no built-in role starts with Reports; Super Admin grants it), **plus the source page of each report**: opening a report also needs *View* of its source, exporting also needs *Export* of its source. Sources: **AMC Contracts** — AMC Contract Summary, Contract Value Review; **AMC Renewal** — AMC Renewal, Expiry & Renewal Due, Renewal History; **Accounts** — Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise and Sales Engineer-wise Summary. The list shows only the reports you may open; "No reports available" when there is none. The server refuses the rest.
 

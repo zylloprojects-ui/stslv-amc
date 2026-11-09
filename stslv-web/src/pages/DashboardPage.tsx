@@ -132,7 +132,7 @@ export function DashboardPage() {
             </span>
             <div className="leading-tight">
               <p className="bn-strong text-base font-semibold">Smart Technical Service LLC</p>
-              <p className="bn-sub mt-1 text-xs">STSLEV AMC · Operations Suite</p>
+              <p className="bn-sub mt-1 text-xs">STS-ELV AMC · Operations Suite</p>
             </div>
           </div>
         </div>

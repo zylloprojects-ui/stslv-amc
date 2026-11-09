@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { HEADER_ROW } from "../src/shared/export/excel";
-import { activeContract, contractBody, createClient, grant, legacyContract, logsFor, referenceOf, today, visitsOf, withServiceReport, type Session, type VisitRecord } from "./amc-helpers";
+import { activeContract, contractBody, createClient, grant, legacyContract, logsFor, referenceOf, today, visitsOf, withServiceReport, type Session, type VisitRecord, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The Service Status page (/api/amc/service-status): one row per scheduled
@@ -187,7 +187,7 @@ describe("renewal", () => {
     const renewal = await api()
       .post(`/api/amc/contracts/${ended}/renewals`)
       .set(admin.headers)
-      .send(contractBody(hotelOne, { systemDescription: "PUMPS", validFrom: `${year + 2}-01-01`, validTo: `${year + 2}-12-31`, status: "DRAFT", salesEngineerId: engineerId }));
+      .send(withRenewalDocument(contractBody(hotelOne, { systemDescription: "PUMPS", validFrom: `${year + 2}-01-01`, validTo: `${year + 2}-12-31`, status: "DRAFT", salesEngineerId: engineerId })));
 
     expect(renewal.status).toBe(201);
     expect((await list()).body.data.kpis).toMatchObject({ notCompleted: 12, waitingForRenewal: 0 });

@@ -32,7 +32,7 @@ export function LoaderPreviewPage() {
         </Card>
         <Card className="p-2 lg:col-span-3">
           <p className="px-4 pt-3 text-xs font-semibold uppercase tracking-wider text-slate-500">Whole page (checking your session)</p>
-          <BrandLoader size="lg" label="Loading STSLEV AMC" announce={false} />
+          <BrandLoader size="lg" label="Loading STS-ELV AMC" announce={false} />
         </Card>
       </div>
     </>

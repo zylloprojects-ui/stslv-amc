@@ -158,7 +158,7 @@ export function SuggestionFormModal({ onClose }: { onClose: () => void }) {
         </div>
       ) : (
         <form id="feedback-form" onSubmit={submit} noValidate className="space-y-4">
-          <p className="text-sm text-slate-600">Report a problem, suggest a feature, or propose an improvement for STSLEV AMC.</p>
+          <p className="text-sm text-slate-600">Report a problem, suggest a feature, or propose an improvement for STS-ELV AMC.</p>
 
           <fieldset>
             <legend className={cx('mb-2', FIELD_LABEL)}>Type</legend>

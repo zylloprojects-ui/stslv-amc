@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, renewalEngineer, visitsOf, withServiceReport } from "./amc-helpers";
+import { activeContract, contractBody, createClient, renewalEngineer, visitsOf, withServiceReport, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // AMC Recycle Bin (migration 0101, approved 2026-11-03): moving a contract to the Recycle Bin
@@ -157,7 +157,7 @@ describe("moving an AMC contract to the Recycle Bin", () => {
       api()
         .post(`/api/amc/contracts/${source}/renewals`)
         .set(superAdmin.headers)
-        .send(contractBody(clientId, { systemDescription: "RB-SOURCE", validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: engineer }));
+        .send(withRenewalDocument(contractBody(clientId, { systemDescription: "RB-SOURCE", validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: engineer })));
     const renewal = await renew();
     expect(renewal.status).toBe(201);
     const renewalId = renewal.body.data.id as string;

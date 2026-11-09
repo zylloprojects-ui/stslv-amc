@@ -537,8 +537,8 @@ export async function storePreparedDocument(document: PreparedDocument): Promise
 }
 
 /** Within the contract's own transaction: records the stored contract document against the new contract. */
-export function attachStoredDocument(db: Queryable, auth: AuthContext, contractId: string, file: StoredFile): Promise<string> {
-  return recordAttachment(db, auth, { entityType: "amc_contracts", entityId: contractId, category: CONTRACT_DOCUMENT.category, title: CONTRACT_DOCUMENT.title, notes: null }, file);
+export function attachStoredDocument(db: Queryable, auth: AuthContext, contractId: string, file: StoredFile, title: string = CONTRACT_DOCUMENT.title): Promise<string> {
+  return recordAttachment(db, auth, { entityType: "amc_contracts", entityId: contractId, category: CONTRACT_DOCUMENT.category, title, notes: null }, file);
 }
 
 /** A replacement file for a document: becomes its current version; earlier versions are kept. */

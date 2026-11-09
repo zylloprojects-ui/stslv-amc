@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { SessionUser } from '../lib/types'
 import type { RenewalHistory, RenewalQueue, RenewalQueueItem } from '../pages/amcRenewal/renewalTypes'
-import { amcApi, makeContract } from './amc-helpers'
+import { amcApi, makeContract, attachRenewalDocument } from './amc-helpers'
 import { afterPageSplit, ADMIN, fail, ok, renderApp } from './helpers'
 
 // AMC Renewal. The API is mocked: every record here is invented, and each test
@@ -191,6 +191,7 @@ describe('AMC Renewal page', () => {
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-11-05')
     // Every renewal names an active sales engineer.
     await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '7')
+    await attachRenewalDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/41/renewals')).toHaveLength(1))

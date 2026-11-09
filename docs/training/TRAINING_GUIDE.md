@@ -1,4 +1,4 @@
-# STSLEV AMC — Training Guide
+# STS-ELV AMC — Training Guide
 
 Prepared 2026-11-09. **No training has been delivered yet.** Record each session on `docs/handover/TRAINING_ATTENDANCE_TEMPLATE.md`.
 

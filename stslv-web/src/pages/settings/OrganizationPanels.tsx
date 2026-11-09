@@ -74,12 +74,12 @@ export function OrganizationPanel({ section }: { section: OrganizationSection })
           </span>
           <div>
             <p className="text-2xl font-bold tracking-tight text-[#0b3b66]">Smart Technical Service LLC</p>
-            <p className="mt-0.5 text-sm text-slate-500">STSLEV AMC · Operations Suite</p>
+            <p className="mt-0.5 text-sm text-slate-500">STS-ELV AMC · Operations Suite</p>
           </div>
         </div>
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <Fact label="Company">Smart Technical Service LLC</Fact>
-          <Fact label="System">STSLEV AMC · Operations Suite</Fact>
+          <Fact label="System">STS-ELV AMC · Operations Suite</Fact>
         </div>
         <p className="mt-6 border-t border-slate-200 pt-5 text-xs text-slate-500">
           Address, registration and contact details are not stored by the system yet, so they cannot be edited here.

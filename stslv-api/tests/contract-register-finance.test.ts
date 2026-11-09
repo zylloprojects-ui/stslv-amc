@@ -9,7 +9,7 @@ import { env } from "../src/config/env";
 import { setStorageForTests } from "../src/modules/attachments/attachments.service";
 import { HEADER_ROW } from "../src/shared/export/excel";
 import { LocalDiskStorage } from "../src/shared/storage";
-import { activeContract, contractBody, createClient, createContract, renewalEngineer, today, visitsOf, withServiceReport } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, renewalEngineer, today, visitsOf, withRenewalDocument, withServiceReport } from "./amc-helpers";
 import { api, closePool, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
@@ -177,7 +177,7 @@ describe("renewal notes", () => {
     const salesEngineerId = await renewalEngineer();
     const response = await post(
       `/contracts/${source}/renewals`,
-      contractBody(otherClientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", systemDescription: "RENEW ME", salesEngineerId, renewalNotes: "Client asked for two more sites" })
+      withRenewalDocument(contractBody(otherClientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", systemDescription: "RENEW ME", salesEngineerId, renewalNotes: "Client asked for two more sites" }))
     );
 
     expect(response.status).toBe(201);
@@ -192,7 +192,7 @@ describe("renewal notes", () => {
   it("are optional on a renewal and refused on an ordinary contract", async () => {
     const source = await activeContract(admin, otherClientId, { systemDescription: "RENEW PLAIN" });
     const salesEngineerId = await renewalEngineer();
-    const plain = await post(`/contracts/${source}/renewals`, contractBody(otherClientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId }));
+    const plain = await post(`/contracts/${source}/renewals`, withRenewalDocument(contractBody(otherClientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId })));
 
     expect(plain.status).toBe(201);
     const log = await pool.query<{ metadata: Record<string, unknown>; description: string }>("SELECT metadata, description FROM activity_logs WHERE action = 'amc_contract.renewal_of' AND entity_id = $1", [plain.body.data.id]);

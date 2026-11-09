@@ -1,4 +1,4 @@
-# User Acceptance Test Checklist — STSLEV AMC Phase 1
+# User Acceptance Test Checklist — STS-ELV AMC Phase 1
 
 Prepared 2026-11-09 against commit `c6d8d19` + `feature/stslv-p3-handover`; section 20 added at the final local integration (`integration/stslv-amc-final-20261109`) for the P0, P1 and P2 changes. **No test in this checklist has been executed.** Actual result, Pass/Fail, Tester and Date are left blank on purpose; fill them only when the test is run. Never mark a test Passed that was not executed.
 

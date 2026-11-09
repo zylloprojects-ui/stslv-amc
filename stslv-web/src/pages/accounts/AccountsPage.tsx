@@ -19,6 +19,7 @@ import { displayName, KPI_NAME_MAX, useKpiCustomization } from '../amcManagement
 import { serviceCodeLabel } from '../masterStatus/masterStatusTypes'
 import './accounts.css'
 import { ACCOUNTS_PREFIX, COLUMN_IDS, COLUMN_LABELS, useHiddenColumns, type ColumnId } from './accountsPreferences'
+import { ServiceReportViewer } from './ServiceReportViewer'
 import {
   ACCOUNTS_COLOURS,
   ACCOUNTS_COLOUR_LABELS,
@@ -533,7 +534,7 @@ export function AccountsPage() {
                       AMC Reference
                     </th>
                     {visible.map((id) => (
-                      <th key={id} scope="col" className={cx(TABLE.th, id === 'visitValue' && 'text-right')}>
+                      <th key={id} scope="col" className={cx(TABLE.th, (id === 'visitValue' || id === 'invoiceValue') && 'text-right')}>
                         {COLUMN_LABELS[id]}
                       </th>
                     ))}
@@ -551,6 +552,11 @@ export function AccountsPage() {
                     />
                   ))}
                 </tbody>
+                {(shown('visitValue') || shown('invoiceValue')) && (
+                  <tfoot>
+                    <FilteredTotals kpis={data.kpis} visible={visible} />
+                  </tfoot>
+                )}
               </table>
             </div>
             <Pager page={data.page} pageSize={data.pageSize} total={data.total} shown={data.items.length} onPage={setPage} />
@@ -580,8 +586,50 @@ interface RowProps {
   canEditInvoiceNo: boolean
 }
 
+/**
+ * The Filtered Total row (client fixes, 2026-11-09): PostgreSQL's sums over EVERY service the applied filters select,
+ * on every page, not only the rows shown. Service value and Zoho invoice value are separate totals and never mixed;
+ * services without a value add nothing and are counted, so an incomplete total is visible.
+ */
+function FilteredTotals({ kpis, visible }: { kpis: AccountsKpis; visible: readonly ColumnId[] }) {
+  const firstMoney = visible.findIndex((id) => id === 'visitValue' || id === 'invoiceValue')
+  // # and AMC Reference, plus the columns before the first amount.
+  const leading = 2 + firstMoney
+
+  return (
+    <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
+      <th scope="row" colSpan={leading} className={`${TABLE.td} text-right`}>
+        Total Filtered ({kpis.rows} {kpis.rows === 1 ? 'service' : 'services'}, all pages)
+        {kpis.valueMissing > 0 && (
+          <span className="block text-xs font-medium text-amber-700">
+            {kpis.valueMissing} {kpis.valueMissing === 1 ? 'service has' : 'services have'} no value set and {kpis.valueMissing === 1 ? 'is' : 'are'} not included.
+          </span>
+        )}
+      </th>
+      {visible.slice(firstMoney).map((id) =>
+        id === 'visitValue' ? (
+          <td key={id} className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>
+            <span className="block text-xs font-medium text-slate-500">Total Filtered Service Value (OMR)</span>
+            {formatMoney(kpis.totalValue)}
+            {kpis.paidValue !== undefined && <span className="block text-xs font-medium text-slate-500">Paid (Invoice No.): {formatMoney(kpis.paidValue)}</span>}
+          </td>
+        ) : id === 'invoiceValue' ? (
+          <td key={id} className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>
+            <span className="block text-xs font-medium text-slate-500">Total Filtered Invoice Value (OMR)</span>
+            {formatMoney(kpis.invoiceValue ?? '0.000')}
+          </td>
+        ) : (
+          <td key={id} className={TABLE.td} />
+        ),
+      )}
+    </tr>
+  )
+}
+
 function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProps) {
   const tone = COLOUR_TONE[item.colour]
+  const [viewing, setViewing] = useState(false)
+  const subject = `${item.reference} ${serviceCodeLabel(item.service)}`
 
   return (
     <tr className={cx(TABLE.row, 'acc-row')} data-colour={item.colour}>
@@ -632,10 +680,31 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
       {shown('serviceReportNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
           {item.serviceReportNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.serviceReportNo}</span> : <Missing title="No service report number recorded" />}
+          <div className="mt-1">
+            {item.serviceReport ? (
+              <Button size="sm" variant="secondary" onClick={() => setViewing(true)} aria-label={`View Service Report for ${subject}`}>
+                View Service Report
+              </Button>
+            ) : (
+              <span className="text-xs text-slate-400" title="No service report has been uploaded on Service Status for this service">
+                No report uploaded
+              </span>
+            )}
+          </div>
+          {viewing && item.serviceReport && <ServiceReportViewer visitId={item.id} subject={subject} report={item.serviceReport} onClose={() => setViewing(false)} />}
         </td>
       )}
       {shown('visitValue') && (
-        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{item.visitValue === null ? <Missing title="No visit value set" /> : formatMoney(item.visitValue)}</td>
+        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>
+          {item.visitValue === null ? (
+            <>
+              <Missing title="No visit value set" />
+              {item.valueSourceMissing && <div className="text-xs font-normal text-amber-700">No Billing Basis or Cost per Visit on the contract</div>}
+            </>
+          ) : (
+            formatMoney(item.visitValue)
+          )}
+        </td>
       )}
       {shown('invoiceNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
@@ -647,6 +716,11 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
             completed={item.visitStatus === 'COMPLETED'}
             label={`${item.reference} ${serviceCodeLabel(item.service)}`} />
           {item.invoiceNumbers.length > 0 && <div className="mt-1 text-xs text-slate-500">Zoho: {item.invoiceNumbers.join(', ')}</div>}
+        </td>
+      )}
+      {shown('invoiceValue') && (
+        <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums text-slate-900`}>
+          {item.invoiceValue ? formatMoney(item.invoiceValue) : <Missing title="No Zoho invoice recorded in Invoice Tracking for this service" />}
         </td>
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}

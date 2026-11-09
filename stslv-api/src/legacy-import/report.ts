@@ -51,7 +51,7 @@ export function renderReport(result: DryRunResult): string {
   const add = (...lines: string[]) => out.push(...lines);
 
   add(
-    "# STSLEV AMC HISTORICAL EXCEL IMPORT DRY-RUN REPORT",
+    "# STS-ELV AMC HISTORICAL EXCEL IMPORT DRY-RUN REPORT",
     "",
     "**CONFIDENTIAL — contains client names, job numbers and amounts. Not for the repository.**",
     "",

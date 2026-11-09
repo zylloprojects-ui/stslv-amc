@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, grant, logsFor, newContractBody, renewalEngineer, visitsOf } from "./amc-helpers";
+import { activeContract, contractBody, createClient, grant, logsFor, newContractBody, renewalEngineer, visitsOf, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Manual AMC Reference Number (migration 0105): typed when a contract or renewal is created, never generated,
@@ -283,7 +283,7 @@ describe("editing the reference", () => {
     const renewal = await api()
       .post(`/api/amc/contracts/${sourceId}/renewals`)
       .set(admin.headers)
-      .send({ ...contractBody(clientId, { validFrom: "2032-01-01", validTo: "2032-12-31", status: "DRAFT", salesEngineerId: engineer }), amcReference: "REUSE-OLD-001" });
+      .send(withRenewalDocument({ ...contractBody(clientId, { validFrom: "2032-01-01", validTo: "2032-12-31", status: "DRAFT", salesEngineerId: engineer }), amcReference: "REUSE-OLD-001" }));
     expect(renewal.status).toBe(409);
     expect(renewal.body.error.message).toBe(RETIRED);
 
@@ -372,7 +372,7 @@ describe("editing the reference", () => {
     const renewal = await api()
       .post(`/api/amc/contracts/${sourceId}/renewals`)
       .set(admin.headers)
-      .send({ ...contractBody(clientId, { validFrom: "2030-01-01", validTo: "2030-12-31", status: "DRAFT", salesEngineerId: engineer }), amcReference: "EDIT-RNEW-001" });
+      .send(withRenewalDocument({ ...contractBody(clientId, { validFrom: "2030-01-01", validTo: "2030-12-31", status: "DRAFT", salesEngineerId: engineer }), amcReference: "EDIT-RNEW-001" }));
     expect(renewal.status).toBe(201);
 
     expect((await patch(admin, sourceId, { amcReference: "EDIT-RSRC-002" })).status).toBe(200);
@@ -396,7 +396,7 @@ describe("renewals", () => {
       api()
         .post(`/api/amc/contracts/${sourceId}/renewals`)
         .set(admin.headers)
-        .send({ ...contractBody(clientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: engineer }), ...overrides });
+        .send(withRenewalDocument({ ...contractBody(clientId, { validFrom: "2028-01-01", validTo: "2028-12-31", status: "DRAFT", salesEngineerId: engineer }), ...overrides }));
 
     const missing = await renew({ amcReference: undefined });
     expect(missing.status).toBe(400);

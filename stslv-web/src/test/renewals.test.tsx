@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import type { ContractRenewals } from '../pages/amc/ContractRenewalsPanel'
 import { ADMIN, fail, ok, renderApp } from './helpers'
-import { amcApi, makeContract, typeReference, VIEWER } from './amc-helpers'
+import { amcApi, makeContract, typeReference, VIEWER, attachRenewalDocument } from './amc-helpers'
 
 // Renewals on the contract page. Every record here is invented.
 
@@ -71,6 +71,7 @@ describe('contract renewals', () => {
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-12-31')
     await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '7')
+    await attachRenewalDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))
@@ -152,6 +153,7 @@ describe('renewal form lists', () => {
     await userEvent.type(dialog.getByLabelText(/AMC Reference Number/), 'AMC-2028-002')
     await userEvent.type(dialog.getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(dialog.getByLabelText(/Valid to/), '2028-12-31')
+    await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))
@@ -184,6 +186,7 @@ describe('renewal form lists', () => {
     await waitFor(() => expect(picker).toHaveValue('7'))
     await userEvent.selectOptions(picker, '8')
     await fillValidity(dialog)
+    await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))
@@ -203,12 +206,14 @@ describe('renewal form lists', () => {
     expect([...picker.options].map((option) => option.value)).toEqual(['', '7', '8'])
 
     await fillValidity(dialog)
+    await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
     expect(await dialog.findByText('Select an active sales engineer. Fatima Former, the previous engineer, is no longer active.')).toBeInTheDocument()
     expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(0)
 
     await userEvent.selectOptions(picker, '7')
     expect(dialog.queryByText(/the previous engineer, is no longer active/)).not.toBeInTheDocument()
+    await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))
@@ -230,11 +235,13 @@ describe('renewal form lists', () => {
     expect(dialog.getByText('A renewal needs an active sales engineer.')).toBeInTheDocument()
 
     await fillValidity(dialog)
+    await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
     expect(await dialog.findByText('Select an active sales engineer for the renewal.')).toBeInTheDocument()
     expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(0)
 
     await userEvent.selectOptions(picker, '8')
+    await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))
     expect(api.find('POST', '/amc/contracts/100/renewals')[0]?.body).toMatchObject({ salesEngineerId: '8' })
@@ -265,6 +272,7 @@ describe('renewal form lists', () => {
 
     await waitFor(() => expect(dialog.getByLabelText(/Sales engineer \(master list\)/)).toHaveValue('7'))
     await fillValidity(dialog)
+    await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
 
     expect(await dialog.findByText('Sara Sales is no longer active. Select an active sales engineer.')).toBeInTheDocument()

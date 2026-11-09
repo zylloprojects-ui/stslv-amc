@@ -5,6 +5,8 @@ import type { PaymentStatus } from "../amc/manual-invoice.service";
 import { getMasterStatusOptions } from "../amc/master-status.service";
 import { IN_SCOPE, serviceStatusSql } from "../amc/service-status.service";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
+import { readServiceReport, SERVICE_REPORT_JSON_SQL, serviceReportsAvailable, toServiceReport, type ServiceReport } from "../amc/service-reports.service";
+import { notFound } from "../../shared/errors";
 import type { AccountsColour, ListAccountsQuery } from "./accounts.schemas";
 
 // Accounts: a billing reconciliation with one row per scheduled maintenance visit
@@ -40,14 +42,17 @@ const FROM = `
   LEFT JOIN system_types st ON st.id = c.system_type_id
   LEFT JOIN maintenance_frequencies mf ON mf.code = c.maintenance_frequency
   LEFT JOIN LATERAL (
-    SELECT array_agg(i.invoice_number ORDER BY i.invoice_date, i.id) AS numbers
+    SELECT array_agg(i.invoice_number ORDER BY i.invoice_date, i.id) AS numbers,
+           -- The part of those invoices allocated to this visit (OMR excluding VAT). One allocation per invoice and
+           -- visit (0060 unique index), so nothing is counted twice; cancelled invoices are left out.
+           sum(al.allocated_amount)::numeric(16,3) AS amount
     FROM invoice_allocations al
     JOIN invoices i ON i.id = al.invoice_id
     WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
   ) inv ON true`;
 
 /** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
-const selectSql = (storedReference: boolean) => `
+const selectSql = (storedReference: boolean, reports: boolean) => `
   SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
@@ -57,7 +62,9 @@ const selectSql = (storedReference: boolean) => `
          v.visit_amount::text AS visit_amount, v.service_report_no, v.updated_at,
          v.manual_invoice_no, v.manual_invoice_at,
          se.id AS sales_engineer_id, se.name AS sales_engineer_name,
-         COALESCE(inv.numbers, '{}') AS invoice_numbers,
+         COALESCE(inv.numbers, '{}') AS invoice_numbers, inv.amount::text AS invoice_amount,
+         (c.billing_basis IS NULL AND c.default_visit_amount IS NULL) AS no_amount_source,
+         ${reports ? SERVICE_REPORT_JSON_SQL : "NULL::jsonb"} AS service_report,
          ${SERVICE_STATUS_SQL} AS service_status,
          ${COLOUR_SQL} AS colour`;
 
@@ -87,6 +94,9 @@ interface AccountsRow {
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
   invoice_numbers: string[];
+  invoice_amount: string | null;
+  no_amount_source: boolean;
+  service_report: unknown;
   service_status: ServiceStatus;
   colour: AccountsColour;
 }
@@ -117,6 +127,18 @@ export interface AccountsItem {
   updatedAt: string;
   /** Every active Zoho invoice in Invoice Tracking that covers the visit, oldest first. Empty when none. Does not decide Paid / Unpaid. */
   invoiceNumbers: string[];
+  /**
+   * The amount of those Zoho invoices allocated to this visit (Invoice Tracking), OMR excluding VAT; null when no
+   * active Zoho invoice covers it. Not the visit value, and not the contract value.
+   */
+  invoiceValue: string | null;
+  /**
+   * True when the visit has no value because its contract has neither a Billing Basis nor a Cost per Visit (the
+   * approved rule: no amount is invented). Explains an empty Value column.
+   */
+  valueSourceMissing: boolean;
+  /** The Service Report document uploaded on Service Status (0104), or null when none. Metadata only. */
+  serviceReport: ServiceReport | null;
   salesEngineer: { id: string; name: string } | null;
   colour: AccountsColour;
 }
@@ -137,6 +159,9 @@ function toItem(row: AccountsRow): AccountsItem {
     visitValue: row.visit_amount,
     serviceReportNo: row.service_report_no,
     invoiceNumbers: row.invoice_numbers,
+    invoiceValue: row.invoice_amount,
+    valueSourceMissing: row.visit_amount === null && row.no_amount_source,
+    serviceReport: toServiceReport(row.service_report),
     manualInvoiceNo: row.manual_invoice_no,
     paymentStatus: row.manual_invoice_no ? "PAID" : "UNPAID",
     paidAt: row.manual_invoice_at?.toISOString() ?? null,
@@ -199,6 +224,12 @@ export interface AccountsKpis {
   totalValue: string;
   /** Selected rows with no amount set, so the total is known to be incomplete. */
   valueMissing: number;
+  /** Sum of visit_amount over the selected Paid rows (manual Invoice No. entered: a reference status, not proof of payment). */
+  paidValue: string;
+  /** Sum of the active Zoho invoice amounts allocated to the selected rows (Invoice Tracking), OMR excluding VAT. */
+  invoiceValue: string;
+  /** Selected rows covered by at least one active Zoho invoice. */
+  invoiced: number;
   /** Rows by colour; red + blue + green = rows. */
   red: number;
   blue: number;
@@ -213,6 +244,9 @@ async function kpis(where: string, params: unknown[]): Promise<AccountsKpis> {
     invoice_filled: number;
     total_value: string;
     value_missing: number;
+    paid_value: string;
+    invoice_value: string;
+    invoiced: number;
     red: number;
     blue: number;
     green: number;
@@ -222,6 +256,9 @@ async function kpis(where: string, params: unknown[]): Promise<AccountsKpis> {
             count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS invoice_filled,
             COALESCE(sum(v.visit_amount), 0)::numeric(16,3)::text AS total_value,
             count(*) FILTER (WHERE v.visit_amount IS NULL)::int AS value_missing,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS paid_value,
+            COALESCE(sum(inv.amount), 0)::numeric(16,3)::text AS invoice_value,
+            count(*) FILTER (WHERE inv.amount IS NOT NULL)::int AS invoiced,
             count(*) FILTER (WHERE (${COLOUR_SQL}) = 'RED')::int AS red,
             count(*) FILTER (WHERE (${COLOUR_SQL}) = 'BLUE')::int AS blue,
             count(*) FILTER (WHERE (${COLOUR_SQL}) = 'GREEN')::int AS green
@@ -239,6 +276,9 @@ async function kpis(where: string, params: unknown[]): Promise<AccountsKpis> {
     invoiceFilled: row?.invoice_filled ?? 0,
     totalValue: row?.total_value ?? "0.000",
     valueMissing: row?.value_missing ?? 0,
+    paidValue: row?.paid_value ?? "0.000",
+    invoiceValue: row?.invoice_value ?? "0.000",
+    invoiced: row?.invoiced ?? 0,
     red: row?.red ?? 0,
     blue: row?.blue ?? 0,
     green: row?.green ?? 0,
@@ -250,7 +290,7 @@ export async function listAccounts(query: ListAccountsQuery) {
   const { where, params } = filterSql(query, storedReference);
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<AccountsRow>(`${selectSql(storedReference)} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable())} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,
@@ -272,7 +312,7 @@ export async function listAllAccounts(filters: AccountsFilters, checkSize: (coun
 
   checkSize(figures.rows);
 
-  const rows = await pool.query<AccountsRow>(`${selectSql(storedReference)} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable())} ${FROM} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map(toItem), kpis: figures };
 }
@@ -294,4 +334,17 @@ export async function getAccountsOptions() {
     ...shared,
     contracts: contracts.rows.map((row) => ({ id: row.id, reference: row.reference, client: row.client_name, system: row.system_description })),
   };
+}
+
+/**
+ * The Service Report document of ONE visit shown on Accounts, for the page's read-only viewer and its Download
+ * (client fixes, 2026-11-09). Only a visit in Accounts' own scope is served, so the viewer can never reach a report
+ * the page does not list. The file is read through the private document storage and checked against its checksum.
+ */
+export async function readAccountsServiceReport(visitId: string) {
+  const visit = await pool.query(`SELECT 1 FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id WHERE v.id = $1 AND ${IN_SCOPE}`, [visitId]);
+
+  if (visit.rowCount === 0) throw notFound("AMC visit not found.");
+
+  return readServiceReport(visitId);
 }

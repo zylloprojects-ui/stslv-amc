@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { contractDocumentProblem, formatFileSize, readAsBase64 } from '../pages/amc/contractDocument'
 import { ADMIN, fail, ok, renderApp } from './helpers'
-import { amcApi, makeContract, typeReference } from './amc-helpers'
+import { amcApi, makeContract, typeReference, attachRenewalDocument } from './amc-helpers'
 
 // Add AMC Contract, 2026-11-03: the contract document checks, and how the form treats contracts added before
 // the System, Sales engineer, Final Credit and document became required.
@@ -145,8 +145,8 @@ describe('renewing a contract added before the requirements', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Create renewal' }))
     const dialog = await screen.findByRole('dialog', { name: 'Renew AMC Contract' })
     await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toHaveDisplayValue('Typed old system (as on the renewed contract)'))
-    // No document is asked for on a renewal.
-    expect(dialog.querySelector('input[type="file"]')).toBeNull()
+    // A renewal asks for its updated renewal contract document (2026-11-09).
+    expect(dialog.querySelector('input[type="file"]')).not.toBeNull()
     // Unlike Add AMC Contract (Active only since 2026-11-04), a renewal still starts as a draft, under client approval.
     const status = within(dialog).getByLabelText(/^Status/) as HTMLSelectElement
     expect(status.value).toBe('DRAFT')
@@ -157,13 +157,15 @@ describe('renewing a contract added before the requirements', () => {
     await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '5')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-12-31')
+    await attachRenewalDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(1))
     const body = api.find('POST', '/amc/contracts/100/renewals')[0]?.body as Record<string, unknown>
     expect(body).toMatchObject({ amcReference: 'RENEW-OLD-001', systemDescription: 'Typed old system', salesEngineerId: '5' })
     expect(body).not.toHaveProperty('systemTypeId')
-    expect(body).not.toHaveProperty('contractDocument')
+    // A renewal carries its own updated renewal contract document (2026-11-09).
+    expect(body).toHaveProperty('contractDocument.fileName', 'renewal-contract.pdf')
   })
 })
 

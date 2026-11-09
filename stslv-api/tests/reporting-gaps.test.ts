@@ -5,7 +5,7 @@ import type { AuthContext } from "../src/modules/auth/access";
 import { buildServiceStatusExport } from "../src/modules/amc/service-status.export";
 import { serviceStatusHiddenSchema } from "../src/modules/amc/service-status.schemas";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { activeContract, contractBody, createClient, referenceOf, renewalEngineer, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, referenceOf, renewalEngineer, today, visitsOf, withServiceReport, type Session, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Service Sales' Service Report No. and Quote filter, Accounts' contract filter, hidden columns in exports,
@@ -50,7 +50,7 @@ beforeAll(async () => {
   const renewal = await api()
     .post(`/api/amc/contracts/${dueSoon}/renewals`)
     .set(admin.headers)
-    .send(contractBody(clientId, { systemDescription: "DUE", validFrom: addDays(now, 61), validTo: addDays(now, 400), status: "DRAFT", contractValue: "95.250", salesEngineerId: engineer }));
+    .send(withRenewalDocument(contractBody(clientId, { systemDescription: "DUE", validFrom: addDays(now, 61), validTo: addDays(now, 400), status: "DRAFT", contractValue: "95.250", salesEngineerId: engineer })));
   expect(renewal.status).toBe(201);
   renewalId = renewal.body.data.id;
 
@@ -140,7 +140,8 @@ describe("Exports honour hidden columns", () => {
     const auth = { user: { id: "1", fullName: "Test" } } as unknown as AuthContext;
     const { report } = await buildServiceStatusExport(auth, { format: "xlsx", hidden: ["client", "due", "status", "report"] });
     const keys = report.tables[0]?.columns.map((column) => column.key);
-    expect(keys).toEqual(["number", "reference", "system", "frequency", "service", "salesEngineer"]);
+    // The manual Sales Engineer Name (0110) is shown; the AMC Value is not, for a caller without AMC Contracts: View.
+    expect(keys).toEqual(["number", "reference", "system", "frequency", "service", "salesEngineer", "salesEngineerName"]);
     // The month headings still group the rows.
     expect(report.tables[0]?.groupBy).toBeDefined();
     expect(String(report.tables[0]?.rows[0]?.scheduledMonth)).not.toBe("undefined");

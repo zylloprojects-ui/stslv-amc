@@ -526,7 +526,7 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                 <strong>{dialog.user.fullName}</strong>
                 <span className="block break-all">{dialog.user.email}</span>
               </p>
-              <p className="mt-3">This registration request will be rejected and the user will not receive access to STSLEV AMC.</p>
+              <p className="mt-3">This registration request will be rejected and the user will not receive access to STS-ELV AMC.</p>
               {dialog.user.roles.length > 0 && (
                 <p className="mt-3">The role given while it was pending ({dialog.user.roles.map((role) => role.name).join(', ')}) is removed.</p>
               )}

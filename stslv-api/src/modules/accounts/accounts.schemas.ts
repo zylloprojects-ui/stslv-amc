@@ -30,6 +30,8 @@ export const ACCOUNTS_HIDEABLE_COLUMNS = [
   "serviceReportNo",
   "visitValue",
   "invoiceNo",
+  // The Zoho invoice amounts allocated to the service in Invoice Tracking (client fixes, 2026-11-09).
+  "invoiceValue",
   "salesEngineer",
 ] as const;
 export type AccountsColumn = (typeof ACCOUNTS_HIDEABLE_COLUMNS)[number];

@@ -5,7 +5,7 @@ import type { AuthContext } from "../auth/access";
 import type { ServiceStatus } from "./amc.constants";
 import type { ExportServiceStatusQuery } from "./amc.schemas";
 import type { ServiceStatusColumn } from "./service-status.schemas";
-import { listAllServiceStatus, type ServiceStatusItem } from "./service-status.service";
+import { listAllServiceStatus, serviceStatusAccess, type ServiceStatusItem } from "./service-status.service";
 
 // The Service Status page as a report: every visit that matches the page's
 // filters (all pages, not only the one shown), with the same values and only
@@ -38,11 +38,29 @@ const COLUMNS: (ReportColumn & { hideable?: ServiceStatusColumn })[] = [
   { key: "completedDate", header: "Completed date", kind: "date", width: 14, hideable: "status" },
   { key: "salesEngineer", header: "Sales engineer", kind: "text", width: 20, wrap: true, hideable: "engineer" },
   { key: "reportNumber", header: "Service report no.", kind: "identifier", width: 18, hideable: "report" },
+  { key: "salesEngineerName", header: "Sales Engineer Name", kind: "text", width: 20, wrap: true, hideable: "engineerName" },
+  // The contract's AMC Value / Year on each of its services: repeated per service, so it is never totalled.
+  { key: "amcValue", header: "AMC Value / Year (OMR)", kind: "money", width: 16, hideable: "amcValue" },
 ];
 
+/** The optional columns this export may carry: they depend on the database and on what the user may see. */
+export interface ServiceStatusExportOptions {
+  reportNumber: boolean;
+  salesEngineerName?: boolean;
+  amcValue?: boolean;
+}
+
 /** The report's columns: everything the page shows. AMC Reference is always included. */
-export function serviceStatusColumns(reportNumber: boolean, hidden: readonly ServiceStatusColumn[] = []): ReportColumn[] {
-  return COLUMNS.filter((column) => (column.key !== "reportNumber" || reportNumber) && (!column.hideable || !hidden.includes(column.hideable))).map(({ hideable: _hideable, ...column }) => column);
+export function serviceStatusColumns(options: ServiceStatusExportOptions | boolean, hidden: readonly ServiceStatusColumn[] = []): ReportColumn[] {
+  const available = typeof options === "boolean" ? { reportNumber: options } : options;
+
+  return COLUMNS.filter(
+    (column) =>
+      (column.key !== "reportNumber" || available.reportNumber) &&
+      (column.key !== "salesEngineerName" || available.salesEngineerName === true) &&
+      (column.key !== "amcValue" || available.amcValue === true) &&
+      (!column.hideable || !hidden.includes(column.hideable))
+  ).map(({ hideable: _hideable, ...column }) => column);
 }
 
 function toRow(item: ServiceStatusItem, index: number): ReportRow {
@@ -59,6 +77,8 @@ function toRow(item: ServiceStatusItem, index: number): ReportRow {
     completedDate: item.completedDate,
     salesEngineer: item.salesEngineer?.name ?? null,
     reportNumber: item.reportNumber,
+    salesEngineerName: item.salesEngineerName,
+    amcValue: item.amcValue,
   };
 }
 
@@ -96,7 +116,8 @@ export async function buildServiceStatusExport(
   query: ExportServiceStatusQuery & { hidden?: readonly ServiceStatusColumn[] }
 ): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
   const { format, hidden = [], ...filters } = query;
-  const { items, total, kpis, features } = await listAllServiceStatus(filters, (count) => assertExportSize(format, count));
+  const access = serviceStatusAccess(auth);
+  const { items, total, kpis, features } = await listAllServiceStatus(filters, (count) => assertExportSize(format, count), access);
   const notes = [
     `Completed ${kpis.completed} · Not Completed ${kpis.notCompleted} · Waiting for Renewal ${kpis.waitingForRenewal} (of ${kpis.total} services matching the other filters).`,
     "Waiting for Renewal: not completed, and the contract has expired or ended without a renewal. Cancelled visits are not listed.",
@@ -115,7 +136,7 @@ export async function buildServiceStatusExport(
     tables: [
       {
         name: "Service Status",
-        columns: serviceStatusColumns(features.reportNumber, hidden),
+        columns: serviceStatusColumns({ reportNumber: features.reportNumber, salesEngineerName: features.engineerName, amcValue: access.amcValue }, hidden),
         rows: items.map(toRow),
         groupBy: (row) => String(row.scheduledMonth),
         notes,

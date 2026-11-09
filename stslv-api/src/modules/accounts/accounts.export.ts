@@ -37,6 +37,7 @@ const COLUMNS: (ReportColumn & { hideable?: AccountsColumn })[] = [
   { key: "invoiceNo", header: "Invoice No.", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   { key: "payment", header: "Paid / Unpaid", kind: "text", width: 10, hideable: "invoiceNo" },
   { key: "zohoInvoices", header: "Zoho Invoices (Tracking)", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
+  { key: "invoiceValue", header: "Zoho Invoice Value (Ex VAT, OMR)", kind: "money", width: 15, hideable: "invoiceValue" },
   { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
   { key: "colour", header: "Row Colour", kind: "text", width: 30 },
 ];
@@ -68,6 +69,7 @@ function toRow(item: AccountsItem, index: number): ReportRow {
     invoiceNo: item.manualInvoiceNo,
     payment: item.paymentStatus === "PAID" ? "Paid" : "Unpaid",
     zohoInvoices: item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(", ") : null,
+    invoiceValue: item.invoiceValue,
     salesEngineer: item.salesEngineer?.name ?? null,
     colour: ACCOUNTS_COLOUR_LABELS[item.colour],
   };
@@ -100,6 +102,7 @@ export async function buildAccountsExport(auth: AuthContext, query: ExportAccoun
     "Red: service not completed. Blue: completed, Unpaid. Green: completed, Paid.",
     PAID_STATUS_NOTE,
     "Value is the scheduled amount of each service, in OMR excluding VAT. Zoho invoices are the records in Invoice Tracking; cancelled ones are not listed.",
+    `Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)} · Zoho Invoice Value (Invoice Tracking) ${displayMoney(kpis.invoiceValue)} over ${kpis.invoiced} ${kpis.invoiced === 1 ? "service" : "services"}.`,
   ];
 
   if (kpis.valueMissing > 0) {
@@ -120,13 +123,19 @@ export async function buildAccountsExport(auth: AuthContext, query: ExportAccoun
         columns: accountsColumns(hidden),
         rows: items.map(toRow),
         groupBy: (row) => displayMonth(String(row.scheduledDate)),
-        ...(hidden.includes("visitValue")
+        ...(hidden.includes("visitValue") && hidden.includes("invoiceValue")
           ? {}
           : {
               totals: {
-                label: `Total value (${kpis.rows} ${kpis.rows === 1 ? "service" : "services"})`,
-                values: { visitValue: kpis.totalValue },
-                excelFormulas: { visitValue: (range) => `SUM(${range("visitValue")})` },
+                label: `Total filtered (${kpis.rows} ${kpis.rows === 1 ? "service" : "services"})`,
+                values: {
+                  ...(hidden.includes("visitValue") ? {} : { visitValue: kpis.totalValue }),
+                  ...(hidden.includes("invoiceValue") ? {} : { invoiceValue: kpis.invoiceValue }),
+                },
+                excelFormulas: {
+                  ...(hidden.includes("visitValue") ? {} : { visitValue: (range: (key: string) => string) => `SUM(${range("visitValue")})` }),
+                  ...(hidden.includes("invoiceValue") ? {} : { invoiceValue: (range: (key: string) => string) => `SUM(${range("invoiceValue")})` }),
+                },
               },
             }),
         notes,

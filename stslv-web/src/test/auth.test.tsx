@@ -271,7 +271,7 @@ describe('cookie notice', () => {
     renderApp('/dashboard')
 
     const dialog = await screen.findByRole('dialog', { name: 'Cookie Policy' })
-    expect(dialog).toHaveTextContent('STSLEV AMC stores a small amount of information')
+    expect(dialog).toHaveTextContent('STS-ELV AMC stores a small amount of information')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Accept All' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -426,7 +426,7 @@ describe('suggestions popup', () => {
 
     await userEvent.click(await screen.findByRole('button', { name: 'Suggestions and improvements' }))
     const dialog = await screen.findByRole('dialog', { name: 'Suggestions & Improvements' })
-    expect(dialog).toHaveTextContent('propose an improvement for STSLEV AMC.')
+    expect(dialog).toHaveTextContent('propose an improvement for STS-ELV AMC.')
 
     const before = api.requests.length
     await userEvent.type(within(dialog).getByLabelText('Description'), 'short')

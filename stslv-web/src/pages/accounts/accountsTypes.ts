@@ -50,6 +50,12 @@ export interface AccountsItem {
   updatedAt: string
   /** Every active Zoho invoice in Invoice Tracking covering the visit; empty when none. */
   invoiceNumbers: string[]
+  /** Zoho invoice amounts allocated to the visit in Invoice Tracking (OMR, ex VAT); null when none. Absent from an older API. */
+  invoiceValue?: string | null
+  /** No value because the contract has neither a Billing Basis nor a Cost per Visit: nothing is invented. */
+  valueSourceMissing?: boolean
+  /** The Service Report uploaded on Service Status, or null when none. Absent from an older API. */
+  serviceReport?: { id: string; originalName: string; mimeType: string; sizeBytes: number; uploadedAt: string } | null
   salesEngineer: { id: string; name: string } | null
   colour: AccountsColour
 }
@@ -61,6 +67,12 @@ export interface AccountsKpis {
   invoiceFilled: number
   totalValue: string
   valueMissing: number
+  /** Value of the filtered services with an Invoice No. entered (Paid reference status). Absent from an older API. */
+  paidValue?: string
+  /** Zoho invoice amounts allocated to the filtered services (Invoice Tracking). Absent from an older API. */
+  invoiceValue?: string
+  /** Filtered services covered by at least one active Zoho invoice. */
+  invoiced?: number
   red: number
   blue: number
   green: number

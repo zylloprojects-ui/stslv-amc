@@ -5,7 +5,8 @@ import { requireSchema } from "../../middleware/require-schema";
 import { sendExport } from "../../shared/export/send";
 import { buildAccountsExport } from "./accounts.export";
 import { exportAccountsSchema, listAccountsSchema } from "./accounts.schemas";
-import { getAccountsOptions, listAccounts } from "./accounts.service";
+import { parseIdParam } from "../../shared/validation";
+import { getAccountsOptions, listAccounts, readAccountsServiceReport } from "./accounts.service";
 
 export const accountsRouter = Router();
 
@@ -23,6 +24,23 @@ accountsRouter.get("/", ...accountsView, async (req, res) => {
 
 accountsRouter.get("/options", ...accountsView, async (_req, res) => {
   res.json({ success: true, data: await getAccountsOptions() });
+});
+
+// The Service Report uploaded on Service Status for ONE visit listed here, for the page's read-only viewer and the
+// Download inside it (client fixes, 2026-11-09). Read only, ACCOUNTS:VIEW, never a public or storage link.
+accountsRouter.get("/:id/report", ...accountsView, async (req, res) => {
+  const file = await readAccountsServiceReport(parseIdParam(req.params.id));
+  // The stored name is already cleaned at upload; the ASCII fallback keeps only safe characters.
+  const ascii = file.fileName.replace(/[^A-Za-z0-9._ -]/g, "_");
+
+  res.set({
+    "Content-Type": file.mimeType,
+    "Content-Length": String(file.data.length),
+    "Content-Disposition": `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+  });
+  res.send(file.data);
 });
 
 // Every row that matches the page's filters, across all pages, with the page's visible columns.

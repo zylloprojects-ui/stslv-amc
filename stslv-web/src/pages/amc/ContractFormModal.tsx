@@ -117,6 +117,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const start = contract ?? renewalOf ?? null
   // Add AMC Contract (2026-11-03): a new contract that is not a renewal needs Final Credit and a contract document.
   const isNew = contract === null && !renewalOf
+  // Start Renewal (2026-11-09) also needs its own updated renewal contract document; the renewed contract's is never reused.
+  const needsDocument = isNew || Boolean(renewalOf)
   const queryClient = useQueryClient()
   const documentInputId = useId()
   const documentInput = useRef<HTMLInputElement>(null)
@@ -241,12 +243,12 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const limits = useQuery({
     queryKey: ['attachments', 'limits', 'amc_contracts'],
     queryFn: () => api.get<{ maxMb: number; allowedTypes: string[]; storageAvailable?: boolean }>('/attachments/limits?entityType=amc_contracts'),
-    enabled: isNew,
+    enabled: needsDocument,
     retry: false,
   })
   const maxMb = limits.data?.maxMb ?? DEFAULT_MAX_MB
   // A server without file storage cannot keep the mandatory document, so a new contract cannot be added there.
-  const storageMissing = isNew && limits.data?.storageAvailable === false
+  const storageMissing = needsDocument && limits.data?.storageAvailable === false
   const [documentFile, setDocumentFile] = useState<File | null>(null)
   const [documentError, setDocumentError] = useState<string | null>(null)
   const chooseDocument = (file: File | undefined) => {
@@ -320,12 +322,20 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
         const reference = amcReference !== contract.amcReference ? { amcReference } : {}
         return api.patch<SavedContract>(`/amc/contracts/${contract.id}`, { ...reference, ...fields, ...link, ...system })
       }
-      if (renewalOf) {
-        return api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, { amcReference, ...fields, status, ...link, ...system, ...(renewalNotes ? { renewalNotes } : {}) })
-      }
-
       const file = documentFile as File
       const contractDocument = { fileName: file.name, contentBase64: await readAsBase64(file) }
+
+      if (renewalOf) {
+        return api.post<SavedContract>(`/amc/contracts/${renewalOf.id}/renewals`, {
+          amcReference,
+          ...fields,
+          status,
+          ...link,
+          ...system,
+          ...(renewalNotes ? { renewalNotes } : {}),
+          contractDocument,
+        })
+      }
 
       return api.post<SavedContract>('/amc/contracts', { amcReference, ...fields, status, ...link, ...system, contractDocument })
     },
@@ -403,8 +413,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       setError('finalCredit', { message: contract ? 'Final credit is required. Enter 0 when there is none.' : 'Final credit is required.' })
       ok = false
     }
-    if (isNew && !documentFile) {
-      setDocumentError(documentError ?? 'Attach the contract document.')
+    if (needsDocument && !documentFile) {
+      setDocumentError(documentError ?? (renewalOf ? 'Attach the updated renewal contract document.' : 'Attach the contract document.'))
       ok = false
     }
 
@@ -527,6 +537,19 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       {clients.data && (
         <form id="amc-contract-form" onSubmit={onSubmit} noValidate hidden={review !== null} className="space-y-4">
           {failure && <Alert>{failure}</Alert>}
+
+          {renewalOf && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-[#0b3b66]" aria-label="Contract being renewed">
+              <p>
+                Renewing contract <strong className="font-mono">{renewalOf.amcReference}</strong> · {renewalOf.client.name} · {renewalOf.systemDescription} · valid{' '}
+                {formatDate(renewalOf.validFrom)} to {formatDate(renewalOf.validTo)}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-600">
+                The client, system, frequency, values and notes start from this contract; set the new validity dates and attach the updated renewal contract. The renewal is saved as
+                its own contract linked to {renewalOf.amcReference}, which stays unchanged with its schedule, invoices and history.
+              </p>
+            </div>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             {contract ? (
@@ -788,13 +811,14 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
 
           {storageMissing && (
             <Alert>
-              A new contract needs its contract document, but this server has no file storage configured, so contracts cannot be added yet. Ask the system administrator to configure document storage.
+              {renewalOf ? 'A renewal needs its updated renewal contract document' : 'A new contract needs its contract document'}, but this server has no file storage configured, so{' '}
+              {renewalOf ? 'renewals' : 'contracts'} cannot be added yet. Ask the system administrator to configure document storage.
             </Alert>
           )}
-          {isNew && (
+          {needsDocument && (
             <div>
               <span id={`${documentInputId}-label`} className="mb-1 block text-sm font-medium text-slate-700">
-                Contract document
+                {renewalOf ? 'Updated renewal contract document' : 'Contract document'}
                 <span className="text-red-600" aria-hidden="true">
                   {' '}
                   *
@@ -844,7 +868,9 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
                 </p>
               ) : (
                 <p id={`${documentInputId}-hint`} className="mt-1 text-xs text-slate-500">
-                  The signed contract: PDF or Word (.doc, .docx), at most {maxMb} MB. Saved with the contract as its Signed contract document.
+                  {renewalOf
+                    ? `The new or updated renewal contract: PDF or Word (.doc, .docx), at most ${maxMb} MB. Saved with the renewal as its Signed contract document. The document of ${renewalOf.amcReference} is not reused.`
+                    : `The signed contract: PDF or Word (.doc, .docx), at most ${maxMb} MB. Saved with the contract as its Signed contract document.`}
                 </p>
               )}
             </div>

@@ -1,5 +1,7 @@
 import { pool } from "../../config/database";
 import { escapeLike } from "../../shared/validation";
+import { holdsPermission } from "../../shared/permissions";
+import type { AuthContext } from "../auth/access";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants";
 import type { ListMasterStatusQuery, RowColour } from "./master-status.schemas";
 import { serviceStatusSql } from "./service-status.service";
@@ -41,7 +43,9 @@ const FROM = `
   LEFT JOIN LATERAL (
     SELECT array_agg(i.invoice_number ORDER BY i.invoice_date, i.id) AS numbers,
            -- The Zoho reference of each of those invoices, in the same order (null where none was entered).
-           array_agg(i.source_reference ORDER BY i.invoice_date, i.id) AS refs
+           array_agg(i.source_reference ORDER BY i.invoice_date, i.id) AS refs,
+           -- The part of those invoices allocated to this visit, OMR excluding VAT (one allocation per invoice and visit).
+           sum(al.allocated_amount)::numeric(16,3) AS amount
     FROM invoice_allocations al
     JOIN invoices i ON i.id = al.invoice_id
     WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
@@ -58,6 +62,8 @@ const selectSql = (storedReference: boolean) => `
          v.visit_amount::text AS visit_amount, v.manual_invoice_no,
          se.id AS sales_engineer_id, se.name AS sales_engineer_name,
          COALESCE(inv.numbers, '{}') AS invoice_numbers, COALESCE(inv.refs, '{}') AS invoice_references, v.quotation_no,
+         inv.amount::text AS invoice_amount, c.contract_value::text AS amc_value,
+         (c.billing_basis IS NULL AND c.default_visit_amount IS NULL) AS no_amount_source,
          ${SERVICE_STATUS_SQL} AS service_status,
          ${COLOUR_SQL} AS colour`;
 
@@ -86,6 +92,9 @@ interface MasterRow {
   invoice_numbers: string[];
   invoice_references: (string | null)[];
   quotation_no: string | null;
+  invoice_amount: string | null;
+  amc_value: string;
+  no_amount_source: boolean;
   service_status: ServiceStatus;
   colour: RowColour;
 }
@@ -116,9 +125,27 @@ export interface MasterStatusItem {
   quotationNo: string | null;
   salesEngineer: { id: string; name: string } | null;
   colour: RowColour;
+  /** The Zoho invoice amounts allocated to the visit in Invoice Tracking, OMR excluding VAT; null when none. */
+  invoiceValue: string | null;
+  /** No value because the contract has neither a Billing Basis nor a Cost per Visit (no amount is invented). */
+  valueSourceMissing: boolean;
+  /** The contract's AMC Value / Year; null unless the user may see contract values (AMC Contracts: View). */
+  amcValue: string | null;
 }
 
-function toItem(row: MasterRow): MasterStatusItem {
+/** What the signed-in user may see here beyond the page itself: contract values need AMC Contracts: View. */
+export interface MasterStatusAccess {
+  amcValue: boolean;
+}
+
+export function masterStatusAccess(auth: Pick<AuthContext, "permissions">): MasterStatusAccess {
+  // No permission set (an internal caller): nothing extra is shown.
+  return { amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false };
+}
+
+const NO_EXTRA_ACCESS: MasterStatusAccess = { amcValue: false };
+
+function toItem(row: MasterRow, access: MasterStatusAccess = NO_EXTRA_ACCESS): MasterStatusItem {
   return {
     id: row.id,
     reference: row.contract_reference,
@@ -139,6 +166,9 @@ function toItem(row: MasterRow): MasterStatusItem {
     quotationNo: row.quotation_no,
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
     colour: row.colour,
+    invoiceValue: row.invoice_amount,
+    valueSourceMissing: row.visit_amount === null && row.no_amount_source,
+    amcValue: access.amcValue ? row.amc_value : null,
   };
 }
 
@@ -203,18 +233,34 @@ export interface MasterStatusKpis {
   totalValue: string;
   /** Selected rows with no amount set, so the total is known to be incomplete. */
   valueMissing: number;
+  /** Sum of visit_amount over the selected Paid rows (manual Invoice No. entered; a reference status). */
+  paidValue: string;
+  /** Sum of the active Zoho invoice amounts allocated to the selected rows (Invoice Tracking). */
+  invoiceValue: string;
 }
 
 /** The card figures, over exactly the rows the filters select. total = green + blue + yellow + red. */
 async function kpis(where: string, params: unknown[]): Promise<MasterStatusKpis> {
-  const result = await pool.query<{ total: number; green: number; blue: number; yellow: number; red: number; total_value: string; value_missing: number }>(
+  const result = await pool.query<{
+    total: number;
+    green: number;
+    blue: number;
+    yellow: number;
+    red: number;
+    total_value: string;
+    value_missing: number;
+    paid_value: string;
+    invoice_value: string;
+  }>(
     `SELECT count(*)::int AS total,
             count(*) FILTER (WHERE (${COLOUR_SQL}) = 'GREEN')::int AS green,
             count(*) FILTER (WHERE (${COLOUR_SQL}) = 'BLUE')::int AS blue,
             count(*) FILTER (WHERE (${COLOUR_SQL}) = 'YELLOW')::int AS yellow,
             count(*) FILTER (WHERE (${COLOUR_SQL}) = 'RED')::int AS red,
             COALESCE(sum(v.visit_amount), 0)::numeric(16,3)::text AS total_value,
-            count(*) FILTER (WHERE v.visit_amount IS NULL)::int AS value_missing
+            count(*) FILTER (WHERE v.visit_amount IS NULL)::int AS value_missing,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS paid_value,
+            COALESCE(sum(inv.amount), 0)::numeric(16,3)::text AS invoice_value
      ${FROM} ${where}`,
     params
   );
@@ -228,10 +274,12 @@ async function kpis(where: string, params: unknown[]): Promise<MasterStatusKpis>
     red: row?.red ?? 0,
     totalValue: row?.total_value ?? "0.000",
     valueMissing: row?.value_missing ?? 0,
+    paidValue: row?.paid_value ?? "0.000",
+    invoiceValue: row?.invoice_value ?? "0.000",
   };
 }
 
-export async function listMasterStatus(query: ListMasterStatusQuery) {
+export async function listMasterStatus(query: ListMasterStatusQuery, access: MasterStatusAccess = NO_EXTRA_ACCESS) {
   const storedReference = await hasStoredReference();
   const { where, params } = filterSql(query, storedReference);
   const [figures, rows] = await Promise.all([
@@ -243,7 +291,7 @@ export async function listMasterStatus(query: ListMasterStatusQuery) {
     ]),
   ]);
 
-  return { items: rows.rows.map(toItem), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures };
+  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue };
 }
 
 /**
@@ -251,7 +299,7 @@ export async function listMasterStatus(query: ListMasterStatusQuery) {
  * `checkSize` is given the number of rows before any is read and throws when
  * the export cannot hold that many.
  */
-export async function listAllMasterStatus(filters: MasterStatusFilters, checkSize: (count: number) => void) {
+export async function listAllMasterStatus(filters: MasterStatusFilters, checkSize: (count: number) => void, access: MasterStatusAccess = NO_EXTRA_ACCESS) {
   const storedReference = await hasStoredReference();
   const { where, params } = filterSql(filters, storedReference);
   const figures = await kpis(where, params);
@@ -260,7 +308,7 @@ export async function listAllMasterStatus(filters: MasterStatusFilters, checkSiz
 
   const rows = await pool.query<MasterRow>(`${selectSql(storedReference)} ${FROM} ${where} ${ORDER}`, params);
 
-  return { items: rows.rows.map(toItem), kpis: figures };
+  return { items: rows.rows.map((row) => toItem(row, access)), kpis: figures };
 }
 
 /** The lists for the page's filters, taken from the contracts that have visits on the page. */

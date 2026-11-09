@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, createClient, createContract, fixtureError, logsFor, renewalEngineer } from "./amc-helpers";
+import { activeContract, createClient, createContract, fixtureError, logsFor, renewalEngineer, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // AMC contracts on the maintenance frequency master (migration 0076): the four
@@ -206,7 +206,7 @@ describe("disabled frequencies", () => {
     const renewal = await api()
       .post(`${CONTRACTS}/${kept}/renewals`)
       .set(admin.headers)
-      .send({ amcReference: "KEPT-RENEWAL-001", clientId, validFrom: "2029-01-01", validTo: "2029-12-31", systemDescription: "KEPT", contractValue: "100.000", maintenanceFrequency: "HALF_YEARLY", salesEngineerId: await renewalEngineer() });
+      .send(withRenewalDocument({ amcReference: "KEPT-RENEWAL-001", clientId, validFrom: "2029-01-01", validTo: "2029-12-31", systemDescription: "KEPT", contractValue: "100.000", maintenanceFrequency: "HALF_YEARLY", salesEngineerId: await renewalEngineer() }));
     expect(renewal.status).toBe(400);
     expect(renewal.body.error.details[0].field).toBe("maintenanceFrequency");
 

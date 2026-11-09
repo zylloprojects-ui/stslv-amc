@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { addDays } from "../src/modules/amc/amc.schedule";
-import { createClient, newContractBody, referenceOf, testReference, today, visitsOf, withServiceReport, type Session } from "./amc-helpers";
+import { createClient, newContractBody, referenceOf, testReference, today, visitsOf, withRenewalDocument, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
 
@@ -230,7 +230,7 @@ describe("meeting workflow", () => {
 
     // Draft renewal: under approval; activated: renewed. The source and its visits stay as they were.
     const sourceVisits = await visitsOf(at45);
-    const renewal = await post(`/amc/contracts/${at45}/renewals`, { amcReference: testReference("WORKFLOW-RENEWAL"), clientId, systemDescription: "RENEW-45", validFrom: addDays(now, 46), validTo: addDays(now, 410), contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "100.000", salesEngineerId: engineerId, status: "DRAFT" });
+    const renewal = await post(`/amc/contracts/${at45}/renewals`, withRenewalDocument({ amcReference: testReference("WORKFLOW-RENEWAL"), clientId, systemDescription: "RENEW-45", validFrom: addDays(now, 46), validTo: addDays(now, 410), contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "100.000", salesEngineerId: engineerId, status: "DRAFT" }));
     expect(renewal.status).toBe(201);
     expect(await state(at45)).toMatchObject({ renewalState: "UNDER_APPROVAL" });
     expect((await post(`/amc/contracts/${renewal.body.data.id}/status`, { status: "ACTIVE" })).status).toBe(200);
@@ -239,7 +239,7 @@ describe("meeting workflow", () => {
     expect((await visitsOf(renewal.body.data.id)).length).toBeGreaterThan(0);
 
     // Cancelled renewal: the queue says so.
-    const second = await post(`/amc/contracts/${atToday}/renewals`, { amcReference: testReference("WORKFLOW-RENEWAL"), clientId, systemDescription: "RENEW-0", validFrom: addDays(now, 1), validTo: addDays(now, 365), contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "100.000", salesEngineerId: engineerId, status: "DRAFT" });
+    const second = await post(`/amc/contracts/${atToday}/renewals`, withRenewalDocument({ amcReference: testReference("WORKFLOW-RENEWAL"), clientId, systemDescription: "RENEW-0", validFrom: addDays(now, 1), validTo: addDays(now, 365), contractValue: "1200.000", maintenanceFrequency: "QUARTERLY", defaultVisitAmount: "100.000", salesEngineerId: engineerId, status: "DRAFT" }));
     expect(second.status).toBe(201);
     expect((await post(`/amc/contracts/${second.body.data.id}/status`, { status: "CANCELLED", reason: "Client declined" })).status).toBe(200);
     expect(await state(atToday)).toMatchObject({ renewalState: "CANCELLED" });

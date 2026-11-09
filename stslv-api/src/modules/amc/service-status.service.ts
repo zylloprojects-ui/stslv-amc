@@ -6,6 +6,7 @@ import { AppError, conflict, forbidden, notFound, validationError } from "../../
 import { hasAdminAccess } from "../../shared/role-model";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
+import { holdsPermission } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants";
 import type { ListServiceStatusQuery, SaveServiceStatusInput } from "./amc.schemas";
@@ -34,19 +35,22 @@ interface Features {
   reports: boolean;
   /** 0105: the stored AMC Reference Number. */
   storedReference: boolean;
+  /** 0110: the manual Sales Engineer Name of a service. */
+  engineerName: boolean;
 }
 
 async function features(): Promise<Features> {
-  const [masters, renewals, frequencies, reportNumber, reports, storedReference] = await Promise.all([
+  const [masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName] = await Promise.all([
     schemaHas(["amc_contracts.sales_engineer_id", "amc_contracts.system_type_id", "sales_engineers", "system_types"]),
     schemaHas(["amc_contracts.renewed_from_id"]),
     schemaHas(["maintenance_frequencies"]),
     schemaHas(["amc_visits.service_report_no"]),
     serviceReportsAvailable(),
     hasStoredReference(),
+    schemaHas(["amc_visits.sales_engineer_name"]),
   ]);
 
-  return { masters, renewals, frequencies, reportNumber, reports, storedReference };
+  return { masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName };
 }
 
 /** Names of the four built-in frequencies, for a database without the frequency master. */
@@ -98,6 +102,9 @@ function selectSql(f: Features): string {
          (v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < current_date) AS is_overdue,
          ${f.masters ? "se.id AS sales_engineer_id, se.name AS sales_engineer_name" : "NULL::bigint AS sales_engineer_id, NULL::text AS sales_engineer_name"},
          ${f.reportNumber ? "v.service_report_no" : "NULL::text"} AS service_report_no,
+         ${f.engineerName ? "v.sales_engineer_name" : "NULL::text"} AS manual_engineer_name,
+         -- The contract's AMC Value / Year (OMR excluding VAT). Read from the contract, never copied onto the visit.
+         c.contract_value::text AS amc_value,
          (v.manual_invoice_no IS NOT NULL) AS is_paid,
          ${serviceStatusSql(f)} AS service_status,
          ${f.reports ? SERVICE_REPORT_JSON_SQL : "NULL::jsonb"} AS service_report,
@@ -129,6 +136,8 @@ interface ServiceRow {
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
   service_report_no: string | null;
+  manual_engineer_name: string | null;
+  amc_value: string;
   is_paid: boolean;
   service_status: ServiceStatus;
   service_report: unknown;
@@ -169,6 +178,16 @@ export interface ServiceStatusItem {
   completedDate: string | null;
   salesEngineer: { id: string; name: string } | null;
   reportNumber: string | null;
+  /**
+   * The Sales Engineer Name typed on this service (0110), or null. Free text, kept apart from salesEngineer above,
+   * which is the contract's Sales Engineer master link (0070).
+   */
+  salesEngineerName: string | null;
+  /**
+   * The linked contract's AMC Value / Year, OMR excluding VAT, as a decimal string. Null when the signed-in user may
+   * not see contract values (needs AMC Contracts: View): it is then never sent.
+   */
+  amcValue: string | null;
   /** The uploaded Service Report document (0104), or null. */
   serviceReport: ServiceReport | null;
   /** Completed and saved: the status and completion date can no longer change. */
@@ -180,7 +199,21 @@ export interface ServiceStatusItem {
   updatedAt: string;
 }
 
-function toItem(row: ServiceRow): ServiceStatusItem {
+/** What the signed-in user may see on Service Status beyond the page itself. */
+export interface ServiceStatusAccess {
+  /** The contract's AMC Value: the permission that shows contract values on AMC Contracts (AMC_CONTRACTS:VIEW). */
+  amcValue: boolean;
+}
+
+/** Nothing extra: the safe default for any caller that does not say who is asking. */
+const NO_EXTRA_ACCESS: ServiceStatusAccess = { amcValue: false };
+
+export function serviceStatusAccess(auth: Pick<AuthContext, "permissions">): ServiceStatusAccess {
+  // No permission set (an internal caller): nothing extra is shown.
+  return { amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false };
+}
+
+function toItem(row: ServiceRow, access: ServiceStatusAccess = NO_EXTRA_ACCESS): ServiceStatusItem {
   return {
     id: row.id,
     reference: row.contract_reference,
@@ -201,6 +234,8 @@ function toItem(row: ServiceRow): ServiceStatusItem {
     completedDate: row.completed_date,
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
     reportNumber: row.service_report_no,
+    salesEngineerName: row.manual_engineer_name,
+    amcValue: access.amcValue ? row.amc_value : null,
     serviceReport: toServiceReport(row.service_report),
     locked: row.status === "COMPLETED",
     paid: row.is_paid,
@@ -244,6 +279,7 @@ function filterSql(query: ServiceStatusFilters, f: Features) {
       `(to_jsonb(v) ->> 'service_code') ILIKE ${p}`,
       ...(f.masters ? [`st.name ILIKE ${p}`] : []),
       ...(f.reportNumber ? [`v.service_report_no ILIKE ${p}`] : []),
+      ...(f.engineerName ? [`v.sales_engineer_name ILIKE ${p}`] : []),
     ];
 
     conditions.push(`(${matches.join(" OR ")})`);
@@ -288,7 +324,7 @@ function totalFor(figures: ServiceStatusKpis, status: ServiceStatus | undefined)
   return figures.total;
 }
 
-export async function listServiceStatus(query: ListServiceStatusQuery) {
+export async function listServiceStatus(query: ListServiceStatusQuery, access: ServiceStatusAccess = NO_EXTRA_ACCESS) {
   const f = await features();
   const { where, withoutStatus, params } = filterSql(query, f);
   const statusParamCount = query.serviceStatus ? params.length - 1 : params.length;
@@ -300,7 +336,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery) {
   );
 
   return {
-    items: rows.rows.map(toItem),
+    items: rows.rows.map((row) => toItem(row, access)),
     total: totalFor(figures, query.serviceStatus),
     page: query.page,
     pageSize: query.pageSize,
@@ -309,14 +345,16 @@ export async function listServiceStatus(query: ListServiceStatusQuery) {
     serviceReportsAvailable: f.reports,
     serviceReportLimits: { maxMb: env.attachmentMaxMb, allowedTypes: SERVICE_REPORT_TYPES_TEXT },
     reportNumberLockEnabled: reportNumberLockEnabled(),
+    salesEngineerNameAvailable: f.engineerName,
+    amcValueVisible: access.amcValue,
   };
 }
 
 /** One service, by its visit id, for the View dialog. */
-export async function getServiceStatusItem(id: string): Promise<ServiceStatusItem> {
+export async function getServiceStatusItem(id: string, access: ServiceStatusAccess = NO_EXTRA_ACCESS): Promise<ServiceStatusItem> {
   const f = await features();
 
-  return toItem(await findServiceRow(pool, id, f));
+  return toItem(await findServiceRow(pool, id, f), access);
 }
 
 /**
@@ -324,7 +362,7 @@ export async function getServiceStatusItem(id: string): Promise<ServiceStatusIte
  * `checkSize` is given the number of rows before any is read and throws when
  * the export cannot hold that many.
  */
-export async function listAllServiceStatus(filters: ServiceStatusFilters, checkSize: (count: number) => void) {
+export async function listAllServiceStatus(filters: ServiceStatusFilters, checkSize: (count: number) => void, access: ServiceStatusAccess = NO_EXTRA_ACCESS) {
   const f = await features();
   const { where, withoutStatus, params } = filterSql(filters, f);
   const statusParamCount = filters.serviceStatus ? params.length - 1 : params.length;
@@ -335,7 +373,7 @@ export async function listAllServiceStatus(filters: ServiceStatusFilters, checkS
 
   const rows = await pool.query<ServiceRow>(`${selectSql(f)} ${fromSql(f)} ${where} ${ORDER}`, params);
 
-  return { items: rows.rows.map(toItem), total, kpis: figures, features: f };
+  return { items: rows.rows.map((row) => toItem(row, access)), total, kpis: figures, features: f };
 }
 
 /** The lists for the page's filters, taken from the contracts that have visits on the page. */
@@ -411,7 +449,7 @@ async function findServiceRow(db: Queryable, id: string, f: Features): Promise<S
 export async function saveServiceStatus(auth: AuthContext, id: string, input: SaveServiceStatusInput): Promise<ServiceStatusItem> {
   const f = await features();
 
-  if (input.reportNumber !== undefined && !f.reportNumber) {
+  if ((input.reportNumber !== undefined && !f.reportNumber) || (input.salesEngineerName !== undefined && !f.engineerName)) {
     throw featureUnavailable();
   }
 
@@ -484,6 +522,26 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
       }
     }
 
-    return toItem(await findServiceRow(client, id, f));
+    if (input.salesEngineerName !== undefined) {
+      const changes = diffFields({ salesEngineerName: row.manual_engineer_name }, { salesEngineerName: input.salesEngineerName }, ["salesEngineerName"]);
+
+      // Free text beside the report number; not part of the Paid lock, and never the contract's Sales Engineer link.
+      if (Object.keys(changes).length > 0) {
+        await client.query("UPDATE amc_visits SET sales_engineer_name = $1, updated_by = $2 WHERE id = $3", [input.salesEngineerName, auth.user.id, id]);
+        await logActivity(client, {
+          userId: auth.user.id,
+          action: "amc_visit.sales_engineer_name_changed",
+          module: "AMC_EXECUTION",
+          entityType: "amc_visits",
+          entityId: id,
+          description: `Sales Engineer Name of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
+            input.salesEngineerName ? `set to ${input.salesEngineerName}` : "cleared"
+          }.`,
+          metadata: { changes },
+        });
+      }
+    }
+
+    return toItem(await findServiceRow(client, id, f), serviceStatusAccess(auth));
   });
 }

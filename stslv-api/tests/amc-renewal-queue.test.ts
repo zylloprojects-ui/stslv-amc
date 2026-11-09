@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
-import { activeContract, contractBody, createClient, createContract, referenceOf, renewalEngineer, today, visitsOf, type Session } from "./amc-helpers";
+import { activeContract, contractBody, createClient, createContract, referenceOf, renewalEngineer, today, visitsOf, type Session, withRenewalDocument } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // The AMC Renewal queue: renewal states derived from contracts and their
@@ -48,7 +48,7 @@ const renew = (sourceId: string, overrides: Record<string, unknown> = {}, sessio
   api()
     .post(`/api/amc/contracts/${sourceId}/renewals`)
     .set(session.headers)
-    .send(contractBody(fx.clientId, { validFrom: shift(400), validTo: shift(764), status: "DRAFT", salesEngineerId: engineerId, ...overrides }));
+    .send(withRenewalDocument(contractBody(fx.clientId, { validFrom: shift(400), validTo: shift(764), status: "DRAFT", salesEngineerId: engineerId, ...overrides })));
 const setStatus = (id: string, status: string, session: Session = admin) => api().post(`/api/amc/contracts/${id}/status`).set(session.headers).send({ status, ...(status === "CANCELLED" ? { reason: "Test" } : {}) });
 
 async function contract(endsIn: number, overrides: Record<string, unknown> = {}): Promise<string> {

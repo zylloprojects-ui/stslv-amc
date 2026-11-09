@@ -82,6 +82,14 @@ export function contractDocument(data: Buffer = TEST_PDF, fileName = "contract.p
 }
 
 /**
+ * A renewal body with its required renewal contract document (client fixes, 2026-11-09), for tests whose subject is
+ * not the document. A body that already names a document keeps it.
+ */
+export function withRenewalDocument<T extends object>(body: T): T & { contractDocument: { fileName: string; contentBase64: string } } {
+  return { contractDocument: contractDocument(TEST_PDF, "renewal.pdf"), ...body };
+}
+
+/**
  * An active system type named exactly `name`, so a contract saved with it keeps that system text. Its code is
  * made from the name. Made active again if a test deactivated it.
  */

@@ -256,7 +256,7 @@ describe("Master AMC Status", () => {
       const month = Number(alpha[1]!.scheduled_date.slice(5, 7));
       const combined = await list({ clientId: fx.alphaId, salesEngineerId: fx.esha, year: 2027, month, serviceStatus: "COMPLETED", colour: "BLUE", search: "ZB" });
       expect(combined.body.data.items.map((item: Item) => item.id)).toEqual([alpha[1]!.id]);
-      expect(combined.body.data.kpis).toEqual({ total: 1, green: 0, blue: 1, yellow: 0, red: 0, totalValue: "405.000", valueMissing: 0 });
+      expect(combined.body.data.kpis).toEqual({ total: 1, green: 0, blue: 1, yellow: 0, red: 0, totalValue: "405.000", valueMissing: 0, paidValue: "405.000", invoiceValue: "405.000" });
       expect((await list({ clientId: fx.betaId, colour: "BLUE" })).body.data.kpis).toMatchObject({ total: 0, totalValue: "0.000" });
     });
 

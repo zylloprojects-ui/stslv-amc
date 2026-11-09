@@ -804,7 +804,7 @@ describe('rejecting a sign-up request', () => {
 
     expect(dialog).toHaveTextContent('Nadia Newcomer')
     expect(dialog).toHaveTextContent('new.person@example.com')
-    expect(dialog).toHaveTextContent('This registration request will be rejected and the user will not receive access to STSLEV AMC.')
+    expect(dialog).toHaveTextContent('This registration request will be rejected and the user will not receive access to STS-ELV AMC.')
     expect(dialog).not.toHaveTextContent('Omar Other')
     expect(within(dialog).getByRole('button', { name: 'Reject' })).toBeEnabled()
 

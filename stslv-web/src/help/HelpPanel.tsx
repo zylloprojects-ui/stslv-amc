@@ -93,7 +93,7 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
               <h2 id={titleId} className="app-modal-title text-lg font-bold leading-tight">
                 Help
               </h2>
-              <p className="app-modal-sub truncate text-xs font-medium">{pageTopic ? `This page: ${pageTopic.title}` : 'STSLEV AMC user guide'}</p>
+              <p className="app-modal-sub truncate text-xs font-medium">{pageTopic ? `This page: ${pageTopic.title}` : 'STS-ELV AMC user guide'}</p>
             </div>
             <button type="button" onClick={onClose} aria-label="Close help" className="app-modal-x group shrink-0 rounded-full p-2 transition-all">
               <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

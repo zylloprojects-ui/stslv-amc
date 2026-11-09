@@ -170,7 +170,7 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
           <img src="/stslv-logo.png" alt="" className="h-9 w-9 object-contain" />
         </span>
         <div className={cx('min-w-0 flex-1 leading-tight', collapsed && 'hidden')}>
-          <span className="block whitespace-nowrap sb-strong text-base font-bold tracking-tight">STSLEV AMC</span>
+          <span className="block whitespace-nowrap sb-strong text-base font-bold tracking-tight">STS-ELV AMC</span>
           <span className="sb-muted block text-xs">ERP System</span>
         </div>
         {onToggleCollapse && (

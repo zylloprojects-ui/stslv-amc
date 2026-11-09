@@ -293,7 +293,9 @@ function DetailsDialog({ item, canViewContract, onClose }: { item: MasterStatusI
     ['Frequency', item.frequency.label],
     ['Service', serviceCodeLabel(item.service)],
     ['Due date', formatDate(item.scheduledDate)],
-    ['Value (Ex VAT)', item.visitValue === null ? '—' : formatMoney(item.visitValue)],
+    ['Value (Ex VAT)', item.visitValue === null ? (item.valueSourceMissing ? '— (no Billing Basis or Cost per Visit on the contract)' : '—') : formatMoney(item.visitValue)],
+    ['Zoho Invoice Value (Tracking)', item.invoiceValue ? formatMoney(item.invoiceValue) : '—'],
+    ...(item.amcValue ? ([['AMC Value / Year (contract)', formatMoney(item.amcValue)]] as [string, ReactNode][]) : []),
     ['Service Status', SERVICE_STATUS_LABELS[item.serviceStatus]],
     ['Completed on', item.completedDate ? formatDate(item.completedDate) : '—'],
     ['Invoice No.', item.manualInvoiceNo ?? 'Not entered'],
@@ -603,6 +605,24 @@ export function MasterStatusPage() {
                     <Row key={item.id} item={item} number={(data.page - 1) * data.pageSize + index + 1} shown={shown} canViewContract={canViewContract} />
                   ))}
                 </tbody>
+                {shown('visitValue') && (
+                  <tfoot>
+                    {/* PostgreSQL's sums over every service the filters select, on every page (client fixes, 2026-11-09). */}
+                    <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
+                      <th scope="row" colSpan={2 + visible.indexOf('visitValue')} className={`${TABLE.td} text-right`}>
+                        Total Filtered ({data.kpis.total} {data.kpis.total === 1 ? 'service' : 'services'}, all pages)
+                      </th>
+                      <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>
+                        <span className="block text-xs font-medium text-slate-500">Service Value (OMR)</span>
+                        {formatMoney(data.kpis.totalValue)}
+                        {data.kpis.paidValue !== undefined && <span className="block text-xs font-medium text-slate-500">Paid (Invoice No.): {formatMoney(data.kpis.paidValue)}</span>}
+                        {data.kpis.invoiceValue !== undefined && <span className="block text-xs font-medium text-slate-500">Zoho Invoice Value: {formatMoney(data.kpis.invoiceValue)}</span>}
+                        {data.kpis.valueMissing > 0 && <span className="block text-xs font-medium text-amber-700">{data.kpis.valueMissing} without value, not included</span>}
+                      </td>
+                      <td colSpan={visible.length - visible.indexOf('visitValue')} className={TABLE.td} />
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
             <Pager page={data.page} pageSize={data.pageSize} total={data.total} shown={data.items.length} onPage={setPage} />
@@ -670,7 +690,12 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
         </td>
       )}
       {shown('visitValue') && (
-        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{item.visitValue === null ? <Missing title="No visit value set" /> : formatMoney(item.visitValue)}</td>
+        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>
+          {item.visitValue === null ? <Missing title="No visit value set" /> : formatMoney(item.visitValue)}
+          {item.visitValue === null && item.valueSourceMissing && <div className="text-xs font-normal text-amber-700">No Billing Basis or Cost per Visit</div>}
+          {item.invoiceValue && <div className="text-xs font-normal text-slate-500">Zoho: {formatMoney(item.invoiceValue)}</div>}
+          {item.amcValue && <div className="text-xs font-normal text-slate-500">AMC Value / Year: {formatMoney(item.amcValue)}</div>}
+        </td>
       )}
       {shown('serviceStatus') && (
         <td className={TABLE.td}>

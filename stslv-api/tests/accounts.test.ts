@@ -355,6 +355,7 @@ describe("Accounts", () => {
         "Invoice No.",
         "Paid / Unpaid",
         "Zoho Invoices (Tracking)",
+        "Zoho Invoice Value (Ex VAT, OMR)",
         "Row Colour",
       ]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
@@ -366,9 +367,9 @@ describe("Accounts", () => {
       expect(String(rows[0]?.[9])).toBe("MAN-9");
       expect(rows[0]?.[10]).toBe("Paid");
       expect(String(rows[0]?.[11])).toBe("INV-9");
-      expect(rows[0]?.[12]).toBe("Green · Completed, Paid");
+      expect(rows[0]?.[13]).toBe("Green · Completed, Paid");
       expect(rows[1]?.[10]).toBe("Unpaid");
-      expect(rows[1]?.[12]).toBe("Red · Service not completed");
+      expect(rows[1]?.[13]).toBe("Red · Service not completed");
 
       const audit = await pool.query<{ metadata: { rowCount: number; hidden: string[] } }>("SELECT metadata FROM activity_logs WHERE action = 'accounts.exported' ORDER BY id DESC LIMIT 1");
       expect(audit.rows[0]?.metadata).toMatchObject({ rowCount: 4, hidden: ["system", "salesEngineer"] });

@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 
-// Figure cards take their colours from the STSLEV logo (blue, green, orange, magenta, cyan, gold), one
+// Figure cards take their colours from the STS-ELV logo (blue, green, orange, magenta, cyan, gold), one
 // colour per card by position. The colour only tells the cards apart; status (amber for attention,
 // red for a failure) is still shown by its own marks.
 export const ACCENT_PAIRS: [string, string][] = [

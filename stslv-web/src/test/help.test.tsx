@@ -175,7 +175,7 @@ describe('help in the application', () => {
 
     await waitFor(() => expect(app.router.state.location.pathname).toBe('/help'))
     expect(within(await screen.findByRole('article')).getByRole('heading', { name: 'Getting started', level: 2 })).toBeInTheDocument()
-    expect(document.title).toBe('Help & User Guide · STSLEV AMC')
+    expect(document.title).toBe('Help & User Guide · STS-ELV AMC')
   })
 
   it('opens a topic by address, and refuses one the role cannot read', async () => {

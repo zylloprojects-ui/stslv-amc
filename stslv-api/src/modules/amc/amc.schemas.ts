@@ -214,6 +214,24 @@ export const createRenewalSchema = createContractSchema.extend({
   renewalNotes: optionalText("Renewal notes", 1000).optional(),
 });
 
+/**
+ * POST /api/amc/contracts/:id/renewals (client fixes, 2026-11-09): a renewal carries its own updated renewal contract
+ * document, required, checked and stored exactly like the document of Add AMC Contract. The renewed contract's
+ * document is never reused. Only the API route uses this; internal callers keep createRenewalSchema.
+ */
+export const createRenewalWithDocumentSchema = createRenewalSchema.extend({
+  contractDocument: z.strictObject(
+    {
+      fileName: z.string({ error: "Attach the renewal contract document." }).trim().min(1, "Attach the renewal contract document.").max(500, "The file name is too long."),
+      contentBase64: z
+        .string({ error: "Attach the renewal contract document." })
+        .min(1, "Attach the renewal contract document.")
+        .refine(isBase64, "The renewal contract document could not be read. Choose the file again."),
+    },
+    { error: "Attach the renewal contract document." }
+  ),
+});
+
 // Every field optional: a field that is left out is not changed.
 // Status is not editable here; use the status route.
 export const updateContractSchema = z
@@ -256,6 +274,9 @@ const CONTRACT_YEAR_MESSAGE = "Year must be between 2000 and 2100.";
 export const listContractsSchema = z.object({
   search: z.string().trim().max(200).optional(),
   status: z.enum([...CONTRACT_STATUSES, "all"]).default("all"),
+  // Validity, computed from Valid To and the stored status (client fixes 2026-11-09), independent of the stored
+  // status filter above. See CONTRACT_VALIDITY_FILTERS in contracts.service.ts for the exact rules.
+  validity: z.enum(["all", "due", "expired"], { error: "Select All, Due or Expired." }).default("all"),
   clientId: idSchema.optional(),
   frequency: frequency.optional(),
   // Contracts linked to this Sales Engineer master record (migration 0070).
@@ -443,6 +464,7 @@ export const exportServiceStatusSchema = listServiceStatusSchema.omit({ page: tr
 
 const REPORT_NUMBER_MESSAGE = "Service report number must be at most 50 characters, without line breaks.";
 const OVERRIDE_REASON_MESSAGE = "Enter the reason for changing a locked Service Report No. (5 to 500 characters).";
+const SALES_ENGINEER_NAME_MESSAGE = "Sales Engineer Name must be at most 120 characters, without line breaks.";
 
 export const saveServiceStatusSchema = z
   .strictObject({
@@ -466,10 +488,22 @@ export const saveServiceStatusSchema = z
       .min(5, OVERRIDE_REASON_MESSAGE)
       .max(500, OVERRIDE_REASON_MESSAGE)
       .optional(),
+    // The Sales Engineer Name typed beside the report number (0110). Free text; empty or null clears it.
+    salesEngineerName: z
+      .string({ error: SALES_ENGINEER_NAME_MESSAGE })
+      .trim()
+      .max(120, SALES_ENGINEER_NAME_MESSAGE)
+      .refine((value) => !/[\u0000-\u001f\u007f]/.test(value), SALES_ENGINEER_NAME_MESSAGE)
+      .transform((value) => (value === "" ? null : value))
+      .nullable()
+      .optional(),
     // The updatedAt the page showed. A save over a newer change is refused, so one person cannot silently overwrite another.
     expectedUpdatedAt: z.string({ error: "Reload the page and try again." }).datetime({ offset: true, error: "Reload the page and try again." }),
   })
-  .refine((value) => value.status !== undefined || value.reportNumber !== undefined || value.completedDate !== undefined, "Provide a status, completion date or report number to save.")
+  .refine(
+    (value) => value.status !== undefined || value.reportNumber !== undefined || value.completedDate !== undefined || value.salesEngineerName !== undefined,
+    "Provide a status, completion date, report number or Sales Engineer Name to save."
+  )
   .refine((value) => value.reportNumberOverrideReason === undefined || value.reportNumber !== undefined, {
     message: "An override reason is given only with a Service Report No. change.",
     path: ["reportNumberOverrideReason"],
