@@ -136,11 +136,12 @@ interface ServiceRow {
 }
 
 /**
- * Service Report No. lock (PROPOSED RULE, P1 fixes 2026-11-09, not yet approved): the number is
+ * Service Report No. lock (P1 fixes; rule APPROVED BY THE OWNER 2026-11-09): the number is
  * editable until the service is Paid (manual Invoice No. entered) and locked afterwards. Only an
- * administrator (Super Admin or Admin role) may then change it, with a reason that goes into the
- * Audit Log. Switched off unless SERVICE_REPORT_NO_LOCK_ENABLED=true, so behaviour is unchanged
- * until the rule is approved. Read on every request, so the switch needs no code change.
+ * administrator (Super Admin or Admin role) may then change it, with a mandatory reason that goes
+ * into the Audit Log. Production activation is separate from approval: the lock applies only with
+ * SERVICE_REPORT_NO_LOCK_ENABLED=true (default off, so current behaviour is kept until the approved
+ * release). Read on every request, so the switch needs no code change.
  */
 export function reportNumberLockEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
   return source.SERVICE_REPORT_NO_LOCK_ENABLED?.trim().toLowerCase() === "true";

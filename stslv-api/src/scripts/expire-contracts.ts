@@ -7,8 +7,9 @@ import { expiryApplyEnabled, runContractExpiry } from "../modules/amc/contract-e
  * npm run contracts:expire -- --as-of 2026-11-09   dry run measured on that (past or current) date
  * npm run contracts:expire -- --apply          changes them to EXPIRED, one audit entry each
  *
- * --apply is refused unless AMC_CONTRACT_EXPIRY_ENABLED=true. That switch stays off until the client
- * approves the expiry rule (docs/CONTRACT_EXPIRY.md). Running it twice changes nothing the second time.
+ * --apply is refused unless AMC_CONTRACT_EXPIRY_ENABLED=true. The rule was approved on 2026-11-09; the
+ * switch stays off in production until the approved release, and is then set only for the scheduled job
+ * (docs/CONTRACT_EXPIRY.md). Running it twice changes nothing the second time.
  * Prints contract references, clients and dates only: never connection details.
  * Exit code 0 on success, 1 on any error.
  */

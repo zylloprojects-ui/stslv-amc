@@ -675,6 +675,17 @@ describe('service report number lock', () => {
     })
   })
 
+  it('gives Admin (not only Super Admin) the override reason field', async () => {
+    const ADMINISTRATOR: SessionUser = { ...ADMIN, id: '6', email: 'office@example.com', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }] }
+    serviceApi(ADMINISTRATOR, { items: [PAID_LOCKED] })
+    renderApp('/amc/service-status')
+    const row = within(await rowOf(DONE.reference))
+    const input = row.getByLabelText(/^Service report number of/)
+
+    await userEvent.type(input, 'X')
+    expect(row.getByLabelText(/^Reason for changing the locked report number/)).toBeInTheDocument()
+  })
+
   it('leaves an unlocked number editable as before, with no reason asked', async () => {
     const api = serviceApi(EXECUTION, { items: [{ ...DONE, reportNumber: 'SR-1', paid: true, reportNumberLocked: false }] })
     renderApp('/amc/service-status')

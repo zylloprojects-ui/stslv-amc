@@ -5,10 +5,12 @@ import { validationError } from "../../shared/errors";
 import { REPORT_TIME_ZONE } from "../../shared/export/branding";
 import { hasStoredReference, referenceSql } from "./contract-reference";
 
-// Controlled contract expiry (P1 fixes, 2026-11-09). PROPOSED RULE, NOT YET APPROVED FOR
-// AUTOMATIC USE: an ACTIVE contract becomes EXPIRED once its Valid To date has passed, i.e.
-// on the first day after Valid To, measured in the business time zone (Asia/Muscat, the
-// time zone every STSLV report is printed in).
+// Controlled contract expiry (P1 fixes, 2026-11-09). RULE APPROVED BY THE OWNER 2026-11-09:
+// an ACTIVE contract becomes EXPIRED on the first day after its Valid To date, measured in
+// the business time zone (Asia/Muscat, the time zone every STSLV report is printed in).
+// Open visits keep their statuses and values; an open renewal does not prevent expiry.
+// Business approval is not production activation: applying stays switched off by default
+// (AMC_CONTRACT_EXPIRY_ENABLED) until the approved release; see docs/CONTRACT_EXPIRY.md.
 //
 // What it changes, and nothing else:
 //   * amc_contracts.status ACTIVE -> EXPIRED, only for contracts outside the Recycle Bin whose
@@ -60,7 +62,20 @@ export function expiryApplyEnabled(source: NodeJS.ProcessEnv = process.env): boo
   return source.AMC_CONTRACT_EXPIRY_ENABLED?.trim().toLowerCase() === "true";
 }
 
-/** Today in the business time zone, whatever the server's or database's own time zone. */
+/**
+ * The business (Oman) calendar day of an instant, whatever the server's or database's own time zone.
+ * 2026-11-09T19:59:59Z is 2026-11-09 in Muscat (23:59:59); 2026-11-09T20:00:00Z is 2026-11-10.
+ */
+export async function businessDateAt(instant: Date | string, db: Queryable = pool): Promise<string> {
+  const result = await db.query<{ day: string }>("SELECT ($1::timestamptz AT TIME ZONE $2)::date::text AS day", [
+    instant instanceof Date ? instant.toISOString() : instant,
+    CONTRACT_TIME_ZONE,
+  ]);
+
+  return (result.rows[0] as { day: string }).day;
+}
+
+/** Today in the business time zone (the database clock's now(), read as Oman time). */
 export async function businessToday(db: Queryable = pool): Promise<string> {
   const result = await db.query<{ today: string }>("SELECT (now() AT TIME ZONE $1)::date::text AS today", [CONTRACT_TIME_ZONE]);
 
@@ -112,7 +127,9 @@ export async function runContractExpiry(options: ExpiryOptions = {}): Promise<Ex
   const apply = options.apply === true;
 
   if (apply && options.enabled !== true) {
-    throw validationError("Automatic contract expiry is disabled. It needs approval of the expiry rule and AMC_CONTRACT_EXPIRY_ENABLED=true.");
+    throw validationError(
+      "Applying contract expiry is disabled in this environment. Set AMC_CONTRACT_EXPIRY_ENABLED=true only as part of the approved release (docs/CONTRACT_EXPIRY.md). A dry run needs no switch."
+    );
   }
 
   return withTransaction(async (client) => {
