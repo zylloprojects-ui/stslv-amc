@@ -33,9 +33,19 @@ const LIST_LIMIT = 10;
  */
 export interface PaymentFigures {
   paid: number;
+  /**
+   * Sum of the service values (visit_amount, OMR excluding VAT) of the services with an Invoice No.: the documented
+   * "Value of Paid services", the same figure as Accounts and Master AMC Status. The manual Invoice No. carries no amount
+   * of its own. Services without a recorded value add nothing; how many there are is in paidAmountMissing, so a total of
+   * services that have no value is never shown as a real 0.000.
+   */
   paidValue: string;
+  /** Of paid, the services with no recorded value (visit_amount is null). */
+  paidAmountMissing: number;
   unpaid: number;
   unpaidValue: string;
+  /** Of unpaid, the services with no recorded value. */
+  unpaidAmountMissing: number;
   /** Services whose Invoice No. was entered this calendar month, and their value. */
   paidThisMonth: number;
   paidThisMonthValue: string;
@@ -48,8 +58,12 @@ export interface PaymentFigures {
   scheduledThisMonth: {
     withInvoiceNo: number;
     withInvoiceNoValue: string;
+    /** Of withInvoiceNo, the services with no recorded value. */
+    withInvoiceNoAmountMissing: number;
     withoutInvoiceNo: number;
     withoutInvoiceNoValue: string;
+    /** Of withoutInvoiceNo, the services with no recorded value. */
+    withoutInvoiceNoAmountMissing: number;
   };
 }
 
@@ -314,28 +328,39 @@ export async function paymentFigures(): Promise<PaymentFigures> {
   const paidThisMonth = `v.manual_invoice_no IS NOT NULL AND date_trunc('month', ${businessDateSql("v.manual_invoice_at")}) = date_trunc('month', ${BUSINESS_TODAY_SQL})`;
   // Scheduled this month, by the same Oman business date as Services This Month.
   const scheduledThisMonth = `date_trunc('month', v.scheduled_date) = date_trunc('month', ${BUSINESS_TODAY_SQL})`;
+  // One row per service: a manual Invoice No. shared by several services adds each service's own value once, and no
+  // invoice-level amount is summed, so nothing is counted twice.
+  const missing = "v.visit_amount IS NULL";
   const result = await pool.query<{
     paid: number;
     paid_value: string;
+    paid_missing: number;
     unpaid: number;
     unpaid_value: string;
+    unpaid_missing: number;
     month_count: number;
     month_value: string;
     sched_with: number;
     sched_with_value: string;
+    sched_with_missing: number;
     sched_without: number;
     sched_without_value: string;
+    sched_without_missing: number;
   }>(
     `SELECT count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS paid,
             COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS paid_value,
+            count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL AND ${missing})::int AS paid_missing,
             count(*) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS unpaid,
             COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS unpaid_value,
+            count(*) FILTER (WHERE v.manual_invoice_no IS NULL AND ${missing})::int AS unpaid_missing,
             count(*) FILTER (WHERE ${paidThisMonth})::int AS month_count,
             COALESCE(sum(v.visit_amount) FILTER (WHERE ${paidThisMonth}), 0)::numeric(16,3)::text AS month_value,
             count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NOT NULL)::int AS sched_with,
             COALESCE(sum(v.visit_amount) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS sched_with_value,
+            count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NOT NULL AND ${missing})::int AS sched_with_missing,
             count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL)::int AS sched_without,
-            COALESCE(sum(v.visit_amount) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS sched_without_value
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS sched_without_value,
+            count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL AND ${missing})::int AS sched_without_missing
      FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
      WHERE ${IN_SCOPE}`
   );
@@ -344,16 +369,56 @@ export async function paymentFigures(): Promise<PaymentFigures> {
   return {
     paid: row?.paid ?? 0,
     paidValue: row?.paid_value ?? "0.000",
+    paidAmountMissing: row?.paid_missing ?? 0,
     unpaid: row?.unpaid ?? 0,
     unpaidValue: row?.unpaid_value ?? "0.000",
+    unpaidAmountMissing: row?.unpaid_missing ?? 0,
     paidThisMonth: row?.month_count ?? 0,
     paidThisMonthValue: row?.month_value ?? "0.000",
     scheduledThisMonth: {
       withInvoiceNo: row?.sched_with ?? 0,
       withInvoiceNoValue: row?.sched_with_value ?? "0.000",
+      withInvoiceNoAmountMissing: row?.sched_with_missing ?? 0,
       withoutInvoiceNo: row?.sched_without ?? 0,
       withoutInvoiceNoValue: row?.sched_without_value ?? "0.000",
+      withoutInvoiceNoAmountMissing: row?.sched_without_missing ?? 0,
     },
+  };
+}
+
+/** Which KPI sections a page may show; each page keeps its own permission rule and passes the result here. */
+export interface SharedKpiAccess {
+  contracts: boolean;
+  visits: boolean;
+  invoices: boolean;
+}
+
+/**
+ * The KPI figures the Dashboard and AMC Management have in common (contracts, service counts, Invoice No. figures),
+ * from one place, so the same card shows the same value on both pages. Each page decides what the user may see
+ * (SharedKpiAccess); the calculation is never repeated.
+ */
+export async function sharedKpis(access: SharedKpiAccess, renewals: boolean): Promise<OperationsKpis> {
+  const [contracts, month, overall, payments] = await Promise.all([
+    access.contracts ? contractKpis(renewals) : null,
+    access.visits ? getWorkload({ months: 1 }) : null,
+    access.visits ? overallServiceCounts() : null,
+    access.invoices ? paymentFigures() : null,
+  ]);
+  const thisMonth = month?.months[0];
+
+  return {
+    contracts,
+    services:
+      access.visits && overall
+        ? {
+            thisMonth: thisMonth?.planned ?? 0,
+            completedThisMonth: thisMonth?.completed ?? 0,
+            openThisMonth: thisMonth?.open ?? 0,
+            ...overall,
+          }
+        : null,
+    payments,
   };
 }
 
@@ -437,30 +502,21 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
   const canInvoices = auth.permissions.has("INVOICES:VIEW");
   const renewals = canContracts ? await schemaHas(["amc_contracts.renewed_from_id"]) : false;
 
-  const [clock, contracts, statusBreakdown, expiringList, workload, todayWork, payments, trend, overallServices] = await Promise.all([
+  const [clock, kpis, statusBreakdown, expiringList, workload, todayWork, trend] = await Promise.all([
     pool.query<{ today: string; time_zone: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today, '${BUSINESS_TIME_ZONE}'::text AS time_zone`),
-    canContracts ? contractKpis(renewals) : null,
+    // The cards shared with AMC Management come from the one shared calculation.
+    sharedKpis({ contracts: canContracts, visits: canVisits, invoices: canInvoices }, renewals),
     canContracts ? portfolio() : null,
     canContracts ? expiring(renewals) : null,
     canVisits ? getWorkload({ months: CHART_MONTHS }) : null,
     canVisits ? schedule() : null,
-    canInvoices ? paymentFigures() : null,
     canInvoices ? paymentTrend() : null,
-    canVisits ? overallServiceCounts() : null,
   ]);
-  const thisMonth = workload?.months[0];
 
   return {
     asOf: clock.rows[0]?.today ?? "",
     timeZone: clock.rows[0]?.time_zone ?? "",
-    kpis: {
-      contracts,
-      services:
-        thisMonth && overallServices
-          ? { thisMonth: thisMonth.planned, completedThisMonth: thisMonth.completed, openThisMonth: thisMonth.open, ...overallServices }
-          : null,
-      payments,
-    },
+    kpis,
     portfolio: statusBreakdown,
     expiring: expiringList,
     workload,

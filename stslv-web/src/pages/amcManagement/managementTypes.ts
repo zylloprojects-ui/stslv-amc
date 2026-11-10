@@ -1,5 +1,5 @@
 import type { ContractStatus } from '../amc/types'
-import type { ExpiringRow } from '../dashboard/operationsTypes'
+import type { ExpiringRow, SharedKpiSource } from '../dashboard/operationsTypes'
 
 // What GET /api/amc/management/summary returns. A section the user may not see
 // is null. Amounts are decimal strings with three decimals; dates are YYYY-MM-DD.
@@ -25,7 +25,11 @@ export interface RecentContract {
   createdAt: string
 }
 
-export interface AmcManagementSummary {
+/**
+ * `kpis` is the Dashboard's own KPI calculation (the same object GET /api/dashboard/operations returns, by this page's
+ * permissions): the cards AMC Management shares with the Dashboard read it, so both pages show the same values.
+ */
+export interface AmcManagementSummary extends SharedKpiSource {
   asOf: string
   timeZone: string
   contracts: {
@@ -46,8 +50,9 @@ export interface AmcManagementSummary {
   } | null
   invoices: {
     paid: { count: number }
-    unpaid: { count: number; amount: string }
-    paidTotal: { amount: string }
+    unpaid: { count: number; amount: string; amountMissing?: number }
+    /** amountMissing: Paid services with no recorded value (never shown as a real 0.000). */
+    paidTotal: { amount: string; amountMissing?: number }
     module: { issued: number; cancelled: number }
   } | null
   expiry: {

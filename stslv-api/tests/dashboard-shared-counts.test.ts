@@ -4,7 +4,7 @@ import { BUSINESS_TODAY_SQL } from "../src/shared/business-date";
 import { activeContract, contractBody, createClient, renewalEngineer, withRenewalDocument, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 
-// The shared Dashboard (shown on /dashboard and /amc/management, 2026-11-09) counts each contract ONCE in Active AMCs,
+// The Dashboard (and AMC Management's shared cards, from the same sharedKpis(), 2026-11-10) counts each contract ONCE in Active AMCs,
 // Annual AMC Value and Final Credit: Active and within validity in Oman, and not a renewal waiting for the period it
 // renews. A renewal version is never added on top of its original; an Active contract past its Valid To is not counted.
 

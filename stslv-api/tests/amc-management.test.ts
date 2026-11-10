@@ -98,8 +98,8 @@ describe("empty database", () => {
       engine: { activeContracts: 0, withoutSchedule: 0 },
     });
     expect(data.invoices.paid).toEqual({ count: 0 });
-    expect(data.invoices.unpaid).toEqual({ count: 0, amount: "0.000" });
-    expect(data.invoices.paidTotal).toEqual({ amount: "0.000" });
+    expect(data.invoices.unpaid).toEqual({ count: 0, amount: "0.000", amountMissing: 0 });
+    expect(data.invoices.paidTotal).toEqual({ amount: "0.000", amountMissing: 0 });
     expect(data.invoices.module).toEqual({ issued: 0, cancelled: 0 });
     expect(data.expiry.bands.map((band: { days: number; fromDays: number; count: number }) => [band.days, band.fromDays, band.count])).toEqual([
       [90, 61, 0],
@@ -266,7 +266,63 @@ describe("with contracts, renewals, visits and invoices", () => {
     expect(invoices.module).toEqual({ issued: 1, cancelled: 0 });
     // A Zoho invoice is recorded here, but nothing is Paid until a manual Invoice No. is entered.
     expect(invoices.paid).toEqual({ count: 0 });
-    expect(invoices.paidTotal).toEqual({ amount: "0.000" });
+    expect(invoices.paidTotal).toEqual({ amount: "0.000", amountMissing: 0 });
+  });
+
+  it("returns exactly the Dashboard's KPI figures for the cards the two pages share", async () => {
+    const data = (await summary()).body.data;
+    const dashboard = (await api().get("/api/dashboard/operations").set(admin.headers)).body.data;
+
+    // One server calculation (sharedKpis) behind both pages: contracts, service counts and Invoice No. figures.
+    expect(data.kpis).toEqual(dashboard.kpis);
+    expect(data.contracts).toEqual(data.kpis.contracts);
+    expect(data.schedule.servicesThisMonth.planned).toBe(data.kpis.services.thisMonth);
+    expect(data.invoices.paid.count).toBe(data.kpis.payments.paid);
+    expect(data.invoices.paidTotal.amount).toBe(data.kpis.payments.paidValue);
+  });
+
+  it("adds each service of a shared Invoice No. once, and counts the services with no recorded value instead of showing 0.000", async () => {
+    const completed = await pool.query<{ id: string; visit_amount: string | null }>(
+      "SELECT id, visit_amount::text FROM amc_visits WHERE amc_contract_id = $1 AND status = 'COMPLETED' ORDER BY scheduled_date",
+      [monthlyId]
+    );
+    const withValue = completed.rows.find((row) => row.visit_amount === "50.000") as { id: string };
+    const withoutValue = completed.rows.find((row) => row.visit_amount === null) as { id: string };
+    expect(withValue).toBeDefined();
+    expect(withoutValue).toBeDefined();
+
+    const enter = async (visitId: string, invoiceNo: string) => {
+      const updatedAt = (await api().get(`/api/amc/visits/${visitId}`).set(admin.headers)).body.data.updatedAt;
+      expect((await api().patch(`/api/amc/visits/${visitId}/manual-invoice`).set(admin.headers).send({ invoiceNo, expectedUpdatedAt: updatedAt })).status).toBe(200);
+    };
+
+    // Only the service without a value: the case behind "OMR 0.000" on the Dashboard.
+    await enter(withoutValue.id, "SHARED-INV-1");
+    let payments = (await api().get("/api/dashboard/operations").set(admin.headers)).body.data.kpis.payments;
+    expect(payments).toMatchObject({ paid: 1, paidValue: "0.000", paidAmountMissing: 1 });
+
+    // The same Invoice No. on a second service with a value: two services, the value added once, one still without.
+    await enter(withValue.id, "SHARED-INV-1");
+    payments = (await api().get("/api/dashboard/operations").set(admin.headers)).body.data.kpis.payments;
+    expect(payments).toMatchObject({ paid: 2, paidValue: "50.000", paidAmountMissing: 1 });
+    const expected = await one<{ paid: number; value: string; missing: number }>(
+      `SELECT count(*)::int AS paid, COALESCE(sum(visit_amount), 0)::numeric(16,3)::text AS value, count(*) FILTER (WHERE visit_amount IS NULL)::int AS missing
+       FROM amc_visits WHERE manual_invoice_no IS NOT NULL`
+    );
+    expect(payments).toMatchObject({ paid: expected.paid, paidValue: expected.value, paidAmountMissing: expected.missing });
+
+    // AMC Management reads the same figures, and Accounts agrees on the value of the Paid services.
+    const data = (await summary()).body.data;
+    expect(data.kpis.payments).toEqual(payments);
+    expect(data.invoices.paidTotal).toEqual({ amount: "50.000", amountMissing: 1 });
+    const accounts = (await api().get("/api/accounts").set(admin.headers)).body.data;
+    expect(accounts.kpis.paidValue).toBe("50.000");
+
+    // Nothing was invented or written into the visit amounts.
+    expect((await one<{ amount: string | null }>("SELECT visit_amount::text AS amount FROM amc_visits WHERE id = $1", [withoutValue.id])).amount).toBeNull();
+
+    await enter(withValue.id, "");
+    await enter(withoutValue.id, "");
   });
 
   it("lists the latest contracts, newest first", async () => {

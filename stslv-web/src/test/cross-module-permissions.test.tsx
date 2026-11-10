@@ -57,7 +57,7 @@ describe('Finance Executive and AMC Schedule', () => {
         .map((item) => item.label)
     }
 
-    // AMC Management is the shared Dashboard and not listed again (2026-11-10). Accounts is labelled Invoices.
+    // AMC Management is not in the approved sidebar (2026-11-10). Accounts is labelled Invoices.
     expect(offered(STARTING)).toEqual(['Dashboard', 'Invoices', 'Invoice Tracking'])
     expect(offered([...STARTING, 'AMC_SCHEDULE:VIEW'])).toEqual(['Dashboard', 'AMC Schedule', 'Invoices', 'Invoice Tracking'])
     expect(offered(['INVOICES:VIEW'])).toEqual(['Invoice Tracking'])

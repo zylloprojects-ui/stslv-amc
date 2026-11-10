@@ -4,12 +4,12 @@ import { schemaHas } from "../../shared/schema-features";
 import type { AuthContext } from "../auth/access";
 import {
   canViewVisitCounts,
-  contractKpis,
   COUNTED_VISIT,
   expiring,
-  paymentFigures,
+  sharedKpis,
   type ExpiringRow,
   type OperationsKpis,
+  type PaymentFigures,
 } from "../dashboard/operations.service";
 import type { ContractStatus } from "./amc.constants";
 import { getWorkload } from "./reports.service";
@@ -260,26 +260,25 @@ async function scheduleFigures(canAmounts: boolean): Promise<ScheduleFigures> {
 export interface InvoiceFigures {
   /** Reference status from the manual Invoice No., over the same services as Accounts. Not verified payment. */
   paid: { count: number };
-  unpaid: { count: number; amount: string };
-  paidTotal: { amount: string };
+  unpaid: { count: number; amount: string; amountMissing: number };
+  /** The value of the Paid services; amountMissing of them have no recorded value (never shown as a real 0.000). */
+  paidTotal: { amount: string; amountMissing: number };
   /** What Invoice Tracking (Zoho) records today. */
   module: { issued: number; cancelled: number };
 }
 
-async function invoiceFigures(): Promise<InvoiceFigures> {
-  const [figures, payments] = await Promise.all([
-    pool.query<{ issued: number; cancelled: number }>(
-      `SELECT count(*) FILTER (WHERE status <> 'CANCELLED')::int AS issued,
-              count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled
-       FROM invoices`
-    ),
-    paymentFigures(),
-  ]);
+/** Group C, from the shared payment figures (the Dashboard's), plus what Invoice Tracking records. */
+async function invoiceFigures(payments: PaymentFigures): Promise<InvoiceFigures> {
+  const figures = await pool.query<{ issued: number; cancelled: number }>(
+    `SELECT count(*) FILTER (WHERE status <> 'CANCELLED')::int AS issued,
+            count(*) FILTER (WHERE status = 'CANCELLED')::int AS cancelled
+     FROM invoices`
+  );
 
   return {
     paid: { count: payments.paid },
-    unpaid: { count: payments.unpaid, amount: payments.unpaidValue },
-    paidTotal: { amount: payments.paidValue },
+    unpaid: { count: payments.unpaid, amount: payments.unpaidValue, amountMissing: payments.unpaidAmountMissing },
+    paidTotal: { amount: payments.paidValue, amountMissing: payments.paidAmountMissing },
     module: { issued: figures.rows[0]?.issued ?? 0, cancelled: figures.rows[0]?.cancelled ?? 0 },
   };
 }
@@ -287,7 +286,12 @@ async function invoiceFigures(): Promise<InvoiceFigures> {
 export interface AmcManagementSummary {
   asOf: string;
   timeZone: string;
-  /** Group A. Requires AMC_CONTRACTS:VIEW (the endpoint's own permission). */
+  /**
+   * The figures of the cards AMC Management shares with the Dashboard, from the same calculation (sharedKpis), so a
+   * shared card shows the same value on both pages. Sections follow this page's permissions (see below).
+   */
+  kpis: OperationsKpis;
+  /** Group A. Requires AMC_CONTRACTS:VIEW (the endpoint's own permission). Equal to kpis.contracts. */
   contracts: NonNullable<OperationsKpis["contracts"]>;
   /** Group B. Requires AMC_SCHEDULE:VIEW or AMC_EXECUTION:VIEW; amounts need AMC_SCHEDULE:VIEW. */
   schedule: ScheduleFigures | null;
@@ -308,19 +312,22 @@ export async function getAmcManagementSummary(auth: AuthContext): Promise<AmcMan
   const canInvoices = canRead(auth.permissions, "INVOICES");
   const renewals = await schemaHas(["amc_contracts.renewed_from_id"]);
 
-  const [clock, contracts, schedule, invoices, expiry, list, recent] = await Promise.all([
+  const [clock, kpis, schedule, expiry, list, recent] = await Promise.all([
     pool.query<{ today: string; time_zone: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today, '${BUSINESS_TIME_ZONE}'::text AS time_zone`),
-    contractKpis(renewals),
+    sharedKpis({ contracts: true, visits: canVisits, invoices: canInvoices }, renewals),
     canVisits ? scheduleFigures(canAmounts) : null,
-    canInvoices ? invoiceFigures() : null,
     getExpiryFigures(),
     expiring(renewals),
     recentContracts(),
   ]);
+  const invoices = kpis.payments ? await invoiceFigures(kpis.payments) : null;
+  // Always present here: the endpoint requires AMC_CONTRACTS:VIEW.
+  const contracts = kpis.contracts as NonNullable<OperationsKpis["contracts"]>;
 
   return {
     asOf: clock.rows[0]?.today ?? "",
     timeZone: clock.rows[0]?.time_zone ?? "",
+    kpis,
     contracts,
     schedule,
     invoices,

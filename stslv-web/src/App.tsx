@@ -177,8 +177,8 @@ export function AppRoutes() {
           <Route
             path="/amc/management"
             element={
-              // The shared Dashboard (2026-11-09): the same permission as /dashboard.
-              <RequirePermission module="DASHBOARD">
+              // Its own page again (2026-11-10), on the permission its API requires (AMC Contracts: View).
+              <RequirePermission module="AMC_CONTRACTS">
                 <AmcManagementPage />
               </RequirePermission>
             }

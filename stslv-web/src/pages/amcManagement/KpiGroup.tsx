@@ -4,13 +4,12 @@ import { Button } from '../../components/ui'
 import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
 import { Icon, IconTile } from '../dashboard/icons'
+import { KpiFigure } from '../dashboard/KpiStrip'
 import type { KpiReading } from '../dashboard/kpis'
 import { accentOf, accentStyle, DASHBOARD_CARD, DASHBOARD_LABEL } from '../dashboard/style'
 import type { KpiGroupDefinition, ManagementKpi } from './managementKpis'
 import { displayName, KPI_NAME_MAX, useKpiCustomization } from './managementPreferences'
 import type { AmcManagementSummary } from './managementTypes'
-
-const FIGURE = 'break-words font-bold tabular-nums text-[#0b3b66]'
 
 type CardState = { kind: 'loading' } | { kind: 'failed' } | { kind: 'ready'; reading: KpiReading }
 
@@ -95,16 +94,17 @@ export function KpiGroup<T = AmcManagementSummary>({ group, userId, data, failed
 
       <ul aria-label={group.title} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map(({ kpi, state }, index) => {
-          const name = displayName(prefs.names, kpi.id, kpi.label)
+          // A card shared with the Dashboard keeps the Dashboard's name and colour wherever it is placed.
+          const name = kpi.fixedName ? kpi.label : displayName(prefs.names, kpi.id, kpi.label)
           const renamed = name !== kpi.label
           const link = kpi.link && canView(kpi.link.module) ? kpi.link : null
-          const { from, to } = accentOf(index)
+          const colour = kpi.accent ?? index
+          const { from, to } = accentOf(colour)
           const reading = state.kind === 'ready' ? state.reading : null
-          const value = reading?.kind === 'value' ? reading.value : null
           // A short line on the card; the full wording is on hover.
           const note = reading ? (reading.kind === 'value' ? reading.detail : (reading.reason.split(/(?<=\.)\s/)[0] ?? reading.reason)) : null
           const hint = reading ? (reading.kind === 'value' ? reading.hint : reading.reason) : undefined
-          const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s`, ...accentStyle(index) }
+          const entrance: CSSProperties = { animationDelay: `${Math.min(index, 8) * 0.06}s`, ...accentStyle(colour) }
           const inputId = `${headingId}-${kpi.id}-name`
 
           return (
@@ -134,15 +134,9 @@ export function KpiGroup<T = AmcManagementSummary>({ group, userId, data, failed
                 </div>
               )}
               {state.kind === 'failed' && <p className="mt-3 text-sm font-medium text-red-700">Could not be loaded</p>}
-              {state.kind === 'ready' && (
-                <>
-                  {value !== null ? (
-                    <p className={cx(FIGURE, 'mt-3', value.length > 9 ? 'text-3xl' : 'text-4xl')}>{value}</p>
-                  ) : (
-                    <p className="mt-3 text-3xl font-bold text-slate-400">Not available</p>
-                  )}
-                  <p className="mt-3 break-words text-sm text-slate-600" title={hint}>
-                    <span>{note}</span>
+              {state.kind === 'ready' &&
+                (reading?.kind === 'value' ? (
+                  <KpiFigure value={reading.value} unit={reading.unit} detail={<span>{note}</span>} hint={hint}>
                     {link && !customizing && (
                       <>
                         <span aria-hidden="true"> · </span>
@@ -151,24 +145,36 @@ export function KpiGroup<T = AmcManagementSummary>({ group, userId, data, failed
                         </Link>
                       </>
                     )}
-                  </p>
-                </>
-              )}
+                  </KpiFigure>
+                ) : (
+                  <>
+                    <p className="mt-3 text-3xl font-bold text-slate-400">Not available</p>
+                    <p className="mt-3 break-words text-sm text-slate-600" title={hint}>
+                      <span>{note}</span>
+                    </p>
+                  </>
+                ))}
 
               {customizing && (
                 <div className="relative mt-3 space-y-2">
-                  <label htmlFor={inputId} className="block text-xs font-medium text-slate-700">
-                    Display name for {kpi.label}
-                  </label>
-                  <input
-                    id={inputId}
-                    type="text"
-                    value={prefs.names[kpi.id] ?? ''}
-                    placeholder={kpi.label}
-                    maxLength={KPI_NAME_MAX}
-                    onChange={(event) => prefs.rename(kpi.id, event.target.value)}
-                    className="block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-500"
-                  />
+                  {kpi.fixedName ? (
+                    <p className="text-xs text-slate-600">Same card as on the Dashboard: its name stays {kpi.label}.</p>
+                  ) : (
+                    <>
+                      <label htmlFor={inputId} className="block text-xs font-medium text-slate-700">
+                        Display name for {kpi.label}
+                      </label>
+                      <input
+                        id={inputId}
+                        type="text"
+                        value={prefs.names[kpi.id] ?? ''}
+                        placeholder={kpi.label}
+                        maxLength={KPI_NAME_MAX}
+                        onChange={(event) => prefs.rename(kpi.id, event.target.value)}
+                        className="block w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 shadow-sm placeholder:text-slate-500"
+                      />
+                    </>
+                  )}
                   <span className="flex justify-end gap-1">
                     <button
                       type="button"

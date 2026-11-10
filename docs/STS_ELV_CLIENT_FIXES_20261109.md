@@ -271,6 +271,9 @@ checks the helpers and the contracts page's "Ends today" / "Ended 1 day ago".
 
 ## 13. One shared Dashboard on /dashboard and /amc/management (client requirement 2026-11-09)
 
+> **Superseded 2026-11-10 (client correction):** the pages are separate again. Only their common KPI cards match.
+> Cards 1–3 still count each contract once. See DASHBOARD_AMC_MANAGEMENT_SPLIT_20261110.md.
+
 **Before.** Two independent pages.
 
 | | `/dashboard` (DashboardPage) | `/amc/management` (AmcManagementPage) |

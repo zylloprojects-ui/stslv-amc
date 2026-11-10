@@ -197,7 +197,7 @@ Where a Zoho record exists it is shown beneath the Invoice No. as "Zoho: INV-…
 | | Expiring ≤45 Days | Active contracts ending within 45 days; notes how many have a renewal |
 | Current Month | Services This Month | Planned services this month (cancelled excluded), with the number completed |
 | | Services Pending | Scheduled, In progress or Postponed |
-| | Invoices Generated | Services with a manual Invoice No. (count and OMR) |
+| | Invoices Generated | Services with a manual Invoice No. (count and OMR: the service values; *Amount not recorded* when they have none) |
 | | Invoices Not Generated | Services without one |
 | Overall | Same four service/invoice figures across all records, including earlier years and visits ahead | |
 
@@ -273,13 +273,17 @@ Department code * (permanent, e.g. AMC, FIN), Department name *, Description. No
 
 ## AMC Management
 
-**Page:** `/amc/management` — not in the sidebar since 2026-11-10 (it is the same page as the Dashboard); the address and bookmarks still open it. **Permission:** *Dashboard: View* (the same as the Dashboard).
+**Page:** `/amc/management` — not in the sidebar (approved sidebar, 2026-11-10); open it from its address, the expiry and renewal alerts, or bookmarks. **Permission:** *AMC Contracts: View* (schedule and invoice groups also need their modules).
 
-Since 2026-11-09 AMC Management shows **the Dashboard itself**: one shared page with exactly the same twelve cards in
-the same order, the same values, the same AMC Maintenance Calendar, Upcoming Service Workload and Payment Trend, the
-same links and the same behaviour on phones. See the Dashboard chapter. Each card and panel is shown only if your role
-can view its module. The earlier KPI groups, Recent AMC Contracts and Expiry & Renewal panels are no longer shown here;
-expiring contracts are followed on AMC Contracts (Validity filter) and AMC Renewal.
+AMC Management is its own page, separate from the Dashboard. The cards the two pages have in common are the same cards:
+same name, figure, wording, icon and colour, from the same calculation.
+
+- **Contract KPIs:** Active AMCs, Annual AMC Value (Ex VAT), Final Credit (Ex VAT), Expiring ≤45 Days — the Dashboard's AMC Portfolio row.
+- **Schedule KPIs:** Services This Month (as on the Dashboard), Schedule Pending Billing (completed, amount above 0, no active Zoho invoice), Current Scheduled Value (this month), Schedule Engine Status (*In sync* / *Attention*; there is no background job).
+- **Invoice KPIs:** Invoices Generated and Invoices Not Generated (the Dashboard's Overall cards, from the manual Invoice No.), Paid Invoice Total, Invoice Module Status. Amounts are the service values excluding VAT; when the services with an Invoice No. have no recorded value the card says **Amount not recorded**, not OMR 0.000.
+- **Customize / Reset KPI Names / Reset KPI Order** — saved per user in this browser. Cards shared with the Dashboard can be moved but keep their Dashboard name.
+- **Recent AMC Contracts** and **Expiry & Renewal**: Critical (≤15 days, red), Not Renewed & Expired (amber), warning bands at 90/60/45/30/15 days. Contracts are never expired automatically.
+- Header links: Schedule Engine, Invoices, Reports, Alerts, **+ New AMC**.
 
 ---
 

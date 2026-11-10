@@ -2,12 +2,20 @@ import { formatCount } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import type { Module } from '../../lib/types'
 import type { IconName } from '../dashboard/icons'
-import type { KpiReading } from '../dashboard/kpis'
+import { invoiceAmountText, kpiById, kpiColumn, SHARED_WITH_MANAGEMENT, type KpiReading } from '../dashboard/kpis'
 import type { AmcManagementSummary } from './managementTypes'
 
 // The three KPI groups of AMC Management. Each card reads one figure the API
 // returned; none is calculated here. A card whose figure the API left out (no
 // permission) is not shown.
+//
+// Two kinds of card (client correction, 2026-11-10):
+//   * shared with the Dashboard: Active AMCs, Annual AMC Value, Final Credit, Expiring ≤45 Days, Services This Month,
+//     Invoices Generated and Invoices Not Generated. They ARE the Dashboard's card definitions (pages/dashboard/kpis.ts):
+//     the same label, icon, colour, wording and permission, read from `kpis`, which the API fills from the Dashboard's
+//     own calculation. Their name cannot be changed here, so the two pages always agree.
+//   * page-specific: Schedule Pending Billing, Current Scheduled Value, Schedule Engine Status, Paid Invoice Total and
+//     Invoice Module Status. Only AMC Management shows them.
 
 export interface ManagementKpi<T = AmcManagementSummary> {
   id: string
@@ -19,6 +27,10 @@ export interface ManagementKpi<T = AmcManagementSummary> {
   read: (data: T) => KpiReading | null
   /** Optional link under the figure. AMC Management's cards have none: they are informational only. */
   link?: { to: string; label: string; module: Module }
+  /** A card shared with the Dashboard: always shown under its standard name (no renaming). */
+  fixedName?: true
+  /** A fixed colour column (the Dashboard's), instead of the card's place in the group. */
+  accent?: number
 }
 
 /** A group of KPI cards. T is the API answer its cards read; AMC Management's by default. */
@@ -35,63 +47,31 @@ const plural = (count: number, one: string, many: string) => `${formatCount(coun
 
 const canVisits = (canView: (module: Module) => boolean) => canView('AMC_SCHEDULE') || canView('AMC_EXECUTION')
 
+/** The Dashboard's card, under the id AMC Management has always used for that figure. */
+function shared(managementId: keyof typeof SHARED_WITH_MANAGEMENT): ManagementKpi {
+  const kpi = kpiById(SHARED_WITH_MANAGEMENT[managementId] as string)
+
+  return {
+    id: managementId,
+    label: kpi.label,
+    icon: kpi.icon,
+    visible: kpi.visible,
+    read: (data) => {
+      const reading = kpi.read(data)
+
+      return reading && { kind: 'value', ...reading }
+    },
+    fixedName: true,
+    accent: kpiColumn(kpi),
+  }
+}
+
 export const CONTRACT_KPIS: KpiGroupDefinition = {
   id: 'contracts',
   title: 'Contract KPIs',
-  description: 'From the AMC contract register.',
+  description: 'From the AMC contract register. The same four cards as the Dashboard’s AMC Portfolio row.',
   visible: (canView) => canView('AMC_CONTRACTS'),
-  kpis: [
-    {
-      id: 'active',
-      label: 'Active AMC',
-      icon: 'contract',
-      visible: (canView) => canView('AMC_CONTRACTS'),
-      read: ({ contracts }) => ({
-        kind: 'value',
-        value: formatCount(contracts.active),
-        detail: 'Contracts with status Active' + (contracts.activePastValidity > 0 ? ` · ${formatCount(contracts.activePastValidity)} past validity` : ''),
-      }),
-    },
-    {
-      id: 'value',
-      label: 'Total AMC Value',
-      icon: 'wallet',
-      visible: (canView) => canView('AMC_CONTRACTS'),
-      // AMC Value / Year of Active contracts, as entered. Values entered before that rule are not reinterpreted.
-      read: ({ contracts }) => ({
-        kind: 'value',
-        value: formatMoney(contracts.activeValue),
-        detail: 'Sum of AMC Value / Year, excluding VAT',
-        hint: 'Sum of AMC Value / Year of every Active contract, as entered. Older multi-year values may be whole-term amounts: see the Contract Value Review report.',
-      }),
-    },
-    {
-      id: 'credit',
-      label: 'Total Final Credit',
-      icon: 'chart',
-      visible: (canView) => canView('AMC_CONTRACTS'),
-      // Final Credit Value, an annual Billing Basis option, summed as entered.
-      read: ({ contracts }) => ({
-        kind: 'value',
-        value: formatMoney(contracts.finalCreditTotal),
-        detail: 'Final Credit Value as entered',
-        hint: `Sum of Final Credit Value as entered on ${formatCount(contracts.finalCreditRecorded)} of ${plural(contracts.active, 'active contract', 'active contracts')}.`,
-      }),
-    },
-    {
-      id: 'expiring',
-      label: 'Expiring within 45 days',
-      icon: 'shield',
-      visible: (canView) => canView('AMC_CONTRACTS'),
-      read: ({ contracts }) => ({
-        kind: 'value',
-        value: formatCount(contracts.expiringSoon),
-        detail:
-          `Active contracts ending within ${contracts.expiringSoonDays} days` +
-          (contracts.expiringSoonWithRenewal ? ` · ${formatCount(contracts.expiringSoonWithRenewal)} with a renewal` : ''),
-      }),
-    },
-  ],
+  kpis: [shared('active'), shared('value'), shared('credit'), shared('expiring')],
 }
 
 export const SCHEDULE_KPIS: KpiGroupDefinition = {
@@ -100,18 +80,7 @@ export const SCHEDULE_KPIS: KpiGroupDefinition = {
   description: 'From the visit schedule generated from each contract.',
   visible: canVisits,
   kpis: [
-    {
-      id: 'services',
-      label: 'Services This Month',
-      icon: 'calendar',
-      visible: canVisits,
-      read: ({ schedule }) =>
-        schedule && {
-          kind: 'value',
-          value: formatCount(schedule.servicesThisMonth.planned),
-          detail: `Planned visits · ${formatCount(schedule.servicesThisMonth.completed)} completed, ${formatCount(schedule.servicesThisMonth.open)} open`,
-        },
-    },
+    shared('services'),
     {
       id: 'pendingBilling',
       label: 'Schedule Pending Billing',
@@ -140,6 +109,7 @@ export const SCHEDULE_KPIS: KpiGroupDefinition = {
           ? {
               kind: 'value',
               value: formatMoney(schedule.currentScheduledValue.amount),
+              unit: 'OMR',
               detail:
                 `Visit amounts planned this month · ${plural(schedule.currentScheduledValue.visits, 'visit', 'visits')}` +
                 (schedule.currentScheduledValue.amountMissing > 0 ? `, ${formatCount(schedule.currentScheduledValue.amountMissing)} without an amount` : ''),
@@ -169,29 +139,31 @@ export const SCHEDULE_KPIS: KpiGroupDefinition = {
 export const INVOICE_KPIS: KpiGroupDefinition = {
   id: 'invoices',
   title: 'Invoice KPIs',
-  description: 'Paid and Unpaid follow the manual Invoice No. of each service: a reference status, not verified payment.',
+  description: 'Invoices Generated and Not Generated follow the manual Invoice No. of each service (Paid / Unpaid on Accounts): a reference status, not verified payment.',
   visible: (canView) => canView('INVOICES'),
   kpis: [
-    {
-      id: 'paid',
-      label: 'Paid Invoices',
-      icon: 'invoice',
-      visible: (canView) => canView('INVOICES'),
-      read: ({ invoices }) => invoices && { kind: 'value', value: formatCount(invoices.paid.count), detail: 'Services with a manual Invoice No.' },
-    },
-    {
-      id: 'unpaid',
-      label: 'Unpaid Invoices',
-      icon: 'invoice',
-      visible: (canView) => canView('INVOICES'),
-      read: ({ invoices }) => invoices && { kind: 'value', value: formatCount(invoices.unpaid.count), detail: `Services without one · ${formatMoney(invoices.unpaid.amount)}` },
-    },
+    shared('paid'),
+    shared('unpaid'),
     {
       id: 'paidTotal',
       label: 'Paid Invoice Total',
       icon: 'wallet',
       visible: (canView) => canView('INVOICES'),
-      read: ({ invoices }) => invoices && { kind: 'value', value: formatMoney(invoices.paidTotal.amount), detail: 'Value of Paid services, OMR excluding VAT' },
+      // The same total as the amount on Invoices Generated: services whose value was never recorded are not a real 0.000.
+      read: ({ invoices }) => {
+        if (!invoices) return null
+        const missing = invoices.paidTotal.amountMissing ?? 0
+
+        return invoices.paid.count > 0 && missing >= invoices.paid.count
+          ? { kind: 'value', value: 'Not recorded', detail: `No value recorded on the ${plural(invoices.paid.count, 'Paid service', 'Paid services')}` }
+          : {
+              kind: 'value',
+              value: formatMoney(invoices.paidTotal.amount),
+              unit: 'OMR',
+              detail: `Value of Paid services, excluding VAT` + (missing > 0 ? ` · ${formatCount(missing)} without amount` : ''),
+              hint: `${invoiceAmountText(invoices.paid.count, invoices.paidTotal.amount, missing)}. The sum of the service values of the services with an Invoice No., as on Accounts; the Invoice No. itself carries no amount.`,
+            }
+      },
     },
     {
       id: 'module',

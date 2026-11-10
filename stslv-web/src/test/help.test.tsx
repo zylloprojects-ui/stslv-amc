@@ -230,7 +230,8 @@ describe('help in the application', () => {
     ['/amc/service-status', 'Service Status (completing a service)'],
     ['/amc/calendar', 'Monthly Calendar'],
     ['/amc/master-status', 'Master AMC Status'],
-    ['/amc/management', 'Dashboard'],
+    // Its own page again (2026-11-10), with its own Help topic.
+    ['/amc/management', 'AMC Management'],
     ['/invoices', 'Invoice Tracking (Zoho)'],
   ])('opens the right topic on %s (Super Admin)', async (path, title) => {
     session(ADMIN)
@@ -241,9 +242,11 @@ describe('help in the application', () => {
     expect(within(dialog).getByText(`This page: ${title}`)).toBeInTheDocument()
   })
 
-  it('keeps the AMC Management topic for Dashboard users although the page left the sidebar', () => {
+  it('keeps the AMC Management topic, on the page’s own permission, although the page left the sidebar', () => {
     const topic = HELP_TOPICS.find((entry) => entry.id === 'amc-management')!
-    expect(helpTopicVisible(topic, viewer(['DASHBOARD:VIEW']))).toBe(true)
+    // AMC Management is its own page again (2026-11-10): AMC Contracts: View, as on its route and API.
+    expect(helpTopicVisible(topic, viewer(['AMC_CONTRACTS:VIEW']))).toBe(true)
+    expect(helpTopicVisible(topic, viewer(['DASHBOARD:VIEW']))).toBe(false)
     expect(helpTopicVisible(topic, viewer(['CLIENTS:VIEW']))).toBe(false)
   })
 

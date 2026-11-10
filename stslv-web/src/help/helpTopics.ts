@@ -173,8 +173,7 @@ const MASTER_DATA: HelpTopic[] = [
     title: 'Dashboard',
     group: 'Getting started',
     access: { kind: 'nav', path: '/dashboard' },
-    // AMC Management shows the same Dashboard (2026-11-09), so it opens this topic too.
-    pages: ['/dashboard', '/amc/management'],
+    pages: ['/dashboard'],
     guideChapter: 'Dashboard',
     summary: 'The AMC Operations Dashboard: contracts, this month’s services, invoice numbers and renewals at a glance. Each figure is shown only if your role can view its module.',
     sections: [
@@ -374,19 +373,44 @@ const CONTRACTS: HelpTopic[] = [
     id: 'amc-management',
     title: 'AMC Management',
     group: 'AMC',
-    // Not in the sidebar since 2026-11-10 (it is the same Dashboard); its address still opens, with Dashboard's permission.
-    access: { kind: 'module', module: 'DASHBOARD' },
-    pages: [],
+    // Its own page again (2026-11-10), not in the approved sidebar (owner decision): offered with its permission, AMC Contracts: View.
+    access: { kind: 'module', module: 'AMC_CONTRACTS' },
+    pages: ['/amc/management'],
     guideChapter: 'AMC Management',
-    summary: 'AMC Management shows the Dashboard: exactly the same cards, figures, calendar and charts as the Dashboard page (client decision, 2026-11-09).',
+    summary: 'The contract and schedule control centre: contract, schedule and invoice figures, recent contracts, and expiry warnings. Its own page, separate from the Dashboard: only the cards it has in common with the Dashboard match it.',
     sections: [
-      { heading: 'Where to find it', text: ['AMC Management is not listed in the sidebar (since 2026-11-10), because it is the same page as Dashboard. Its address, /amc/management, and existing bookmarks still open it.'] },
       {
-        heading: 'One shared Dashboard',
+        heading: 'Where to find it',
+        text: [
+          'AMC Management is not listed in the sidebar (approved sidebar, 2026-11-10). Open it at /amc/management, from the expiry and renewal alerts (bell icon), or from existing bookmarks.',
+          'It needs AMC Contracts: View. The Schedule KPIs also need AMC Schedule or AMC Execution: View, and the Invoice KPIs need Invoice Tracking: View. Without AMC Contracts: View the page shows Access denied.',
+        ],
+      },
+      {
+        heading: 'KPI groups',
+        terms: [
+          { term: 'Contract KPIs', meaning: 'Active AMCs, Annual AMC Value (Ex VAT), Final Credit (Ex VAT), Expiring ≤45 Days: the same cards as the Dashboard’s AMC Portfolio row.' },
+          { term: 'Schedule KPIs', meaning: 'Services This Month (the same card as on the Dashboard), Schedule Pending Billing (completed, amount above 0, no Zoho invoice), Current Scheduled Value, Schedule Engine Status.' },
+          { term: 'Invoice KPIs', meaning: 'Invoices Generated and Invoices Not Generated (the Dashboard’s Overall cards, from the manual Invoice No.), Paid Invoice Total, Invoice Module Status.' },
+        ],
+      },
+      {
+        heading: 'Cards shared with the Dashboard',
         bullets: [
-          'AMC Management and Dashboard open the same page, with the same twelve cards in the same order, the same values and the same sections. See the Dashboard topic.',
-          'It needs the same permission as the Dashboard (Dashboard: View). Each card and panel is shown only if your role can view its module, on both.',
-          'Expiring contracts and renewals are followed on AMC Contracts (Validity filter) and AMC Renewal.',
+          'A card that is also on the Dashboard has the same name, colour, figure and wording on both pages, from the same calculation.',
+          'Invoice amounts are the service values excluding VAT. When the services with an Invoice No. have no recorded value, the card says Amount not recorded instead of OMR 0.000.',
+        ],
+      },
+      {
+        heading: 'Customise',
+        text: ['Each group has Customize, Reset KPI Names and Reset KPI Order. You can reorder every card; the cards shared with the Dashboard keep their Dashboard name. Your names and order are kept for you in this browser.'],
+      },
+      {
+        heading: 'Expiry & Renewal',
+        bullets: [
+          'Critical: contracts expiring within 15 days (red). Not Renewed & Expired (amber).',
+          'Warning bands at 90, 60, 45, 30 and 15 days. "Not renewed · open to renew" opens the contract.',
+          'Contracts are never expired automatically; a user marks them Expired.',
         ],
       },
     ],

@@ -49,8 +49,8 @@ export interface NavSection {
  * Ungrouped sections (title null) are plain top-level links, in place. Routes, modules and visibility rules are
  * unchanged; only grouping and labels moved. Kept where they belong although not in the client's picture: AMC
  * Schedule (AMC Execution), Invoice Tracking (Accounts), Security Center and Backup & Restore (Settings), My
- * Suggestions (account menu). AMC Management shows the same Dashboard (2026-11-09), so it is not listed twice; its
- * address still works.
+ * Suggestions (account menu). AMC Management is not in the approved sidebar (owner decision, 2026-11-10): it is its
+ * own page again (AMC Contracts: View), opened from its address, the expiry alerts and its Help topic.
  */
 export const NAVIGATION: NavSection[] = [
   {

@@ -267,7 +267,7 @@ describe('permission-based navigation', () => {
 
     // No Settings link: the role may not view it. Clients makes the Master Data Center hub available.
     expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center'])
-    // AMC Management is the shared Dashboard and is not listed again (2026-11-10).
+    // AMC Management is not in the approved sidebar (2026-11-10), and this role has no AMC Contracts: View anyway.
     expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'] })
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })

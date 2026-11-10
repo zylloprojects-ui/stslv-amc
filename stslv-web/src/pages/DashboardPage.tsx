@@ -69,8 +69,9 @@ function Panel({ id, icon, eyebrow, title, description, link, className, childre
 
 /**
  * The AMC Operations Dashboard. Every figure comes from the API, which leaves out what the user may not see.
- * The ONE shared Dashboard: /dashboard and /amc/management both render this component (AmcManagementPage only points
- * here), so the two routes are identical by construction (client requirement, 2026-11-09).
+ * Its own page (client correction, 2026-11-10): AMC Management (/amc/management) is a separate page. Only the KPI cards
+ * the two have in common match, because both use the card definitions in dashboard/kpis.ts over the same server
+ * calculation (sharedKpis).
  */
 function greeting() {
   const hour = new Date().getHours()

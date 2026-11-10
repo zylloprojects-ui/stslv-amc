@@ -1,7 +1,7 @@
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
-import { KPI_ROWS, KPIS, type DashboardReading, type KpiDefinition, type KpiRow } from './kpis'
+import { KPI_ROWS, KPIS, kpiColumn, type DashboardReading, type KpiDefinition, type KpiRow } from './kpis'
 import { Icon, IconTile } from './icons'
 import { accentOf, accentStyle, DASHBOARD_CARD, DASHBOARD_LABEL } from './style'
 import type { OperationsDashboard } from './operationsTypes'
@@ -26,14 +26,35 @@ function cardsOf(row: KpiRow, data: OperationsDashboard | undefined, failed: boo
   })
 }
 
+/**
+ * The figure and the line under it, the same on every KPI card: the Dashboard's, and the KPI groups of AMC Management
+ * (whose shared cards must look exactly like the Dashboard's) and AMC Renewal.
+ */
+export function KpiFigure({ value, unit, detail, hint, children }: { value: string; unit?: string; detail: ReactNode; hint?: string; children?: ReactNode }) {
+  // A long amount takes a smaller size, so it fits a quarter-width card. The "OMR" unit counts towards the length.
+  const length = value.length + (unit ? unit.length + 1 : 0)
+  const size = length > 16 ? 'text-xl' : length > 12 ? 'text-2xl' : length > 9 ? 'text-3xl' : 'text-4xl'
+
+  return (
+    <>
+      <p className={cx(FIGURE, 'mt-3', size)}>
+        {unit && <span className="mr-1.5 align-baseline text-sm font-semibold text-slate-500">{unit}</span>}
+        {/* An amount never breaks inside its digits; on a very narrow card it moves under the unit instead. */}
+        <span className="whitespace-nowrap">{value}</span>
+      </p>
+      <p className="mt-3 break-words text-sm text-slate-600" title={hint}>
+        {detail}
+        {children}
+      </p>
+    </>
+  )
+}
+
 /** One figure card. Not a link and not a button: the dashboard's KPI cards do not navigate. */
 function KpiCard({ kpi, state, column, order }: { kpi: KpiDefinition; state: CardState; column: number; order: number }) {
   const { from, to } = accentOf(column)
   const reading = state.kind === 'ready' ? state.reading : null
   const entrance: CSSProperties = { animationDelay: `${Math.min(order, 11) * 0.04}s`, ...accentStyle(column) }
-  // A long amount takes a smaller size, so it fits a quarter-width card. The "OMR" unit counts towards the length.
-  const length = reading ? reading.value.length + (reading.unit ? reading.unit.length + 1 : 0) : 0
-  const size = length > 16 ? 'text-xl' : length > 12 ? 'text-2xl' : length > 9 ? 'text-3xl' : 'text-4xl'
 
   return (
     <li data-kpi={kpi.id} style={entrance} className={cx(DASHBOARD_CARD, 'min-w-0')}>
@@ -50,18 +71,7 @@ function KpiCard({ kpi, state, column, order }: { kpi: KpiDefinition; state: Car
         </div>
       )}
       {state.kind === 'failed' && <p className="mt-3 text-sm font-medium text-red-700">Could not be loaded</p>}
-      {reading && (
-        <>
-          <p className={cx(FIGURE, 'mt-3', size)}>
-            {reading.unit && <span className="mr-1.5 align-baseline text-sm font-semibold text-slate-500">{reading.unit}</span>}
-            {/* An amount never breaks inside its digits; on a very narrow card it moves under the unit instead. */}
-            <span className="whitespace-nowrap">{reading.value}</span>
-          </p>
-          <p className="mt-3 break-words text-sm text-slate-600" title={reading.hint}>
-            {reading.detail}
-          </p>
-        </>
-      )}
+      {reading && <KpiFigure value={reading.value} unit={reading.unit} detail={reading.detail} hint={reading.hint} />}
     </li>
   )
 }
@@ -92,7 +102,7 @@ export function KpiStrip({ data, failed, canView }: KpiStripProps) {
             <ul aria-labelledby={headingId} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               {cards.map(({ kpi, state }) => {
                 // Each column keeps one colour down the rows, so the same figure lines up month against overall.
-                const column = KPIS.filter((other) => other.row === row.id).indexOf(kpi)
+                const column = kpiColumn(kpi)
 
                 return <KpiCard key={kpi.id} kpi={kpi} state={state} column={column} order={order++} />
               })}

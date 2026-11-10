@@ -2,17 +2,23 @@ import { formatCount } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import type { Module } from '../../lib/types'
 import type { IconName } from './icons'
-import type { OperationsDashboard } from './operationsTypes'
+import type { OperationsDashboard, SharedKpiSource } from './operationsTypes'
 
 // The twelve KPI cards of the AMC Operations Dashboard, in three fixed rows of
 // four (the client's meeting reference). Each card reads one figure the API
 // returned; none is calculated here. The order is fixed: there is no arranging.
+//
+// These definitions are also THE definitions of the cards AMC Management shares with the Dashboard
+// (SHARED_WITH_MANAGEMENT): same label, icon, colour, figure, wording and permission on both pages. They read only
+// `kpis`, which both APIs return from the same server-side calculation (sharedKpis).
 
 /**
- * A KPI card reading as the AMC Management page shares it (it imports this type). Unchanged by the
- * 12-card dashboard, which uses DashboardReading below.
+ * A KPI card reading in a KPI group (AMC Management, AMC Renewal). unit is shown small before the figure ("OMR"),
+ * as on the Dashboard's cards.
  */
-export type KpiReading = { kind: 'value'; value: string; detail: string; /** The full wording, shown on hover; the card itself carries a short line. */ hint?: string } | { kind: 'unavailable'; reason: string }
+export type KpiReading =
+  | { kind: 'value'; value: string; unit?: string; detail: string; /** The full wording, shown on hover; the card itself carries a short line. */ hint?: string }
+  | { kind: 'unavailable'; reason: string }
 
 /** What a dashboard KPI card shows once the figures have arrived. */
 export interface DashboardReading {
@@ -35,7 +41,7 @@ export interface KpiDefinition {
   /** Mirrors the API's permission check, so the right cards show while loading. The API decides. */
   visible: (canView: (module: Module) => boolean) => boolean
   /** Null when the API left the section out: the card is then not shown. */
-  read: (data: OperationsDashboard) => DashboardReading | null
+  read: (data: SharedKpiSource) => DashboardReading | null
 }
 
 export interface KpiRow {
@@ -46,9 +52,22 @@ export interface KpiRow {
 }
 
 const INVOICE_HINT =
-  'An invoice counts as generated when its manual Invoice No. is entered on the service (shown as Paid in Accounts). That is a reference status: it does not verify that money was received. Amounts are service values excluding VAT.'
+  'An invoice counts as generated when its manual Invoice No. is entered on the service (shown as Paid in Accounts). That is a reference status: it does not verify that money was received. Amounts are the service values excluding VAT, as on Accounts: the Invoice No. itself carries no amount. A service whose value was never recorded adds nothing and is shown as without amount, never as 0.000.'
 
 const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`
+
+/**
+ * The amount line of an Invoice No. card. Services whose value was never recorded are not a real 0.000: when none of
+ * the services has a value it says so ("Amount not recorded"), and when some lack one it says how many. A genuine stored
+ * zero, or no services at all, still shows OMR 0.000.
+ */
+export function invoiceAmountText(count: number, value: string, missing: number | undefined): string {
+  const without = missing ?? 0
+  if (count > 0 && without >= count) return 'Amount not recorded'
+  const amount = `OMR ${formatMoney(value)}`
+
+  return without > 0 ? `${amount} · ${formatCount(without)} without amount` : amount
+}
 
 /** "November 2026" for "2026-11-03", read as a calendar date (no time-zone shift). */
 export function monthName(asOf: string): string {
@@ -167,7 +186,7 @@ export const KPIS: KpiDefinition[] = [
     read: ({ kpis: { payments } }) =>
       payments && {
         value: formatCount(payments.scheduledThisMonth.withInvoiceNo),
-        detail: `OMR ${formatMoney(payments.scheduledThisMonth.withInvoiceNoValue)} · Invoice No. entered`,
+        detail: `${invoiceAmountText(payments.scheduledThisMonth.withInvoiceNo, payments.scheduledThisMonth.withInvoiceNoValue, payments.scheduledThisMonth.withInvoiceNoAmountMissing)} · Invoice No. entered`,
         hint: INVOICE_HINT,
       },
   },
@@ -180,7 +199,7 @@ export const KPIS: KpiDefinition[] = [
     read: ({ kpis: { payments } }) =>
       payments && {
         value: formatCount(payments.scheduledThisMonth.withoutInvoiceNo),
-        detail: `OMR ${formatMoney(payments.scheduledThisMonth.withoutInvoiceNoValue)} · no Invoice No.`,
+        detail: `${invoiceAmountText(payments.scheduledThisMonth.withoutInvoiceNo, payments.scheduledThisMonth.withoutInvoiceNoValue, payments.scheduledThisMonth.withoutInvoiceNoAmountMissing)} · no Invoice No.`,
         hint: INVOICE_HINT,
       },
   },
@@ -220,7 +239,7 @@ export const KPIS: KpiDefinition[] = [
     read: ({ kpis: { payments } }) =>
       payments && {
         value: formatCount(payments.paid),
-        detail: `OMR ${formatMoney(payments.paidValue)} · Invoice No. entered`,
+        detail: `${invoiceAmountText(payments.paid, payments.paidValue, payments.paidAmountMissing)} · Invoice No. entered`,
         hint: INVOICE_HINT,
       },
   },
@@ -233,8 +252,35 @@ export const KPIS: KpiDefinition[] = [
     read: ({ kpis: { payments } }) =>
       payments && {
         value: formatCount(payments.unpaid),
-        detail: `OMR ${formatMoney(payments.unpaidValue)} · no Invoice No.`,
+        detail: `${invoiceAmountText(payments.unpaid, payments.unpaidValue, payments.unpaidAmountMissing)} · no Invoice No.`,
         hint: INVOICE_HINT,
       },
   },
 ]
+
+/** A Dashboard card by id. */
+export function kpiById(id: string): KpiDefinition {
+  const kpi = KPIS.find((candidate) => candidate.id === id)
+  if (!kpi) throw new Error(`Unknown dashboard KPI: ${id}`)
+
+  return kpi
+}
+
+/** The colour column of a card: its place in its Dashboard row. A shared card keeps this colour on AMC Management too. */
+export function kpiColumn(kpi: KpiDefinition): number {
+  return KPIS.filter((other) => other.row === kpi.row).indexOf(kpi)
+}
+
+/**
+ * The Dashboard cards AMC Management also shows, keyed by the id AMC Management has always used for that figure (so a
+ * user's saved card order there keeps working). Everything else on either page is page-specific.
+ */
+export const SHARED_WITH_MANAGEMENT: Record<string, string> = {
+  active: 'active',
+  value: 'value',
+  credit: 'credit',
+  expiring: 'expiring',
+  services: 'month-services',
+  paid: 'overall-invoiced',
+  unpaid: 'overall-not-invoiced',
+}

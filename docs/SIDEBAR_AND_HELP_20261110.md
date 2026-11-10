@@ -27,8 +27,9 @@ Footer: Dark/Light Mode Â· Settings (Security Center, Backup & Restore inside) Â
 Account menu: My Profile, Help & User Guide, My Suggestions, Sign out
 ```
 
-- **AMC Management** is no longer listed: it shows the same Dashboard (2026-11-09). `/amc/management` still opens with
-  *Dashboard: View*, and its Help topic is now tied to that permission instead of a sidebar entry.
+- **AMC Management** is no longer listed. *Update (owner decision, later on 2026-11-10):* it is its own page again
+  (see DASHBOARD_AMC_MANAGEMENT_SPLIT_20261110.md) and stays out of the sidebar; `/amc/management` opens with
+  *AMC Contracts: View*, and its Help topic is tied to that permission instead of a sidebar entry.
 - Schedule Engine is a Help topic (no page: generation runs on save / Activate / Regenerate). Security Center and Backup &
   Restore stay in Settings (`settingsArea`), as before. Nothing previously reachable was hidden.
 - Visibility is unchanged: each item still needs View on its module (`navItemVisible`); a group appears only when one of
@@ -48,7 +49,7 @@ User Guide links, Escape/keyboard, dark mode and mobile layout are unchanged.
 
 | Area | Help topic (group) | User Guide chapter |
 |---|---|---|
-| Dashboard / AMC Management (shared 12 cards) | dashboard (Getting started), amc-management (AMC) | Dashboard; AMC Management |
+| Dashboard; AMC Management (separate pages, shared KPI cards) | dashboard (Getting started), amc-management (AMC) | Dashboard; AMC Management |
 | Master AMC Status | master-amc-status (AMC) | Master AMC Status |
 | AMC Contracts, Due/Expired, Hide Columns | amc-contracts (AMC) | AMC Contracts |
 | Contract 360 | contract-360 (AMC) | Contract 360 |

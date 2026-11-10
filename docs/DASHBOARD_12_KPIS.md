@@ -1,7 +1,9 @@
 # Dashboard — 12 KPI cards
 
-> **2026-11-09:** this Dashboard is the one shared Dashboard, shown on both `/dashboard` and `/amc/management`
-> (client requirement: the two must be identical). See STS_ELV_CLIENT_FIXES_20261109.md § 13.
+> **2026-11-10 (client correction):** the Dashboard and AMC Management are separate pages again. Only the cards they
+> share match (cards 1–5, 11 and 12 also appear on AMC Management, from the same `sharedKpis()` calculation). The
+> amount line of the Invoices Generated / Not Generated cards says "Amount not recorded", or "N without amount",
+> instead of showing services with no recorded value as OMR 0.000. See DASHBOARD_AMC_MANAGEMENT_SPLIT_20261110.md.
 
 Branch `feature/dashboard-12-kpis` (from alpha e53e6dd). No migration, no schema change.
 
