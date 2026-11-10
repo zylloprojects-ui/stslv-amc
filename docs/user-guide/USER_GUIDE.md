@@ -1,7 +1,7 @@
 # STS-ELV AMC — User Guide
 
 Version: handover draft, 2026-11-09. Describes the application at commit `c6d8d19` plus the in-app Help added on branch `feature/stslv-p3-handover`.
-Chapters listed under **Sections awaiting integration review** may change when parallel work (P0 security, P1 fixes) is merged; see §26.
+Chapters listed under **Sections awaiting integration review** may change when parallel work (P0 security, P1 fixes) is merged; see §27.
 
 The same content, shortened, is available inside the application: click the **?** button in the header (help for the page you are on) or **Help & User Guide** in your account menu.
 
@@ -20,19 +20,20 @@ The same content, shortened, is available inside the application: click the **?*
 11. [Service Status](#service-status)
 12. [Service Sales](#service-sales)
 13. [Accounts](#accounts)
-14. [Invoice Tracking](#invoice-tracking)
-15. [Master AMC Status](#master-amc-status)
-16. [AMC Renewal](#amc-renewal)
-17. [Reports](#reports)
-18. [Users and Roles](#users-and-roles)
-19. [Security Center](#security-center)
-20. [Login History](#login-history)
-21. [Audit Log](#audit-log)
-22. [Recycle Bin](#recycle-bin)
-23. [Suggestions](#suggestions)
-24. [Backup status](#backup-status)
-25. [Settings](#settings)
-26. [Integration review (2026-11-09)](#integration-review-2026-11-09)
+14. [Invoice Acknowledgements](#invoice-acknowledgements)
+15. [Invoice Tracking](#invoice-tracking)
+16. [Master AMC Status](#master-amc-status)
+17. [AMC Renewal](#amc-renewal)
+18. [Reports](#reports)
+19. [Users and Roles](#users-and-roles)
+20. [Security Center](#security-center)
+21. [Login History](#login-history)
+22. [Audit Log](#audit-log)
+23. [Recycle Bin](#recycle-bin)
+24. [Suggestions](#suggestions)
+25. [Backup status](#backup-status)
+26. [Settings](#settings)
+27. [Integration review (2026-11-09)](#integration-review-2026-11-09)
 
 Conventions used in every chapter:
 
@@ -123,7 +124,7 @@ The Billing Basis on a contract chooses the **annual** amount that is split acro
 - **No proration**: in a partial contract year, each service actually scheduled gets the standard amount; a cycle that never reaches its last service has no remainder.
 - Services per year = 12 ÷ interval months, or the number of chosen months for a custom frequency.
 
-**Older contracts**: values entered before these rules may be whole-term amounts. They are never reinterpreted automatically. Before choosing *AMC Value / Year* on an older multi-year contract, check the **Contract Value Review** report (§17).
+**Older contracts**: values entered before these rules may be whole-term amounts. They are never reinterpreted automatically. Before choosing *AMC Value / Year* on an older multi-year contract, check the **Contract Value Review** report (§18).
 
 ### Regenerate
 
@@ -310,7 +311,7 @@ View · Edit (*Edit*) · Delete → "Move contract to the Recycle Bin" (Super Ad
 "Select a client." · "Valid to must be on or after Valid from." · "The validity period cannot be longer than 10 years." · "An inactive client cannot be selected. Reactivate the client first." · "Enter the final credit, or choose another billing basis." · "This maintenance frequency is not active…"
 
 ### FAQs
-- **Can I add a Draft contract?** No; new contracts are Active. A renewal starts as a Draft (§16).
+- **Can I add a Draft contract?** No; new contracts are Active. A renewal starts as a Draft (§17).
 - **Can I delete a contract?** Cancel it (keeps history) or, as Super Admin, move it to the Recycle Bin.
 
 ---
@@ -487,6 +488,42 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 ### FAQs
 - **The Invoice No. box is disabled.** The service is not completed: "Complete the service before entering an invoice number."
 - **Does Paid mean the client paid?** No — see §2.
+
+---
+
+## Invoice Acknowledgements
+
+> **New module (2026-11-10, migrations 0112 and 0113, prepared for review).** Until Super Admin grants it in Roles &
+> Permissions, only Super Admin sees this page.
+
+**Page:** Finance → Invoice Acknowledgements, `/finance/invoice-acknowledgements`. **Permissions:** *Invoice Acknowledgements: View* to see the page, view and download documents; *Create* to attach a document and confirm; *Edit* to replace the document of an acknowledged invoice; *Export* for Excel / PDF. Amounts are shown only to users who may also view Accounts.
+
+- **Purpose:** keep the client's signed or stamped acknowledgement that it received each invoice, next to that invoice.
+- **Which invoices:** exactly the ones Accounts shows with an Invoice No.: one row per service with an Invoice No. Nothing is copied: the Invoice No., contract (with its renewal version, e.g. *STS-AMC-001 (V2)*), client and values are read from the same records as Accounts. If the Invoice No. of a service is corrected, the new number is a new invoice and starts Pending; the earlier acknowledgement is kept.
+- **Statuses:** **Pending** (amber) — no confirmed acknowledgement yet; "Document attached, awaiting OK / Confirm" when a document is waiting. **Acknowledged** (green) — the document was confirmed. Green appears only after the server confirms.
+- **KPIs:** Invoices, Pending, Awaiting Confirmation, Acknowledged.
+- **Filters (press Apply):** search (contract, client, invoice no., service report no., document name), Client, AMC Contract, Invoice No., Acknowledgement (Pending / Acknowledged), Date filter (*Invoice date* or *Acknowledged date*, Oman time) with From and To. Click a column heading to sort. Hide Columns as on Accounts.
+- **Columns:** AMC Contract, Client, Service, Invoice No. (with the date it was entered), Invoice Date, Service Value (Ex VAT, OMR), Invoice Value (Ex VAT, OMR), Service Report No., Acknowledgement Status, Acknowledged Date, Uploaded By, Document, Actions.
+- **Invoice Date and Invoice Value** come from Invoice Tracking: the Zoho invoice with the same number recorded against the service (cancelled ones are ignored). A manual Invoice No. carries no date or amount, so when no Zoho record exists the cell shows "—". Nothing is invented.
+
+### Workflow — acknowledge an invoice
+1. Find the invoice (Acknowledgement = Pending).
+2. Click **Attach Acknowledgement** and **Choose document** (PDF, PNG or JPEG, up to 12 MB). The file is checked and saved to private storage; its name appears under *Selected document*. The invoice is still Pending.
+3. Check the name (use **Choose a different file** or **Remove** if it is wrong).
+4. Click **OK / Confirm**. The status turns green, **Acknowledged**, with the date and time (Oman) and your name.
+5. If anything fails (wrong file type, storage unavailable, someone changed the document meanwhile), the message is shown and the invoice stays Pending.
+
+### View, download, replace
+- **View Document** opens the document in a viewer (PDF and images are shown; **Download** is inside the viewer). The file is fetched with your sign-in; there is no public link. The viewer also lists earlier versions.
+- **Replace Document** (Edit permission, acknowledged invoices only) uploads a new version with a reason. The invoice keeps its original acknowledged date and user; the earlier document is kept and the reason goes to the Audit Log. Documents are never deleted.
+
+### Acknowledged is not payment
+Acknowledgement only records that the client received the invoice. It does not change the Invoice No., the Paid / Unpaid reference status (§2), any amount, the service status or anything in Zoho, and it does not mean money was received.
+
+### FAQs
+- **I cannot see the page.** Ask Super Admin for *Invoice Acknowledgements: View*.
+- **No Attach button.** You need *Create*; or the invoice is already Acknowledged (use Replace Document with *Edit*).
+- **The amounts are empty.** Your role cannot view Accounts, or no value / Zoho invoice is recorded.
 
 ---
 

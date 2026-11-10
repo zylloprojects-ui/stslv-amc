@@ -128,7 +128,13 @@ const wholeModules = (modules: Module[]): PermissionKey[] =>
  * Service Sales is listed under Finance, but the seeded grants date from when it was an AMC Operations page.
  * The starting grants stay as seeded, so where a module is listed never changes who starts with it.
  */
-const FINANCE_STARTING_MODULES = (): Module[] => modulesOf("Finance").filter((module) => module !== "SERVICES_SALES");
+const FINANCE_STARTING_MODULES = (): Module[] => modulesOf("Finance").filter((module) => module !== "SERVICES_SALES" && !NOT_SEEDED.includes(module));
+
+/**
+ * Modules added after the seeded role model that no role but Super Admin starts with: Super Admin grants them on
+ * purpose. Reports (no migration seeds it) and Invoice Acknowledgements (0113 grants Super Admin only, 2026-11-10).
+ */
+const NOT_SEEDED: readonly Module[] = ["REPORTS", "INVOICE_ACKNOWLEDGEMENTS"];
 const OPERATIONS_STARTING_MODULES = (): Module[] => [...modulesOf("AMC Operations"), "SERVICES_SALES"];
 
 /** Every role could already submit and follow its own suggestions when the module was added (0092). */
@@ -139,8 +145,8 @@ const SUGGESTIONS: PermissionKey[] = ["SUGGESTIONS:VIEW", "SUGGESTIONS:CREATE"];
  * limit nothing: Super Admin changes them in Roles & Permissions. Changing this list changes no database.
  */
 export function defaultGrants(roleCode: string): PermissionKey[] {
-  // Reports came after those migrations and no seeded role holds it: Super Admin grants it on purpose.
-  const all = allGrantable().filter((key) => !key.startsWith("REPORTS:"));
+  // Reports and Invoice Acknowledgements came after those migrations and no seeded role holds them: Super Admin grants them on purpose.
+  const all = allGrantable().filter((key) => !NOT_SEEDED.includes(key.split(":")[0] as Module));
 
   switch (roleCode) {
     case ADMINISTRATOR_ROLE_CODE:

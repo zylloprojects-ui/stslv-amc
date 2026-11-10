@@ -33,6 +33,13 @@ export function addCalendarDays(date: string, days: number): string {
   return moved.toISOString().slice(0, 10)
 }
 
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat('en-GB', { timeZone: BUSINESS_TIME_ZONE, day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+
+/** An instant shown in Oman time ("10 Nov 2026, 14:05"), whatever the browser's zone; "—" when none. */
+export function formatBusinessDateTime(value: string | null): string {
+  return value ? DATE_TIME_FORMAT.format(new Date(value)) : '—'
+}
+
 /** A calendar date in words ("Monday, 9 November 2026"), without any time-zone shift. */
 export function formatBusinessDayLong(date: string): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })

@@ -813,7 +813,61 @@ const FINANCE: HelpTopic[] = [
         ],
       },
     ],
-    related: ['paid-vs-zoho', 'invoice-tracking'],
+    related: ['paid-vs-zoho', 'invoice-tracking', 'invoice-acknowledgements'],
+  },
+  {
+    id: 'invoice-acknowledgements',
+    title: 'Invoice Acknowledgements',
+    group: 'Finance',
+    access: { kind: 'nav', path: '/finance/invoice-acknowledgements' },
+    pages: ['/finance/invoice-acknowledgements'],
+    guideChapter: 'Invoice Acknowledgements',
+    summary:
+      "The client's signed or stamped acknowledgement of each invoice on Accounts (a service with an Invoice No.): Pending until a document is attached and confirmed, then Acknowledged in green.",
+    sections: [
+      {
+        heading: 'Acknowledge an invoice',
+        steps: [
+          'Find the invoice (filter Acknowledgement = Pending).',
+          'Click Attach Acknowledgement, then Choose document: a PDF, PNG or JPEG of at most 12 MB. It is checked and saved to private storage, and its name is shown under Selected document. The invoice is still Pending.',
+          'Check the name. Choose a different file or Remove it if it is wrong.',
+          'Click OK / Confirm. The status turns green, Acknowledged, with the date and time (Oman) and your name.',
+          'If an upload or the confirmation fails, the message is shown and the invoice stays Pending.',
+        ],
+      },
+      {
+        heading: 'Statuses',
+        terms: [
+          { term: 'Pending (amber)', meaning: 'No confirmed acknowledgement. "Document attached, awaiting OK / Confirm" means a document is waiting for confirmation.' },
+          { term: 'Acknowledged (green)', meaning: 'The document was confirmed. Green appears only after the server has saved the confirmation.' },
+        ],
+      },
+      {
+        heading: 'View, download and replace',
+        bullets: [
+          'View Document opens the document in a viewer; Download is inside the viewer. The file is fetched with your sign-in: there is no public link. Earlier versions are listed under it.',
+          'Replace Document (acknowledged invoices only) uploads a new version with a reason. The original acknowledged date and user stay; the earlier document is kept and the reason is in the Audit Log. Documents are never deleted.',
+        ],
+      },
+      {
+        heading: 'Who can do what',
+        terms: [
+          { term: 'View', meaning: 'Open the page, filter, view and download documents.' },
+          { term: 'Create', meaning: 'Attach a document, remove it before confirming, and OK / Confirm.' },
+          { term: 'Edit', meaning: 'Replace the document of an acknowledged invoice, with a reason.' },
+          { term: 'Export', meaning: 'Excel or PDF of the filtered list.' },
+          { term: 'Amounts', meaning: 'Service and invoice values are shown only to users who may also view Accounts.' },
+        ],
+      },
+      {
+        heading: 'Acknowledged is not payment',
+        text: [
+          'An acknowledgement only records that the client received the invoice. It does not change the Invoice No., the Paid / Unpaid reference status, any amount, the service status or anything in Zoho, and it does not mean money was received.',
+          'Invoice Date and Invoice Value come from the Zoho invoice with the same number in Invoice Tracking, where one is recorded. Otherwise they show "—": nothing is invented.',
+        ],
+      },
+    ],
+    related: ['accounts', 'paid-vs-zoho'],
   },
   {
     id: 'invoice-tracking',

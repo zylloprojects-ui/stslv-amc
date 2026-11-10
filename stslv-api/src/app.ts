@@ -15,6 +15,7 @@ import { expensesRouter } from "./modules/expenses/expenses.routes";
 import { historicalDataRouter } from "./modules/historical-data/historical-data.routes";
 import { holidaysRouter } from "./modules/holidays/holidays.routes";
 import { invoicesRouter } from "./modules/invoices/invoices.routes";
+import { invoiceAcknowledgementsRouter } from "./modules/invoice-acknowledgements/invoice-acknowledgements.routes";
 import { departmentsRouter } from "./modules/masters/departments.routes";
 import { maintenanceFrequenciesRouter } from "./modules/masters/maintenance-frequencies.routes";
 import { mastersRouter } from "./modules/masters/masters.routes";
@@ -97,6 +98,8 @@ export function createApp() {
   app.use("/api/invoices", invoicesRouter);
   // Billing reconciliation of AMC visits: read only, over the visits and Invoice Tracking (needs migration 0077).
   app.use("/api/accounts", accountsRouter);
+  // The client's acknowledgement documents for the invoices Accounts shows (migrations 0112 and 0113).
+  app.use("/api/invoice-acknowledgements", invoiceAcknowledgementsRouter);
   // Quotation numbers of completed AMC visits (migrations 0078 and 0079).
   app.use("/api/services-sales", servicesSalesRouter);
   app.use("/api/historical-data", historicalDataRouter);

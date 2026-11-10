@@ -38,7 +38,7 @@ Updated 2026-11-09. Start here.
 
 ## Business rules and module records
 
-[Finance workflow (approved rules)](FINANCE_WORKFLOW.md) · [Service report and completion lock](SERVICE_REPORT_COMPLETION_LOCK.md) · [AMC module](AMC_MODULE.md) · [AMC contract requirements](AMC_CONTRACT_REQUIREMENTS.md) · [AMC reference number](AMC_REFERENCE_NUMBER.md) · [AMC Management](AMC_MANAGEMENT.md) · [AMC Renewal](AMC_RENEWAL.md) · [Master AMC Status](MASTER_AMC_STATUS.md) · [Accounts](ACCOUNTS.md) · [Invoice module](INVOICE_MODULE.md) · [Service Sales](SERVICES_SALES.md) · [Dashboard](DASHBOARD_UI.md), [12 KPIs](DASHBOARD_12_KPIS.md) · [Exports](EXPORTS.md) · [Recycle Bin](RECYCLE_BIN.md) · [Roles & Permissions history](ROLES_PERMISSIONS.md) · [Suggestions](SUGGESTIONS.md)
+[Finance workflow (approved rules)](FINANCE_WORKFLOW.md) · [Service report and completion lock](SERVICE_REPORT_COMPLETION_LOCK.md) · [AMC module](AMC_MODULE.md) · [AMC contract requirements](AMC_CONTRACT_REQUIREMENTS.md) · [AMC reference number](AMC_REFERENCE_NUMBER.md) · [AMC Management](AMC_MANAGEMENT.md) · [AMC Renewal](AMC_RENEWAL.md) · [Master AMC Status](MASTER_AMC_STATUS.md) · [Accounts](ACCOUNTS.md) · [Invoice Acknowledgements](INVOICE_ACKNOWLEDGEMENTS.md) · [Invoice module](INVOICE_MODULE.md) · [Service Sales](SERVICES_SALES.md) · [Dashboard](DASHBOARD_UI.md), [12 KPIs](DASHBOARD_12_KPIS.md) · [Exports](EXPORTS.md) · [Recycle Bin](RECYCLE_BIN.md) · [Roles & Permissions history](ROLES_PERMISSIONS.md) · [Suggestions](SUGGESTIONS.md)
 
 ## History (not maintained)
 

@@ -51,7 +51,9 @@ describe("migration 0111 upgrade path", () => {
     const renewal = await add("OLD-002", first);
     const before = (await upgradePool.query("SELECT id, amc_reference, renewed_from_id, contract_value, updated_at FROM amc_contracts_all ORDER BY id")).rows;
 
-    const result = await runMigrations(upgradePool, { schema: SCHEMA });
+    // Only 0111 is added to the copied files, so later migrations (0112 on) never enter this upgrade step.
+    fs.copyFileSync(path.join(MIGRATIONS_DIR, "0111_amc_contract_versions.sql"), path.join(workDir, "0111_amc_contract_versions.sql"));
+    const result = await runMigrations(upgradePool, { schema: SCHEMA, dir: workDir });
     expect(result.applied).toEqual(["0111_amc_contract_versions.sql"]);
 
     const after = await upgradePool.query("SELECT id, amc_reference, renewed_from_id, contract_value, updated_at, version_root_id, contract_version FROM amc_contracts_all ORDER BY id");

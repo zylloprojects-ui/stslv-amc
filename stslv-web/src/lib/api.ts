@@ -178,11 +178,11 @@ export const api = {
   put: <T>(path: string, body: unknown) => request<T>('PUT', path, body),
   /** A body only where the API asks for one (a permanent deletion's typed confirmation). */
   delete: <T = null>(path: string, body?: unknown) => request<T>('DELETE', path, body),
-  /** Sends one file as the raw body; its name travels URI-encoded in X-File-Name. */
-  upload: <T>(path: string, file: File) =>
+  /** Sends one file as the raw body; its name travels URI-encoded in X-File-Name. `headers` adds route-specific ones (already encoded). */
+  upload: <T>(path: string, file: File, headers: Record<string, string> = {}) =>
     request<T>('POST', path, undefined, {
       data: file,
-      headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
+      headers: { ...headers, 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) },
     }),
 }
 

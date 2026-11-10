@@ -25,6 +25,8 @@ export const MODULES = [
   'ACCOUNTS',
   'SUGGESTIONS',
   'SUGGESTIONS_REVIEW',
+  // API migration 0112: Finance -> Invoice Acknowledgements.
+  'INVOICE_ACKNOWLEDGEMENTS',
 ] as const
 
 // READ: data-only read (API migration 0089): the module's data inside another section's page, without its pages.
@@ -59,6 +61,7 @@ export const MODULE_LABELS: Record<Module, string> = {
   ACCOUNTS: 'Accounts',
   SUGGESTIONS: 'My Suggestions',
   SUGGESTIONS_REVIEW: 'Suggestions Review',
+  INVOICE_ACKNOWLEDGEMENTS: 'Invoice Acknowledgements',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {

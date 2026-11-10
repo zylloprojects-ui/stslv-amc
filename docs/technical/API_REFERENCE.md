@@ -168,6 +168,11 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | POST | `/api/invoices` | CREATE |
 | PATCH / POST | `/api/invoices/:id`, `/api/invoices/:id/cancel` | EDIT |
 | GET | `/api/accounts`, `/api/accounts/options` (+ `/export`) | ACCOUNTS VIEW (+ EXPORT) |
+| GET | `/api/invoice-acknowledgements`, `/options`, `/:visitId`, `/:visitId/history`, `/:visitId/document` | INVOICE_ACKNOWLEDGEMENTS VIEW — list filters `search`, `clientId`, `contractId`, `invoiceNo`, `status` (PENDING / ACKNOWLEDGED), `dateBasis` (INVOICE_DATE / ACKNOWLEDGED_DATE), `fromDate`, `toDate`, `sort`, `dir`, `page`, `pageSize`. Amounts (`serviceValue`, `invoiceValue`, totals) are null unless the user also holds ACCOUNTS VIEW. `/document` streams the current document (`Cache-Control: no-store`, attachment) |
+| GET | `/api/invoice-acknowledgements/export?format=xlsx\|pdf&hidden=…` | INVOICE_ACKNOWLEDGEMENTS VIEW + EXPORT (amount columns only with ACCOUNTS VIEW) |
+| POST / DELETE | `/api/invoice-acknowledgements/:visitId/document` | INVOICE_ACKNOWLEDGEMENTS CREATE — attach (raw body, `X-File-Name`; PDF/PNG/JPEG recognised by content, ≤ `ATTACHMENT_MAX_MB`) or remove an attached document before confirmation; status stays PENDING |
+| POST | `/api/invoice-acknowledgements/:visitId/confirm` `{ attachmentId }` | INVOICE_ACKNOWLEDGEMENTS CREATE — PENDING → ACKNOWLEDGED; only the named current document, after its file is read back and matches its checksum; 409 when changed or already acknowledged |
+| POST | `/api/invoice-acknowledgements/:visitId/replace` | INVOICE_ACKNOWLEDGEMENTS VIEW + EDIT — new version of an ACKNOWLEDGED invoice's document; raw body, `X-File-Name`, `X-Replace-Reason` (URI-encoded, 3–500 characters) |
 | GET | `/api/services-sales`, `/options`, `/:id/report` (+ `/export`) | SERVICES_SALES VIEW (+ EXPORT) |
 | PATCH | `/api/services-sales/:id` | SERVICES_SALES EDIT — quotation number on completed services |
 

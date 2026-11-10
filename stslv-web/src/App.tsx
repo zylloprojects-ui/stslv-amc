@@ -18,6 +18,7 @@ import { ServiceStatusPage } from './pages/amc/ServiceStatusPage'
 import { ServicesSalesPage } from './pages/servicesSales/ServicesSalesPage'
 import { AmcManagementPage } from './pages/amcManagement/AmcManagementPage'
 import { AccountsPage } from './pages/accounts/AccountsPage'
+import { InvoiceAcknowledgementsPage } from './pages/invoiceAcknowledgements/InvoiceAcknowledgementsPage'
 import { MasterStatusPage } from './pages/masterStatus/MasterStatusPage'
 import { AuditLogPage } from './pages/admin/AuditLogPage'
 import { BackupRestorePage } from './pages/admin/BackupRestorePage'
@@ -254,6 +255,14 @@ export function AppRoutes() {
             element={
               <RequirePermission module="ACCOUNTS">
                 <AccountsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="/finance/invoice-acknowledgements"
+            element={
+              <RequirePermission module="INVOICE_ACKNOWLEDGEMENTS">
+                <InvoiceAcknowledgementsPage />
               </RequirePermission>
             }
           />

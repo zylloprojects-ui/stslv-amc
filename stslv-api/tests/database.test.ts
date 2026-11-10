@@ -33,6 +33,8 @@ describe("migrations", () => {
       "clients_all",
       "departments",
       "expense_categories",
+      // Migration 0112: Invoice Acknowledgements.
+      "invoice_acknowledgements",
       "invoice_allocations",
       "invoices",
       "legacy_import_batches",

@@ -30,6 +30,8 @@ export const MODULES = [
   "ACCOUNTS",
   "SUGGESTIONS",
   "SUGGESTIONS_REVIEW",
+  // Migration 0112 (module), grants 0113 (Super Admin only).
+  "INVOICE_ACKNOWLEDGEMENTS",
 ] as const;
 
 // READ (migration 0089): data-only read. The module's data may be shown inside another

@@ -25,6 +25,7 @@ Legend: **V** View · **C** Create · **E** Edit · **D** Delete · **A** Approv
 | Master AMC Status | V X | all | V X | — | — | V X | V |
 | Invoice Tracking (Finance) | V C E X R | all | V C E X | V C E X | — | R | V |
 | Accounts | V X | all | V X | V X | — | — | V |
+| Invoice Acknowledgements (Finance, 0112/0113) | V C E X | all | — | — | — | — | — |
 | Service Sales | V E X | all | V E X | — | — | V E X | V |
 | Suggestions | V C | all | V C | V C | V C | V C | V C |
 | Reports (Reporting) | V X | all | — | — | — | — | — |
@@ -35,6 +36,7 @@ Legend: **V** View · **C** Create · **E** Edit · **D** Delete · **A** Approv
 Notes:
 
 - **Reports** came after the role migrations; no built-in role except Super Admin starts with it. Grant it deliberately. Each report also needs View of its source module (Export for its export): AMC Contracts (AMC Contract Summary, Contract Value Review), AMC Renewal (AMC Renewal, Expiry & Renewal Due, Renewal History), Accounts (Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise, Sales Engineer-wise). Enforced by the API (P2, 2026-11-09).
+- **Invoice Acknowledgements** (2026-11-10) starts with Super Admin only (migration 0113). Proposed grants awaiting approval are in `docs/INVOICE_ACKNOWLEDGEMENTS.md` §6. Amounts on the page and in its export also need Accounts: View.
 - **AMC Execution: Approve** has no effect at present (completed services are locked and cannot be reopened). Retiring it is an open decision (Outstanding Issues OI-08).
 - **Service Sales** is listed under Finance but starts with AMC Operations Executive, as originally seeded; moving a module in the catalog never changes starting grants.
 - **Users** permissions can never be given to the four operational roles (Finance, Master Data, AMC Operations, Viewer).
@@ -67,6 +69,7 @@ Notes:
 | Invoice Tracking — visits waiting for an invoice | AMC Schedule: View or Data read |
 | Manual Invoice No. (Accounts, Schedule, Contract 360) | Invoice Tracking: Edit |
 | Completing a service, uploading a Service Report | AMC Execution: Edit |
+| Invoice Acknowledgements — service and invoice values | Accounts: View |
 | Renewal: Approve / Cancel | AMC Contracts: Edit / Edit + Delete |
 | Dashboard figures | Dashboard: View plus View on each figure's module |
 

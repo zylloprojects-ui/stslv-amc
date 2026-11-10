@@ -242,6 +242,20 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         },
       },
       {
+        module: "INVOICE_ACKNOWLEDGEMENTS",
+        label: "Invoice Acknowledgements",
+        description:
+          "The client's acknowledgement document for each invoice shown on Accounts (a service with a manual Invoice No.): Pending until a document is attached and confirmed, then Acknowledged. " +
+          "Acknowledged is not payment: it changes no Invoice No., Paid / Unpaid reference status, amount or service status. Amounts are shown only to roles that may also view Accounts.",
+        pages: [{ label: "Invoice Acknowledgements", path: "/finance/invoice-acknowledgements" }],
+        actions: {
+          VIEW: "See invoices and their acknowledgement status; view and download acknowledgement documents",
+          CREATE: "Attach an acknowledgement document to a Pending invoice and confirm it (OK / Confirm)",
+          EDIT: "Replace the document of an Acknowledged invoice, with a reason (the earlier version is kept)",
+          EXPORT: "Export Invoice Acknowledgements",
+        },
+      },
+      {
         module: "SERVICES_SALES",
         label: "Service Sales",
         description: "Quotation numbers of completed visits.",

@@ -71,6 +71,7 @@ export const NAVIGATION: NavSection[] = [
     items: [
       { label: 'Invoice Tracking', path: '/invoices', module: 'INVOICES' },
       { label: 'Accounts', path: '/finance/accounts', module: 'ACCOUNTS' },
+      { label: 'Invoice Acknowledgements', path: '/finance/invoice-acknowledgements', module: 'INVOICE_ACKNOWLEDGEMENTS' },
       { label: 'Service Sales', path: '/amc/service-sales', module: 'SERVICES_SALES' },
     ],
   },
