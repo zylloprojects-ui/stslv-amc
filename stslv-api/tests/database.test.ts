@@ -17,6 +17,9 @@ describe("migrations", () => {
     );
 
     expect(result.rows.map((row) => row.table_name)).toEqual([
+      // Migration 0114: invoice identities and their service associations (Invoice Acknowledgements).
+      "ack_invoice_services",
+      "ack_invoices",
       "activity_logs",
       "amc_contract_custom_months",
       // Migration 0107: every AMC Reference Number a contract has held.

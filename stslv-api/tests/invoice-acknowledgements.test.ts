@@ -12,8 +12,17 @@ import { activeContract, contractBody, createClient, grant, logsFor, renewalEngi
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { cancelInvoice, invoiceBody, newInvoice } from "./invoices-helpers";
 
-// Invoice Acknowledgements (migrations 0112, 0113). Synthetic records in the stslv_test schema only; documents go to a
-// throwaway folder of this file (a spy around the local disk storage, so stores and removals can be checked).
+// Invoice Acknowledgements, one acknowledgement per INVOICE (migrations 0112-0115). Synthetic records in the
+// stslv_test schema only; documents go to a throwaway folder of this file (a spy around the local disk storage).
+//
+// Dataset (client A, contract STS-AMC-IA1 2026 and its renewal V2 2027; client B):
+//   INV-100    A v1          Invoice Tracking record (300)              one service
+//   INV-MULTI  A v2 + v3     one Invoice Tracking record (600)         two services, ONE invoice
+//   INV-DUP    A v4 and r2   manual only, same number                  two invoices, flagged for reconciliation
+//   INV-200    A r1 (V2)     manual only (its Zoho record cancelled)    renewal-version invoice
+//   INV-LEG    A r3 + r4     one Invoice Tracking record (800)         two 0112-style acknowledgements (conflict)
+//   INV-100    B b1          manual only: same number, other client    separate, not flagged
+//   INV-SEP    B b2 and b3   manual only, same number                  confirmed separate
 
 const BASE = "/api/invoice-acknowledgements";
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
@@ -36,36 +45,68 @@ class SpyStorage extends LocalDiskStorage {
 const folder = mkdtempSync(path.join(tmpdir(), "stslv-ack-storage-"));
 const storage = new SpyStorage(folder);
 
-let admin: Session; // Super Admin (0113 grants every action)
-let execution: Session;
-let viewOnly: Session; // VIEW only, no Accounts: no amounts, no actions
-let acknowledger: Session; // VIEW + CREATE + Accounts VIEW
-let editor: Session; // VIEW + CREATE + EDIT + EXPORT + Accounts VIEW
-let exporterNoAmounts: Session; // VIEW + EXPORT, no Accounts
-let finance: Session; // Finance Executive: Accounts, but no Invoice Acknowledgements (not granted by 0113)
+let admin: Session; // Super Admin
+let administrator: Session; // Admin: V C E X (0115)
+let finance: Session; // Finance Executive: V C X (0115), plus Accounts
+let viewer: Session; // Viewer: nothing (approved default)
+let operations: Session; // AMC Operations Executive: nothing
+let viewOnly: Session; // custom: VIEW only, no Accounts
+let exporterNoAmounts: Session; // custom: VIEW + EXPORT, no Accounts
 
-let client: string;
+let clientA: string;
+let clientB: string;
 let original: string;
 let renewal: string;
-let v1: string; // original period, service 1: INV-100, Zoho invoice INV-100 dated 2026-03-15
-let v2: string; // original period, service 2: completed, no Invoice No. (never listed)
-let r1: string; // renewal (V2) period, service 1: INV-200, only a cancelled Zoho invoice
+const v: string[] = [];
+const r: string[] = [];
+const b: string[] = [];
+
+interface Item {
+  invoiceId: string;
+  invoiceNo: string;
+  basis: string;
+  client: { id: string; name: string };
+  contracts: { id: string; reference: string; version: number }[];
+  serviceCount: number;
+  invoiceDate: string | null;
+  invoiceValue: string | null;
+  serviceValue: string | null;
+  amountsVisible: boolean;
+  status: string;
+  acknowledgementId: string | null;
+  document: { attachmentId: string; version: number; originalName: string; mimeType: string; uploadedBy: { id: string } } | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: { id: string } | null;
+  reconciliation: string[];
+}
 
 async function customRole(code: string, permissions: [string, string][]) {
   await pool.query("INSERT INTO roles (code, name) VALUES ($1, $1) ON CONFLICT DO NOTHING", [code]);
   await grant(code, permissions);
 }
 
-const list = (session: Session, query: Record<string, unknown> = {}) => api().get(BASE).query({ clientId: client, ...query }).set(session.headers);
-const item = async (visitId: string, session: Session = admin) => (await api().get(`${BASE}/${visitId}`).set(session.headers)).body.data;
-const attach = (session: Session, visitId: string, data: Buffer = TEST_PDF, name = "acknowledgement.pdf") =>
-  api().post(`${BASE}/${visitId}/document`).set(session.headers).set("Content-Type", "application/octet-stream").set("X-File-Name", encodeURIComponent(name)).send(data);
-const confirm = (session: Session, visitId: string, attachmentId: string) => api().post(`${BASE}/${visitId}/confirm`).set(session.headers).send({ attachmentId });
-const replace = (session: Session, visitId: string, reason: string | null, data: Buffer = TEST_PDF, name = "acknowledgement-v2.pdf") => {
-  const request = api().post(`${BASE}/${visitId}/replace`).set(session.headers).set("Content-Type", "application/octet-stream").set("X-File-Name", encodeURIComponent(name));
+const list = async (session: Session = admin, query: Record<string, unknown> = {}) => (await api().get(BASE).query({ pageSize: 200, ...query }).set(session.headers)).body.data;
+const items = async (session: Session = admin, query: Record<string, unknown> = {}): Promise<Item[]> => (await list(session, query)).items;
+/** The invoice with this number of this client (exactly one expected). */
+const invoice = async (number: string, client = clientA, session: Session = admin): Promise<Item> => {
+  const found = (await items(session)).filter((row) => row.invoiceNo === number && row.client.id === client);
+  expect(found, `${number} of ${client}`).toHaveLength(1);
+  return found[0]!;
+};
+const attach = (session: Session, invoiceId: string, data: Buffer = TEST_PDF, name = "acknowledgement.pdf") =>
+  api().post(`${BASE}/${invoiceId}/document`).set(session.headers).set("Content-Type", "application/octet-stream").set("X-File-Name", encodeURIComponent(name)).send(data);
+const confirm = (session: Session, invoiceId: string, attachmentId: string) => api().post(`${BASE}/${invoiceId}/confirm`).set(session.headers).send({ attachmentId });
+const replace = (session: Session, invoiceId: string, reason: string | null, data: Buffer = TEST_PDF, name = "acknowledgement-v2.pdf") => {
+  const request = api().post(`${BASE}/${invoiceId}/replace`).set(session.headers).set("Content-Type", "application/octet-stream").set("X-File-Name", encodeURIComponent(name));
   if (reason !== null) request.set("X-Replace-Reason", encodeURIComponent(reason));
   return request.send(data);
 };
+const binary = (request: ReturnType<ReturnType<typeof api>["get"]>) =>
+  request.buffer(true).parse((res, done) => {
+    const chunks: Buffer[] = [];
+    res.on("data", (chunk: Buffer) => chunks.push(chunk));
+    res.on("end", () => done(null, Buffer.concat(chunks)));
+  });
 const setInvoiceNo = async (visitId: string, invoiceNo: string | null) => {
   const updatedAt = (await api().get(`/api/amc/visits/${visitId}`).set(admin.headers)).body.data.updatedAt;
   const response = await api().patch(`/api/amc/visits/${visitId}/manual-invoice`).set(admin.headers).send({ invoiceNo, expectedUpdatedAt: updatedAt });
@@ -74,66 +115,80 @@ const setInvoiceNo = async (visitId: string, invoiceNo: string | null) => {
 const complete = async (visitId: string) => {
   await withServiceReport(visitId);
   const row = (await api().get(`/api/amc/service-status/${visitId}`).set(admin.headers)).body.data;
-  expect((await api().patch(`/api/amc/service-status/${visitId}`).set(execution.headers).send({ status: "COMPLETED", expectedUpdatedAt: row.updatedAt })).status).toBe(200);
+  expect((await api().patch(`/api/amc/service-status/${visitId}`).set(admin.headers).send({ status: "COMPLETED", expectedUpdatedAt: row.updatedAt })).status).toBe(200);
 };
-const visitSnapshot = (id: string) =>
-  pool.query("SELECT manual_invoice_no, manual_invoice_at, visit_amount, status, completed_date, updated_at FROM amc_visits_all WHERE id = $1", [id]).then((r) => r.rows[0]);
+const visitSnapshot = (ids: string[]) =>
+  pool.query("SELECT id, manual_invoice_no, manual_invoice_at, visit_amount, status, completed_date, updated_at FROM amc_visits_all WHERE id = ANY($1::bigint[]) ORDER BY id", [ids]).then((res) => res.rows);
+
+/** A 0112-style (per-service) acknowledgement, as the earlier release stored it: optionally with a document, optionally confirmed. */
+async function legacyAcknowledgement(visitId: string, invoiceNo: string, options: { document?: string; acknowledged?: boolean }) {
+  const ack = (await pool.query<{ id: string }>("INSERT INTO invoice_acknowledgements (amc_visit_id, invoice_number, created_by) VALUES ($1, $2, $3) RETURNING id", [visitId, invoiceNo, admin.id])).rows[0]!.id;
+  if (options.document) {
+    const attachment = (
+      await pool.query<{ id: string }>(
+        `INSERT INTO attachments (entity_type, entity_id, category, title, original_name, mime_type, size_bytes, sha256, storage_key, uploaded_by)
+         VALUES ('invoice_acknowledgements', $1, 'INVOICE_ACKNOWLEDGEMENT', 'Invoice acknowledgement', $2, 'application/pdf', 1, repeat('0', 64), gen_random_uuid()::text || '.pdf', $3) RETURNING id`,
+        [ack, options.document, admin.id]
+      )
+    ).rows[0]!.id;
+    await pool.query("UPDATE attachments SET document_id = id WHERE id = $1", [attachment]);
+  }
+  if (options.acknowledged) {
+    await pool.query("UPDATE invoice_acknowledgements SET status = 'ACKNOWLEDGED', acknowledged_at = '2026-11-05T09:15:00Z', acknowledged_by = $2 WHERE id = $1", [ack, finance.id]);
+  }
+  return ack;
+}
 
 beforeAll(async () => {
   setStorageForTests(storage);
   await resetData();
   admin = await signedIn("admin@example.com", ["ADMIN"]);
-  execution = await signedIn("execution@example.com", ["EXECUTION"]);
+  administrator = await signedIn("administrator@example.com", ["ADMINISTRATOR"]);
   finance = await signedIn("finance@example.com", ["FINANCE_EXECUTIVE"]);
+  viewer = await signedIn("viewer@example.com", ["VIEWER"]);
+  operations = await signedIn("operations@example.com", ["AMC_OPERATIONS_EXECUTIVE"]);
   await customRole("IA_VIEW", [["INVOICE_ACKNOWLEDGEMENTS", "VIEW"]]);
-  await customRole("IA_ACK", [
-    ["INVOICE_ACKNOWLEDGEMENTS", "VIEW"],
-    ["INVOICE_ACKNOWLEDGEMENTS", "CREATE"],
-    ["ACCOUNTS", "VIEW"],
-  ]);
-  await customRole("IA_EDIT", [
-    ["INVOICE_ACKNOWLEDGEMENTS", "VIEW"],
-    ["INVOICE_ACKNOWLEDGEMENTS", "CREATE"],
-    ["INVOICE_ACKNOWLEDGEMENTS", "EDIT"],
-    ["INVOICE_ACKNOWLEDGEMENTS", "EXPORT"],
-    ["ACCOUNTS", "VIEW"],
-  ]);
   await customRole("IA_EXPORT", [
     ["INVOICE_ACKNOWLEDGEMENTS", "VIEW"],
     ["INVOICE_ACKNOWLEDGEMENTS", "EXPORT"],
   ]);
   viewOnly = await signedIn("view@example.com", ["IA_VIEW"]);
-  acknowledger = await signedIn("ack@example.com", ["IA_ACK"]);
-  editor = await signedIn("editor@example.com", ["IA_EDIT"]);
   exporterNoAmounts = await signedIn("export@example.com", ["IA_EXPORT"]);
 
-  client = await createClient(admin, "Acknowledgement Client");
+  clientA = await createClient(admin, "Acknowledgement Client");
+  clientB = await createClient(admin, "Other Client");
   const engineer = await renewalEngineer();
-  original = await activeContract(admin, client, {
-    amcReference: "STS-AMC-IA1",
-    systemDescription: "ACK SYSTEM",
-    validFrom: "2026-01-01",
-    validTo: "2026-12-31",
-    contractValue: "1200.000",
-    defaultVisitAmount: "300.000",
-  });
+  original = await activeContract(admin, clientA, { amcReference: "STS-AMC-IA1", systemDescription: "ACK SYSTEM", validFrom: "2026-01-01", validTo: "2026-12-31", contractValue: "1200.000", defaultVisitAmount: "300.000" });
   const renewed = await api()
     .post(`/api/amc/contracts/${original}/renewals`)
     .set(admin.headers)
-    .send(withRenewalDocument(contractBody(client, { systemDescription: "ACK SYSTEM", validFrom: "2027-01-01", validTo: "2027-12-31", status: "DRAFT", salesEngineerId: engineer, contractValue: "1600.000", defaultVisitAmount: "400.000" })));
+    .send(withRenewalDocument(contractBody(clientA, { systemDescription: "ACK SYSTEM", validFrom: "2027-01-01", validTo: "2027-12-31", status: "DRAFT", salesEngineerId: engineer, contractValue: "1600.000", defaultVisitAmount: "400.000" })));
   expect(renewed.status).toBe(201);
   renewal = renewed.body.data.id;
   expect((await api().post(`/api/amc/contracts/${renewal}/status`).set(admin.headers).send({ status: "ACTIVE" })).status).toBe(200);
+  const other = await activeContract(admin, clientB, { amcReference: "STS-AMC-OTHER", systemDescription: "OTHER", validFrom: "2026-01-01", validTo: "2026-12-31", contractValue: "800.000", defaultVisitAmount: "200.000" });
 
-  [v1, v2] = (await visitsOf(original)).map((visit) => visit.id) as [string, string];
-  r1 = (await visitsOf(renewal))[0]!.id;
-  for (const id of [v1, v2, r1]) await complete(id);
+  v.push(...(await visitsOf(original)).map((visit) => visit.id));
+  r.push(...(await visitsOf(renewal)).map((visit) => visit.id));
+  b.push(...(await visitsOf(other)).map((visit) => visit.id));
+  for (const id of [...v, ...r, b[0]!, b[1]!, b[2]!]) await complete(id);
 
-  await setInvoiceNo(v1, "INV-100");
-  await setInvoiceNo(r1, "INV-200");
-  await newInvoice(admin, invoiceBody(client, [{ amcVisitId: v1, amount: "300.000" }], { invoiceNumber: "INV-100", amountExclVat: "300.000", vatAmount: "0.000", invoiceDate: "2026-03-15" }));
-  const cancelled = await newInvoice(admin, invoiceBody(client, [{ amcVisitId: r1, amount: "400.000" }], { invoiceNumber: "INV-200", amountExclVat: "400.000", vatAmount: "0.000", invoiceDate: "2027-03-15" }));
+  for (const [id, number] of [
+    [v[0], "INV-100"], [v[1], "INV-MULTI"], [v[2], "INV-MULTI"], [v[3], "INV-DUP"],
+    [r[0], "INV-200"], [r[1], "INV-DUP"], [r[2], "INV-LEG"], [r[3], "INV-LEG"],
+    [b[0], "INV-100"], [b[1], "INV-SEP"], [b[2], "INV-SEP"],
+  ] as [string, string][]) await setInvoiceNo(id, number);
+
+  await newInvoice(admin, invoiceBody(clientA, [{ amcVisitId: v[0]!, amount: "300.000" }], { invoiceNumber: "INV-100", amountExclVat: "300.000", vatAmount: "0.000", invoiceDate: "2026-03-15" }));
+  await newInvoice(admin, invoiceBody(clientA, [{ amcVisitId: v[1]!, amount: "300.000" }, { amcVisitId: v[2]!, amount: "300.000" }], { invoiceNumber: "INV-MULTI", amountExclVat: "600.000", vatAmount: "0.000", invoiceDate: "2026-09-30" }));
+  await newInvoice(admin, invoiceBody(clientA, [{ amcVisitId: r[2]!, amount: "400.000" }, { amcVisitId: r[3]!, amount: "400.000" }], { invoiceNumber: "INV-LEG", amountExclVat: "800.000", vatAmount: "0.000", invoiceDate: "2027-12-31" }));
+  const cancelled = await newInvoice(admin, invoiceBody(clientA, [{ amcVisitId: r[0]!, amount: "400.000" }], { invoiceNumber: "INV-200", amountExclVat: "400.000", vatAmount: "0.000", invoiceDate: "2027-03-15" }));
   expect((await cancelInvoice(admin, cancelled.id)).status).toBe(200);
+
+  // Two acknowledgements recorded per service by the earlier release, for the two services of INV-LEG (both
+  // confirmed, with documents): a conflict that must not be resolved automatically.
+  await legacyAcknowledgement(r[2]!, "INV-LEG", { document: "leg-r3.pdf", acknowledged: true });
+  await legacyAcknowledgement(r[3]!, "INV-LEG", { document: "leg-r4.pdf", acknowledged: true });
 });
 
 afterAll(async () => {
@@ -142,298 +197,310 @@ afterAll(async () => {
   await closePool();
 });
 
-describe("linkage to the invoices Accounts shows", () => {
-  it("lists exactly the services with an Invoice No., each Pending, on the right contract period", async () => {
-    const response = await list(admin, { sort: "invoiceNo" });
+describe("one row per invoice", () => {
+  it("lists each invoice once, with all its services, on the right contract period", async () => {
+    const rows = await items();
+    const keys = rows.map((row) => `${row.client.id === clientA ? "A" : "B"}:${row.invoiceNo}:${row.serviceCount}`).sort();
 
-    expect(response.status).toBe(200);
-    const data = response.body.data;
-    expect(data.items.map((row: { visitId: string }) => row.visitId)).toEqual([v1, r1]);
-    expect(data.kpis).toMatchObject({ total: 2, pending: 2, acknowledged: 0, awaitingConfirmation: 0 });
-    expect(data.items[0]).toMatchObject({
-      reference: "STS-AMC-IA1",
-      contract: { id: original, version: 1 },
-      client: { id: client, name: "Acknowledgement Client" },
-      invoiceNo: "INV-100",
-      invoiceDate: "2026-03-15",
-      status: "PENDING",
-      document: null,
-      acknowledgedAt: null,
-    });
-    expect(data.items[1]).toMatchObject({ reference: "STS-AMC-IA1 (V2)", contract: { id: renewal, version: 2 }, invoiceNo: "INV-200", invoiceDate: null, invoiceValue: null });
+    expect(keys).toEqual(["A:INV-100:1", "A:INV-200:1", "A:INV-DUP:1", "A:INV-DUP:1", "A:INV-LEG:2", "A:INV-MULTI:2", "B:INV-100:1", "B:INV-SEP:1", "B:INV-SEP:1"]);
+    expect(await invoice("INV-MULTI")).toMatchObject({ basis: "ZOHO", invoiceDate: "2026-09-30", invoiceValue: "600.000", serviceValue: "600.000", contracts: [{ id: original, reference: "STS-AMC-IA1", version: 1 }] });
+    expect(await invoice("INV-200")).toMatchObject({ basis: "SERVICE", invoiceDate: null, invoiceValue: null, contracts: [{ id: renewal, reference: "STS-AMC-IA1 (V2)", version: 2 }] });
+    // The Zoho record of client A is not client B's invoice of the same number.
+    expect(await invoice("INV-100", clientB)).toMatchObject({ basis: "SERVICE", invoiceValue: null, reconciliation: [] });
   });
 
-  it("shows the same invoice numbers, values and links as Accounts, without invented dates or amounts", async () => {
-    const acks = (await list(admin)).body.data.items as { visitId: string; invoiceNo: string; serviceValue: string | null; invoiceValue: string | null; reference: string }[];
-    const accounts = (await api().get("/api/accounts").query({ clientId: client, invoiceStatus: "RECORDED" }).set(admin.headers)).body.data.items as {
-      id: string;
-      manualInvoiceNo: string;
-      visitValue: string | null;
-      invoiceValue: string | null;
-      reference: string;
-    }[];
+  it("counts each invoice once in the totals", async () => {
+    const data = await list(admin, { clientId: clientA });
+    // Invoice values: 300 (INV-100) + 600 (INV-MULTI, two services, once) + 800 (INV-LEG, two services, once); INV-200's
+    // record is cancelled. Service values: the eight services, 4 x 300 + 4 x 400.
+    expect(data.kpis).toMatchObject({ total: 6, invoiceValueTotal: "1700.000", serviceValueTotal: "2800.000" });
+  });
 
-    expect(acks).toHaveLength(accounts.length);
-    for (const row of acks) {
-      const match = accounts.find((account) => account.id === row.visitId);
-      expect(match).toBeDefined();
-      expect([row.invoiceNo, row.serviceValue, row.invoiceValue, row.reference]).toEqual([match!.manualInvoiceNo, match!.visitValue, match!.invoiceValue, match!.reference]);
+  it("shows several invoices of one contract separately", async () => {
+    const rows = await items(admin, { contractId: original });
+    expect(rows.map((row) => row.invoiceNo).sort()).toEqual(["INV-100", "INV-DUP", "INV-MULTI"]);
+  });
+
+  it("lists the linked services of an invoice, with values only for Accounts viewers", async () => {
+    const multi = await invoice("INV-MULTI");
+    const services = (await api().get(`${BASE}/${multi.invoiceId}/services`).set(finance.headers)).body.data;
+    expect(services.map((service: { visitId: string; basis: string; serviceValue: string }) => [service.visitId, service.basis, service.serviceValue])).toEqual([
+      [v[1], "ZOHO", "300.000"],
+      [v[2], "ZOHO", "300.000"],
+    ]);
+    const hidden = (await api().get(`${BASE}/${multi.invoiceId}/services`).set(viewOnly.headers)).body.data;
+    expect(hidden.every((service: { serviceValue: string | null }) => service.serviceValue === null)).toBe(true);
+  });
+
+  it("matches Accounts: the same invoice numbers on the same services, and no service without one", async () => {
+    const accounts = (await api().get("/api/accounts").query({ invoiceStatus: "RECORDED", pageSize: 200 }).set(admin.headers)).body.data.items as { id: string; manualInvoiceNo: string }[];
+    const linked: string[] = [];
+    for (const row of await items()) {
+      const services = (await api().get(`${BASE}/${row.invoiceId}/services`).set(admin.headers)).body.data as { visitId: string; invoiceNo: string }[];
+      for (const service of services) {
+        expect(accounts.find((account) => account.id === service.visitId)?.manualInvoiceNo).toBe(row.invoiceNo);
+        linked.push(service.visitId);
+      }
     }
-    // The cancelled Zoho invoice adds nothing; the only active one is 300.000.
-    expect((await list(admin)).body.data.kpis).toMatchObject({ serviceValueTotal: "700.000", invoiceValueTotal: "300.000" });
-  });
-
-  it("never lists a service without an Invoice No., and refuses actions on it", async () => {
-    expect((await list(admin)).body.data.items.map((row: { visitId: string }) => row.visitId)).not.toContain(v2);
-    expect((await api().get(`${BASE}/${v2}`).set(admin.headers)).status).toBe(404);
-    const refused = await attach(admin, v2);
-    expect(refused.status).toBe(409);
-    expect(refused.body.error.message).toContain("no Invoice No.");
-    expect((await api().get(`${BASE}/999999`).set(admin.headers)).status).toBe(404);
+    expect(linked.sort()).toEqual(accounts.map((account) => account.id).sort());
   });
 });
 
-describe("permissions and financial visibility", () => {
-  it("hides amounts from a role that cannot view Accounts", async () => {
-    const data = (await list(viewOnly, { sort: "invoiceNo" })).body.data;
-
-    expect(data.items[0]).toMatchObject({ amountsVisible: false, serviceValue: null, invoiceValue: null, invoiceNo: "INV-100" });
-    expect(data.kpis).toMatchObject({ serviceValueTotal: null, invoiceValueTotal: null });
-    expect((await list(acknowledger, { sort: "invoiceNo" })).body.data.items[0]).toMatchObject({ amountsVisible: true, serviceValue: "300.000", invoiceValue: "300.000" });
+describe("permissions (approved defaults) and financial visibility", () => {
+  it("gives Super Admin, Admin and Finance Executive the page; Viewer and AMC Operations nothing", async () => {
+    for (const session of [admin, administrator, finance]) expect((await api().get(BASE).set(session.headers)).status).toBe(200);
+    for (const session of [viewer, operations]) {
+      expect((await api().get(BASE).set(session.headers)).status).toBe(403);
+      expect((await api().get(`${BASE}/options`).set(session.headers)).status).toBe(403);
+    }
+    const grants = await pool.query(
+      "SELECT r.code, array_agg(p.action ORDER BY p.action) AS actions FROM role_permissions p JOIN roles r ON r.id = p.role_id WHERE p.module = 'INVOICE_ACKNOWLEDGEMENTS' AND r.code NOT LIKE 'IA\\_%' GROUP BY r.code ORDER BY r.code"
+    );
+    expect(grants.rows).toEqual([
+      { code: "ADMIN", actions: ["APPROVE", "CREATE", "DELETE", "EDIT", "EXPORT", "READ", "VIEW"] },
+      { code: "ADMINISTRATOR", actions: ["CREATE", "EDIT", "EXPORT", "VIEW"] },
+      { code: "FINANCE_EXECUTIVE", actions: ["CREATE", "EXPORT", "VIEW"] },
+    ]);
   });
 
-  it("refuses every route to a role without the module, though it holds Accounts", async () => {
+  it("refuses every route to a role without the module", async () => {
+    const multi = await invoice("INV-MULTI");
+    const id = multi.invoiceId;
     const calls = [
-      api().get(BASE).set(finance.headers),
-      api().get(`${BASE}/options`).set(finance.headers),
-      api().get(`${BASE}/export`).query({ format: "xlsx" }).set(finance.headers),
-      api().get(`${BASE}/${v1}`).set(finance.headers),
-      api().get(`${BASE}/${v1}/history`).set(finance.headers),
-      api().get(`${BASE}/${v1}/document`).set(finance.headers),
-      attach(finance, v1),
-      api().delete(`${BASE}/${v1}/document`).set(finance.headers),
-      confirm(finance, v1, "1"),
-      replace(finance, v1, "Because"),
+      api().get(`${BASE}/export`).query({ format: "xlsx" }).set(viewer.headers),
+      api().get(`${BASE}/${id}`).set(viewer.headers),
+      api().get(`${BASE}/${id}/services`).set(viewer.headers),
+      api().get(`${BASE}/${id}/history`).set(viewer.headers),
+      api().get(`${BASE}/${id}/document`).set(viewer.headers),
+      attach(viewer, id),
+      api().delete(`${BASE}/${id}/document`).set(viewer.headers),
+      confirm(viewer, id, "1"),
+      replace(viewer, id, "Because"),
+      api().get(`${BASE}/${id}/reconciliation`).set(viewer.headers),
+      api().post(`${BASE}/${id}/separate`).set(viewer.headers).send({ reason: "Because" }),
     ];
-
     for (const response of await Promise.all(calls)) expect(response.status).toBe(403);
     expect((await api().get(BASE)).status).toBe(401);
   });
 
-  it("lets View only look: no attach, confirm, replace or export", async () => {
-    expect((await attach(viewOnly, v1)).status).toBe(403);
-    expect((await confirm(viewOnly, v1, "1")).status).toBe(403);
-    expect((await replace(viewOnly, v1, "Because")).status).toBe(403);
+  it("Finance can attach and export but not replace or reconcile; View only can do neither", async () => {
+    const dup = (await items()).find((row) => row.invoiceNo === "INV-DUP")!;
+    expect((await api().get(`${BASE}/${dup.invoiceId}/reconciliation`).set(finance.headers)).status).toBe(403);
+    expect((await api().post(`${BASE}/${dup.invoiceId}/separate`).set(finance.headers).send({ reason: "Because" })).status).toBe(403);
+    expect((await replace(finance, dup.invoiceId, "Because")).status).toBe(403);
+    expect((await attach(viewOnly, dup.invoiceId)).status).toBe(403);
     expect((await api().get(`${BASE}/export`).query({ format: "xlsx" }).set(viewOnly.headers)).status).toBe(403);
-    expect((await replace(acknowledger, v1, "Because")).status).toBe(403);
+  });
+
+  it("hides amounts from a role that cannot view Accounts", async () => {
+    const data = await list(viewOnly);
+    expect(data.items.every((row: Item) => !row.amountsVisible && row.invoiceValue === null && row.serviceValue === null)).toBe(true);
+    expect(data.kpis).toMatchObject({ invoiceValueTotal: null, serviceValueTotal: null });
+    expect((await invoice("INV-MULTI", clientA, finance)).invoiceValue).toBe("600.000");
   });
 });
 
-describe("attach, confirm, view", () => {
-  it("refuses an invalid, empty or wrongly named file and stores nothing", async () => {
+describe("attach and confirm one acknowledgement for a multi-service invoice", () => {
+  it("refuses an invalid, empty or wrongly named file, stores nothing and creates no acknowledgement", async () => {
+    const multi = await invoice("INV-MULTI");
     const before = storage.puts.length;
-    const cases = [
-      await attach(acknowledger, v1, Buffer.from("plain text, not a document"), "ack.pdf"),
-      await attach(acknowledger, v1, Buffer.alloc(0), "ack.pdf"),
-      await attach(acknowledger, v1, TEST_PDF, "ack.png"),
-      await attach(acknowledger, v1, Buffer.from("PK\u0003\u0004[Content_Types].xml word/document.xml", "latin1"), "ack.docx"),
-    ];
-
-    for (const response of cases) {
+    for (const response of [
+      await attach(finance, multi.invoiceId, Buffer.from("plain text, not a document"), "ack.pdf"),
+      await attach(finance, multi.invoiceId, Buffer.alloc(0), "ack.pdf"),
+      await attach(finance, multi.invoiceId, TEST_PDF, "ack.png"),
+    ]) {
       expect(response.status).toBe(400);
       expect(response.body.error.details[0].field).toBe("document");
     }
-    const noName = await api().post(`${BASE}/${v1}/document`).set(acknowledger.headers).set("Content-Type", "application/octet-stream").send(TEST_PDF);
-    expect(noName.status).toBe(400);
+    const big = await attach(finance, multi.invoiceId, Buffer.concat([TEST_PDF, Buffer.alloc(12 * 1024 * 1024)]), "big.pdf");
+    expect(big.status).toBe(400);
     expect(storage.puts.length).toBe(before);
-    expect((await pool.query("SELECT count(*)::int AS n FROM invoice_acknowledgements")).rows[0].n).toBe(0);
+    expect((await invoice("INV-MULTI")).acknowledgementId).toBeNull();
   });
 
-  it("refuses a file over the size limit", async () => {
-    const big = Buffer.concat([TEST_PDF, Buffer.alloc(12 * 1024 * 1024)]);
-    const response = await attach(acknowledger, v1, big, "big.pdf");
-
-    expect(response.status).toBe(400);
-    expect(response.body.error.message).toContain("at most 12 MB");
-  });
-
-  it("cannot confirm before a document is attached, and has no document to view", async () => {
-    const response = await confirm(acknowledger, v1, "1");
+  it("cannot confirm before a document is attached", async () => {
+    const multi = await invoice("INV-MULTI");
+    const response = await confirm(finance, multi.invoiceId, "1");
     expect(response.status).toBe(409);
-    expect(response.body.error.message).toContain("Attach the acknowledgement document");
-    expect((await api().get(`${BASE}/${v1}/document`).set(acknowledger.headers)).status).toBe(404);
+    expect((await api().get(`${BASE}/${multi.invoiceId}/document`).set(finance.headers)).status).toBe(404);
   });
 
-  it("attaches the document to private storage and keeps the status Pending until confirmed", async () => {
-    const before = await visitSnapshot(v1);
-    const response = await attach(acknowledger, v1, TEST_PDF, "Client stamp INV-100.pdf");
+  it("attaches one document for the whole invoice, still Pending, without changing any service", async () => {
+    const multi = await invoice("INV-MULTI");
+    const before = await visitSnapshot([v[1]!, v[2]!]);
+    const response = await attach(finance, multi.invoiceId, TEST_PDF, "Client stamp INV-MULTI.pdf");
 
     expect(response.status).toBe(201);
-    expect(response.body.data).toMatchObject({ status: "PENDING", document: { originalName: "Client stamp INV-100.pdf", version: 1, mimeType: "application/pdf", uploadedBy: { id: acknowledger.id } } });
-    // No storage key, checksum or link ever reaches the client.
+    expect(response.body.data).toMatchObject({ status: "PENDING", serviceCount: 2, document: { originalName: "Client stamp INV-MULTI.pdf", version: 1, uploadedBy: { id: finance.id } } });
     expect(JSON.stringify(response.body)).not.toMatch(/storage_?key|sha256|https?:\/\//i);
-    expect((await list(admin, { status: "PENDING" })).body.data.kpis).toMatchObject({ pending: 2, awaitingConfirmation: 1 });
-
-    const file = await api().get(`${BASE}/${v1}/document`).set(viewOnly.headers).buffer(true).parse((res, done) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (chunk: Buffer) => chunks.push(chunk));
-      res.on("end", () => done(null, Buffer.concat(chunks)));
-    });
+    const file = await binary(api().get(`${BASE}/${multi.invoiceId}/document`).set(viewOnly.headers));
     expect(file.status).toBe(200);
     expect(Buffer.compare(file.body as Buffer, TEST_PDF)).toBe(0);
     expect(file.headers["cache-control"]).toBe("no-store");
     expect(file.headers["content-disposition"]).toContain("attachment;");
-
-    expect(await visitSnapshot(v1)).toEqual(before);
-    const logs = await logsFor("invoice_acknowledgements", response.body.data.acknowledgementId);
-    expect(logs.map((log) => log.action)).toEqual(["invoice_acknowledgement.document_uploaded"]);
+    expect(await visitSnapshot([v[1]!, v[2]!])).toEqual(before);
   });
 
-  it("confirms only the document the user saw", async () => {
-    const response = await confirm(acknowledger, v1, "999999");
-    expect(response.status).toBe(409);
-    expect(response.body.error.message).toContain("changed");
-    expect((await item(v1)).status).toBe("PENDING");
-  });
+  it("confirms only the document the user saw, and one of two simultaneous confirmations", async () => {
+    const multi = await invoice("INV-MULTI");
+    expect((await confirm(finance, multi.invoiceId, "999999")).status).toBe(409);
 
-  it("OK / Confirm marks the invoice Acknowledged, with date and user, and changes nothing else", async () => {
-    const before = await visitSnapshot(v1);
+    const before = await visitSnapshot([v[1]!, v[2]!]);
     const invoicesBefore = (await pool.query("SELECT * FROM invoices ORDER BY id")).rows;
-    const attached = await item(v1);
-    const response = await confirm(acknowledger, v1, attached.document.attachmentId);
+    const [first, second] = await Promise.all([confirm(finance, multi.invoiceId, multi.document!.attachmentId), confirm(administrator, multi.invoiceId, multi.document!.attachmentId)]);
+    expect([first.status, second.status].sort()).toEqual([200, 409]);
 
-    expect(response.status).toBe(200);
-    expect(response.body.data).toMatchObject({ status: "ACKNOWLEDGED", acknowledgedBy: { id: acknowledger.id }, document: { attachmentId: attached.document.attachmentId } });
-    expect(businessDateOf(new Date(response.body.data.acknowledgedAt))).toBe(businessDateOf());
-    // Refresh and another user's session see the same state.
-    expect(await item(v1, viewOnly)).toMatchObject({ status: "ACKNOWLEDGED", acknowledgedBy: { id: acknowledger.id } });
-    expect(await visitSnapshot(v1)).toEqual(before);
+    const acknowledged = await invoice("INV-MULTI", clientA, viewOnly);
+    expect(acknowledged).toMatchObject({ status: "ACKNOWLEDGED", serviceCount: 2 });
+    expect(businessDateOf(new Date(acknowledged.acknowledgedAt!))).toBe(businessDateOf());
+    expect((await pool.query("SELECT count(*)::int AS n FROM invoice_acknowledgements WHERE ack_invoice_id = $1", [multi.invoiceId])).rows[0].n).toBe(1);
+    expect(await visitSnapshot([v[1]!, v[2]!])).toEqual(before);
     expect((await pool.query("SELECT * FROM invoices ORDER BY id")).rows).toEqual(invoicesBefore);
-    // Accounts still shows the same Paid reference status and values.
-    const accountsRow = (await api().get("/api/accounts").query({ clientId: client }).set(admin.headers)).body.data.items.find((row: { id: string }) => row.id === v1);
-    expect(accountsRow).toMatchObject({ manualInvoiceNo: "INV-100", paymentStatus: "PAID", visitValue: "300.000", invoiceValue: "300.000" });
-    expect((await logsFor("invoice_acknowledgements", attached.acknowledgementId)).map((log) => log.action)).toEqual([
+    // Accounts is untouched: both services keep their Paid reference status and values.
+    const accounts = (await api().get("/api/accounts").query({ clientId: clientA, pageSize: 200 }).set(admin.headers)).body.data.items as { id: string; paymentStatus: string; visitValue: string }[];
+    expect(accounts.filter((row) => row.id === v[1] || row.id === v[2]).map((row) => [row.paymentStatus, row.visitValue])).toEqual([
+      ["PAID", "300.000"],
+      ["PAID", "300.000"],
+    ]);
+    expect((await logsFor("invoice_acknowledgements", acknowledged.acknowledgementId!)).map((log) => log.action)).toEqual([
       "invoice_acknowledgement.document_uploaded",
       "invoice_acknowledgement.confirmed",
     ]);
   });
 
-  it("prevents a second acknowledgement, a second confirmation and a silent overwrite", async () => {
-    const attached = await item(v1);
-    expect((await confirm(acknowledger, v1, attached.document.attachmentId)).status).toBe(409);
-    const overwrite = await attach(acknowledger, v1, PNG, "other.png");
-    expect(overwrite.status).toBe(409);
-    expect(overwrite.body.error.message).toContain("already acknowledged");
-    expect((await api().delete(`${BASE}/${v1}/document`).set(acknowledger.headers)).status).toBe(409);
-    expect((await pool.query("SELECT count(*)::int AS n FROM invoice_acknowledgements WHERE amc_visit_id = $1", [v1])).rows[0].n).toBe(1);
-    expect((await item(v1)).document.version).toBe(1);
+  it("prevents a second acknowledgement, a silent overwrite and removal once acknowledged", async () => {
+    const multi = await invoice("INV-MULTI");
+    expect((await attach(finance, multi.invoiceId, PNG, "other.png")).status).toBe(409);
+    expect((await api().delete(`${BASE}/${multi.invoiceId}/document`).set(finance.headers)).status).toBe(409);
+    expect((await confirm(finance, multi.invoiceId, multi.document!.attachmentId)).status).toBe(409);
+    expect((await invoice("INV-MULTI")).document!.version).toBe(1);
+  });
+
+  it("replaces only with Edit and a reason, keeping the earlier version, date and user", async () => {
+    const multi = await invoice("INV-MULTI");
+    expect((await replace(administrator, multi.invoiceId, null)).status).toBe(400);
+    expect((await replace(administrator, (await invoice("INV-100")).invoiceId, "Wrong scan")).status).toBe(409);
+
+    const response = await replace(administrator, multi.invoiceId, "Clearer scan received from the client", PNG, "stamped copy.png");
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({ status: "ACKNOWLEDGED", acknowledgedAt: multi.acknowledgedAt, acknowledgedBy: multi.acknowledgedBy, document: { version: 2, originalName: "stamped copy.png", mimeType: "image/png" } });
+    const history = (await api().get(`${BASE}/${multi.invoiceId}/history`).set(viewOnly.headers)).body.data;
+    expect(history.map((entry: { version: number; isCurrent: boolean }) => [entry.version, entry.isCurrent])).toEqual([
+      [2, true],
+      [1, false],
+    ]);
+    // The earlier version stays downloadable, from this invoice only.
+    const earlier = history[1].attachmentId as string;
+    expect((await binary(api().get(`${BASE}/${multi.invoiceId}/documents/${earlier}`).set(viewOnly.headers))).status).toBe(200);
+    expect((await api().get(`${BASE}/${(await invoice("INV-100")).invoiceId}/documents/${earlier}`).set(admin.headers)).status).toBe(404);
+    const log = (await logsFor("invoice_acknowledgements", multi.acknowledgementId!)).at(-1)!;
+    expect(log).toMatchObject({ action: "invoice_acknowledgement.document_replaced", user_id: administrator.id });
+    expect(log.metadata).toMatchObject({ reason: "Clearer scan received from the client" });
+  });
+});
+
+describe("equal numbers are never merged automatically", () => {
+  it("flags two invoices of one client with the same number and refuses acknowledgement until reconciled", async () => {
+    const dups = (await items()).filter((row) => row.invoiceNo === "INV-DUP");
+    expect(dups).toHaveLength(2);
+    expect(dups.every((row) => row.reconciliation.includes("SAME_NUMBER"))).toBe(true);
+    const refused = await attach(finance, dups[0]!.invoiceId);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toContain("same Invoice No.");
+    expect((await list(admin, { reconciliation: "NEEDED" })).items.map((row: Item) => row.invoiceNo).sort()).toEqual(["INV-DUP", "INV-DUP", "INV-LEG", "INV-SEP", "INV-SEP"]);
+  });
+
+  it("links them as one invoice on an authorised, reasoned request; the services move, nothing else", async () => {
+    const [first, second] = (await items()).filter((row) => row.invoiceNo === "INV-DUP");
+    const view = (await api().get(`${BASE}/${first!.invoiceId}/reconciliation`).set(administrator.headers)).body.data;
+    expect(view.reasons).toEqual(["SAME_NUMBER"]);
+    expect(view.sameNumber.map((other: { invoiceId: string }) => other.invoiceId)).toEqual([second!.invoiceId]);
+
+    expect((await api().post(`${BASE}/${first!.invoiceId}/link`).set(administrator.headers).send({ otherInvoiceId: second!.invoiceId })).status).toBe(400);
+    const linked = await api().post(`${BASE}/${first!.invoiceId}/link`).set(administrator.headers).send({ otherInvoiceId: second!.invoiceId, reason: "One invoice covers both services" });
+    expect(linked.status).toBe(200);
+    expect(linked.body.data).toMatchObject({ invoiceId: first!.invoiceId, serviceCount: 2, reconciliation: [] });
+    // Renewal version and original both listed on the one invoice.
+    expect(linked.body.data.contracts.map((contract: { reference: string }) => contract.reference)).toEqual(["STS-AMC-IA1", "STS-AMC-IA1 (V2)"]);
+    expect((await items()).filter((row) => row.invoiceNo === "INV-DUP")).toHaveLength(1);
+    expect((await api().get(`${BASE}/${second!.invoiceId}`).set(admin.headers)).status).toBe(404);
+    expect((await pool.query("SELECT merged_into_id FROM ack_invoices WHERE id = $1", [second!.invoiceId])).rows[0].merged_into_id).toBe(first!.invoiceId);
+    expect((await logsFor("ack_invoices", first!.invoiceId)).map((log) => log.action)).toContain("invoice_acknowledgement.invoices_linked");
+  });
+
+  it("confirms invoices as separate on request, after which each is acknowledged on its own", async () => {
+    const [first, second] = (await items()).filter((row) => row.invoiceNo === "INV-SEP");
+    const response = await api().post(`${BASE}/${first!.invoiceId}/separate`).set(admin.headers).send({ reason: "Two invoices were issued with the same number" });
+    expect(response.status).toBe(200);
+    expect((await items()).filter((row) => row.invoiceNo === "INV-SEP").every((row) => row.reconciliation.length === 0)).toBe(true);
+    expect((await attach(finance, second!.invoiceId)).status).toBe(201);
+  });
+
+  it("never links invoices of different clients, and the database refuses moving a service across", async () => {
+    const a = await invoice("INV-100");
+    const bInvoice = await invoice("INV-100", clientB);
+    expect((await api().post(`${BASE}/${a.invoiceId}/link`).set(admin.headers).send({ otherInvoiceId: bInvoice.invoiceId, reason: "Wrong attempt" })).status).toBe(409);
+    await expect(pool.query("UPDATE ack_invoice_services SET ack_invoice_id = $1 WHERE ack_invoice_id = $2", [a.invoiceId, bInvoice.invoiceId])).rejects.toThrow(/same client and Invoice No./);
+    await expect(pool.query("DELETE FROM ack_invoice_services WHERE ack_invoice_id = $1", [a.invoiceId])).rejects.toThrow(/cannot be deleted/);
+    await expect(pool.query("DELETE FROM ack_invoices WHERE id = $1", [a.invoiceId])).rejects.toThrow(/cannot be deleted/);
+  });
+});
+
+describe("acknowledgements recorded per service by the earlier release", () => {
+  it("keeps conflicting confirmed acknowledgements, chooses none, and blocks new work", async () => {
+    const leg = await invoice("INV-LEG");
+    expect(leg).toMatchObject({ status: "PENDING", acknowledgementId: null, serviceCount: 2, reconciliation: ["CONFLICTING_ACKNOWLEDGEMENTS"] });
+    const rows = await pool.query("SELECT status, acknowledged_at, acknowledged_by, ack_invoice_id FROM invoice_acknowledgements WHERE amc_visit_id = ANY($1::bigint[]) ORDER BY id", [[r[2], r[3]]]);
+    expect(rows.rows.map((row) => [row.status, row.acknowledged_at.toISOString(), row.acknowledged_by, row.ack_invoice_id])).toEqual([
+      ["ACKNOWLEDGED", "2026-11-05T09:15:00.000Z", finance.id, leg.invoiceId],
+      ["ACKNOWLEDGED", "2026-11-05T09:15:00.000Z", finance.id, leg.invoiceId],
+    ]);
+    expect((await attach(finance, leg.invoiceId)).status).toBe(409);
+    expect((await logsFor("ack_invoices", leg.invoiceId)).map((log) => log.action)).toContain("invoice_acknowledgement.conflict_flagged");
+    const history = (await api().get(`${BASE}/${leg.invoiceId}/history`).set(admin.headers)).body.data;
+    expect(history.map((entry: { originalName: string }) => entry.originalName).sort()).toEqual(["leg-r3.pdf", "leg-r4.pdf"]);
+  });
+
+  it("lets an authorised user choose the current one, with a reason; the other stays as history", async () => {
+    const leg = await invoice("INV-LEG");
+    const view = (await api().get(`${BASE}/${leg.invoiceId}/reconciliation`).set(administrator.headers)).body.data;
+    expect(view.acknowledgements).toHaveLength(2);
+    const chosen = view.acknowledgements[1].acknowledgementId as string;
+
+    const response = await api().post(`${BASE}/${leg.invoiceId}/choose`).set(administrator.headers).send({ acknowledgementId: chosen, reason: "r4 copy is the signed original" });
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ status: "ACKNOWLEDGED", acknowledgementId: chosen, acknowledgedAt: "2026-11-05T09:15:00.000Z", reconciliation: [], document: { originalName: "leg-r4.pdf" } });
+    expect((await api().get(`${BASE}/${leg.invoiceId}/history`).set(admin.headers)).body.data).toHaveLength(2);
+    expect((await api().post(`${BASE}/${leg.invoiceId}/choose`).set(administrator.headers).send({ acknowledgementId: chosen, reason: "again" })).status).toBe(409);
+  });
+
+  it("adopts a single legacy acknowledgement as the invoice's current one, unchanged", async () => {
+    const ack = await legacyAcknowledgement(r[0]!, "INV-200", { document: "legacy-200.pdf", acknowledged: true });
+    const renewalInvoice = await invoice("INV-200");
+    expect(renewalInvoice).toMatchObject({ status: "ACKNOWLEDGED", acknowledgementId: ack, acknowledgedAt: "2026-11-05T09:15:00.000Z", reconciliation: [] });
+    expect((await logsFor("invoice_acknowledgements", ack)).map((log) => log.action)).toEqual(["invoice_acknowledgement.adopted"]);
   });
 });
 
 describe("database guards", () => {
-  it("refuses a duplicate record, an un-acknowledge, a re-date, a deletion and a confirmation without a document", async () => {
-    const ackId = (await item(v1)).acknowledgementId as string;
-    const user = admin.id;
-
-    await expect(pool.query("INSERT INTO invoice_acknowledgements (amc_visit_id, invoice_number, created_by) VALUES ($1, 'INV-100', $2)", [v1, user])).rejects.toThrow(/invoice_acknowledgements_invoice_uq/);
-    await expect(pool.query("UPDATE invoice_acknowledgements SET status = 'PENDING', acknowledged_at = NULL, acknowledged_by = NULL WHERE id = $1", [ackId])).rejects.toThrow(/cannot be undone/);
-    await expect(pool.query("UPDATE invoice_acknowledgements SET acknowledged_at = now() - interval '1 day' WHERE id = $1", [ackId])).rejects.toThrow(/cannot be undone or re-dated/);
-    await expect(pool.query("UPDATE invoice_acknowledgements SET invoice_number = 'X' WHERE id = $1", [ackId])).rejects.toThrow(/cannot change/);
-    await expect(pool.query("DELETE FROM invoice_acknowledgements WHERE id = $1", [ackId])).rejects.toThrow(/cannot be deleted/);
-    await expect(
-      pool.query("INSERT INTO invoice_acknowledgements (amc_visit_id, invoice_number, status, acknowledged_at, acknowledged_by, created_by) VALUES ($1, 'NEW', 'ACKNOWLEDGED', now(), $2, $2)", [r1, user])
-    ).rejects.toThrow(/starts Pending/);
-
-    const bare = (await pool.query<{ id: string }>("INSERT INTO invoice_acknowledgements (amc_visit_id, invoice_number, created_by) VALUES ($1, 'BARE-1', $2) RETURNING id", [r1, user])).rows[0]!.id;
-    await expect(pool.query("UPDATE invoice_acknowledgements SET status = 'ACKNOWLEDGED', acknowledged_at = now(), acknowledged_by = $2 WHERE id = $1", [bare, user])).rejects.toThrow(/no document/);
-    await pool.query("DELETE FROM invoice_acknowledgements WHERE id = $1", [bare]);
-    // A second current document for one acknowledgement is refused by the partial unique index.
-    await expect(
-      pool.query(
-        `INSERT INTO attachments (entity_type, entity_id, category, title, original_name, mime_type, size_bytes, sha256, storage_key, uploaded_by)
-         VALUES ('invoice_acknowledgements', $1, 'INVOICE_ACKNOWLEDGEMENT', 'x', 'x.pdf', 'application/pdf', 1, repeat('0', 64), gen_random_uuid()::text, $2)`,
-        [ackId, user]
-      )
-    ).rejects.toThrow(/attachments_invoice_ack_uq/);
+  it("keeps one current acknowledgement per invoice and never moves an acknowledgement", async () => {
+    const multi = await invoice("INV-MULTI");
+    const other = await invoice("INV-100");
+    await expect(pool.query("UPDATE ack_invoices SET current_acknowledgement_id = $1 WHERE id = $2", [multi.acknowledgementId, other.invoiceId])).rejects.toThrow(/ack_invoices_current_uq/);
+    await expect(pool.query("UPDATE invoice_acknowledgements SET ack_invoice_id = $1 WHERE id = $2", [other.invoiceId, multi.acknowledgementId])).rejects.toThrow(/cannot be moved/);
+    await expect(pool.query("UPDATE invoice_acknowledgements SET status = 'PENDING', acknowledged_at = NULL, acknowledged_by = NULL WHERE id = $1", [multi.acknowledgementId])).rejects.toThrow(/cannot be undone/);
+    await expect(pool.query("DELETE FROM invoice_acknowledgements WHERE id = $1", [multi.acknowledgementId])).rejects.toThrow(/cannot be deleted/);
   });
 });
 
-describe("replacement, removal before confirmation, failures", () => {
-  it("replaces an acknowledged document only with Edit and a reason, keeping the earlier version", async () => {
-    const before = await item(v1);
-    expect((await replace(editor, v1, null)).status).toBe(400);
-    expect((await replace(editor, v1, "x")).status).toBe(400);
-    expect((await replace(editor, r1, "Wrong scan")).status).toBe(409); // INV-200 is not acknowledged
-
-    const response = await replace(editor, v1, "Clearer scan received from the client", PNG, "stamped copy.png");
-    expect(response.status).toBe(201);
-    expect(response.body.data).toMatchObject({
-      status: "ACKNOWLEDGED",
-      acknowledgedAt: before.acknowledgedAt,
-      acknowledgedBy: before.acknowledgedBy,
-      document: { version: 2, originalName: "stamped copy.png", mimeType: "image/png", uploadedBy: { id: editor.id } },
-    });
-    const history = (await api().get(`${BASE}/${v1}/history`).set(viewOnly.headers)).body.data;
-    expect(history.map((entry: { version: number; isCurrent: boolean; invoiceNumber: string }) => [entry.version, entry.isCurrent, entry.invoiceNumber])).toEqual([
-      [2, true, "INV-100"],
-      [1, false, "INV-100"],
-    ]);
-    const log = (await logsFor("invoice_acknowledgements", before.acknowledgementId)).at(-1)!;
-    expect(log).toMatchObject({ action: "invoice_acknowledgement.document_replaced", user_id: editor.id });
-    expect(log.metadata).toMatchObject({ reason: "Clearer scan received from the client", previousAttachmentId: before.document.attachmentId });
-  });
-
-  it("removes an attached document before confirmation (kept as history) and attaches another", async () => {
-    const first = await attach(acknowledger, r1, TEST_PDF, "first.pdf");
-    expect(first.status).toBe(201);
-    const removed = await api().delete(`${BASE}/${r1}/document`).set(acknowledger.headers);
-    expect(removed.status).toBe(200);
-    expect(removed.body.data).toMatchObject({ status: "PENDING", document: null });
-    expect((await api().delete(`${BASE}/${r1}/document`).set(acknowledger.headers)).status).toBe(404);
-
-    const second = await attach(acknowledger, r1, PNG, "second.png");
-    expect(second.body.data.document).toMatchObject({ version: 2, originalName: "second.png" });
-    const third = await attach(acknowledger, r1, TEST_PDF, "third.pdf");
-    expect(third.body.data.document).toMatchObject({ version: 3, originalName: "third.pdf" });
-    expect(third.body.data.status).toBe("PENDING");
-    const history = (await api().get(`${BASE}/${r1}/history`).set(admin.headers)).body.data;
-    expect(history.map((entry: { originalName: string; isCurrent: boolean }) => [entry.originalName, entry.isCurrent])).toEqual([
-      ["third.pdf", true],
-      ["second.png", false],
-      ["first.pdf", false],
-    ]);
-  });
-
-  it("does not acknowledge when the stored file is missing", async () => {
-    const attached = await item(r1);
-    const key = (await pool.query<{ storage_key: string }>("SELECT storage_key FROM attachments WHERE id = $1", [attached.document.attachmentId])).rows[0]!.storage_key;
-    await storage.remove(key);
-
-    const response = await confirm(acknowledger, r1, attached.document.attachmentId);
-    expect(response.status).toBe(404);
-    expect(response.body.error.code).toBe("FILE_MISSING");
-    expect((await item(r1)).status).toBe("PENDING");
-  });
-
-  it("stores nothing when storage is down", async () => {
-    storage.failPut = true;
-    try {
-      const response = await attach(acknowledger, r1, TEST_PDF, "down.pdf");
-      expect(response.status).toBe(503);
-      expect(response.body.error.code).toBe("STORAGE_ERROR");
-    } finally {
-      storage.failPut = false;
-    }
-    expect((await item(r1)).document.originalName).toBe("third.pdf");
-  });
-
-  it("rolls back and removes the stored file when the database save fails", async () => {
+describe("failures leave nothing behind", () => {
+  it("removes the stored file and records nothing when the database save fails", async () => {
+    const target = await invoice("INV-100");
     await pool.query(`CREATE FUNCTION ack_test_fail() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'simulated failure'; END; $$`);
     await pool.query("CREATE TRIGGER ack_test_fail BEFORE INSERT ON attachments FOR EACH ROW WHEN (NEW.entity_type = 'invoice_acknowledgements') EXECUTE FUNCTION ack_test_fail()");
-    const logsBefore = (await pool.query("SELECT count(*)::int AS n FROM activity_logs")).rows[0].n;
     const putsBefore = storage.puts.length;
     try {
-      const response = await attach(acknowledger, r1, PNG, "fails.png");
+      const response = await attach(finance, target.invoiceId, PNG, "fails.png");
       expect(response.status).toBe(500);
       expect(JSON.stringify(response.body)).not.toContain("simulated failure");
     } finally {
@@ -443,65 +510,69 @@ describe("replacement, removal before confirmation, failures", () => {
     const key = storage.puts[putsBefore]!;
     expect(storage.removes).toContain(key);
     await expect(storage.get(key)).rejects.toThrow();
-    expect((await item(r1)).document.originalName).toBe("third.pdf");
-    expect((await pool.query("SELECT count(*)::int AS n FROM activity_logs")).rows[0].n).toBe(logsBefore);
+    expect(await invoice("INV-100")).toMatchObject({ acknowledgementId: null, document: null });
+  });
+
+  it("stores nothing when storage is down, and does not confirm when the stored file is missing", async () => {
+    const target = await invoice("INV-100");
+    storage.failPut = true;
+    try {
+      const response = await attach(finance, target.invoiceId, TEST_PDF, "down.pdf");
+      expect(response.status).toBe(503);
+    } finally {
+      storage.failPut = false;
+    }
+    const attached = (await attach(finance, target.invoiceId, TEST_PDF, "ok.pdf")).body.data as Item;
+    const key = (await pool.query<{ storage_key: string }>("SELECT storage_key FROM attachments WHERE id = $1", [attached.document!.attachmentId])).rows[0]!.storage_key;
+    await storage.remove(key);
+    const response = await confirm(finance, target.invoiceId, attached.document!.attachmentId);
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("FILE_MISSING");
+    expect((await invoice("INV-100")).status).toBe("PENDING");
+    // Removed before confirmation, then attached again: one document history, never a second acknowledgement.
+    expect((await api().delete(`${BASE}/${target.invoiceId}/document`).set(finance.headers)).status).toBe(200);
+    const again = (await attach(finance, target.invoiceId, TEST_PDF, "again.pdf")).body.data as Item;
+    expect(again).toMatchObject({ acknowledgementId: attached.acknowledgementId, document: { version: 2, originalName: "again.pdf" } });
   });
 });
 
-describe("a corrected Invoice No. is a different invoice", () => {
-  it("starts the new number Pending, keeps the earlier acknowledgement, and finds it again if the number returns", async () => {
-    await setInvoiceNo(v1, "INV-100-B");
-    expect(await item(v1)).toMatchObject({ invoiceNo: "INV-100-B", status: "PENDING", document: null, invoiceDate: null });
-    expect((await pool.query("SELECT invoice_number, status FROM invoice_acknowledgements WHERE amc_visit_id = $1", [v1])).rows).toEqual([{ invoice_number: "INV-100", status: "ACKNOWLEDGED" }]);
-
-    await setInvoiceNo(v1, null);
-    expect((await list(admin)).body.data.items.map((row: { visitId: string }) => row.visitId)).not.toContain(v1);
-
-    await setInvoiceNo(v1, "INV-100");
-    expect(await item(v1)).toMatchObject({ invoiceNo: "INV-100", status: "ACKNOWLEDGED", document: { version: 2 } });
+describe("a corrected Invoice No. is a different invoice; history is kept", () => {
+  it("starts the new number Pending and finds the earlier invoice again if the number returns", async () => {
+    const multi = await invoice("INV-MULTI");
+    await setInvoiceNo(v[1]!, "INV-MULTI-B");
+    expect(await invoice("INV-MULTI")).toMatchObject({ invoiceId: multi.invoiceId, serviceCount: 1, status: "ACKNOWLEDGED" });
+    expect(await invoice("INV-MULTI-B")).toMatchObject({ basis: "SERVICE", status: "PENDING", serviceCount: 1 });
+    await setInvoiceNo(v[1]!, "INV-MULTI");
+    expect(await invoice("INV-MULTI")).toMatchObject({ invoiceId: multi.invoiceId, serviceCount: 2, status: "ACKNOWLEDGED" });
+    expect((await items()).some((row) => row.invoiceNo === "INV-MULTI-B")).toBe(false);
   });
 });
 
 describe("filters, sorting, export", () => {
-  it("filters by status, invoice number, contract, client, search and dates", async () => {
-    const ids = async (query: Record<string, unknown>) => (await list(admin, query)).body.data.items.map((row: { visitId: string }) => row.visitId);
+  it("filters by status, invoice number, client, search and dates", async () => {
+    const numbers = async (query: Record<string, unknown>) => (await items(admin, query)).map((row) => row.invoiceNo).sort();
     const today = businessDateOf();
 
-    expect(await ids({ status: "ACKNOWLEDGED" })).toEqual([v1]);
-    expect(await ids({ status: "PENDING" })).toEqual([r1]);
-    expect(await ids({ invoiceNo: "200" })).toEqual([r1]);
-    expect(await ids({ contractId: renewal })).toEqual([r1]);
-    expect(await ids({ search: "stamped copy" })).toEqual([v1]);
-    expect(await ids({ search: "(V2)" })).toEqual([r1]);
-    expect(await ids({ dateBasis: "ACKNOWLEDGED_DATE", fromDate: today, toDate: today })).toEqual([v1]);
-    expect(await ids({ dateBasis: "INVOICE_DATE", fromDate: "2026-03-01", toDate: "2026-03-31" })).toEqual([v1]);
-    expect(await ids({ dateBasis: "INVOICE_DATE", fromDate: "2027-01-01" })).toEqual([]);
-    expect(await ids({ sort: "invoiceNo", dir: "desc" })).toEqual([r1, v1]);
-    // Default order: the work first (Pending).
-    expect(await ids({})).toEqual([r1, v1]);
-    expect((await list(admin, { fromDate: "2026-05-01", toDate: "2026-04-01" })).status).toBe(400);
-    expect((await list(admin, { fromDate: "2026-02-30" })).status).toBe(400);
-    expect((await list(admin, { status: "PAID" })).status).toBe(400);
+    expect(await numbers({ status: "ACKNOWLEDGED", clientId: clientA })).toEqual(["INV-200", "INV-LEG", "INV-MULTI"]);
+    expect(await numbers({ invoiceNo: "MULTI" })).toEqual(["INV-MULTI"]);
+    expect(await numbers({ clientId: clientB })).toEqual(["INV-100", "INV-SEP", "INV-SEP"]);
+    expect(await numbers({ search: "(V2)" })).toEqual(["INV-200", "INV-DUP", "INV-LEG"]);
+    expect(await numbers({ search: "stamped copy" })).toEqual(["INV-MULTI"]);
+    expect(await numbers({ dateBasis: "ACKNOWLEDGED_DATE", fromDate: today, toDate: today })).toEqual(["INV-MULTI"]);
+    expect(await numbers({ dateBasis: "INVOICE_DATE", fromDate: "2026-09-01", toDate: "2026-09-30" })).toEqual(["INV-MULTI"]);
+    expect((await items(admin, { clientId: clientA, sort: "invoiceNo", dir: "desc" })).map((row) => row.invoiceNo)).toEqual(["INV-MULTI", "INV-LEG", "INV-DUP", "INV-200", "INV-100"]);
+    expect((await api().get(BASE).query({ fromDate: "2026-05-01", toDate: "2026-04-01" }).set(admin.headers)).status).toBe(400);
+    expect((await api().get(BASE).query({ status: "PAID" }).set(admin.headers)).status).toBe(400);
   });
 
-  it("offers the clients and contract periods with invoices", async () => {
+  it("offers clients and contract periods with invoices", async () => {
     const options = (await api().get(`${BASE}/options`).set(viewOnly.headers)).body.data;
-    expect(options.clients).toEqual([{ id: client, name: "Acknowledgement Client" }]);
-    expect(options.contracts.map((contract: { reference: string }) => contract.reference)).toEqual(["STS-AMC-IA1", "STS-AMC-IA1 (V2)"]);
-    expect(options.limits).toEqual({ maxMb: 12, types: "PDF, PNG and JPEG" });
+    expect(options.clients.map((client: { name: string }) => client.name)).toEqual(["Acknowledgement Client", "Other Client"]);
+    expect(options.contracts.map((contract: { reference: string }) => contract.reference)).toEqual(["STS-AMC-IA1", "STS-AMC-IA1 (V2)", "STS-AMC-OTHER"]);
   });
 
   const workbook = async (session: Session, query: Record<string, unknown>) => {
-    const response = await api()
-      .get(`${BASE}/export`)
-      .query({ clientId: client, format: "xlsx", ...query })
-      .set(session.headers)
-      .buffer(true)
-      .parse((res, done) => {
-        const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
-        res.on("end", () => done(null, Buffer.concat(chunks)));
-      });
+    const response = await binary(api().get(`${BASE}/export`).query({ format: "xlsx", ...query }).set(session.headers));
     expect(response.status).toBe(200);
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(response.body as unknown as ExcelJS.Buffer);
@@ -509,39 +580,21 @@ describe("filters, sorting, export", () => {
     return { headers: (sheet.getRow(HEADER_ROW).values as unknown[]).filter(Boolean), sheet };
   };
 
-  it("exports the page's columns, with amounts only for a role that may view Accounts, and logs it", async () => {
-    const full = await workbook(editor, { hidden: "document" });
-    expect(full.headers).toEqual(expect.arrayContaining(["AMC Contract", "Invoice No.", "Service Value (Ex VAT, OMR)", "Zoho Invoice Value (Ex VAT, OMR)", "Acknowledgement Status"]));
+  it("exports one row per invoice, amounts only for Accounts viewers, and logs it", async () => {
+    const full = await workbook(finance, { clientId: clientA, hidden: "document", sort: "invoiceNo" });
+    expect(full.headers).toEqual(expect.arrayContaining(["Invoice No.", "AMC Contract / Version", "Invoice Value (Ex VAT, OMR)", "Linked Services", "Acknowledgement Status"]));
     expect(full.headers).not.toContain("Document");
-    expect(full.sheet.getRow(HEADER_ROW + 1).values).toEqual(expect.arrayContaining(["STS-AMC-IA1 (V2)", "INV-200"]));
+    expect(full.sheet.getRow(HEADER_ROW + 5).values).toEqual(expect.arrayContaining(["INV-MULTI", 2]));
 
     const noAmounts = await workbook(exporterNoAmounts, {});
+    expect(noAmounts.headers).not.toContain("Invoice Value (Ex VAT, OMR)");
     expect(noAmounts.headers).not.toContain("Service Value (Ex VAT, OMR)");
-    expect(noAmounts.headers).not.toContain("Zoho Invoice Value (Ex VAT, OMR)");
-    expect(noAmounts.headers).toContain("Document");
 
     const logs = await pool.query("SELECT user_id, metadata FROM activity_logs WHERE action = 'invoice_acknowledgements.exported' ORDER BY id");
     expect(logs.rows.map((row) => [row.user_id, row.metadata.amountsIncluded])).toEqual([
-      [editor.id, true],
+      [finance.id, true],
       [exporterNoAmounts.id, false],
     ]);
-    expect((await api().get(`${BASE}/export`).query({ format: "xlsx", hidden: "nonsense" }).set(editor.headers)).status).toBe(400);
-  });
-
-  it("exports a PDF", async () => {
-    const response = await api().get(`${BASE}/export`).query({ format: "pdf" }).set(admin.headers);
-    expect(response.status).toBe(200);
-    expect(response.headers["content-type"]).toContain("application/pdf");
-  });
-});
-
-describe("permission catalog and starting grants", () => {
-  it("gives the new module to Super Admin only (0113)", async () => {
-    const holders = await pool.query("SELECT DISTINCT r.code FROM role_permissions p JOIN roles r ON r.id = p.role_id WHERE p.module = 'INVOICE_ACKNOWLEDGEMENTS' AND r.code NOT LIKE 'IA\\_%' ORDER BY r.code");
-    expect(holders.rows.map((row) => row.code)).toEqual(["ADMIN"]);
-    // Roles & Permissions offers it (the catalog travels with the role list).
-    const offered = await api().get("/api/roles").set(admin.headers);
-    expect(offered.status).toBe(200);
-    expect(JSON.stringify(offered.body.data)).toContain("INVOICE_ACKNOWLEDGEMENTS");
+    expect((await api().get(`${BASE}/export`).query({ format: "pdf" }).set(administrator.headers)).status).toBe(200);
   });
 });

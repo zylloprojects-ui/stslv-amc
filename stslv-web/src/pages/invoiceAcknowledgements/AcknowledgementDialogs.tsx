@@ -1,17 +1,27 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { TABLE } from '../../components/table'
 import { Alert, Button, Modal, Spinner } from '../../components/ui'
 import { api, download, errorMessage, saveFile } from '../../lib/api'
 import { formatBusinessDateTime } from '../../lib/businessDate'
+import { formatDate } from '../../lib/format'
+import { formatMoney } from '../../lib/money'
 import {
   ACKNOWLEDGEMENT_NOTE,
+  BASIS_LABELS,
   DOCUMENT_ACCEPT,
   documentFileProblem,
   formatSize,
+  RECONCILIATION_LABELS,
+  serviceLabel,
+  STATUS_LABELS,
   subjectOf,
   type AcknowledgementDocument,
   type AcknowledgementItem,
   type DocumentVersion,
+  type LinkedService,
+  type ReconciliationView,
 } from './invoiceAcknowledgementTypes'
 
 const BASE = '/invoice-acknowledgements'
@@ -35,6 +45,23 @@ function DocumentLine({ document }: { document: AcknowledgementDocument }) {
   )
 }
 
+function InvoiceSummary({ item }: { item: AcknowledgementItem }) {
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+      <dt className="text-slate-500">Invoice No.</dt>
+      <dd className="font-mono font-semibold text-slate-900">{item.invoiceNo}</dd>
+      <dt className="text-slate-500">Client</dt>
+      <dd className="font-medium text-slate-900">{item.client.name}</dd>
+      <dt className="text-slate-500">AMC Contract</dt>
+      <dd className="font-mono font-semibold text-[#0b3b66]">{item.contracts.map((contract) => contract.reference).join(', ')}</dd>
+      <dt className="text-slate-500">Services</dt>
+      <dd className="text-slate-900">
+        {item.serviceCount} {item.serviceCount === 1 ? 'service' : 'services'} on this invoice: one acknowledgement covers them all
+      </dd>
+    </dl>
+  )
+}
+
 interface AttachDialogProps {
   item: AcknowledgementItem
   maxMb: number
@@ -55,7 +82,7 @@ export function AttachAcknowledgementDialog({ item, maxMb, onSaved, onConfirmed,
   const [choosing, setChoosing] = useState<string | null>(null)
 
   const upload = useMutation({
-    mutationFn: (file: File) => api.upload<AcknowledgementItem>(`${BASE}/${item.visitId}/document`, file),
+    mutationFn: (file: File) => api.upload<AcknowledgementItem>(`${BASE}/${item.invoiceId}/document`, file),
     onSuccess: (saved) => {
       setChoosing(null)
       setCurrent(saved)
@@ -67,7 +94,7 @@ export function AttachAcknowledgementDialog({ item, maxMb, onSaved, onConfirmed,
     },
   })
   const remove = useMutation({
-    mutationFn: () => api.delete<AcknowledgementItem>(`${BASE}/${item.visitId}/document`),
+    mutationFn: () => api.delete<AcknowledgementItem>(`${BASE}/${item.invoiceId}/document`),
     onSuccess: (saved) => {
       setCurrent(saved)
       onSaved(saved)
@@ -75,7 +102,7 @@ export function AttachAcknowledgementDialog({ item, maxMb, onSaved, onConfirmed,
     onError: (error) => setProblem(errorMessage(error)),
   })
   const confirm = useMutation({
-    mutationFn: (attachmentId: string) => api.post<AcknowledgementItem>(`${BASE}/${item.visitId}/confirm`, { attachmentId }),
+    mutationFn: (attachmentId: string) => api.post<AcknowledgementItem>(`${BASE}/${item.invoiceId}/confirm`, { attachmentId }),
     onSuccess: (saved) => onConfirmed(saved),
     onError: (error) => setProblem(errorMessage(error)),
   })
@@ -114,14 +141,7 @@ export function AttachAcknowledgementDialog({ item, maxMb, onSaved, onConfirmed,
       }
     >
       <div className="space-y-4">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
-          <dt className="text-slate-500">Client</dt>
-          <dd className="font-medium text-slate-900">{item.client.name}</dd>
-          <dt className="text-slate-500">AMC Contract</dt>
-          <dd className="font-mono font-semibold text-[#0b3b66]">{item.reference}</dd>
-          <dt className="text-slate-500">Invoice No.</dt>
-          <dd className="font-mono font-semibold text-slate-900">{item.invoiceNo}</dd>
-        </dl>
+        <InvoiceSummary item={item} />
 
         <input
           ref={input}
@@ -133,7 +153,6 @@ export function AttachAcknowledgementDialog({ item, maxMb, onSaved, onConfirmed,
           data-testid="acknowledgement-file"
           onChange={(event) => {
             onFile(event.target.files?.[0])
-            // The same file can be chosen again after an error.
             event.target.value = ''
           }}
         />
@@ -186,7 +205,7 @@ export function ReplaceDocumentDialog({ item, maxMb, onReplaced, onClose }: Repl
   const [reason, setReason] = useState('')
   const [problem, setProblem] = useState<string | null>(null)
   const replace = useMutation({
-    mutationFn: () => api.upload<AcknowledgementItem>(`${BASE}/${item.visitId}/replace`, file as File, { 'X-Replace-Reason': encodeURIComponent(reason.trim()) }),
+    mutationFn: () => api.upload<AcknowledgementItem>(`${BASE}/${item.invoiceId}/replace`, file as File, { 'X-Replace-Reason': encodeURIComponent(reason.trim()) }),
     onSuccess: onReplaced,
     onError: (error) => setProblem(errorMessage(error)),
   })
@@ -239,26 +258,32 @@ export function ReplaceDocumentDialog({ item, maxMb, onReplaced, onClose }: Repl
           </Button>
           <span className="break-all text-sm text-slate-700">{file ? `${file.name} (${formatSize(file.size)})` : 'No file chosen'}</span>
         </div>
-        <div>
-          <label htmlFor="replace-reason" className="block text-sm font-medium text-slate-700">
-            Reason for replacing <span className="text-red-600">*</span>
-          </label>
-          <textarea
-            id="replace-reason"
-            rows={3}
-            maxLength={500}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-            className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm"
-            aria-describedby="replace-reason-hint"
-          />
-          <p id="replace-reason-hint" className="mt-1 text-xs text-slate-500">
-            At least 3 characters. Kept with the change.
-          </p>
-        </div>
+        <ReasonField id="replace-reason" label="Reason for replacing" value={reason} onChange={setReason} />
         {problem && <Alert>{problem}</Alert>}
       </div>
     </Modal>
+  )
+}
+
+function ReasonField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <div>
+      <label htmlFor={id} className="block text-sm font-medium text-slate-700">
+        {label} <span className="text-red-600">*</span>
+      </label>
+      <textarea
+        id={id}
+        rows={3}
+        maxLength={500}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm"
+        aria-describedby={`${id}-hint`}
+      />
+      <p id={`${id}-hint`} className="mt-1 text-xs text-slate-500">
+        At least 3 characters. Kept in the Audit Log.
+      </p>
+    </div>
   )
 }
 
@@ -267,21 +292,21 @@ const isBrowserViewable = (mimeType: string) => mimeType === 'application/pdf' |
 /**
  * The read-only document viewer. The file is fetched through the API with the signed-in user's token (the API checks
  * View) and shown from a blob: address that exists only in this tab; Download is inside the viewer. No storage path
- * or public link reaches the browser. The document history (versions) is listed under it.
+ * or public link reaches the browser. The document history lists every version, each downloadable, of this invoice only.
  */
 export function AcknowledgementViewer({ item, onClose }: { item: AcknowledgementItem; onClose: () => void }) {
   const document = item.document as AcknowledgementDocument
   const subject = subjectOf(item)
   const file = useQuery({
-    queryKey: ['invoice-acknowledgements', 'document', item.visitId, document.attachmentId],
-    queryFn: () => download(`${BASE}/${item.visitId}/document`),
+    queryKey: ['invoice-acknowledgements', 'document', item.invoiceId, document.attachmentId],
+    queryFn: () => download(`${BASE}/${item.invoiceId}/document`),
     gcTime: 0,
     staleTime: 0,
     retry: false,
   })
   const history = useQuery({
-    queryKey: ['invoice-acknowledgements', 'history', item.visitId, document.attachmentId],
-    queryFn: () => api.get<DocumentVersion[]>(`${BASE}/${item.visitId}/history`),
+    queryKey: ['invoice-acknowledgements', 'history', item.invoiceId, document.attachmentId],
+    queryFn: () => api.get<DocumentVersion[]>(`${BASE}/${item.invoiceId}/history`),
   })
   const [saveError, setSaveError] = useState<string | null>(null)
   const viewable = isBrowserViewable(document.mimeType)
@@ -299,6 +324,14 @@ export function AcknowledgementViewer({ item, onClose }: { item: Acknowledgement
     if (!file.data) return
     try {
       saveFile({ blob: file.data.blob, filename: document.originalName }, document.originalName)
+    } catch (error) {
+      setSaveError(errorMessage(error))
+    }
+  }
+  const saveVersion = async (version: DocumentVersion) => {
+    setSaveError(null)
+    try {
+      saveFile(await download(`${BASE}/${item.invoiceId}/documents/${version.attachmentId}`), version.originalName)
     } catch (error) {
       setSaveError(errorMessage(error))
     }
@@ -337,19 +370,172 @@ export function AcknowledgementViewer({ item, onClose }: { item: Acknowledgement
             <h3 className="text-sm font-semibold text-slate-700">Document history</h3>
             <ul className="mt-1 divide-y divide-slate-100 text-xs text-slate-600">
               {history.data.map((version) => (
-                <li key={version.attachmentId} className="flex flex-wrap justify-between gap-2 py-1.5">
+                <li key={version.attachmentId} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
                   <span className="break-all">
-                    Invoice {version.invoiceNumber} · v{version.version} · {version.originalName}
-                    {version.isCurrent && <span className="ml-1 font-semibold text-emerald-700">(current)</span>}
+                    v{version.version} · {version.originalName} · {STATUS_LABELS[version.acknowledgementStatus]}
+                    {version.isCurrent && version.ofCurrentAcknowledgement && <span className="ml-1 font-semibold text-emerald-700">(current)</span>}
+                    {!version.ofCurrentAcknowledgement && <span className="ml-1 text-slate-500">(earlier acknowledgement)</span>}
                   </span>
-                  <span>
+                  <span className="flex items-center gap-2">
                     {version.uploadedBy.fullName}, {formatBusinessDateTime(version.uploadedAt)}
+                    <button type="button" className="font-medium text-[#1479BD] hover:underline" onClick={() => void saveVersion(version)} aria-label={`Download version ${version.version}: ${version.originalName}`}>
+                      Download
+                    </button>
                   </span>
                 </li>
               ))}
             </ul>
           </section>
         )}
+      </div>
+    </Modal>
+  )
+}
+
+/** Linked Services: the services one invoice covers (read only). Values only for users who may view Accounts. */
+export function LinkedServicesDialog({ item, canViewContract, onClose }: { item: AcknowledgementItem; canViewContract: boolean; onClose: () => void }) {
+  const services = useQuery({ queryKey: ['invoice-acknowledgements', 'services', item.invoiceId], queryFn: () => api.get<LinkedService[]>(`${BASE}/${item.invoiceId}/services`) })
+
+  return (
+    <Modal
+      title={`Linked Services · ${subjectOf(item)}`}
+      size="lg"
+      onClose={onClose}
+      footer={
+        <Button variant="secondary" onClick={onClose}>
+          Close
+        </Button>
+      }
+    >
+      <p className="mb-3 text-sm text-slate-600">
+        {item.basis === 'ZOHO' ? 'Identified by its Invoice Tracking record.' : 'Identified by the Invoice No. entered on Accounts.'} One acknowledgement covers every service listed.
+      </p>
+      {services.isPending && <Spinner label="Loading linked services" />}
+      {services.isError && <Alert>{errorMessage(services.error)}</Alert>}
+      {services.data && (
+        <div className={TABLE.wrapper}>
+          <table className={TABLE.table}>
+            <caption className="sr-only">Linked services</caption>
+            <thead>
+              <tr>
+                <th scope="col" className={TABLE.th}>AMC Contract</th>
+                <th scope="col" className={TABLE.th}>Service</th>
+                <th scope="col" className={TABLE.th}>Completed</th>
+                <th scope="col" className={TABLE.th}>Service Report No.</th>
+                {item.amountsVisible && <th scope="col" className={`${TABLE.th} text-right`}>Value (Ex VAT, OMR)</th>}
+                <th scope="col" className={TABLE.th}>Linked by</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {services.data.map((service) => (
+                <tr key={service.visitId} data-visit={service.visitId}>
+                  <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
+                    {canViewContract ? <Link to={`/amc/contracts/${service.contract.id}`} className="hover:underline">{service.contract.reference}</Link> : service.contract.reference}
+                  </td>
+                  <td className={`${TABLE.td} whitespace-nowrap`}>{serviceLabel(service.service)}</td>
+                  <td className={`${TABLE.td} whitespace-nowrap`}>{formatDate(service.completedDate)}</td>
+                  <td className={`${TABLE.td} whitespace-nowrap font-mono`}>{service.serviceReportNo ?? '—'}</td>
+                  {item.amountsVisible && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{service.serviceValue ? formatMoney(service.serviceValue) : '—'}</td>}
+                  <td className={`${TABLE.td} text-xs text-slate-600`}>{BASIS_LABELS[service.basis]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+/**
+ * Reconcile (Edit permission): what the system will not decide on its own. Equal Invoice Nos. of one client: link them
+ * as ONE invoice, or confirm they are separate. Conflicting acknowledgements: choose the current one. Every choice
+ * needs a reason and goes to the Audit Log; nothing is deleted.
+ */
+export function ReconcileDialog({ item, onDone, onClose }: { item: AcknowledgementItem; onDone: (message: string) => void; onClose: () => void }) {
+  const view = useQuery({ queryKey: ['invoice-acknowledgements', 'reconciliation', item.invoiceId], queryFn: () => api.get<ReconciliationView>(`${BASE}/${item.invoiceId}/reconciliation`) })
+  const [reason, setReason] = useState('')
+  const [problem, setProblem] = useState<string | null>(null)
+  const act = useMutation({
+    mutationFn: ({ path, body }: { path: string; body: Record<string, string>; message: string }) => api.post<AcknowledgementItem>(`${BASE}/${item.invoiceId}/${path}`, { ...body, reason: reason.trim() }),
+    onSuccess: (_saved, variables) => onDone(variables.message),
+    onError: (error) => setProblem(errorMessage(error)),
+  })
+  const reasonOk = reason.trim().length >= 3
+
+  return (
+    <Modal
+      title={`Reconcile · ${subjectOf(item)}`}
+      size="lg"
+      onClose={act.isPending ? () => undefined : onClose}
+      footer={
+        <Button variant="secondary" onClick={onClose} disabled={act.isPending}>
+          Cancel
+        </Button>
+      }
+    >
+      <div className="space-y-4">
+        <InvoiceSummary item={item} />
+        <ul className="list-disc space-y-1 pl-5 text-sm text-amber-800">
+          {item.reconciliation.map((reasonCode) => (
+            <li key={reasonCode}>{RECONCILIATION_LABELS[reasonCode]}</li>
+          ))}
+        </ul>
+        <ReasonField id="reconcile-reason" label="Reason" value={reason} onChange={setReason} />
+        {view.isPending && <Spinner label="Loading" />}
+        {view.isError && <Alert>{errorMessage(view.error)}</Alert>}
+
+        {view.data && view.data.sameNumber.length > 0 && (
+          <section aria-label="Invoices with the same number" className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-800">Invoices of this client with the same Invoice No.</h3>
+            <ul className="space-y-2">
+              {view.data.sameNumber.map((other) => (
+                <li key={other.invoiceId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <span>
+                    {other.contracts.join(', ')} · {other.serviceCount} {other.serviceCount === 1 ? 'service' : 'services'} · {STATUS_LABELS[other.status]}
+                    {other.hasDocument && ' · document attached'} · {other.basis === 'ZOHO' ? 'Invoice Tracking record' : 'Invoice No. only'}
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={!reasonOk || act.isPending}
+                    onClick={() => act.mutate({ path: 'link', body: { otherInvoiceId: other.invoiceId }, message: `Invoice ${item.invoiceNo}: the services were linked as one invoice.` })}
+                  >
+                    Link as one invoice
+                  </Button>
+                </li>
+              ))}
+            </ul>
+            <Button variant="secondary" disabled={!reasonOk || act.isPending} onClick={() => act.mutate({ path: 'separate', body: {}, message: `Invoices numbered ${item.invoiceNo} were confirmed as separate invoices.` })}>
+              They are separate invoices
+            </Button>
+          </section>
+        )}
+
+        {view.data && view.data.acknowledgements.length > 0 && (
+          <section aria-label="Conflicting acknowledgements" className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-800">Acknowledgements of this invoice — choose the current one</h3>
+            <ul className="space-y-2">
+              {view.data.acknowledgements.map((ack) => (
+                <li key={ack.acknowledgementId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                  <span>
+                    {ack.documentName ?? 'No document'} · {STATUS_LABELS[ack.status]}
+                    {ack.acknowledgedAt && ` ${formatBusinessDateTime(ack.acknowledgedAt)} by ${ack.acknowledgedBy ?? '—'}`}
+                    {ack.legacyVisitId && ' · recorded per service by the earlier release'}
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={!reasonOk || act.isPending}
+                    onClick={() => act.mutate({ path: 'choose', body: { acknowledgementId: ack.acknowledgementId }, message: `Invoice ${item.invoiceNo}: the current acknowledgement was chosen. The others are kept as history.` })}
+                  >
+                    Make current
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {problem && <Alert>{problem}</Alert>}
       </div>
     </Modal>
   )

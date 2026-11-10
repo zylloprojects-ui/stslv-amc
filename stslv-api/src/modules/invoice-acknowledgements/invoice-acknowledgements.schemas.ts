@@ -6,25 +6,30 @@ import { idSchema } from "../../shared/validation";
 export const ACKNOWLEDGEMENT_STATUSES = ["PENDING", "ACKNOWLEDGED"] as const;
 export type AcknowledgementStatus = (typeof ACKNOWLEDGEMENT_STATUSES)[number];
 
+/** Why an invoice waits for an authorised user (reconciliation). Never decided automatically. */
+export const RECONCILIATION_REASONS = ["SAME_NUMBER", "CONFLICTING_ACKNOWLEDGEMENTS"] as const;
+export type ReconciliationReason = (typeof RECONCILIATION_REASONS)[number];
+
 /**
- * Which date the date range filters. INVOICE_DATE is the date of the Zoho invoice in Invoice Tracking with the same
- * number (only where one exists: a manual Invoice No. carries no date); ACKNOWLEDGED_DATE is the Oman date of confirmation.
+ * Which date the date range filters. INVOICE_DATE is the date of the Invoice Tracking record of the invoice (only
+ * where one exists: a manual Invoice No. carries no date); ACKNOWLEDGED_DATE is the Oman date of confirmation.
  */
 export const ACKNOWLEDGEMENT_DATE_BASES = ["INVOICE_DATE", "ACKNOWLEDGED_DATE"] as const;
 
 /** The columns the list may be sorted by. Amounts are not offered: a role may be shown none. */
-export const ACKNOWLEDGEMENT_SORTS = ["reference", "client", "invoiceNo", "invoiceDate", "status", "acknowledgedAt"] as const;
+export const ACKNOWLEDGEMENT_SORTS = ["invoiceNo", "client", "contract", "invoiceDate", "status", "acknowledgedAt"] as const;
 export type AcknowledgementSort = (typeof ACKNOWLEDGEMENT_SORTS)[number];
 
-/** The columns a user may hide. AMC Contract, Invoice No., Acknowledgement Status and the actions always stay. */
+/** The columns a user may hide. Invoice No., Acknowledgement Status and the actions always stay. */
 export const ACKNOWLEDGEMENT_HIDEABLE_COLUMNS = [
   "client",
-  "service",
-  "serviceReportNo",
+  "contract",
   "invoiceDate",
-  "serviceValue",
   "invoiceValue",
+  "serviceValue",
+  "services",
   "acknowledgedAt",
+  "acknowledgedBy",
   "uploadedBy",
   "document",
 ] as const;
@@ -38,12 +43,13 @@ const dateSchema = z
   .refine((value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) && new Date(`${value}T00:00:00Z`).toISOString().startsWith(value), "Enter a real date.");
 
 const filtersShape = z.object({
-  // AMC contract number, client, invoice number, service report number or document name.
+  // Invoice number, client, contract number, service report number or document name.
   search: z.string().trim().max(200).optional(),
   clientId: idSchema.optional(),
   contractId: idSchema.optional(),
   invoiceNo: z.string().trim().max(50).optional(),
   status: z.enum(ACKNOWLEDGEMENT_STATUSES, { error: "Select Pending or Acknowledged." }).optional(),
+  reconciliation: z.enum(["NEEDED"], { error: "Unknown reconciliation filter." }).optional(),
   dateBasis: z.enum(ACKNOWLEDGEMENT_DATE_BASES, { error: "Select Invoice Date or Acknowledged Date." }).default("INVOICE_DATE"),
   fromDate: dateSchema.optional(),
   toDate: dateSchema.optional(),
@@ -97,6 +103,21 @@ export const replaceReasonSchema = z
   .trim()
   .min(REPLACE_REASON_MIN, `Give the reason for replacing the acknowledgement document (at least ${REPLACE_REASON_MIN} characters).`)
   .max(REPLACE_REASON_MAX, `The reason has at most ${REPLACE_REASON_MAX} characters.`);
+
+const reasonSchema = z
+  .string({ error: "Give the reason." })
+  .trim()
+  .min(REPLACE_REASON_MIN, `Give the reason (at least ${REPLACE_REASON_MIN} characters).`)
+  .max(REPLACE_REASON_MAX, `The reason has at most ${REPLACE_REASON_MAX} characters.`);
+
+/** Reconciliation: the services of `otherInvoiceId` are the same invoice as this one. */
+export const linkInvoicesSchema = z.strictObject({ otherInvoiceId: idSchema, reason: reasonSchema });
+
+/** Reconciliation: invoices of this client with this number are separate invoices. */
+export const confirmSeparateSchema = z.strictObject({ reason: reasonSchema });
+
+/** Reconciliation: this acknowledgement is the current one of the invoice. */
+export const chooseAcknowledgementSchema = z.strictObject({ acknowledgementId: idSchema, reason: reasonSchema });
 
 export type ListAcknowledgementsQuery = z.infer<typeof listAcknowledgementsSchema>;
 export type ExportAcknowledgementsQuery = z.infer<typeof exportAcknowledgementsSchema>;

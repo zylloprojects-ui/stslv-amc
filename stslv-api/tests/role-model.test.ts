@@ -68,7 +68,13 @@ describe("migration 0087: the six roles", () => {
   });
 
   it("replaces the Executive roles' cross-section View with data-only Read (0090)", async () => {
-    expect(await grantsOf("FINANCE_EXECUTIVE")).toEqual(["ACCOUNTS:EXPORT", "ACCOUNTS:VIEW", "AMC_SCHEDULE:READ", "DASHBOARD:VIEW", "INVOICES:CREATE", "INVOICES:EDIT", "INVOICES:EXPORT", "INVOICES:VIEW", "SUGGESTIONS:CREATE", "SUGGESTIONS:VIEW"]);
+    // Plus the approved Invoice Acknowledgements defaults (0115, 2026-11-10): View, Create, Export.
+    expect(await grantsOf("FINANCE_EXECUTIVE")).toEqual([
+      "ACCOUNTS:EXPORT", "ACCOUNTS:VIEW", "AMC_SCHEDULE:READ", "DASHBOARD:VIEW",
+      "INVOICES:CREATE", "INVOICES:EDIT", "INVOICES:EXPORT", "INVOICES:VIEW",
+      "INVOICE_ACKNOWLEDGEMENTS:CREATE", "INVOICE_ACKNOWLEDGEMENTS:EXPORT", "INVOICE_ACKNOWLEDGEMENTS:VIEW",
+      "SUGGESTIONS:CREATE", "SUGGESTIONS:VIEW",
+    ]);
     const operations = await grantsOf("AMC_OPERATIONS_EXECUTIVE");
     expect(operations).toEqual(expect.arrayContaining(["CLIENTS:READ", "INVOICES:READ"]));
     expect(operations).not.toContain("CLIENTS:VIEW");

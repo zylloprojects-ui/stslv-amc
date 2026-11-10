@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import type { PoolClient } from "pg";
 import { pool } from "../../config/database";
 import { env } from "../../config/env";
 import { logActivity } from "../../shared/activity-log";
@@ -11,35 +12,44 @@ import { hasStoredReference, referenceSql, versionSql } from "../amc/contract-re
 import { IN_SCOPE } from "../amc/service-status.service";
 import type { AuthContext } from "../auth/access";
 import { cleanFileName, discardStoredFile, putStoredFile, readStoredFile, recogniseFile, type FileKind } from "../attachments/attachments.service";
-import type { AcknowledgementFilters, AcknowledgementSort, AcknowledgementStatus, ListAcknowledgementsQuery } from "./invoice-acknowledgements.schemas";
+import type { AcknowledgementFilters, AcknowledgementSort, AcknowledgementStatus, ListAcknowledgementsQuery, ReconciliationReason } from "./invoice-acknowledgements.schemas";
+import { FAMILY_SQL, settleCurrent, SUBSTANTIVE_SQL, syncInvoices } from "./invoice-sync";
 
-// Invoice Acknowledgements (migration 0112): the client's acknowledgement document for an invoice.
+// Invoice Acknowledgements (migrations 0112, 0114): ONE acknowledgement per actual invoice, which may cover several
+// services. The invoice identity is ack_invoices (see invoice-sync.ts): an Invoice Tracking record when one verifies
+// the services, otherwise one service's Invoice No.; more services join it only through an authorised, reasoned
+// reconciliation. Services are Accounts' own rows (same scope); an invoice is listed while at least one of its
+// services still carries its Invoice No.
 //
-// The invoice is the one Accounts shows: a scheduled service (visit) in Accounts' scope with a manual Invoice No.
-// There is no standalone invoice table for AMC billing, so an invoice is identified by the visit id AND its Invoice No.
-// (never by the number alone, which is not unique). The list reads exactly Accounts' rows (same scope, same contract
-// period and renewal version label, same Zoho invoice values) and adds the acknowledgement state.
-//
-// Workflow (like the Service Report on Service Status): Attach stores the document in private storage at once and
-// records it against a Pending acknowledgement; OK / Confirm turns it Acknowledged. Only the confirmation makes the
-// status green. Once Acknowledged, the document can be replaced only with Edit and a reason; every version is kept.
-// Nothing here changes a visit, an Invoice No., the Paid reference status, an amount or an invoice.
+// Workflow: Attach stores the document in private storage and records it against the invoice's Pending
+// acknowledgement; OK / Confirm turns it Acknowledged. Only the confirmation makes the status green. Once
+// Acknowledged, the document can be replaced only with Edit and a reason; every version is kept. An invoice that needs
+// reconciliation (equal numbers, or conflicting acknowledgements) takes no new acknowledgement until it is reconciled.
+// Nothing here changes a visit, an Invoice No., the Paid reference status, an amount or an Invoice Tracking record.
 
 const ENTITY_TYPE = "invoice_acknowledgements";
 const CATEGORY = "INVOICE_ACKNOWLEDGEMENT";
 const LOG_MODULE = "INVOICE_ACKNOWLEDGEMENTS";
 
-/** Scanned or signed acknowledgements: recognised by content (never by name or the browser's type alone). */
 const DOCUMENT_KINDS: readonly FileKind[] = ["PDF", "PNG", "JPEG"];
 export const ACKNOWLEDGEMENT_TYPES_TEXT = "PDF, PNG and JPEG";
 
-/** Shown wherever Acknowledged appears, so nobody reads it as a payment. */
 export const ACKNOWLEDGEMENT_NOTE =
   "Acknowledged means the client's acknowledgement document for this invoice is on file and was confirmed. It is not payment: it does not change the Invoice No., the Paid / Unpaid reference status or any amount.";
 
-/** Whether this database can hold acknowledgements (migrations 0112 and 0113). */
+/** Whether this database can hold invoice-level acknowledgements (migrations 0112 to 0115). */
 export function acknowledgementsAvailable(): Promise<boolean> {
-  return schemaHas(["invoice_acknowledgements", "attachments_invoice_ack_uq"]);
+  return schemaHas(["invoice_acknowledgements", "attachments_invoice_ack_uq", "ack_invoices", "ack_invoice_services"]);
+}
+
+function unavailable(): AppError {
+  return new AppError(503, "FEATURE_UNAVAILABLE", "Invoice Acknowledgements need a database update (migrations 0112 to 0115) that has not been applied yet.");
+}
+
+/** Checks availability and brings the invoice identities up to date. Every route starts here. */
+async function ready(): Promise<void> {
+  if (!(await acknowledgementsAvailable())) throw unavailable();
+  await syncInvoices();
 }
 
 const fileError = (message: string) => validationError(message, [{ field: "document", message }]);
@@ -81,59 +91,53 @@ export interface AcknowledgementDocument {
 }
 
 export interface AcknowledgementItem {
-  /** The scheduled service whose Invoice No. this is: with invoiceNo, the invoice's identity. */
-  visitId: string;
-  acknowledgementId: string | null;
-  /** Contract number with its version from the second version on, as on Accounts ("STS-AMC-001 (V2)"). */
-  reference: string;
-  contract: { id: string; version: number };
-  client: { id: string; name: string };
-  system: { description: string; typeName: string | null };
-  service: { sequenceNo: number; cycleNo: number | null; serviceCode: string | null };
-  scheduledDate: string;
-  completedDate: string | null;
-  serviceReportNo: string | null;
-  /** The manual Invoice No. on the service, as entered on Accounts. */
+  /** The invoice identity (ack_invoices.id): the key of every action. */
+  invoiceId: string;
+  /** ZOHO: an Invoice Tracking record verifies it; SERVICE: a service's Invoice No. (and any services linked to it). */
+  basis: "ZOHO" | "SERVICE";
   invoiceNo: string;
-  /** When the Invoice No. was entered (not the invoice date). */
-  invoiceEnteredAt: string | null;
-  /** Date of the active Zoho invoice in Invoice Tracking with the same number covering this service; null when none. Never invented. */
+  client: { id: string; name: string };
+  /** Contract periods of its services, as Accounts labels them ("STS-AMC-001 (V2)"). Usually one. */
+  contracts: { id: string; reference: string; version: number }[];
+  /** Services currently linked (carrying this Invoice No.). */
+  serviceCount: number;
+  serviceReportNos: string[];
+  /** Date of the Invoice Tracking record; null when none. Never invented. */
   invoiceDate: string | null;
-  /** Whether the amounts below were sent: only to a role that may view Accounts, the source of these values. */
+  /** The Invoice Tracking record was cancelled after the invoice was identified: shown, not counted. */
+  zohoCancelled: boolean;
+  /** When the Invoice No. was first entered on one of its services (not the invoice date). */
+  invoiceEnteredAt: string | null;
   amountsVisible: boolean;
-  /** The service's scheduled value (amc_visits.visit_amount), OMR excluding VAT; null when not set or not visible. */
-  serviceValue: string | null;
-  /** Active Zoho invoice amounts allocated to the service (Invoice Tracking), as Accounts shows; null when none or not visible. */
+  /** Invoice Tracking amount excluding VAT, counted once per invoice; null when none, cancelled, or not visible. */
   invoiceValue: string | null;
+  /** Sum of the linked services' scheduled values (OMR excl. VAT); null when not visible or none set. */
+  serviceValue: string | null;
   status: AcknowledgementStatus;
-  /** The current document: attached and awaiting confirmation (Pending), or the confirmed one (Acknowledged). */
+  acknowledgementId: string | null;
   document: AcknowledgementDocument | null;
   acknowledgedAt: string | null;
   acknowledgedBy: { id: string; fullName: string } | null;
+  /** Why the invoice waits for an authorised user. Empty when it does not. */
+  reconciliation: ReconciliationReason[];
 }
 
 interface Row {
-  visit_id: string;
-  acknowledgement_id: string | null;
-  reference: string;
-  contract_id: string;
-  contract_version: number;
+  invoice_id: string;
+  basis: "ZOHO" | "SERVICE";
+  invoice_no: string;
   client_id: string;
   client_name: string;
-  system_description: string;
-  system_type_name: string | null;
-  sequence_no: number;
-  cycle_no: number | null;
-  service_code: string | null;
-  scheduled_date: string;
-  completed_date: string | null;
-  service_report_no: string | null;
-  invoice_no: string;
-  invoice_entered_at: Date | null;
+  contracts: { id: string; reference: string; version: number }[];
+  service_count: number;
+  report_nos: string[];
   invoice_date: string | null;
-  service_value: string | null;
+  zoho_cancelled: boolean;
+  entered_at: Date | null;
   invoice_value: string | null;
+  service_value: string | null;
   status: AcknowledgementStatus;
+  acknowledgement_id: string | null;
   acknowledged_at: Date | null;
   acknowledged_by: string | null;
   acknowledged_by_name: string | null;
@@ -145,65 +149,77 @@ interface Row {
   document_uploaded_by: string | null;
   document_uploaded_by_name: string | null;
   document_uploaded_at: Date | null;
+  same_number: boolean;
+  ack_conflict: boolean;
 }
 
 const STATUS_SQL = "(CASE WHEN ack.status = 'ACKNOWLEDGED' THEN 'ACKNOWLEDGED' ELSE 'PENDING' END)";
 
 /**
- * Accounts' own rows (same FROM and scope: service-status IN_SCOPE), limited to services with an Invoice No., plus
- * the acknowledgement of exactly that Invoice No. Zoho invoices are read as Accounts reads them: cancelled ones never count.
+ * The invoices with at least one active service (in Accounts' scope and still carrying the Invoice No.), aggregated
+ * once per invoice, so an invoice's values are never repeated per service.
  */
-const FROM = `
-  FROM amc_visits v
-  JOIN amc_contracts c ON c.id = v.amc_contract_id
-  JOIN clients cl ON cl.id = c.client_id
-  LEFT JOIN system_types st ON st.id = c.system_type_id
-  LEFT JOIN invoice_acknowledgements ack ON ack.amc_visit_id = v.id AND ack.invoice_number = v.manual_invoice_no
+const baseSql = (storedReference: boolean) => `
+  WITH svc AS (
+    SELECT s.ack_invoice_id, v.id AS visit_id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS reference, ${versionSql("c")} AS version,
+           v.visit_amount, v.service_report_no, v.manual_invoice_at
+    FROM ack_invoice_services s
+    JOIN amc_visits v ON v.id = s.amc_visit_id AND v.manual_invoice_no = s.invoice_number
+    JOIN amc_contracts c ON c.id = v.amc_contract_id
+    WHERE ${IN_SCOPE}
+  ),
+  agg AS (
+    SELECT ack_invoice_id, count(*)::int AS service_count,
+           jsonb_agg(DISTINCT jsonb_build_object('id', contract_id::text, 'reference', reference, 'version', version)) AS contracts,
+           min(lower(reference)) AS first_reference,
+           COALESCE(array_agg(DISTINCT service_report_no) FILTER (WHERE service_report_no IS NOT NULL), '{}') AS report_nos,
+           sum(visit_amount)::numeric(16,3) AS service_value, min(manual_invoice_at) AS entered_at
+    FROM svc GROUP BY ack_invoice_id
+  )
+  SELECT ai.id AS invoice_id, ai.basis, ai.invoice_number AS invoice_no, cl.id AS client_id, cl.name AS client_name,
+         agg.contracts, agg.service_count, agg.report_nos, agg.first_reference,
+         z.invoice_date::text AS invoice_date, COALESCE(z.status = 'CANCELLED', false) AS zoho_cancelled, agg.entered_at,
+         (CASE WHEN z.status = 'ISSUED' THEN z.amount_excl_vat END)::numeric(16,3)::text AS invoice_value, agg.service_value::text AS service_value,
+         ${STATUS_SQL} AS status, ack.id AS acknowledgement_id, ack.acknowledged_at, ack.acknowledged_by, ab.full_name AS acknowledged_by_name,
+         doc.id AS document_id, doc.version AS document_version, doc.original_name AS document_name, doc.mime_type AS document_mime,
+         doc.size_bytes::int AS document_size, doc.uploaded_by AS document_uploaded_by, du.full_name AS document_uploaded_by_name,
+         doc.uploaded_at AS document_uploaded_at,
+         (NOT ai.confirmed_separate AND EXISTS (
+            SELECT 1 FROM ack_invoices o JOIN agg oa ON oa.ack_invoice_id = o.id
+            WHERE o.id <> ai.id AND o.merged_into_id IS NULL AND o.client_id = ai.client_id AND lower(o.invoice_number) = lower(ai.invoice_number)
+         )) AS same_number,
+         ai.acknowledgement_conflict AS ack_conflict
+  FROM ack_invoices ai
+  JOIN agg ON agg.ack_invoice_id = ai.id
+  JOIN clients_all cl ON cl.id = ai.client_id
+  LEFT JOIN invoices z ON z.id = ai.zoho_invoice_id
+  LEFT JOIN invoice_acknowledgements ack ON ack.id = ai.current_acknowledgement_id
   LEFT JOIN users ab ON ab.id = ack.acknowledged_by
   LEFT JOIN attachments doc ON doc.entity_type = '${ENTITY_TYPE}' AND doc.entity_id = ack.id AND doc.is_current
   LEFT JOIN users du ON du.id = doc.uploaded_by
-  LEFT JOIN LATERAL (
-    SELECT sum(al.allocated_amount)::numeric(16,3) AS amount,
-           min(i.invoice_date) FILTER (WHERE lower(i.invoice_number) = lower(v.manual_invoice_no)) AS invoice_date
-    FROM invoice_allocations al
-    JOIN invoices i ON i.id = al.invoice_id
-    WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
-  ) inv ON true`;
-
-const BASE_SCOPE = `${IN_SCOPE} AND v.manual_invoice_no IS NOT NULL`;
-
-const selectSql = (storedReference: boolean) => `
-  SELECT v.id AS visit_id, ack.id AS acknowledgement_id, ${referenceSql("c", storedReference)} AS reference,
-         c.id AS contract_id, ${versionSql("c")} AS contract_version,
-         cl.id AS client_id, cl.name AS client_name, c.system_description, st.name AS system_type_name,
-         v.sequence_no, v.cycle_no, v.service_code,
-         v.scheduled_date::text AS scheduled_date, v.completed_date::text AS completed_date, v.service_report_no,
-         v.manual_invoice_no AS invoice_no, v.manual_invoice_at AS invoice_entered_at, inv.invoice_date::text AS invoice_date,
-         v.visit_amount::text AS service_value, inv.amount::text AS invoice_value,
-         ${STATUS_SQL} AS status, ack.acknowledged_at, ack.acknowledged_by, ab.full_name AS acknowledged_by_name,
-         doc.id AS document_id, doc.version AS document_version, doc.original_name AS document_name, doc.mime_type AS document_mime,
-         doc.size_bytes::int AS document_size, doc.uploaded_by AS document_uploaded_by, du.full_name AS document_uploaded_by_name,
-         doc.uploaded_at AS document_uploaded_at`;
+  WHERE ai.merged_into_id IS NULL`;
 
 function toItem(row: Row, amountsVisible: boolean): AcknowledgementItem {
+  const reconciliation: ReconciliationReason[] = [];
+  if (row.same_number) reconciliation.push("SAME_NUMBER");
+  if (row.ack_conflict) reconciliation.push("CONFLICTING_ACKNOWLEDGEMENTS");
+
   return {
-    visitId: row.visit_id,
-    acknowledgementId: row.acknowledgement_id,
-    reference: row.reference,
-    contract: { id: row.contract_id, version: row.contract_version },
-    client: { id: row.client_id, name: row.client_name },
-    system: { description: row.system_description, typeName: row.system_type_name },
-    service: { sequenceNo: row.sequence_no, cycleNo: row.cycle_no, serviceCode: row.service_code },
-    scheduledDate: row.scheduled_date,
-    completedDate: row.completed_date,
-    serviceReportNo: row.service_report_no,
+    invoiceId: row.invoice_id,
+    basis: row.basis,
     invoiceNo: row.invoice_no,
-    invoiceEnteredAt: row.invoice_entered_at?.toISOString() ?? null,
+    client: { id: row.client_id, name: row.client_name },
+    contracts: [...row.contracts].sort((a, b) => a.reference.localeCompare(b.reference)),
+    serviceCount: row.service_count,
+    serviceReportNos: [...row.report_nos].sort(),
     invoiceDate: row.invoice_date,
+    zohoCancelled: row.zoho_cancelled,
+    invoiceEnteredAt: row.entered_at?.toISOString() ?? null,
     amountsVisible,
-    serviceValue: amountsVisible ? row.service_value : null,
     invoiceValue: amountsVisible ? row.invoice_value : null,
+    serviceValue: amountsVisible ? row.service_value : null,
     status: row.status,
+    acknowledgementId: row.acknowledgement_id,
     document:
       row.document_id && row.document_uploaded_at
         ? {
@@ -218,24 +234,26 @@ function toItem(row: Row, amountsVisible: boolean): AcknowledgementItem {
         : null,
     acknowledgedAt: row.acknowledged_at?.toISOString() ?? null,
     acknowledgedBy: row.acknowledged_by ? { id: row.acknowledged_by, fullName: row.acknowledged_by_name ?? "" } : null,
+    reconciliation,
   };
 }
 
-/** One WHERE clause for the rows, the figures and the export, so the three always agree. */
-function filterSql(query: Omit<AcknowledgementFilters, "sort" | "dir">, storedReference: boolean) {
-  const conditions: string[] = [BASE_SCOPE];
+/** One WHERE clause (over the base query, aliased b) for the rows, the figures and the export. */
+function filterSql(query: Omit<AcknowledgementFilters, "sort" | "dir">) {
+  const conditions: string[] = ["true"];
   const params: unknown[] = [];
   const add = (value: unknown) => {
     params.push(value);
     return `$${params.length}`;
   };
 
-  if (query.clientId) conditions.push(`c.client_id = ${add(query.clientId)}`);
-  if (query.contractId) conditions.push(`c.id = ${add(query.contractId)}`);
-  if (query.invoiceNo) conditions.push(`v.manual_invoice_no ILIKE ${add(`%${escapeLike(query.invoiceNo)}%`)}`);
-  if (query.status) conditions.push(`${STATUS_SQL} = ${add(query.status)}`);
+  if (query.clientId) conditions.push(`b.client_id = ${add(query.clientId)}`);
+  if (query.contractId) conditions.push(`b.contracts @> jsonb_build_array(jsonb_build_object('id', ${add(query.contractId)}::text))`);
+  if (query.invoiceNo) conditions.push(`b.invoice_no ILIKE ${add(`%${escapeLike(query.invoiceNo)}%`)}`);
+  if (query.status) conditions.push(`b.status = ${add(query.status)}`);
+  if (query.reconciliation === "NEEDED") conditions.push("(b.same_number OR b.ack_conflict)");
   if (query.fromDate || query.toDate) {
-    const date = query.dateBasis === "ACKNOWLEDGED_DATE" ? businessDateSql("ack.acknowledged_at") : "inv.invoice_date";
+    const date = query.dateBasis === "ACKNOWLEDGED_DATE" ? businessDateSql("b.acknowledged_at") : "b.invoice_date::date";
 
     if (query.fromDate) conditions.push(`${date} >= ${add(query.fromDate)}::date`);
     if (query.toDate) conditions.push(`${date} <= ${add(query.toDate)}::date`);
@@ -244,11 +262,11 @@ function filterSql(query: Omit<AcknowledgementFilters, "sort" | "dir">, storedRe
     const p = add(`%${escapeLike(query.search)}%`);
     conditions.push(
       `(${[
-        `${referenceSql("c", storedReference)} ILIKE ${p}`,
-        `cl.name ILIKE ${p}`,
-        `v.manual_invoice_no ILIKE ${p}`,
-        `v.service_report_no ILIKE ${p}`,
-        `doc.original_name ILIKE ${p}`,
+        `b.invoice_no ILIKE ${p}`,
+        `b.client_name ILIKE ${p}`,
+        `EXISTS (SELECT 1 FROM jsonb_array_elements(b.contracts) e WHERE e ->> 'reference' ILIKE ${p})`,
+        `EXISTS (SELECT 1 FROM unnest(b.report_nos) n WHERE n ILIKE ${p})`,
+        `b.document_name ILIKE ${p}`,
       ].join(" OR ")})`
     );
   }
@@ -256,43 +274,45 @@ function filterSql(query: Omit<AcknowledgementFilters, "sort" | "dir">, storedRe
   return { where: `WHERE ${conditions.join(" AND ")}`, params };
 }
 
-const SORT_SQL = (storedReference: boolean): Record<AcknowledgementSort, string> => ({
-  reference: `lower(${referenceSql("c", storedReference)})`,
-  client: "lower(cl.name)",
-  invoiceNo: "lower(v.manual_invoice_no)",
-  invoiceDate: "inv.invoice_date",
-  status: STATUS_SQL,
-  acknowledgedAt: "ack.acknowledged_at",
-});
+const SORT_SQL: Record<AcknowledgementSort, string> = {
+  invoiceNo: "lower(b.invoice_no)",
+  client: "lower(b.client_name)",
+  contract: "b.first_reference",
+  invoiceDate: "b.invoice_date",
+  status: "b.status",
+  acknowledgedAt: "b.acknowledged_at",
+};
 
-/** The default order puts the work first: Pending invoices, the most recently entered first. */
-function orderSql(query: Pick<AcknowledgementFilters, "sort" | "dir">, storedReference: boolean): string {
-  if (!query.sort) return "ORDER BY (ack.status = 'ACKNOWLEDGED') NULLS FIRST, v.manual_invoice_at DESC NULLS LAST, v.id DESC";
+/** The default order puts the work first: invoices needing reconciliation, then Pending, newest Invoice No. first. */
+function orderSql(query: Pick<AcknowledgementFilters, "sort" | "dir">): string {
+  if (!query.sort) return "ORDER BY (b.same_number OR b.ack_conflict) DESC, (b.status = 'ACKNOWLEDGED'), b.entered_at DESC NULLS LAST, b.invoice_id DESC";
   const dir = query.dir === "desc" ? "DESC" : "ASC";
 
-  return `ORDER BY ${SORT_SQL(storedReference)[query.sort]} ${dir} NULLS LAST, v.id ${dir}`;
+  return `ORDER BY ${SORT_SQL[query.sort]} ${dir} NULLS LAST, b.invoice_id ${dir}`;
 }
 
 export interface AcknowledgementKpis {
-  /** Invoices listed: every service with an Invoice No. that the filters select. total = pending + acknowledged. */
+  /** Invoices listed. total = pending + acknowledged. */
   total: number;
   pending: number;
-  /** Of the pending, those with a document attached and awaiting OK / Confirm. */
   awaitingConfirmation: number;
   acknowledged: number;
-  /** PostgreSQL's sums over every selected invoice (OMR excluding VAT); null when the role may not see amounts. Missing values add nothing. */
-  serviceValueTotal: string | null;
+  needsReconciliation: number;
+  /** Sum of Invoice Tracking amounts, each invoice once (OMR excl. VAT); null when amounts are not visible. */
   invoiceValueTotal: string | null;
+  /** Sum of the listed invoices' service values; null when amounts are not visible. */
+  serviceValueTotal: string | null;
 }
 
-async function kpis(where: string, params: unknown[], amountsVisible: boolean): Promise<AcknowledgementKpis> {
-  const result = await pool.query<{ total: number; acknowledged: number; awaiting: number; service_value: string; invoice_value: string }>(
+async function kpis(storedReference: boolean, where: string, params: unknown[], amountsVisible: boolean): Promise<AcknowledgementKpis> {
+  const result = await pool.query<{ total: number; acknowledged: number; awaiting: number; reconcile: number; invoice_value: string; service_value: string }>(
     `SELECT count(*)::int AS total,
-            count(*) FILTER (WHERE ack.status = 'ACKNOWLEDGED')::int AS acknowledged,
-            count(*) FILTER (WHERE ack.status = 'PENDING' AND doc.id IS NOT NULL)::int AS awaiting,
-            COALESCE(sum(v.visit_amount), 0)::numeric(16,3)::text AS service_value,
-            COALESCE(sum(inv.amount), 0)::numeric(16,3)::text AS invoice_value
-     ${FROM} ${where}`,
+            count(*) FILTER (WHERE b.status = 'ACKNOWLEDGED')::int AS acknowledged,
+            count(*) FILTER (WHERE b.status = 'PENDING' AND b.document_id IS NOT NULL)::int AS awaiting,
+            count(*) FILTER (WHERE b.same_number OR b.ack_conflict)::int AS reconcile,
+            COALESCE(sum(b.invoice_value::numeric), 0)::numeric(16,3)::text AS invoice_value,
+            COALESCE(sum(b.service_value::numeric), 0)::numeric(16,3)::text AS service_value
+     FROM (${baseSql(storedReference)}) b ${where}`,
     params
   );
   const row = result.rows[0];
@@ -304,23 +324,20 @@ async function kpis(where: string, params: unknown[], amountsVisible: boolean): 
     pending: total - acknowledged,
     awaitingConfirmation: row?.awaiting ?? 0,
     acknowledged,
-    serviceValueTotal: amountsVisible ? (row?.service_value ?? "0.000") : null,
+    needsReconciliation: row?.reconcile ?? 0,
     invoiceValueTotal: amountsVisible ? (row?.invoice_value ?? "0.000") : null,
+    serviceValueTotal: amountsVisible ? (row?.service_value ?? "0.000") : null,
   };
 }
 
-function unavailable(): AppError {
-  return new AppError(503, "FEATURE_UNAVAILABLE", "Invoice Acknowledgements need a database update (migrations 0112 and 0113) that has not been applied yet.");
-}
-
 export async function listAcknowledgements(query: ListAcknowledgementsQuery, amountsVisible: boolean) {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
+  await ready();
 
   const storedReference = await hasStoredReference();
-  const { where, params } = filterSql(query, storedReference);
+  const { where, params } = filterSql(query);
   const [figures, rows] = await Promise.all([
-    kpis(where, params, amountsVisible),
-    pool.query<Row>(`${selectSql(storedReference)} ${FROM} ${where} ${orderSql(query, storedReference)} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    kpis(storedReference, where, params, amountsVisible),
+    pool.query<Row>(`SELECT b.* FROM (${baseSql(storedReference)}) b ${where} ${orderSql(query)} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,
@@ -330,45 +347,100 @@ export async function listAcknowledgements(query: ListAcknowledgementsQuery, amo
   return { items: rows.rows.map((row) => toItem(row, amountsVisible)), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures };
 }
 
-/** Every invoice that matches the filters, in the page's order, for an export. `checkSize` throws when the export cannot hold that many. */
+/** Every invoice that matches the filters, in the page's order, for an export. */
 export async function listAllAcknowledgements(filters: AcknowledgementFilters, amountsVisible: boolean, checkSize: (count: number) => void) {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
+  await ready();
 
   const storedReference = await hasStoredReference();
-  const { where, params } = filterSql(filters, storedReference);
-  const figures = await kpis(where, params, amountsVisible);
+  const { where, params } = filterSql(filters);
+  const figures = await kpis(storedReference, where, params, amountsVisible);
 
   checkSize(figures.total);
 
-  const rows = await pool.query<Row>(`${selectSql(storedReference)} ${FROM} ${where} ${orderSql(filters, storedReference)}`, params);
+  const rows = await pool.query<Row>(`SELECT b.* FROM (${baseSql(storedReference)}) b ${where} ${orderSql(filters)}`, params);
 
   return { items: rows.rows.map((row) => toItem(row, amountsVisible)), kpis: figures };
 }
 
-/** One invoice of the list, by its service. Not found when the service is outside Accounts' scope or has no Invoice No. */
-export async function getAcknowledgement(visitId: string, amountsVisible: boolean, db: Queryable = pool): Promise<AcknowledgementItem> {
+async function readItem(db: Queryable, invoiceId: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
   const storedReference = await hasStoredReference();
-  const result = await db.query<Row>(`${selectSql(storedReference)} ${FROM} WHERE ${BASE_SCOPE} AND v.id = $1`, [visitId]);
+  const result = await db.query<Row>(`SELECT b.* FROM (${baseSql(storedReference)}) b WHERE b.invoice_id = $1`, [invoiceId]);
   const row = result.rows[0];
 
-  if (!row) throw notFound("No invoice to acknowledge was found for this service. It may have no Invoice No. any more.");
+  if (!row) throw notFound("Invoice not found. It may have no service carrying its Invoice No. any more.");
   return toItem(row, amountsVisible);
+}
+
+/** One invoice of the list. */
+export async function getAcknowledgement(invoiceId: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
+  return readItem(pool, invoiceId, amountsVisible);
+}
+
+export interface LinkedService {
+  visitId: string;
+  contract: { id: string; reference: string; version: number };
+  service: { sequenceNo: number; cycleNo: number | null; serviceCode: string | null };
+  scheduledDate: string;
+  completedDate: string | null;
+  serviceReportNo: string | null;
+  invoiceNo: string;
+  /** How it joined: ZOHO (Invoice Tracking allocation), SERVICE (its own invoice), LINKED (authorised reconciliation). */
+  basis: "ZOHO" | "SERVICE" | "LINKED";
+  linkedAt: string;
+  serviceValue: string | null;
+}
+
+/** The services currently linked to an invoice (Linked Services viewer). */
+export async function linkedServices(invoiceId: string, amountsVisible: boolean): Promise<LinkedService[]> {
+  await ready();
+  await readItem(pool, invoiceId, false);
+
+  const storedReference = await hasStoredReference();
+  const result = await pool.query<{
+    visit_id: string; contract_id: string; reference: string; version: number; sequence_no: number; cycle_no: number | null; service_code: string | null;
+    scheduled_date: string; completed_date: string | null; service_report_no: string | null; invoice_number: string; basis: LinkedService["basis"]; linked_at: Date; visit_amount: string | null;
+  }>(
+    `SELECT v.id AS visit_id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS reference, ${versionSql("c")} AS version,
+            v.sequence_no, v.cycle_no, v.service_code, v.scheduled_date::text AS scheduled_date, v.completed_date::text AS completed_date,
+            v.service_report_no, s.invoice_number, s.basis, s.linked_at, v.visit_amount::text AS visit_amount
+     FROM ack_invoice_services s
+     JOIN amc_visits v ON v.id = s.amc_visit_id AND v.manual_invoice_no = s.invoice_number
+     JOIN amc_contracts c ON c.id = v.amc_contract_id
+     WHERE s.ack_invoice_id = $1 AND ${IN_SCOPE}
+     ORDER BY v.scheduled_date, v.id`,
+    [invoiceId]
+  );
+
+  return result.rows.map((row) => ({
+    visitId: row.visit_id,
+    contract: { id: row.contract_id, reference: row.reference, version: row.version },
+    service: { sequenceNo: row.sequence_no, cycleNo: row.cycle_no, serviceCode: row.service_code },
+    scheduledDate: row.scheduled_date,
+    completedDate: row.completed_date,
+    serviceReportNo: row.service_report_no,
+    invoiceNo: row.invoice_number,
+    basis: row.basis,
+    linkedAt: row.linked_at.toISOString(),
+    serviceValue: amountsVisible ? row.visit_amount : null,
+  }));
 }
 
 /** The filter lists: clients and contract periods with at least one invoice listed. */
 export async function getAcknowledgementOptions() {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
+  await ready();
 
   const storedReference = await hasStoredReference();
+  const scope = `${IN_SCOPE} AND v.manual_invoice_no IS NOT NULL`;
   const [clients, contracts] = await Promise.all([
     pool.query<{ id: string; name: string }>(
       `SELECT DISTINCT cl.id, cl.name FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id JOIN clients cl ON cl.id = c.client_id
-       WHERE ${BASE_SCOPE} ORDER BY cl.name, cl.id`
+       WHERE ${scope} ORDER BY cl.name, cl.id`
     ),
     pool.query<{ id: string; reference: string; client_name: string; system_description: string }>(
       `SELECT c.id, ${referenceSql("c", storedReference)} AS reference, cl.name AS client_name, c.system_description
        FROM amc_contracts c JOIN clients cl ON cl.id = c.client_id
-       WHERE EXISTS (SELECT 1 FROM amc_visits v WHERE v.amc_contract_id = c.id AND ${BASE_SCOPE})
+       WHERE EXISTS (SELECT 1 FROM amc_visits v WHERE v.amc_contract_id = c.id AND ${scope})
        ORDER BY lower(${referenceSql("c", storedReference)}), c.id`
     ),
   ]);
@@ -385,31 +457,41 @@ export async function getAcknowledgementOptions() {
 // ---------------------------------------------------------------------------
 
 interface LockedInvoice {
-  visit_id: string;
-  invoice_no: string | null;
-  sequence_no: number;
+  id: string;
+  client_id: string;
+  invoice_number: string;
+  basis: "ZOHO" | "SERVICE";
+  zoho_invoice_id: string | null;
+  current_acknowledgement_id: string | null;
+  acknowledgement_conflict: boolean;
+  confirmed_separate: boolean;
+  merged_into_id: string | null;
   client_name: string;
-  reference: string;
 }
 
-/**
- * The invoice of one service, as listed: in Accounts' scope with an Invoice No. Inside a transaction the visit row is
- * locked first, so an Invoice No. being changed at the same moment waits (and the acknowledgement follows the number).
- */
-async function lockInvoice(db: Queryable, visitId: string, lock: boolean): Promise<LockedInvoice & { invoice_no: string }> {
-  if (lock) await db.query("SELECT id FROM amc_visits_all WHERE id = $1 FOR UPDATE", [visitId]);
-  const storedReference = await hasStoredReference();
+/** The invoice row; inside a transaction it is locked first, so two actions on one invoice run one after the other. */
+async function lockInvoice(db: Queryable, invoiceId: string, lock: boolean): Promise<LockedInvoice & { item: AcknowledgementItem }> {
+  if (lock) await db.query("SELECT id FROM ack_invoices WHERE id = $1 FOR UPDATE", [invoiceId]);
   const result = await db.query<LockedInvoice>(
-    `SELECT v.id AS visit_id, v.manual_invoice_no AS invoice_no, v.sequence_no, cl.name AS client_name, ${referenceSql("c", storedReference)} AS reference
-     FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id JOIN clients cl ON cl.id = c.client_id
-     WHERE v.id = $1 AND ${IN_SCOPE}`,
-    [visitId]
+    `SELECT ai.*, cl.name AS client_name FROM ack_invoices ai JOIN clients_all cl ON cl.id = ai.client_id WHERE ai.id = $1`,
+    [invoiceId]
   );
   const row = result.rows[0];
 
-  if (!row) throw notFound("AMC service not found.");
-  if (!row.invoice_no) throw conflict("This service has no Invoice No., so there is no invoice to acknowledge. Enter the Invoice No. on Accounts first.");
-  return row as LockedInvoice & { invoice_no: string };
+  if (!row || row.merged_into_id) throw notFound("Invoice not found. It may have been linked into another invoice.");
+  // Listed only while a service carries its number: the same rule as the page.
+  const item = await readItem(db, invoiceId, false);
+
+  return { ...row, item };
+}
+
+function assertNoReconciliation(invoice: { item: AcknowledgementItem }, allowSameNumber = false): void {
+  if (invoice.item.reconciliation.includes("CONFLICTING_ACKNOWLEDGEMENTS")) {
+    throw conflict("More than one acknowledgement exists for this invoice. An authorised user must choose the current one under Reconcile before anything else is done.");
+  }
+  if (!allowSameNumber && invoice.item.reconciliation.includes("SAME_NUMBER")) {
+    throw conflict("Another invoice of this client has the same Invoice No. An authorised user must reconcile them first: link them as one invoice, or confirm they are separate.");
+  }
 }
 
 interface AckRow {
@@ -417,12 +499,9 @@ interface AckRow {
   status: AcknowledgementStatus;
 }
 
-async function findAcknowledgement(db: Queryable, visitId: string, invoiceNo: string, lock: boolean): Promise<AckRow | null> {
-  const result = await db.query<AckRow>(
-    `SELECT id, status FROM invoice_acknowledgements WHERE amc_visit_id = $1 AND invoice_number = $2 ${lock ? "FOR UPDATE" : ""}`,
-    [visitId, invoiceNo]
-  );
-
+async function currentAcknowledgement(db: Queryable, invoice: LockedInvoice, lock: boolean): Promise<AckRow | null> {
+  if (!invoice.current_acknowledgement_id) return null;
+  const result = await db.query<AckRow>(`SELECT id, status FROM invoice_acknowledgements WHERE id = $1 ${lock ? "FOR UPDATE" : ""}`, [invoice.current_acknowledgement_id]);
   return result.rows[0] ?? null;
 }
 
@@ -446,7 +525,7 @@ async function currentDocument(db: Queryable, acknowledgementId: string): Promis
   return result.rows[0] ?? null;
 }
 
-const label = (invoice: LockedInvoice & { invoice_no: string }) => `Invoice ${invoice.invoice_no} of ${invoice.reference} (service ${invoice.sequence_no}, "${invoice.client_name}")`;
+const label = (invoice: LockedInvoice & { item: AcknowledgementItem }) => `Invoice ${invoice.invoice_number} of "${invoice.client_name}" (${invoice.item.serviceCount} service${invoice.item.serviceCount === 1 ? "" : "s"})`;
 
 const ALREADY_ACKNOWLEDGED = "This invoice is already acknowledged. Its document can only be replaced with Replace Document, which needs Edit permission and a reason.";
 
@@ -458,7 +537,6 @@ interface StoredUpload {
   size: number;
 }
 
-/** Checks and stores the file before any row is written. The caller removes it again if the save fails. */
 async function storeUpload(rawName: string, data: Buffer): Promise<StoredUpload> {
   const file = checkAcknowledgementFile(rawName, data);
   const key = `${randomUUID()}.${file.ext}`;
@@ -468,10 +546,7 @@ async function storeUpload(rawName: string, data: Buffer): Promise<StoredUpload>
   return { key, sha256, originalName: file.originalName, mime: file.mime, size: data.length };
 }
 
-/**
- * Records the stored file as the acknowledgement's current document: the next version of its document (after the
- * current one, or after one removed before confirmation), or the first document when it has never had one.
- */
+/** Records the stored file as the acknowledgement's current document: the next version of its document, or the first. */
 async function recordDocument(db: Queryable, auth: AuthContext, acknowledgementId: string, upload: StoredUpload, current: DocumentRow | null): Promise<string> {
   const previous =
     current ??
@@ -505,32 +580,46 @@ async function recordDocument(db: Queryable, auth: AuthContext, acknowledgementI
   return id;
 }
 
-/**
- * Attach Acknowledgement: stores the document in private storage and records it against the invoice's Pending
- * acknowledgement (created on first use). The status stays Pending until OK / Confirm. Choosing another file before
- * confirming adds a new version (the earlier one is kept). Refused once the invoice is acknowledged.
- */
-export async function attachDocument(auth: AuthContext, visitId: string, rawName: string, data: Buffer, amountsVisible: boolean): Promise<AcknowledgementItem> {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
-
-  // Refuse an invoice that cannot take a document before the file is stored.
-  const precheck = await lockInvoice(pool, visitId, false);
-  if ((await findAcknowledgement(pool, visitId, precheck.invoice_no, false))?.status === "ACKNOWLEDGED") throw conflict(ALREADY_ACKNOWLEDGED);
-
+/** Runs `work` with the stored upload; if it fails, the file is removed again (nothing records it). */
+async function withUpload<T>(rawName: string, data: Buffer, work: (upload: StoredUpload) => Promise<T>): Promise<T> {
   const upload = await storeUpload(rawName, data);
 
   try {
-    return await withTransaction(async (db) => {
-      const invoice = await lockInvoice(db, visitId, true);
+    return await work(upload);
+  } catch (error) {
+    await discardStoredFile(upload.key);
+    throw error;
+  }
+}
 
-      await db.query(
-        `INSERT INTO invoice_acknowledgements (amc_visit_id, invoice_number, created_by) VALUES ($1, $2, $3)
-         ON CONFLICT ON CONSTRAINT invoice_acknowledgements_invoice_uq DO NOTHING`,
-        [visitId, invoice.invoice_no, auth.user.id]
-      );
-      const ack = (await findAcknowledgement(db, visitId, invoice.invoice_no, true)) as AckRow;
+/**
+ * Attach Acknowledgement: stores the document in private storage and records it against the invoice's Pending
+ * acknowledgement (created on first use and made current). The status stays Pending until OK / Confirm.
+ */
+export async function attachDocument(auth: AuthContext, invoiceId: string, rawName: string, data: Buffer, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
 
-      if (ack.status === "ACKNOWLEDGED") throw conflict(ALREADY_ACKNOWLEDGED);
+  // Refuse before anything is stored.
+  const precheck = await lockInvoice(pool, invoiceId, false);
+  assertNoReconciliation(precheck);
+  if (precheck.item.status === "ACKNOWLEDGED") throw conflict(ALREADY_ACKNOWLEDGED);
+
+  return withUpload(rawName, data, (upload) =>
+    withTransaction(async (db) => {
+      const invoice = await lockInvoice(db, invoiceId, true);
+      assertNoReconciliation(invoice);
+
+      let ack = await currentAcknowledgement(db, invoice, true);
+
+      if (ack?.status === "ACKNOWLEDGED") throw conflict(ALREADY_ACKNOWLEDGED);
+      if (!ack) {
+        const created = await db.query<{ id: string }>(
+          "INSERT INTO invoice_acknowledgements (invoice_number, ack_invoice_id, created_by) VALUES ($1, $2, $3) RETURNING id",
+          [invoice.invoice_number, invoice.id, auth.user.id]
+        );
+        ack = { id: (created.rows[0] as { id: string }).id, status: "PENDING" };
+        await db.query("UPDATE ack_invoices SET current_acknowledgement_id = $2 WHERE id = $1", [invoice.id, ack.id]);
+      }
 
       const previous = await currentDocument(db, ack.id);
       const attachmentId = await recordDocument(db, auth, ack.id, upload, previous);
@@ -542,32 +631,21 @@ export async function attachDocument(auth: AuthContext, visitId: string, rawName
         entityType: ENTITY_TYPE,
         entityId: ack.id,
         description: `Acknowledgement document ${upload.originalName} attached to ${label(invoice)}${previous ? `, in place of ${previous.original_name} (kept as version ${previous.version})` : ""}. Awaiting confirmation.`,
-        metadata: {
-          visitId,
-          invoiceNumber: invoice.invoice_no,
-          attachmentId,
-          ...(previous ? { previousAttachmentId: previous.id } : {}),
-          sha256: upload.sha256,
-          sizeBytes: upload.size,
-        },
+        metadata: { ackInvoiceId: invoice.id, invoiceNumber: invoice.invoice_number, attachmentId, ...(previous ? { previousAttachmentId: previous.id } : {}), sha256: upload.sha256, sizeBytes: upload.size },
       });
 
-      return getAcknowledgement(visitId, amountsVisible, db);
-    });
-  } catch (error) {
-    // Nothing records the file: remove it from storage again (best effort).
-    await discardStoredFile(upload.key);
-    throw error;
-  }
+      return readItem(db, invoiceId, amountsVisible);
+    })
+  );
 }
 
 /** Removes the document attached to a Pending acknowledgement before it is confirmed. The row and the file are kept, no longer current. */
-export async function withdrawDocument(auth: AuthContext, visitId: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
+export async function withdrawDocument(auth: AuthContext, invoiceId: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
 
   return withTransaction(async (db) => {
-    const invoice = await lockInvoice(db, visitId, true);
-    const ack = await findAcknowledgement(db, visitId, invoice.invoice_no, true);
+    const invoice = await lockInvoice(db, invoiceId, true);
+    const ack = await currentAcknowledgement(db, invoice, true);
 
     if (ack?.status === "ACKNOWLEDGED") throw conflict("This invoice is acknowledged: its document cannot be removed.");
     const current = ack ? await currentDocument(db, ack.id) : null;
@@ -582,23 +660,24 @@ export async function withdrawDocument(auth: AuthContext, visitId: string, amoun
       entityType: ENTITY_TYPE,
       entityId: ack.id,
       description: `Acknowledgement document ${current.original_name} removed from ${label(invoice)} before confirmation. The file is kept.`,
-      metadata: { visitId, invoiceNumber: invoice.invoice_no, attachmentId: current.id },
+      metadata: { ackInvoiceId: invoice.id, invoiceNumber: invoice.invoice_number, attachmentId: current.id },
     });
 
-    return getAcknowledgement(visitId, amountsVisible, db);
+    return readItem(db, invoiceId, amountsVisible);
   });
 }
 
 /**
- * OK / Confirm: the invoice becomes Acknowledged, with the date, time and user recorded. Only the document the user
- * saw (attachmentId) is confirmed, and only after its file is read back from storage and matches its checksum, so a
- * green status always has a real document behind it. The database refuses a confirmation without a document too.
+ * OK / Confirm: the invoice becomes Acknowledged, with date, time and user. Only the document the user saw is
+ * confirmed, after its file is read back and matches its checksum. The invoice and its acknowledgement are locked, so
+ * two confirmations at once give one Acknowledged and one refusal.
  */
-export async function confirmAcknowledgement(auth: AuthContext, visitId: string, attachmentId: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
+export async function confirmAcknowledgement(auth: AuthContext, invoiceId: string, attachmentId: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
 
-  const precheck = await lockInvoice(pool, visitId, false);
-  const pending = await findAcknowledgement(pool, visitId, precheck.invoice_no, false);
+  const precheck = await lockInvoice(pool, invoiceId, false);
+  assertNoReconciliation(precheck);
+  const pending = await currentAcknowledgement(pool, precheck, false);
   const stored = pending ? await currentDocument(pool, pending.id) : null;
 
   if (pending?.status === "ACKNOWLEDGED") throw conflict("This invoice is already acknowledged.");
@@ -608,14 +687,13 @@ export async function confirmAcknowledgement(auth: AuthContext, visitId: string,
   await readStoredFile(stored.storage_key, stored.sha256, "The attached document could not be found in storage. Attach it again, then confirm.");
 
   return withTransaction(async (db) => {
-    const invoice = await lockInvoice(db, visitId, true);
-    const ack = await findAcknowledgement(db, visitId, invoice.invoice_no, true);
+    const invoice = await lockInvoice(db, invoiceId, true);
+    assertNoReconciliation(invoice);
+    const ack = await currentAcknowledgement(db, invoice, true);
     const current = ack ? await currentDocument(db, ack.id) : null;
 
     if (ack?.status === "ACKNOWLEDGED") throw conflict("This invoice is already acknowledged.");
-    if (!ack || !current || current.id !== attachmentId) {
-      throw conflict("The invoice or its attached document changed while confirming. Reload and confirm again.");
-    }
+    if (!ack || !current || current.id !== attachmentId) throw conflict("The invoice or its attached document changed while confirming. Reload and confirm again.");
 
     await db.query("UPDATE invoice_acknowledgements SET status = 'ACKNOWLEDGED', acknowledged_at = now(), acknowledged_by = $2 WHERE id = $1", [ack.id, auth.user.id]);
     await logActivity(db, {
@@ -625,31 +703,26 @@ export async function confirmAcknowledgement(auth: AuthContext, visitId: string,
       entityType: ENTITY_TYPE,
       entityId: ack.id,
       description: `${label(invoice)} marked Acknowledged with document ${current.original_name}. Not a payment: Invoice No., Paid / Unpaid and amounts are unchanged.`,
-      metadata: { visitId, invoiceNumber: invoice.invoice_no, attachmentId: current.id },
+      metadata: { ackInvoiceId: invoice.id, invoiceNumber: invoice.invoice_number, attachmentId: current.id, services: invoice.item.serviceCount },
     });
 
-    return getAcknowledgement(visitId, amountsVisible, db);
+    return readItem(db, invoiceId, amountsVisible);
   });
 }
 
-/**
- * Replace Document (Edit permission): a new version of an Acknowledged invoice's document, with a reason. The earlier
- * version is kept; the acknowledgement keeps its original date and user. Never silent: the reason is in the Audit Log.
- */
-export async function replaceDocument(auth: AuthContext, visitId: string, rawName: string, data: Buffer, reason: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
+/** Replace Document (Edit): a new version of an Acknowledged invoice's document, with a reason. Earlier versions kept; date and user unchanged. */
+export async function replaceDocument(auth: AuthContext, invoiceId: string, rawName: string, data: Buffer, reason: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
 
-  const precheck = await lockInvoice(pool, visitId, false);
-  if ((await findAcknowledgement(pool, visitId, precheck.invoice_no, false))?.status !== "ACKNOWLEDGED") {
-    throw conflict("Only an acknowledged invoice's document can be replaced. Attach and confirm the document instead.");
-  }
+  const precheck = await lockInvoice(pool, invoiceId, false);
+  assertNoReconciliation(precheck, true);
+  if (precheck.item.status !== "ACKNOWLEDGED") throw conflict("Only an acknowledged invoice's document can be replaced. Attach and confirm the document instead.");
 
-  const upload = await storeUpload(rawName, data);
-
-  try {
-    return await withTransaction(async (db) => {
-      const invoice = await lockInvoice(db, visitId, true);
-      const ack = await findAcknowledgement(db, visitId, invoice.invoice_no, true);
+  return withUpload(rawName, data, (upload) =>
+    withTransaction(async (db) => {
+      const invoice = await lockInvoice(db, invoiceId, true);
+      assertNoReconciliation(invoice, true);
+      const ack = await currentAcknowledgement(db, invoice, true);
 
       if (ack?.status !== "ACKNOWLEDGED") throw conflict("Only an acknowledged invoice's document can be replaced.");
 
@@ -663,37 +736,39 @@ export async function replaceDocument(auth: AuthContext, visitId: string, rawNam
         entityType: ENTITY_TYPE,
         entityId: ack.id,
         description: `Acknowledgement document of ${label(invoice)} replaced with ${upload.originalName}${previous ? ` (earlier ${previous.original_name} kept as version ${previous.version})` : ""}. Reason: ${reason}`,
-        metadata: {
-          visitId,
-          invoiceNumber: invoice.invoice_no,
-          attachmentId,
-          ...(previous ? { previousAttachmentId: previous.id } : {}),
-          reason,
-          sha256: upload.sha256,
-          sizeBytes: upload.size,
-        },
+        metadata: { ackInvoiceId: invoice.id, invoiceNumber: invoice.invoice_number, attachmentId, ...(previous ? { previousAttachmentId: previous.id } : {}), reason, sha256: upload.sha256, sizeBytes: upload.size },
       });
 
-      return getAcknowledgement(visitId, amountsVisible, db);
-    });
-  } catch (error) {
-    await discardStoredFile(upload.key);
-    throw error;
-  }
+      return readItem(db, invoiceId, amountsVisible);
+    })
+  );
 }
 
 /**
- * The current document of the invoice's acknowledgement (attached or confirmed), for the viewer and its Download.
- * Only an invoice the page lists is served, and the file is checked against its checksum.
+ * A document of THIS invoice: the current one by default, or a named earlier version. Only attachments of the
+ * acknowledgements belonging to this invoice (or to invoices linked into it) are served: never another invoice's.
  */
-export async function readDocument(visitId: string) {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
+export async function readDocument(invoiceId: string, attachmentId?: string) {
+  await ready();
+  const invoice = await lockInvoice(pool, invoiceId, false);
 
-  const invoice = await lockInvoice(pool, visitId, false);
-  const ack = await findAcknowledgement(pool, visitId, invoice.invoice_no, false);
-  const document = ack ? await currentDocument(pool, ack.id) : null;
+  let document: DocumentRow | null = null;
+  if (attachmentId) {
+    document =
+      (
+        await pool.query<DocumentRow>(
+          `SELECT a.id, a.document_id, a.version, a.original_name, a.mime_type, a.sha256, a.storage_key
+           FROM attachments a JOIN invoice_acknowledgements k ON k.id = a.entity_id
+           WHERE a.entity_type = $1 AND a.id = $2 AND k.ack_invoice_id IN ${FAMILY_SQL("$3")}`,
+          [ENTITY_TYPE, attachmentId, invoiceId]
+        )
+      ).rows[0] ?? null;
+  } else {
+    const ack = await currentAcknowledgement(pool, invoice, false);
+    document = ack ? await currentDocument(pool, ack.id) : null;
+  }
 
-  if (!document) throw notFound("This invoice has no acknowledgement document.");
+  if (!document) throw notFound("This invoice has no such acknowledgement document.");
 
   const data = await readStoredFile(document.storage_key, document.sha256, "The stored acknowledgement document could not be found.");
 
@@ -702,36 +777,207 @@ export async function readDocument(visitId: string) {
 
 export interface DocumentVersion {
   attachmentId: string;
+  acknowledgementId: string;
   invoiceNumber: string;
   version: number;
   isCurrent: boolean;
+  /** Belongs to the invoice's current acknowledgement (the others are earlier or conflicting acknowledgements). */
+  ofCurrentAcknowledgement: boolean;
+  acknowledgementStatus: AcknowledgementStatus;
   originalName: string;
   uploadedBy: { id: string; fullName: string };
   uploadedAt: string;
 }
 
-/** Every document ever recorded for this service's acknowledgements (all Invoice Nos. it has had), newest first. Metadata only. */
-export async function documentHistory(visitId: string): Promise<DocumentVersion[]> {
-  if (!(await acknowledgementsAvailable())) throw unavailable();
-
-  await lockInvoice(pool, visitId, false);
-  const result = await pool.query<{ id: string; invoice_number: string; version: number; is_current: boolean; original_name: string; uploaded_by: string; full_name: string; uploaded_at: Date }>(
-    `SELECT a.id, ack.invoice_number, a.version, a.is_current, a.original_name, a.uploaded_by, u.full_name, a.uploaded_at
-     FROM invoice_acknowledgements ack
-     JOIN attachments a ON a.entity_type = $2 AND a.entity_id = ack.id
+/** Every document recorded for this invoice's acknowledgements (and those of invoices linked into it), newest first. */
+export async function documentHistory(invoiceId: string): Promise<DocumentVersion[]> {
+  await ready();
+  const invoice = await lockInvoice(pool, invoiceId, false);
+  const result = await pool.query<{
+    id: string; ack_id: string; invoice_number: string; version: number; is_current: boolean; status: AcknowledgementStatus; original_name: string; uploaded_by: string; full_name: string; uploaded_at: Date;
+  }>(
+    `SELECT a.id, k.id AS ack_id, k.invoice_number, a.version, a.is_current, k.status, a.original_name, a.uploaded_by, u.full_name, a.uploaded_at
+     FROM invoice_acknowledgements k
+     JOIN attachments a ON a.entity_type = $2 AND a.entity_id = k.id
      JOIN users u ON u.id = a.uploaded_by
-     WHERE ack.amc_visit_id = $1
+     WHERE k.ack_invoice_id IN ${FAMILY_SQL("$1")}
      ORDER BY a.uploaded_at DESC, a.id DESC`,
-    [visitId, ENTITY_TYPE]
+    [invoiceId, ENTITY_TYPE]
   );
 
   return result.rows.map((row) => ({
     attachmentId: row.id,
+    acknowledgementId: row.ack_id,
     invoiceNumber: row.invoice_number,
     version: row.version,
     isCurrent: row.is_current,
+    ofCurrentAcknowledgement: row.ack_id === invoice.current_acknowledgement_id,
+    acknowledgementStatus: row.status,
     originalName: row.original_name,
     uploadedBy: { id: row.uploaded_by, fullName: row.full_name },
     uploadedAt: row.uploaded_at.toISOString(),
   }));
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation (Edit): never automatic, always with a reason, always audited
+// ---------------------------------------------------------------------------
+
+export interface ReconciliationView {
+  reasons: ReconciliationReason[];
+  /** Other live invoices of the client with the same Invoice No. */
+  sameNumber: { invoiceId: string; basis: "ZOHO" | "SERVICE"; serviceCount: number; contracts: string[]; status: AcknowledgementStatus; hasDocument: boolean }[];
+  /** Acknowledgements with substance of this invoice, when more than one exists. */
+  acknowledgements: { acknowledgementId: string; status: AcknowledgementStatus; acknowledgedAt: string | null; acknowledgedBy: string | null; documentName: string | null; legacyVisitId: string | null }[];
+}
+
+export async function reconciliationView(invoiceId: string): Promise<ReconciliationView> {
+  await ready();
+  const invoice = await lockInvoice(pool, invoiceId, false);
+  const storedReference = await hasStoredReference();
+  const others = await pool.query<Row>(
+    `SELECT b.* FROM (${baseSql(storedReference)}) b JOIN ack_invoices ai ON ai.id = b.invoice_id
+     WHERE b.invoice_id <> $1 AND b.client_id = $2 AND lower(b.invoice_no) = lower($3) ORDER BY b.invoice_id`,
+    [invoiceId, invoice.client_id, invoice.invoice_number]
+  );
+  const acks = invoice.acknowledgement_conflict
+    ? await pool.query<{ id: string; status: AcknowledgementStatus; acknowledged_at: Date | null; full_name: string | null; original_name: string | null; amc_visit_id: string | null }>(
+        `SELECT a.id, a.status, a.acknowledged_at, u.full_name, d.original_name, a.amc_visit_id
+         FROM invoice_acknowledgements a
+         LEFT JOIN users u ON u.id = a.acknowledged_by
+         LEFT JOIN attachments d ON d.entity_type = '${ENTITY_TYPE}' AND d.entity_id = a.id AND d.is_current
+         WHERE a.ack_invoice_id IN ${FAMILY_SQL("$1")} AND ${SUBSTANTIVE_SQL("a")} ORDER BY a.id`,
+        [invoiceId]
+      )
+    : { rows: [] };
+
+  return {
+    reasons: invoice.item.reconciliation,
+    sameNumber: invoice.item.reconciliation.includes("SAME_NUMBER")
+      ? others.rows.map((row) => {
+          const other = toItem(row, false);
+          return { invoiceId: other.invoiceId, basis: other.basis, serviceCount: other.serviceCount, contracts: other.contracts.map((c) => c.reference), status: other.status, hasDocument: other.document !== null };
+        })
+      : [],
+    acknowledgements: acks.rows.map((row) => ({
+      acknowledgementId: row.id,
+      status: row.status,
+      acknowledgedAt: row.acknowledged_at?.toISOString() ?? null,
+      acknowledgedBy: row.full_name,
+      documentName: row.original_name,
+      legacyVisitId: row.amc_visit_id,
+    })),
+  };
+}
+
+/**
+ * Link: the other invoice is the same invoice as this one. Its services move to the surviving invoice (the one
+ * verified by Invoice Tracking, if either; otherwise this one), and it is kept as history (merged_into_id). Two
+ * different Invoice Tracking records are never linked. If both had acknowledgement work, none is chosen: the survivor
+ * waits for an authorised choice. Same client and Invoice No. are required (also enforced by the database).
+ */
+export async function linkInvoices(auth: AuthContext, invoiceId: string, otherInvoiceId: string, reason: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
+  if (invoiceId === otherInvoiceId) throw validationError("Choose another invoice to link.", [{ field: "otherInvoiceId", message: "Choose another invoice." }]);
+
+  return withTransaction(async (db: PoolClient) => {
+    // Locked in id order, so two opposite links cannot deadlock.
+    const [first, second] = [invoiceId, otherInvoiceId].sort((a, b) => Number(a) - Number(b)) as [string, string];
+    const locked = new Map([
+      [first, await lockInvoice(db, first, true)],
+      [second, await lockInvoice(db, second, true)],
+    ]);
+    const self = locked.get(invoiceId) as Awaited<ReturnType<typeof lockInvoice>>;
+    const other = locked.get(otherInvoiceId) as Awaited<ReturnType<typeof lockInvoice>>;
+
+    if (self.client_id !== other.client_id || self.invoice_number.toLowerCase() !== other.invoice_number.toLowerCase()) {
+      throw conflict("Only invoices of the same client with the same Invoice No. can be linked.");
+    }
+    if (self.zoho_invoice_id && other.zoho_invoice_id) {
+      throw conflict("Both invoices are separate Invoice Tracking records. They stay separate; confirm them as separate instead.");
+    }
+
+    const survivor = other.zoho_invoice_id ? other : self;
+    const absorbed = survivor === self ? other : self;
+    const moved = await db.query<{ amc_visit_id: string }>(
+      "UPDATE ack_invoice_services SET ack_invoice_id = $2, basis = 'LINKED', linked_by = $3, linked_at = now() WHERE ack_invoice_id = $1 RETURNING amc_visit_id",
+      [absorbed.id, survivor.id, auth.user.id]
+    );
+
+    await db.query("UPDATE ack_invoices SET merged_into_id = $2, current_acknowledgement_id = NULL, acknowledgement_conflict = false WHERE id = $1", [absorbed.id, survivor.id]);
+    if (absorbed.acknowledgement_conflict) await db.query("UPDATE ack_invoices SET acknowledgement_conflict = true, current_acknowledgement_id = NULL WHERE id = $1", [survivor.id]);
+    const outcome = absorbed.acknowledgement_conflict ? "CONFLICT" : await settleCurrent(db, survivor.id, auth.user.id);
+
+    await logActivity(db, {
+      userId: auth.user.id,
+      action: "invoice_acknowledgement.invoices_linked",
+      module: LOG_MODULE,
+      entityType: "ack_invoices",
+      entityId: survivor.id,
+      description: `Invoice ${survivor.invoice_number} of "${survivor.client_name}": ${moved.rowCount} service(s) of invoice record ${absorbed.id} linked into invoice record ${survivor.id} as one invoice. Reason: ${reason}${outcome === "CONFLICT" ? " Both had acknowledgements: an authorised user must choose the current one." : ""}`,
+      metadata: { from: absorbed.id, into: survivor.id, visits: moved.rows.map((row) => row.amc_visit_id), reason, outcome },
+    });
+
+    return readItem(db, survivor.id, amountsVisible);
+  });
+}
+
+/** Separate: invoices of this client with this Invoice No. are separate invoices. Marks every one of them. */
+export async function confirmSeparate(auth: AuthContext, invoiceId: string, reason: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
+
+  return withTransaction(async (db) => {
+    const invoice = await lockInvoice(db, invoiceId, true);
+
+    if (!invoice.item.reconciliation.includes("SAME_NUMBER")) throw conflict("No other invoice of this client has the same Invoice No.");
+
+    const marked = await db.query<{ id: string }>(
+      "UPDATE ack_invoices SET confirmed_separate = true WHERE client_id = $1 AND lower(invoice_number) = lower($2) AND merged_into_id IS NULL RETURNING id",
+      [invoice.client_id, invoice.invoice_number]
+    );
+
+    await logActivity(db, {
+      userId: auth.user.id,
+      action: "invoice_acknowledgement.invoices_confirmed_separate",
+      module: LOG_MODULE,
+      entityType: "ack_invoices",
+      entityId: invoice.id,
+      description: `Invoices numbered ${invoice.invoice_number} of "${invoice.client_name}" confirmed as ${marked.rowCount} separate invoices. Reason: ${reason}`,
+      metadata: { invoices: marked.rows.map((row) => row.id), reason },
+    });
+
+    return readItem(db, invoiceId, amountsVisible);
+  });
+}
+
+/** Choose: which of the conflicting acknowledgements is the invoice's current one. The others stay as history. */
+export async function chooseAcknowledgement(auth: AuthContext, invoiceId: string, acknowledgementId: string, reason: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
+
+  return withTransaction(async (db) => {
+    const invoice = await lockInvoice(db, invoiceId, true);
+
+    if (!invoice.acknowledgement_conflict) throw conflict("This invoice has no conflicting acknowledgements to choose between.");
+
+    const candidate = await db.query<{ id: string }>(
+      `SELECT a.id FROM invoice_acknowledgements a WHERE a.id = $2 AND a.ack_invoice_id IN ${FAMILY_SQL("$1")} AND ${SUBSTANTIVE_SQL("a")}`,
+      [invoiceId, acknowledgementId]
+    );
+
+    if (candidate.rowCount === 0) throw notFound("That acknowledgement is not one of this invoice's conflicting acknowledgements.");
+
+    await db.query("UPDATE ack_invoices SET current_acknowledgement_id = NULL WHERE current_acknowledgement_id = $1", [acknowledgementId]);
+    await db.query("UPDATE ack_invoices SET current_acknowledgement_id = $2, acknowledgement_conflict = false WHERE id = $1", [invoiceId, acknowledgementId]);
+    await logActivity(db, {
+      userId: auth.user.id,
+      action: "invoice_acknowledgement.current_chosen",
+      module: LOG_MODULE,
+      entityType: "ack_invoices",
+      entityId: invoiceId,
+      description: `Acknowledgement ${acknowledgementId} chosen as the current acknowledgement of ${label(invoice)}. The others are kept as history. Reason: ${reason}`,
+      metadata: { acknowledgementId, reason },
+    });
+
+    return readItem(db, invoiceId, amountsVisible);
+  });
 }

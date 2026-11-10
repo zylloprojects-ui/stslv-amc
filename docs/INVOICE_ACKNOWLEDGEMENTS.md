@@ -1,97 +1,134 @@
 # Invoice Acknowledgements (Finance)
 
-Status: implemented 2026-11-10 on `feature/sts-elv-client-fixes-20261109` (worktree `STSLV-AMC-client-fixes`), on top of 02a665c.
-**Prepared for review: not pushed, not merged, not deployed.** Migrations 0112 and 0113 were applied to disposable databases only.
+Status: implemented 2026-11-10 on `feature/sts-elv-client-fixes-20261109` (worktree `STSLV-AMC-client-fixes`): first
+version 8fbdeff (one acknowledgement per service), finalised to **one acknowledgement per invoice** in the following
+commit. **Prepared for review: not pushed, not merged, not deployed.** Migrations 0112–0115 were applied to
+disposable databases only.
 
-Client approval: the client approved a new Invoice Acknowledgements module under Finance (brief of 2026-11-10).
+Route: **Finance → Invoice Acknowledgements**, `/finance/invoice-acknowledgements` (after Accounts).
 
-## 1. What it is
+Acknowledgement is **not payment**. It changes no Invoice No., no Paid / Unpaid reference status, no amount, no
+service status and no Invoice Tracking record.
 
-The client signs or stamps an acknowledgement that it received an invoice. This module keeps that document next to the invoice and shows, for every invoice, whether it is **Pending** or **Acknowledged** (green).
+## 1. Invoice identity
 
-Route: **Finance → Invoice Acknowledgements**, `/finance/invoice-acknowledgements` (after Accounts; the other Finance entries are unchanged).
+STS-ELV keeps two kinds of invoice reference:
 
-Acknowledgement is **not payment**. It changes no Invoice No., no Paid / Unpaid reference status, no amount, no service status, no Zoho record.
+- the **manual Invoice No.** on each service (`amc_visits_all.manual_invoice_no`, 0100) — the approved source of Paid /
+  Unpaid on Accounts; not unique (one invoice may cover several services, and a number can be repeated or corrected);
+- **Invoice Tracking records** (`invoices` + `invoice_allocations`, 0060) — optional; an active record's number is unique
+  and its allocations name exactly the services it covers.
 
-## 2. Invoice linkage design
+Neither alone identifies every invoice, so 0114 adds a normalised identity, **`ack_invoices`**, with explicit
+service associations, **`ack_invoice_services`**:
 
-STS-ELV has no standalone invoice table for AMC billing. The invoice Accounts shows is the **manual Invoice No. of a scheduled service** (`amc_visits_all.manual_invoice_no`, 0100), the approved source of the Paid reference status. Zoho records in Invoice Tracking (`invoices` / `invoice_allocations`, 0060) are secondary and optional.
+| basis | when | services |
+|---|---|---|
+| `ZOHO` | an active Invoice Tracking record of the same client and number (case ignored) is allocated to the service | every service that record is allocated to **and** that carries the same Invoice No. on Accounts; `zoho_invoice_id` is the record (one live identity per record) |
+| `SERVICE` | no record verifies it | the one service; more services join only through an authorised, reasoned **link** |
 
-- An invoice is identified by **(service id, Invoice No.)** — `invoice_acknowledgements (amc_visit_id, invoice_number)`, unique. The number alone is never a key: manual numbers are not unique (the same number may be typed on several services; a number may be corrected).
-- The service fixes the **contract period**, so a renewal's invoice is linked to that renewal version (`STS-AMC-001 (V2)`), using the same `referenceSql` label as Accounts.
-- The list is **Accounts' own rows**: same `FROM`, same scope (`IN_SCOPE` from Service Status: Recycle Bin and cancelled-contract rules included), restricted to services with an Invoice No. Nothing is copied into a second register.
-- **Invoice Value** = the active Zoho amounts allocated to the service in Invoice Tracking, exactly Accounts' *Zoho Invoice Value*; **Service Value** = `visit_amount` (Accounts' *Value*). **Invoice Date** = the date of the active Zoho invoice with the same number covering the service. Cancelled Zoho invoices are ignored. When none exists the cell is empty: no date or amount is invented.
-- **Corrected Invoice No.:** the earlier acknowledgement stays with the earlier number (kept, never rewritten); the new number is a new invoice and starts Pending. Cleared number: the row leaves the list (as on Accounts); the acknowledgement record is kept and reappears if the same number is entered again.
-- Removing a service under an acknowledgement is refused (`ON DELETE RESTRICT`). In practice such services are completed and locked anyway.
+- `(amc_visit_id, invoice_number)` is unique in the associations: a service's number belongs to exactly one invoice.
+- The invoice number alone is never a key. **Equal numbers are never merged automatically.** Two live invoices of one
+  client with the same number are flagged **SAME_NUMBER** for reconciliation. Equal numbers of different clients are
+  separate invoices and are not flagged.
+- An invoice is **listed** while at least one of its services is in Accounts' scope and still carries its number.
+  Associations are never deleted: a corrected Invoice No. leaves the old association as history and gets a new one.
+  If the old number returns, the old invoice and its acknowledgement come back.
+- The contract period (including renewal version, e.g. `STS-AMC-001 (V2)`) comes from each linked service.
+- A `SERVICE` invoice is upgraded to `ZOHO` when every one of its services is later allocated to one active record. It
+  joins an existing `ZOHO` invoice only if it has no acknowledgement work of its own; otherwise it stays flagged.
+- Invoice Tracking records cancelled after identification stay attached ("record cancelled" is shown) and contribute
+  no date or value.
 
-## 3. Database (0112, 0113)
+The synchronisation (`invoice-sync.ts`) runs before every read and write: one transaction, one advisory lock,
+deterministic and idempotent.
 
-`0112_invoice_acknowledgements.sql`
-- `role_permissions_module_ck` gains `INVOICE_ACKNOWLEDGEMENTS`.
-- Table `invoice_acknowledgements`: `id`, `amc_visit_id` → `amc_visits_all`, `invoice_number` (trimmed, ≤ 50, as the manual number), `status` PENDING / ACKNOWLEDGED, `acknowledged_at`, `acknowledged_by` → `users`, `created_by`, `created_at`, `updated_at`. Check: acknowledged ⇔ date and user set. Unique `(amc_visit_id, invoice_number)`.
-- `attachments`: new `entity_type 'invoice_acknowledgements'` and category `INVOICE_ACKNOWLEDGEMENT` (each only with the other); partial unique index `attachments_invoice_ack_uq` = one current document per acknowledgement.
-- Triggers: a record starts PENDING; it can be confirmed only with a current document; once ACKNOWLEDGED it cannot be undone, re-dated or deleted; service and invoice number never change.
-- Nothing existing is altered (verified by the upgrade test: visits, contracts, attachments and every other grant are byte-identical before and after).
+## 2. Acknowledgements and history
 
-`0113_seed_invoice_acknowledgement_permissions.sql` — Super Admin (`ADMIN`) receives all seven actions, as 0092 did for its modules. Idempotent. **No other role receives anything.**
+- `invoice_acknowledgements.ack_invoice_id` (0114) ties an acknowledgement to its invoice; once set it never moves.
+- `ack_invoices.current_acknowledgement_id` names the invoice's one current acknowledgement (unique across invoices).
+- New acknowledgements are invoice-level (`amc_visit_id` null). One document and one confirmation acknowledge every
+  linked service.
+- **Earlier per-service (0112) acknowledgements** are adopted into the invoice of their service and number. Exactly one
+  with substance (confirmed, or with a document) becomes current, keeping its date, user and documents. Two or more are
+  **all kept**, none is chosen, and the invoice is flagged **CONFLICTING_ACKNOWLEDGEMENTS**. Adoption and flags are
+  audited (`invoice_acknowledgement.adopted`, `.conflict_flagged`).
+- A link that brings two acknowledged invoices together also flags the conflict rather than choosing one.
+- Database guards:
+  - associations and identities cannot be deleted;
+  - service, number, client and number of an identity never change;
+  - a service can move only to an invoice of the same client and Invoice No.;
+  - a verified identity keeps its record;
+  - 0112's guards still apply: confirm needs a document, and there is no undo, re-date or delete of a confirmed acknowledgement.
 
-## 4. Workflow
+## 3. Workflow
 
-1. The invoice appears **Pending** (amber) as soon as its Invoice No. is entered on Accounts.
-2. **Attach Acknowledgement** (Create) → **Choose document**. PDF, PNG or JPEG, recognised by content (never by name or browser type), name extension must match, ≤ `ATTACHMENT_MAX_MB` (12 MB). The file is stored at once in private storage and recorded as the current document of a PENDING acknowledgement. The dialog shows the **selected document name**. Status stays Pending ("Document attached, awaiting OK / Confirm").
-3. **Choose a different file** adds a new version; **Remove** marks it not current (row and file kept). Both only before confirmation.
-4. **OK / Confirm** sends the attachment id the user saw. The server reads the file back from storage, checks its SHA-256, then, in one transaction with the service row locked, sets ACKNOWLEDGED with `acknowledged_at = now()` and the user. A changed document, a missing file or a concurrent change → 409/404 and the invoice stays Pending.
-5. **Acknowledged** shows in green (emerald badge, row tint) only from the server's answer; it persists across refresh and sessions.
-6. **View Document** (View) opens a viewer fed by an authenticated `GET …/document` into a `blob:` URL (PDF in a frame, images inline); **Download** is inside the viewer. Earlier versions are listed.
-7. **Replace Document** (Edit, acknowledged only): new version + reason (3–500 characters) in one request; the original acknowledged date and user stay; earlier version kept; reason in the Audit Log. Nothing is ever silently overwritten.
+1. Pending (amber).
+2. **Attach Acknowledgement** (Create): PDF/PNG/JPEG checked by content, ≤ 12 MB, stored privately at once; the name is
+   shown; still Pending.
+3. **OK / Confirm** (Create): the server reads the file back and checks its SHA-256, then locks the invoice and its
+   acknowledgement and sets **Acknowledged** (green) with date/time and user. Two simultaneous confirmations: one
+   succeeds, the other is refused.
+4. **View Document / Download** (View): authenticated fetch into a `blob:` URL. **Document history** lists every version,
+   each downloadable, only for this invoice (and invoices linked into it).
+5. **Replace Document** (Edit): new version with a reason; original date and user kept; earlier version kept; audited.
+6. **Linked Services** (View): the services the invoice covers, with how each was linked; values only with Accounts: View.
+7. **Reconcile** (Edit, reason required, audited):
+   - **Link as one invoice**: same client and number only. Two Invoice Tracking records are never linked. The Invoice
+     Tracking invoice survives if one exists; the other is kept as history.
+   - **They are separate invoices**: the SAME_NUMBER flag clears.
+   - **Make current**: choose the current one of conflicting acknowledgements; the others stay in history.
+   - While flagged, the invoice takes no new attachment or confirmation.
 
-Delete is not offered: acknowledgements are retained evidence (no approved deletion rule exists).
+## 4. Permissions (approved defaults)
 
-## 5. Security and storage
-
-- Private storage through the existing `FileStorage` (local folder, Supabase or R2): generated keys (`<uuid>.<ext>`), metadata in `attachments`, never a public or permanent URL, no storage key, checksum or credential in any response. Downloads: `Content-Disposition: attachment`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`.
-- The file is validated before anything is stored; if the database save fails, the stored file is removed again (best effort) and nothing is recorded (tested with a forced database failure).
-- Every route is behind `authenticate` + `authorize`; the document is served only for an invoice the list includes. Raw uploads limited to `ATTACHMENT_MAX_MB + 1` MB.
-- Audit Log (`module INVOICE_ACKNOWLEDGEMENTS`, `entity_type invoice_acknowledgements`): `invoice_acknowledgement.document_uploaded`, `.document_removed`, `.confirmed`, `.document_replaced` (with reason), `invoice_acknowledgements.exported` — each written in the same transaction as the change.
-- Amounts: `serviceValue`, `invoiceValue` and the totals are returned only to a role that also holds **Accounts: View** (the source page of those values); otherwise `null`, and the export leaves the amount columns out.
-
-## 6. Permissions
-
-| Action | Allows |
+| Role | Invoice Acknowledgements |
 |---|---|
-| View | Page, list, filters, document viewer and download, document history |
-| Create | Attach, remove before confirming, OK / Confirm |
-| Edit | Replace Document of an acknowledged invoice (with reason) |
-| Export | Excel / PDF of the filtered list (with View) |
+| Super Admin | View, Create, Edit, Export (0113 grants every action, as for every module) |
+| Admin | View, Create, Edit, Export (0115) |
+| Finance Executive | View, Create, Export (0115) |
+| Viewer, AMC Operations, Master Data, custom roles | none |
 
-Starting grants (migration 0113): **Super Admin only.** Admin, Finance Executive, AMC Operations Executive, Master Data Executive and Viewer start with nothing, and the role model's `defaultGrants` keeps it that way (`NOT_SEEDED`, like Reports). Admin and Super Admin role-management safeguards are unchanged.
+- 0115 is insert-only and idempotent: it never removes or changes an existing grant, so customised roles keep what they hold.
+- Amounts (`invoiceValue`, `serviceValue`, totals, linked-service values, export columns) additionally require **Accounts: View**.
+- Every route checks permissions server-side.
 
-**Proposed grants, for owner approval (not applied):**
+## 5. Security
 
-| Role | Proposed |
-|---|---|
-| Admin | View, Create, Edit, Export |
-| Finance Executive | View, Create, Export (Edit only if Finance replaces documents) |
-| Viewer | View |
-| AMC Operations / Master Data Executive | none |
+- Private storage only, with generated keys. There are no public URLs and no storage keys, checksums or credentials in responses.
+- Files are validated before anything is stored. A failed save removes the stored file again (tested).
+- Documents are served only through the invoice they belong to. Another invoice's attachment id gets a 404.
+- Services move between invoices only by an Edit-authorised, reasoned link, and the database refuses moves across clients or numbers.
+- Audit Log entries:
+  - document actions: upload, removal, confirmation, replacement, export;
+  - invoice actions: adoption, conflict, link, separate, choice, and system verification by Invoice Tracking.
 
-Super Admin can apply any of these in Administration → Roles & Permissions without a migration.
+## 6. Accounts integration
 
-## 7. Accounts integration
+- Same services, numbers, contract periods and values as Accounts. A test checks that every Accounts service with an
+  Invoice No. is linked to exactly one listed invoice carrying that number.
+- **Invoice value is counted once per invoice** (the Invoice Tracking amount), never per service. Service value is the
+  sum of the invoice's own services.
+- Accounts' page, API, Paid logic, colours, totals and exports are unchanged.
 
-- Same rows, numbers, links and values as Accounts (an API test compares them field by field).
-- No change to Accounts' page, API, Paid logic, colours, totals or exports. No read-only acknowledgement indicator was added to Accounts, to keep its approved workflow untouched; it can be added later on request.
-- Cancelled Zoho invoices never contribute a date or value (same rule as Accounts). No duplicate financial totals: the page's totals are PostgreSQL sums over the same filtered rows, shown only on this page.
+## 7. Tests (disposable database `stslv_amc_invoice_ack`)
 
-## 8. Tests (2026-11-10, disposable database `stslv_amc_invoice_ack`)
+- API, `tests/invoice-acknowledgements.test.ts`. It covers:
+  - multi-service invoice, several invoices on one contract, equal numbers within a client and across clients;
+  - renewal version;
+  - pending → acknowledged, a confirmation race, replacement and history;
+  - cross-invoice document refusal;
+  - link and separate, conflicting legacy acknowledgements and choice, single legacy adoption;
+  - the role matrix and financial restriction;
+  - database guards, failure cleanup, corrected Invoice No., filters and export.
+- `tests/migration-0114-upgrade.test.ts`: 0113 → 0114/0115 with legacy acknowledgements, a customised role, idempotency.
+- Web, `src/test/invoice-acknowledgements.test.tsx`; isolated browser E2E (desktop and mobile).
 
-- API: `tests/invoice-acknowledgements.test.ts` (25), `tests/migration-0112-upgrade.test.ts` (1); `database.test.ts` and `migration-0111-upgrade.test.ts` updated (new table; the 0111 step now copies only 0111 so later migrations do not enter it).
-- Web: `src/test/invoice-acknowledgements.test.tsx` (17); `auth.test.tsx` Finance menu list updated.
-- Browser E2E (headless Edge over CDP, isolated web 5411 → API 3411, schema `e2e_ack`, own JWT secret, temporary storage folder): 29/29.
+## 8. Open points
 
-## 9. Open points
-
-1. Approve the starting grants in §6 (until then only Super Admin sees the page).
-2. One invoice number typed on several services is one acknowledgement **per service** (the identity is the service plus its number). If the client issues one invoice covering several services, each row needs its own confirmation; a shared acknowledgement would need a separate decision.
+1. Invoice Tracking record cancelled after identification: the invoice keeps it (flag shown); re-identifying it against
+   a replacement record is left to a later decision.
+2. Super Admin's 0113 grant also includes the unused Delete/Approve/Read actions (Super Admin holds every action of
+   every module); they enable nothing.
 3. Optional read-only acknowledgement indicator on Accounts (not added).
-4. Releasing needs approval of 0112 and 0113 together with the branch's 0110 and 0111 (and 0108/0109 from the integration branch).
+4. Releasing needs approval of 0112–0115 with the branch's 0110/0111 (and 0108/0109 from the integration branch).

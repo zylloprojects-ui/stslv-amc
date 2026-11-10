@@ -1,9 +1,11 @@
 import { useCallback, useState } from 'react'
 
-// Finance -> Invoice Acknowledgements: the types of /api/invoice-acknowledgements, the column choices (remembered per
-// user in this browser) and the file rules the page checks before upload. The API checks everything again.
+// Finance -> Invoice Acknowledgements: the types of /api/invoice-acknowledgements (one row per INVOICE, which may
+// cover several services), the column choices (remembered per user in this browser) and the file rules the page
+// checks before upload. The API checks everything again.
 
 export type AcknowledgementStatus = 'PENDING' | 'ACKNOWLEDGED'
+export type ReconciliationReason = 'SAME_NUMBER' | 'CONFLICTING_ACKNOWLEDGEMENTS'
 
 export interface AcknowledgementDocument {
   attachmentId: string
@@ -16,26 +18,25 @@ export interface AcknowledgementDocument {
 }
 
 export interface AcknowledgementItem {
-  visitId: string
-  acknowledgementId: string | null
-  reference: string
-  contract: { id: string; version: number }
-  client: { id: string; name: string }
-  system: { description: string; typeName: string | null }
-  service: { sequenceNo: number; cycleNo: number | null; serviceCode: string | null }
-  scheduledDate: string
-  completedDate: string | null
-  serviceReportNo: string | null
+  invoiceId: string
+  basis: 'ZOHO' | 'SERVICE'
   invoiceNo: string
-  invoiceEnteredAt: string | null
+  client: { id: string; name: string }
+  contracts: { id: string; reference: string; version: number }[]
+  serviceCount: number
+  serviceReportNos: string[]
   invoiceDate: string | null
+  zohoCancelled: boolean
+  invoiceEnteredAt: string | null
   amountsVisible: boolean
-  serviceValue: string | null
   invoiceValue: string | null
+  serviceValue: string | null
   status: AcknowledgementStatus
+  acknowledgementId: string | null
   document: AcknowledgementDocument | null
   acknowledgedAt: string | null
   acknowledgedBy: { id: string; fullName: string } | null
+  reconciliation: ReconciliationReason[]
 }
 
 export interface AcknowledgementKpis {
@@ -43,8 +44,9 @@ export interface AcknowledgementKpis {
   pending: number
   awaitingConfirmation: number
   acknowledged: number
-  serviceValueTotal: string | null
+  needsReconciliation: number
   invoiceValueTotal: string | null
+  serviceValueTotal: string | null
 }
 
 export interface AcknowledgementList {
@@ -61,23 +63,55 @@ export interface AcknowledgementOptions {
   limits: { maxMb: number; types: string }
 }
 
+export interface LinkedService {
+  visitId: string
+  contract: { id: string; reference: string; version: number }
+  service: { sequenceNo: number; cycleNo: number | null; serviceCode: string | null }
+  scheduledDate: string
+  completedDate: string | null
+  serviceReportNo: string | null
+  invoiceNo: string
+  basis: 'ZOHO' | 'SERVICE' | 'LINKED'
+  linkedAt: string
+  serviceValue: string | null
+}
+
 export interface DocumentVersion {
   attachmentId: string
+  acknowledgementId: string
   invoiceNumber: string
   version: number
   isCurrent: boolean
+  ofCurrentAcknowledgement: boolean
+  acknowledgementStatus: AcknowledgementStatus
   originalName: string
   uploadedBy: { id: string; fullName: string }
   uploadedAt: string
 }
 
+export interface ReconciliationView {
+  reasons: ReconciliationReason[]
+  sameNumber: { invoiceId: string; basis: 'ZOHO' | 'SERVICE'; serviceCount: number; contracts: string[]; status: AcknowledgementStatus; hasDocument: boolean }[]
+  acknowledgements: { acknowledgementId: string; status: AcknowledgementStatus; acknowledgedAt: string | null; acknowledgedBy: string | null; documentName: string | null; legacyVisitId: string | null }[]
+}
+
 export const STATUS_LABELS: Record<AcknowledgementStatus, string> = { PENDING: 'Pending', ACKNOWLEDGED: 'Acknowledged' }
 
-/** Shown on the page and in Help: an acknowledgement is not a payment. */
+export const RECONCILIATION_LABELS: Record<ReconciliationReason, string> = {
+  SAME_NUMBER: 'Another invoice of this client has the same Invoice No.',
+  CONFLICTING_ACKNOWLEDGEMENTS: 'More than one acknowledgement exists for this invoice',
+}
+
+export const BASIS_LABELS: Record<LinkedService['basis'], string> = {
+  ZOHO: 'Invoice Tracking record',
+  SERVICE: 'Invoice No. on the service',
+  LINKED: 'Linked by reconciliation',
+}
+
 export const ACKNOWLEDGEMENT_NOTE =
   'Acknowledged means the client’s acknowledgement document for this invoice is on file and was confirmed. It is not payment: the Invoice No., the Paid / Unpaid reference status and every amount stay as they are.'
 
-export const SORTS = ['reference', 'client', 'invoiceNo', 'invoiceDate', 'status', 'acknowledgedAt'] as const
+export const SORTS = ['invoiceNo', 'client', 'contract', 'invoiceDate', 'status', 'acknowledgedAt'] as const
 export type Sort = (typeof SORTS)[number]
 
 // ---------------------------------------------------------------------------
@@ -105,11 +139,11 @@ export function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-/** "STS-AMC-001 (V2) · Invoice INV-100": names the invoice in titles and screen-reader labels. */
-export const subjectOf = (item: AcknowledgementItem) => `${item.reference} · Invoice ${item.invoiceNo}`
+/** "Invoice INV-100 · Alpha Towers": names the invoice in titles and screen-reader labels. */
+export const subjectOf = (item: Pick<AcknowledgementItem, 'invoiceNo' | 'client'>) => `Invoice ${item.invoiceNo} · ${item.client.name}`
 
 /** "Year 2 · Q3", or the visit number on a service generated before service codes existed. */
-export function serviceLabel(service: AcknowledgementItem['service']): string {
+export function serviceLabel(service: LinkedService['service']): string {
   return service.serviceCode && service.cycleNo ? `Year ${service.cycleNo} · ${service.serviceCode}` : `No. ${service.sequenceNo}`
 }
 
@@ -119,24 +153,25 @@ export function serviceLabel(service: AcknowledgementItem['service']): string {
 
 export const ACK_PREFIX = 'stslev.invoice-acknowledgements'
 
-/** The columns a user may hide, in table order; the same ids the export accepts. AMC Contract, Invoice No., Status and Actions always stay. */
-export const COLUMN_IDS = ['client', 'service', 'serviceReportNo', 'invoiceDate', 'serviceValue', 'invoiceValue', 'acknowledgedAt', 'uploadedBy', 'document'] as const
+/** The columns a user may hide, in table order; the same ids the export accepts. Invoice No., Status and Actions always stay. */
+export const COLUMN_IDS = ['client', 'contract', 'invoiceDate', 'invoiceValue', 'serviceValue', 'services', 'acknowledgedAt', 'acknowledgedBy', 'uploadedBy', 'document'] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
 
 export const COLUMN_LABELS: Record<ColumnId, string> = {
   client: 'Client',
-  service: 'Service',
-  serviceReportNo: 'Service Report No.',
+  contract: 'AMC Contract / Version',
   invoiceDate: 'Invoice Date',
-  serviceValue: 'Service Value (Ex VAT, OMR)',
   invoiceValue: 'Invoice Value (Ex VAT, OMR)',
+  serviceValue: 'Service Value (Ex VAT, OMR)',
+  services: 'Linked Services',
   acknowledgedAt: 'Acknowledged Date',
+  acknowledgedBy: 'Acknowledged By',
   uploadedBy: 'Uploaded By',
   document: 'Document',
 }
 
 /** Columns that hold amounts: shown only when the API sent amounts (the role may view Accounts). */
-export const AMOUNT_COLUMNS: readonly ColumnId[] = ['serviceValue', 'invoiceValue']
+export const AMOUNT_COLUMNS: readonly ColumnId[] = ['invoiceValue', 'serviceValue']
 
 function load(key: string): ReadonlySet<ColumnId> {
   try {

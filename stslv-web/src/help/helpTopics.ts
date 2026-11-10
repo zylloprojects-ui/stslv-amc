@@ -823,8 +823,17 @@ const FINANCE: HelpTopic[] = [
     pages: ['/finance/invoice-acknowledgements'],
     guideChapter: 'Invoice Acknowledgements',
     summary:
-      "The client's signed or stamped acknowledgement of each invoice on Accounts (a service with an Invoice No.): Pending until a document is attached and confirmed, then Acknowledged in green.",
+      "The client's signed or stamped acknowledgement of each invoice: one row and one acknowledgement per invoice, even when it covers several services. Pending until a document is attached and confirmed, then Acknowledged in green.",
     sections: [
+      {
+        heading: 'One acknowledgement per invoice',
+        bullets: [
+          'Each row is one invoice. Linked Services (the count in the row) lists every service it covers; one document and one confirmation acknowledge them all.',
+          'When Invoice Tracking holds a record of the invoice, that record decides its services. Otherwise each service’s Invoice No. starts as its own invoice.',
+          'Equal Invoice Nos. are never merged automatically: they show Needs reconciliation until someone with Edit uses Reconcile to link them as one invoice or confirm they are separate.',
+          'If two acknowledgements exist for one invoice (for example from the earlier per-service release), both are kept and none is chosen automatically: Reconcile → Make current.',
+        ],
+      },
       {
         heading: 'Acknowledge an invoice',
         steps: [
@@ -854,16 +863,17 @@ const FINANCE: HelpTopic[] = [
         terms: [
           { term: 'View', meaning: 'Open the page, filter, view and download documents.' },
           { term: 'Create', meaning: 'Attach a document, remove it before confirming, and OK / Confirm.' },
-          { term: 'Edit', meaning: 'Replace the document of an acknowledged invoice, with a reason.' },
+          { term: 'Edit', meaning: 'Replace the document of an acknowledged invoice, with a reason; Reconcile invoices, with a reason.' },
           { term: 'Export', meaning: 'Excel or PDF of the filtered list.' },
           { term: 'Amounts', meaning: 'Service and invoice values are shown only to users who may also view Accounts.' },
+          { term: 'Starting access', meaning: 'Super Admin and Admin: View, Create, Edit, Export. Finance Executive: View, Create, Export. Viewer and other roles: none.' },
         ],
       },
       {
         heading: 'Acknowledged is not payment',
         text: [
           'An acknowledgement only records that the client received the invoice. It does not change the Invoice No., the Paid / Unpaid reference status, any amount, the service status or anything in Zoho, and it does not mean money was received.',
-          'Invoice Date and Invoice Value come from the Zoho invoice with the same number in Invoice Tracking, where one is recorded. Otherwise they show "—": nothing is invented.',
+          'Invoice Date and Invoice Value come from the invoice’s Invoice Tracking record, counted once per invoice, where one is recorded. Otherwise they show "—": nothing is invented.',
         ],
       },
     ],

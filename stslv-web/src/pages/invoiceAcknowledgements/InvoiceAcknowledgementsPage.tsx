@@ -12,15 +12,15 @@ import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
 import { Filter, FilterPanel, Pager } from '../amc/components'
-import { AcknowledgementViewer, AttachAcknowledgementDialog, ReplaceDocumentDialog } from './AcknowledgementDialogs'
+import { AcknowledgementViewer, AttachAcknowledgementDialog, LinkedServicesDialog, ReconcileDialog, ReplaceDocumentDialog } from './AcknowledgementDialogs'
 import {
   ACKNOWLEDGEMENT_NOTE,
-  subjectOf,
   AMOUNT_COLUMNS,
   COLUMN_IDS,
   COLUMN_LABELS,
-  serviceLabel,
+  RECONCILIATION_LABELS,
   STATUS_LABELS,
+  subjectOf,
   useHiddenColumns,
   type AcknowledgementItem,
   type AcknowledgementList,
@@ -44,12 +44,13 @@ interface Filters {
   contractId: string
   invoiceNo: string
   status: string
+  reconciliation: string
   dateBasis: string
   fromDate: string
   toDate: string
 }
 
-const NO_FILTERS: Filters = { search: '', clientId: '', contractId: '', invoiceNo: '', status: '', dateBasis: 'INVOICE_DATE', fromDate: '', toDate: '' }
+const NO_FILTERS: Filters = { search: '', clientId: '', contractId: '', invoiceNo: '', status: '', reconciliation: '', dateBasis: 'INVOICE_DATE', fromDate: '', toDate: '' }
 
 const Missing = ({ title }: { title: string }) => (
   <span className="text-slate-400" title={title}>
@@ -57,25 +58,31 @@ const Missing = ({ title }: { title: string }) => (
   </span>
 )
 
-/** Pending (amber) or Acknowledged (green). Green appears only for a status the server confirmed. */
+/** Pending (amber) or Acknowledged (green), plus "Needs reconciliation". Green appears only for a status the server confirmed. */
 export function AcknowledgementStatusBadge({ item }: { item: AcknowledgementItem }) {
-  if (item.status === 'ACKNOWLEDGED') {
-    return (
-      <span data-status="ACKNOWLEDGED" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-300">
-        <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
-          <path d="M4.5 10.5l3.5 3.5 7.5-8" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        {STATUS_LABELS.ACKNOWLEDGED}
-      </span>
-    )
-  }
   return (
-    <span>
-      <span data-status="PENDING" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-300">
-        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-        {STATUS_LABELS.PENDING}
-      </span>
-      {item.document && <span className="mt-1 block text-xs text-amber-800">Document attached, awaiting OK / Confirm</span>}
+    <span className="block">
+      {item.status === 'ACKNOWLEDGED' ? (
+        <span data-status="ACKNOWLEDGED" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 ring-1 ring-inset ring-emerald-300">
+          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+            <path d="M4.5 10.5l3.5 3.5 7.5-8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          {STATUS_LABELS.ACKNOWLEDGED}
+        </span>
+      ) : (
+        <span data-status="PENDING" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800 ring-1 ring-inset ring-amber-300">
+          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+          {STATUS_LABELS.PENDING}
+        </span>
+      )}
+      {item.status === 'PENDING' && item.document && <span className="mt-1 block text-xs text-amber-800">Document attached, awaiting OK / Confirm</span>}
+      {item.reconciliation.length > 0 && (
+        <span data-reconciliation="NEEDED" className="mt-1 block text-xs font-semibold text-red-700" title={item.reconciliation.map((code) => RECONCILIATION_LABELS[code]).join(' · ')}>
+          Needs reconciliation
+          <span className="sr-only">: {item.reconciliation.map((code) => RECONCILIATION_LABELS[code]).join('; ')}</span>
+        </span>
+      )}
+      {item.zohoCancelled && <span className="mt-1 block text-xs text-slate-500">Invoice Tracking record cancelled</span>}
     </span>
   )
 }
@@ -108,7 +115,7 @@ function HideColumnsDialog({ hidden, amountsVisible, onSave, onClose }: { hidden
         </div>
       }
     >
-      <p className="mb-3 text-sm text-slate-600">AMC Contract, Invoice No., Acknowledgement Status and Actions are always shown. Downloads include only the columns shown here.</p>
+      <p className="mb-3 text-sm text-slate-600">Invoice No., Acknowledgement Status and Actions are always shown. Downloads include only the columns shown here.</p>
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">
@@ -139,7 +146,7 @@ function SortHeader({ label, sort, current, dir, onSort, className }: { label: s
   )
 }
 
-type Dialog = { kind: 'attach' | 'replace' | 'view'; item: AcknowledgementItem } | null
+type Dialog = { kind: 'attach' | 'replace' | 'view' | 'services' | 'reconcile'; item: AcknowledgementItem } | null
 
 export function InvoiceAcknowledgementsPage() {
   const auth = useAuth()
@@ -197,16 +204,27 @@ export function InvoiceAcknowledgementsPage() {
 
   const data = list.data
   // The API decides (amounts only with Accounts: View); before the first answer, the same rule from the session.
-  const amountsVisible = data ? data.kpis.serviceValueTotal !== null : auth.can('ACCOUNTS', 'VIEW')
+  const amountsVisible = data ? data.kpis.invoiceValueTotal !== null : auth.can('ACCOUNTS', 'VIEW')
   const shown = (id: ColumnId) => !hidden.has(id) && (amountsVisible || !AMOUNT_COLUMNS.includes(id))
   const visible = COLUMN_IDS.filter(shown)
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['invoice-acknowledgements'] })
+  // Columns before the amount columns, for the totals row: #, Invoice No., then the shown text columns.
+  const leading = 2 + (['client', 'contract', 'invoiceDate'] as const).filter(shown).length
+  const trailing = 2 + (['services', 'acknowledgedAt', 'acknowledgedBy', 'uploadedBy', 'document'] as const).filter(shown).length
+
+  const cards = [
+    { id: 'total', label: 'Invoices', count: data?.kpis.total ?? 0, hint: 'One row per invoice', tone: 'from-[#0b3b66] to-[#1479BD]', edge: '#0b3b66', path: <><path d="M7 3.5h7.5L18 7v13.5H7z" strokeLinejoin="round" /><path d="M10 11h5M10 14.5h5" strokeLinecap="round" /></> },
+    { id: 'pending', label: 'Pending', count: data?.kpis.pending ?? 0, hint: 'Not yet acknowledged', tone: 'from-amber-500 to-amber-400', edge: '#d97706', path: <><circle cx="12" cy="12" r="8" /><path d="M12 8v4.5l3 2" strokeLinecap="round" /></> },
+    { id: 'awaiting', label: 'Awaiting Confirmation', count: data?.kpis.awaitingConfirmation ?? 0, hint: 'Document attached, not confirmed', tone: 'from-[#1479BD] to-sky-400', edge: '#1479BD', path: <><path d="M12 4v10M8 10l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" /><path d="M5 19h14" strokeLinecap="round" /></> },
+    { id: 'acknowledged', label: 'Acknowledged', count: data?.kpis.acknowledged ?? 0, hint: 'Confirmed: not a payment', tone: 'from-emerald-600 to-emerald-400', edge: '#16a34a', path: <path d="M5 12.5l4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" /> },
+    { id: 'reconcile', label: 'Needs Reconciliation', count: data?.kpis.needsReconciliation ?? 0, hint: 'Waiting for an authorised decision', tone: 'from-red-600 to-red-400', edge: '#dc2626', path: <><path d="M12 4l9 16H3z" strokeLinejoin="round" /><path d="M12 10v4M12 17h.01" strokeLinecap="round" /></> },
+  ]
 
   return (
     <>
       <PageHeader
         title="Invoice Acknowledgements"
-        description="The client's acknowledgement document for each invoice on Accounts (a service with an Invoice No.). Attach the document, then select OK / Confirm: the invoice turns green, Acknowledged. Acknowledgement is not payment."
+        description="The client's acknowledgement document for each invoice: one row per invoice, even when it covers several services. Attach the document, then select OK / Confirm: the invoice turns green, Acknowledged. Acknowledgement is not payment."
         actions={
           canExport ? (
             <ExportButtons
@@ -233,13 +251,8 @@ export function InvoiceAcknowledgementsPage() {
       )}
 
       <section aria-label="Invoice acknowledgement figures" className="mb-4">
-        <ul className="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            { id: 'total', label: 'Invoices', count: data?.kpis.total ?? 0, hint: 'Services with an Invoice No.', tone: 'from-[#0b3b66] to-[#1479BD]', edge: '#0b3b66', path: <><path d="M7 3.5h7.5L18 7v13.5H7z" strokeLinejoin="round" /><path d="M10 11h5M10 14.5h5" strokeLinecap="round" /></> },
-            { id: 'pending', label: 'Pending', count: data?.kpis.pending ?? 0, hint: 'Not yet acknowledged', tone: 'from-amber-500 to-amber-400', edge: '#d97706', path: <><circle cx="12" cy="12" r="8" /><path d="M12 8v4.5l3 2" strokeLinecap="round" /></> },
-            { id: 'awaiting', label: 'Awaiting Confirmation', count: data?.kpis.awaitingConfirmation ?? 0, hint: 'Document attached, not confirmed', tone: 'from-[#1479BD] to-sky-400', edge: '#1479BD', path: <><path d="M12 4v10M8 10l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" /><path d="M5 19h14" strokeLinecap="round" /></> },
-            { id: 'acknowledged', label: 'Acknowledged', count: data?.kpis.acknowledged ?? 0, hint: 'Confirmed: not a payment', tone: 'from-emerald-600 to-emerald-400', edge: '#16a34a', path: <path d="M5 12.5l4.5 4.5L19 7.5" strokeLinecap="round" strokeLinejoin="round" /> },
-          ].map((card, index) => (
+        <ul className="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
+          {cards.map((card, index) => (
             <li key={card.id} data-kpi={card.id} className="flex flex-col [&>.contract-tile]:flex-1">
               <StatTile label={card.label} count={card.count} hint={data ? card.hint : 'Loading…'} icon={icon(card.path)} tone={card.tone} edge={card.edge} position={index} />
             </li>
@@ -267,7 +280,7 @@ export function InvoiceAcknowledgementsPage() {
             <form className="grid gap-4 p-4 sm:grid-cols-2 sm:px-5 lg:grid-cols-4" onSubmit={apply} aria-label="Filters">
               <Filter label="Search" className="sm:col-span-2">
                 {(id, className) => (
-                  <input id={id} type="search" value={draft.search} onChange={(event) => set('search')(event.target.value)} placeholder="Contract, client, invoice no., service report no. or document" className={className} />
+                  <input id={id} type="search" value={draft.search} onChange={(event) => set('search')(event.target.value)} placeholder="Invoice no., client, contract, service report no. or document" className={className} />
                 )}
               </Filter>
               <Filter label="Client">
@@ -308,6 +321,14 @@ export function InvoiceAcknowledgementsPage() {
                   </select>
                 )}
               </Filter>
+              <Filter label="Reconciliation">
+                {(id, className) => (
+                  <select id={id} value={draft.reconciliation} onChange={(event) => set('reconciliation')(event.target.value)} className={className}>
+                    <option value="">All</option>
+                    <option value="NEEDED">Needs reconciliation</option>
+                  </select>
+                )}
+              </Filter>
               <Filter label="Date filter">
                 {(id, className) => (
                   <select id={id} value={draft.dateBasis} onChange={(event) => set('dateBasis')(event.target.value)} className={className}>
@@ -342,7 +363,7 @@ export function InvoiceAcknowledgementsPage() {
                   Hide Columns · {visible.length} of {COLUMN_IDS.filter((id) => amountsVisible || !AMOUNT_COLUMNS.includes(id)).length} shown
                 </Button>
                 <span className="basis-full text-xs text-slate-500">
-                  Invoice Date is the date of the Zoho invoice with the same number in Invoice Tracking, where one is recorded. A manual Invoice No. carries no date, so none is shown.
+                  Invoice Date and Invoice Value come from the Invoice Tracking record of the invoice, counted once per invoice, where one is recorded. A manual Invoice No. carries no date or amount, so none is shown.
                 </span>
               </div>
             </form>
@@ -380,16 +401,16 @@ export function InvoiceAcknowledgementsPage() {
                     <th scope="col" className={TABLE.snHead}>
                       #
                     </th>
-                    <SortHeader label="AMC Contract" sort="reference" current={sort} dir={dir} onSort={onSort} />
-                    {shown('client') && <SortHeader label={COLUMN_LABELS.client} sort="client" current={sort} dir={dir} onSort={onSort} />}
-                    {shown('service') && <th scope="col" className={TABLE.th}>{COLUMN_LABELS.service}</th>}
                     <SortHeader label="Invoice No." sort="invoiceNo" current={sort} dir={dir} onSort={onSort} />
+                    {shown('client') && <SortHeader label={COLUMN_LABELS.client} sort="client" current={sort} dir={dir} onSort={onSort} />}
+                    {shown('contract') && <SortHeader label={COLUMN_LABELS.contract} sort="contract" current={sort} dir={dir} onSort={onSort} />}
                     {shown('invoiceDate') && <SortHeader label={COLUMN_LABELS.invoiceDate} sort="invoiceDate" current={sort} dir={dir} onSort={onSort} />}
-                    {shown('serviceValue') && <th scope="col" className={cx(TABLE.th, 'text-right')}>{COLUMN_LABELS.serviceValue}</th>}
                     {shown('invoiceValue') && <th scope="col" className={cx(TABLE.th, 'text-right')}>{COLUMN_LABELS.invoiceValue}</th>}
-                    {shown('serviceReportNo') && <th scope="col" className={TABLE.th}>{COLUMN_LABELS.serviceReportNo}</th>}
+                    {shown('serviceValue') && <th scope="col" className={cx(TABLE.th, 'text-right')}>{COLUMN_LABELS.serviceValue}</th>}
+                    {shown('services') && <th scope="col" className={TABLE.th}>{COLUMN_LABELS.services}</th>}
                     <SortHeader label="Acknowledgement Status" sort="status" current={sort} dir={dir} onSort={onSort} />
                     {shown('acknowledgedAt') && <SortHeader label={COLUMN_LABELS.acknowledgedAt} sort="acknowledgedAt" current={sort} dir={dir} onSort={onSort} />}
+                    {shown('acknowledgedBy') && <th scope="col" className={TABLE.th}>{COLUMN_LABELS.acknowledgedBy}</th>}
                     {shown('uploadedBy') && <th scope="col" className={TABLE.th}>{COLUMN_LABELS.uploadedBy}</th>}
                     {shown('document') && <th scope="col" className={TABLE.th}>{COLUMN_LABELS.document}</th>}
                     <th scope="col" className={TABLE.th}>
@@ -399,52 +420,63 @@ export function InvoiceAcknowledgementsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {data.items.map((item, index) => (
-                    <tr key={`${item.visitId}-${item.invoiceNo}`} className={cx(TABLE.row, item.status === 'ACKNOWLEDGED' && 'bg-emerald-50/40')} data-status={item.status}>
+                    <tr
+                      key={item.invoiceId}
+                      className={cx(TABLE.row, item.status === 'ACKNOWLEDGED' && item.reconciliation.length === 0 && 'bg-emerald-50/40', item.reconciliation.length > 0 && 'bg-red-50/40')}
+                      data-status={item.status}
+                      data-invoice={item.invoiceId}
+                    >
                       <td className={TABLE.sn}>{(data.page - 1) * data.pageSize + index + 1}</td>
-                      <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
-                        {canViewContract ? (
-                          <Link to={`/amc/contracts/${item.contract.id}`} className="hover:text-[#1479BD] hover:underline" aria-label={`Contract ${item.reference}`}>
-                            {item.reference}
-                          </Link>
-                        ) : (
-                          item.reference
-                        )}
-                      </td>
-                      {shown('client') && <td className={`${TABLE.td} ${TABLE.text} font-semibold text-slate-900`}>{item.client.name}</td>}
-                      {shown('service') && (
-                        <td className={`${TABLE.td} whitespace-nowrap`}>
-                          {serviceLabel(item.service)}
-                          {item.completedDate && <div className="text-xs text-slate-500">Completed {formatDate(item.completedDate)}</div>}
-                        </td>
-                      )}
                       <td className={`${TABLE.td} whitespace-nowrap`}>
                         <span className="font-mono text-sm font-semibold text-slate-900">{item.invoiceNo}</span>
                         {item.invoiceEnteredAt && <div className="text-xs text-slate-500">Entered {formatBusinessDateTime(item.invoiceEnteredAt)}</div>}
                       </td>
-                      {shown('invoiceDate') && <td className={`${TABLE.td} whitespace-nowrap`}>{item.invoiceDate ? formatDate(item.invoiceDate) : <Missing title="No Zoho invoice date recorded" />}</td>}
+                      {shown('client') && <td className={`${TABLE.td} ${TABLE.text} font-semibold text-slate-900`}>{item.client.name}</td>}
+                      {shown('contract') && (
+                        <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm font-semibold text-[#0b3b66]`}>
+                          {item.contracts.map((contract) => (
+                            <div key={contract.id}>
+                              {canViewContract ? (
+                                <Link to={`/amc/contracts/${contract.id}`} className="hover:text-[#1479BD] hover:underline" aria-label={`Contract ${contract.reference}`}>
+                                  {contract.reference}
+                                </Link>
+                              ) : (
+                                contract.reference
+                              )}
+                            </div>
+                          ))}
+                        </td>
+                      )}
+                      {shown('invoiceDate') && <td className={`${TABLE.td} whitespace-nowrap`}>{item.invoiceDate ? formatDate(item.invoiceDate) : <Missing title="No Invoice Tracking date recorded" />}</td>}
+                      {shown('invoiceValue') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{item.invoiceValue ? formatMoney(item.invoiceValue) : <Missing title="No Invoice Tracking value recorded" />}</td>}
                       {shown('serviceValue') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{item.serviceValue ? formatMoney(item.serviceValue) : <Missing title="No service value set" />}</td>}
-                      {shown('invoiceValue') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{item.invoiceValue ? formatMoney(item.invoiceValue) : <Missing title="No Zoho invoice value recorded" />}</td>}
-                      {shown('serviceReportNo') && <td className={`${TABLE.td} whitespace-nowrap font-mono text-sm`}>{item.serviceReportNo ?? <Missing title="No service report number" />}</td>}
+                      {shown('services') && (
+                        <td className={`${TABLE.td} whitespace-nowrap`}>
+                          <button
+                            type="button"
+                            onClick={() => setDialog({ kind: 'services', item })}
+                            className="font-semibold text-[#1479BD] hover:underline"
+                            aria-label={`View the ${item.serviceCount} linked ${item.serviceCount === 1 ? 'service' : 'services'} of ${subjectOf(item)}`}
+                          >
+                            {item.serviceCount} {item.serviceCount === 1 ? 'service' : 'services'}
+                          </button>
+                        </td>
+                      )}
                       <td className={TABLE.td}>
                         <AcknowledgementStatusBadge item={item} />
                       </td>
-                      {shown('acknowledgedAt') && (
-                        <td className={`${TABLE.td} whitespace-nowrap`}>
-                          {item.acknowledgedAt ? (
-                            <>
-                              {formatBusinessDateTime(item.acknowledgedAt)}
-                              <div className="text-xs text-slate-500">by {item.acknowledgedBy?.fullName}</div>
-                            </>
-                          ) : (
-                            <Missing title="Not acknowledged" />
-                          )}
-                        </td>
-                      )}
+                      {shown('acknowledgedAt') && <td className={`${TABLE.td} whitespace-nowrap`}>{item.acknowledgedAt ? formatBusinessDateTime(item.acknowledgedAt) : <Missing title="Not acknowledged" />}</td>}
+                      {shown('acknowledgedBy') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.acknowledgedBy?.fullName ?? <Missing title="Not acknowledged" />}</td>}
                       {shown('uploadedBy') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.document?.uploadedBy.fullName ?? <Missing title="No document" />}</td>}
                       {shown('document') && <td className={`${TABLE.td} ${TABLE.unbroken} text-sm`}>{item.document?.originalName ?? <Missing title="No document" />}</td>}
                       <td className={`${TABLE.td} whitespace-nowrap`}>
                         <div className="flex flex-wrap gap-1.5">
-                          {item.status === 'PENDING' && canCreate && (
+                          {item.reconciliation.length > 0 && canEdit && (
+                            <Button size="sm" variant="danger" onClick={() => setDialog({ kind: 'reconcile', item })} aria-label={`Reconcile ${subjectOf(item)}`}>
+                              Reconcile
+                            </Button>
+                          )}
+                          {item.status === 'PENDING' && canCreate && item.reconciliation.length === 0 && (
                             <Button size="sm" variant={item.document ? 'primary' : 'secondary'} onClick={() => setDialog({ kind: 'attach', item })} aria-label={`${item.document ? 'Review and confirm' : 'Attach acknowledgement for'} ${subjectOf(item)}`}>
                               {item.document ? 'Review & Confirm' : 'Attach Acknowledgement'}
                             </Button>
@@ -454,26 +486,26 @@ export function InvoiceAcknowledgementsPage() {
                               View Document
                             </Button>
                           )}
-                          {item.status === 'ACKNOWLEDGED' && canEdit && (
+                          {item.status === 'ACKNOWLEDGED' && canEdit && !item.reconciliation.includes('CONFLICTING_ACKNOWLEDGEMENTS') && (
                             <Button size="sm" variant="ghost" onClick={() => setDialog({ kind: 'replace', item })} aria-label={`Replace the acknowledgement document of ${subjectOf(item)}`}>
                               Replace Document
                             </Button>
                           )}
-                          {item.status === 'PENDING' && !canCreate && !item.document && <span className="text-xs text-slate-400">No action</span>}
+                          {item.reconciliation.length > 0 && !canEdit && <span className="text-xs text-slate-500">Waiting for an authorised user to reconcile</span>}
                         </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
-                {amountsVisible && (shown('serviceValue') || shown('invoiceValue')) && (
+                {amountsVisible && (shown('invoiceValue') || shown('serviceValue')) && (
                   <tfoot>
                     <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
-                      <th scope="row" colSpan={2 + (shown('client') ? 1 : 0) + (shown('service') ? 1 : 0) + 1 + (shown('invoiceDate') ? 1 : 0)} className={`${TABLE.td} text-right`}>
-                        Total Filtered ({data.kpis.total} {data.kpis.total === 1 ? 'invoice' : 'invoices'}, all pages)
+                      <th scope="row" colSpan={leading} className={`${TABLE.td} text-right`}>
+                        Total Filtered ({data.kpis.total} {data.kpis.total === 1 ? 'invoice' : 'invoices'}, all pages, each invoice once)
                       </th>
-                      {shown('serviceValue') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.kpis.serviceValueTotal ?? '0.000')}</td>}
                       {shown('invoiceValue') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.kpis.invoiceValueTotal ?? '0.000')}</td>}
-                      <td colSpan={2 + (shown('serviceReportNo') ? 1 : 0) + (shown('acknowledgedAt') ? 1 : 0) + (shown('uploadedBy') ? 1 : 0) + (shown('document') ? 1 : 0)} className={TABLE.td} />
+                      {shown('serviceValue') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.kpis.serviceValueTotal ?? '0.000')}</td>}
+                      <td colSpan={trailing} className={TABLE.td} />
                     </tr>
                   </tfoot>
                 )}
@@ -503,7 +535,7 @@ export function InvoiceAcknowledgementsPage() {
           onSaved={() => void refresh()}
           onConfirmed={(saved) => {
             setDialog(null)
-            setNotice(`Invoice ${saved.invoiceNo} (${saved.reference}) is now Acknowledged.`)
+            setNotice(`Invoice ${saved.invoiceNo} (${saved.client.name}) is now Acknowledged.`)
             void refresh()
           }}
           onClose={() => {
@@ -525,6 +557,18 @@ export function InvoiceAcknowledgementsPage() {
         />
       )}
       {dialog?.kind === 'view' && dialog.item.document && <AcknowledgementViewer item={dialog.item} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'services' && <LinkedServicesDialog item={dialog.item} canViewContract={canViewContract} onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'reconcile' && (
+        <ReconcileDialog
+          item={dialog.item}
+          onDone={(message) => {
+            setDialog(null)
+            setNotice(message)
+            void refresh()
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </>
   )
 }

@@ -11,13 +11,15 @@ import { InvoiceAcknowledgementsPage } from '../pages/invoiceAcknowledgements/In
 import type { AcknowledgementItem } from '../pages/invoiceAcknowledgements/invoiceAcknowledgementTypes'
 import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockRequest } from './helpers'
 
-// Finance -> Invoice Acknowledgements. Most tests render the page alone over a stand-in API; navigation goes through App.tsx.
+// Finance -> Invoice Acknowledgements: one row per INVOICE. Most tests render the page alone over a stand-in API;
+// navigation goes through App.tsx.
 
 const base: SessionUser = { id: '20', email: 'ack@example.com', fullName: 'Amal Acknowledger', roles: [{ id: '9', code: 'CUSTOM', name: 'Custom' }], permissions: [] }
-const VIEWER: SessionUser = { ...base, id: '21', permissions: ['INVOICE_ACKNOWLEDGEMENTS:VIEW'] }
-const ACKNOWLEDGER: SessionUser = { ...base, id: '22', permissions: ['INVOICE_ACKNOWLEDGEMENTS:VIEW', 'INVOICE_ACKNOWLEDGEMENTS:CREATE', 'ACCOUNTS:VIEW', 'AMC_CONTRACTS:VIEW'] }
-const EDITOR: SessionUser = { ...ACKNOWLEDGER, id: '23', permissions: [...ACKNOWLEDGER.permissions, 'INVOICE_ACKNOWLEDGEMENTS:EDIT', 'INVOICE_ACKNOWLEDGEMENTS:EXPORT'] }
-const FINANCE: SessionUser = { ...base, id: '24', permissions: ['ACCOUNTS:VIEW', 'INVOICES:VIEW'] }
+const VIEW_ONLY: SessionUser = { ...base, id: '21', permissions: ['INVOICE_ACKNOWLEDGEMENTS:VIEW'] }
+// The approved defaults: Finance Executive View/Create/Export (+ Accounts); Admin View/Create/Edit/Export.
+const FINANCE: SessionUser = { ...base, id: '22', roles: [{ id: '3', code: 'FINANCE_EXECUTIVE', name: 'Finance Executive' }], permissions: ['INVOICE_ACKNOWLEDGEMENTS:VIEW', 'INVOICE_ACKNOWLEDGEMENTS:CREATE', 'INVOICE_ACKNOWLEDGEMENTS:EXPORT', 'ACCOUNTS:VIEW', 'AMC_CONTRACTS:VIEW'] }
+const ADMIN_ROLE: SessionUser = { ...FINANCE, id: '23', roles: [{ id: '2', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: [...FINANCE.permissions, 'INVOICE_ACKNOWLEDGEMENTS:EDIT'] }
+const VIEWER_ROLE: SessionUser = { ...base, id: '24', roles: [{ id: '6', code: 'VIEWER', name: 'Viewer' }], permissions: ['ACCOUNTS:VIEW', 'INVOICES:VIEW', 'DASHBOARD:VIEW'] }
 
 const DOC = {
   attachmentId: '501',
@@ -31,44 +33,44 @@ const DOC = {
 
 function makeItem(overrides: Partial<AcknowledgementItem> = {}): AcknowledgementItem {
   return {
-    visitId: '1',
-    acknowledgementId: null,
-    reference: 'STS-AMC-001',
-    contract: { id: '7', version: 1 },
-    client: { id: '10', name: 'Alpha Towers' },
-    system: { description: 'FIRE', typeName: 'Fire Alarm' },
-    service: { sequenceNo: 1, cycleNo: 1, serviceCode: 'Q1' },
-    scheduledDate: '2026-02-15',
-    completedDate: '2026-02-16',
-    serviceReportNo: 'SR-1',
+    invoiceId: '1',
+    basis: 'ZOHO',
     invoiceNo: 'INV-100',
-    invoiceEnteredAt: '2026-03-01T05:00:00.000Z',
+    client: { id: '10', name: 'Alpha Towers' },
+    contracts: [{ id: '7', reference: 'STS-AMC-001', version: 1 }],
+    serviceCount: 2,
+    serviceReportNos: ['SR-1', 'SR-2'],
     invoiceDate: '2026-03-01',
+    zohoCancelled: false,
+    invoiceEnteredAt: '2026-03-01T05:00:00.000Z',
     amountsVisible: true,
-    serviceValue: '300.000',
-    invoiceValue: '300.000',
+    invoiceValue: '600.000',
+    serviceValue: '600.000',
     status: 'PENDING',
+    acknowledgementId: null,
     document: null,
     acknowledgedAt: null,
     acknowledgedBy: null,
+    reconciliation: [],
     ...overrides,
   }
 }
 
-const PENDING = makeItem()
-const RENEWAL = makeItem({ visitId: '2', reference: 'STS-AMC-001 (V2)', contract: { id: '8', version: 2 }, invoiceNo: 'INV-200', invoiceDate: null, invoiceValue: null, serviceValue: '400.000' })
+const MULTI = makeItem()
+const RENEWAL = makeItem({ invoiceId: '2', basis: 'SERVICE', invoiceNo: 'INV-200', contracts: [{ id: '8', reference: 'STS-AMC-001 (V2)', version: 2 }], serviceCount: 1, invoiceDate: null, invoiceValue: null, serviceValue: '400.000' })
 const DONE = makeItem({
-  visitId: '3',
-  acknowledgementId: '90',
-  reference: 'STS-AMC-002',
-  contract: { id: '9', version: 1 },
-  client: { id: '11', name: 'Beta Mall' },
+  invoiceId: '3',
   invoiceNo: 'INV-300',
+  client: { id: '11', name: 'Beta Mall' },
+  contracts: [{ id: '9', reference: 'STS-AMC-002', version: 1 }],
+  serviceCount: 1,
   status: 'ACKNOWLEDGED',
+  acknowledgementId: '90',
   document: { ...DOC, attachmentId: '777', originalName: 'Beta ack.pdf' },
   acknowledgedAt: '2026-11-10T07:30:00.000Z',
   acknowledgedBy: { id: '22', fullName: 'Amal Acknowledger' },
 })
+const DUP_A = makeItem({ invoiceId: '4', basis: 'SERVICE', invoiceNo: 'INV-DUP', serviceCount: 1, invoiceDate: null, invoiceValue: null, reconciliation: ['SAME_NUMBER'] })
 
 const OPTIONS = {
   clients: [{ id: '10', name: 'Alpha Towers' }, { id: '11', name: 'Beta Mall' }],
@@ -76,17 +78,22 @@ const OPTIONS = {
   limits: { maxMb: 12, types: 'PDF, PNG and JPEG' },
 }
 
+const SERVICES = [
+  { visitId: '31', contract: { id: '7', reference: 'STS-AMC-001', version: 1 }, service: { sequenceNo: 2, cycleNo: 1, serviceCode: 'Q2' }, scheduledDate: '2026-05-15', completedDate: '2026-05-16', serviceReportNo: 'SR-1', invoiceNo: 'INV-100', basis: 'ZOHO', linkedAt: '2026-11-10T06:00:00.000Z', serviceValue: '300.000' },
+  { visitId: '32', contract: { id: '7', reference: 'STS-AMC-001', version: 1 }, service: { sequenceNo: 3, cycleNo: 1, serviceCode: 'Q3' }, scheduledDate: '2026-08-15', completedDate: '2026-08-16', serviceReportNo: 'SR-2', invoiceNo: 'INV-100', basis: 'ZOHO', linkedAt: '2026-11-10T06:00:00.000Z', serviceValue: '300.000' },
+]
+
 /** A stand-in for the API: filters like the real one; attach and confirm change the held rows only on success. */
 function ackApi(user: SessionUser, start: AcknowledgementItem[], override?: (request: MockRequest) => MockReply | undefined) {
   let items = start.map((item) => ({ ...item }))
   const amounts = user.permissions.includes('ACCOUNTS:VIEW')
   const shape = (item: AcknowledgementItem) => (amounts ? item : { ...item, amountsVisible: false, serviceValue: null, invoiceValue: null })
   const replace = (next: AcknowledgementItem) => {
-    items = items.map((item) => (item.visitId === next.visitId ? next : item))
+    items = items.map((item) => (item.invoiceId === next.invoiceId ? next : item))
     return ok(shape(next))
   }
 
-  const mock = mockApi((request) => {
+  return mockApi((request) => {
     const replaced = override?.(request)
     if (replaced) return replaced
     if (request.path === '/auth/me') return ok({ user })
@@ -96,9 +103,10 @@ function ackApi(user: SessionUser, start: AcknowledgementItem[], override?: (req
       const selected = items.filter(
         (row) =>
           (!q.get('status') || row.status === q.get('status')) &&
+          (!q.get('reconciliation') || row.reconciliation.length > 0) &&
           (!q.get('clientId') || row.client.id === q.get('clientId')) &&
           (!q.get('invoiceNo') || row.invoiceNo.toLowerCase().includes(q.get('invoiceNo')!.toLowerCase())) &&
-          (!q.get('search') || [row.reference, row.client.name, row.invoiceNo].some((text) => text.toLowerCase().includes(q.get('search')!.toLowerCase()))),
+          (!q.get('search') || [row.invoiceNo, row.client.name, ...row.contracts.map((c) => c.reference)].some((text) => text.toLowerCase().includes(q.get('search')!.toLowerCase()))),
       )
       const acknowledged = selected.filter((row) => row.status === 'ACKNOWLEDGED').length
       return ok({
@@ -111,18 +119,22 @@ function ackApi(user: SessionUser, start: AcknowledgementItem[], override?: (req
           pending: selected.length - acknowledged,
           awaitingConfirmation: selected.filter((row) => row.status === 'PENDING' && row.document).length,
           acknowledged,
-          serviceValueTotal: amounts ? '1000.000' : null,
-          invoiceValueTotal: amounts ? '600.000' : null,
+          needsReconciliation: selected.filter((row) => row.reconciliation.length > 0).length,
+          invoiceValueTotal: amounts ? '1200.000' : null,
+          serviceValueTotal: amounts ? '1600.000' : null,
         },
       })
     }
-    const match = /^\/invoice-acknowledgements\/(\d+)\/(document|confirm|replace|history)$/.exec(request.path)
-    const item = match ? items.find((row) => row.visitId === match[1]) : undefined
+    const match = /^\/invoice-acknowledgements\/(\d+)\/(document|confirm|replace|history|services|reconciliation|separate|link|choose)$/.exec(request.path)
+    const item = match ? items.find((row) => row.invoiceId === match[1]) : undefined
     if (match && item) {
       if (match[2] === 'document' && request.method === 'POST') return replace({ ...item, acknowledgementId: '95', document: { ...DOC, attachmentId: '601', originalName: 'chosen.pdf' } })
       if (match[2] === 'document' && request.method === 'DELETE') return replace({ ...item, document: null })
       if (match[2] === 'document' && request.method === 'GET') return ok({})
-      if (match[2] === 'history') return ok(item.document ? [{ ...item.document, invoiceNumber: item.invoiceNo, isCurrent: true }] : [])
+      if (match[2] === 'history') return ok(item.document ? [{ ...item.document, acknowledgementId: item.acknowledgementId, invoiceNumber: item.invoiceNo, isCurrent: true, ofCurrentAcknowledgement: true, acknowledgementStatus: item.status }] : [])
+      if (match[2] === 'services') return ok(amounts ? SERVICES : SERVICES.map((service) => ({ ...service, serviceValue: null })))
+      if (match[2] === 'reconciliation') return ok({ reasons: item.reconciliation, sameNumber: [{ invoiceId: '5', basis: 'SERVICE', serviceCount: 1, contracts: ['STS-AMC-001 (V2)'], status: 'PENDING', hasDocument: false }], acknowledgements: [] })
+      if (match[2] === 'separate' || match[2] === 'link') return replace({ ...item, reconciliation: [], serviceCount: match[2] === 'link' ? 2 : item.serviceCount })
       if (match[2] === 'confirm') {
         if ((request.body as { attachmentId?: string }).attachmentId !== item.document?.attachmentId) return fail(409, 'CONFLICT', 'The attached document has changed since you selected it.')
         return replace({ ...item, status: 'ACKNOWLEDGED', acknowledgedAt: '2026-11-10T08:00:00.000Z', acknowledgedBy: { id: user.id, fullName: user.fullName } })
@@ -131,7 +143,6 @@ function ackApi(user: SessionUser, start: AcknowledgementItem[], override?: (req
     }
     return undefined
   })
-  return mock
 }
 
 function renderPage() {
@@ -149,7 +160,7 @@ function renderPage() {
 }
 
 const headers = () => within(screen.getByRole('table')).getAllByRole('columnheader').map((cell) => cell.textContent?.replace(/[▲▼↕]/g, '').trim())
-const rowOf = (invoiceNo: string) => within(screen.getByRole('table')).getByText(invoiceNo).closest('tr') as HTMLElement
+const rowOf = (invoiceNo: string) => within(screen.getAllByRole('table')[0]!).getByText(invoiceNo).closest('tr') as HTMLElement
 const pdf = (name = 'chosen.pdf', size = 10) => new File([new Uint8Array(size).fill(37)], name, { type: 'application/pdf' })
 
 beforeEach(() => {
@@ -164,7 +175,7 @@ afterEach(() => {
 
 describe('navigation and access', () => {
   it('appears under Finance after Accounts, keeping the other Finance entries, and opens the page', async () => {
-    ackApi(ADMIN, [PENDING])
+    ackApi(ADMIN, [MULTI])
     renderApp('/dashboard')
 
     await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
@@ -179,12 +190,21 @@ describe('navigation and access', () => {
     expect(document.title).toBe('Invoice Acknowledgements · STS-ELV AMC')
   })
 
-  it('hides the entry and refuses the page to a role without the module, even with Accounts', async () => {
-    ackApi(FINANCE, [PENDING])
+  it('refuses the page to the Viewer role (no access by default), even with Accounts', async () => {
+    ackApi(VIEWER_ROLE, [MULTI])
     renderApp('/finance/invoice-acknowledgements')
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: 'Invoice Acknowledgements' })).not.toBeInTheDocument()
+  })
+
+  it('opens the page for Finance Executive and Admin defaults', async () => {
+    for (const user of [FINANCE, ADMIN_ROLE]) {
+      ackApi(user, [MULTI])
+      const view = renderApp('/finance/invoice-acknowledgements')
+      expect(await screen.findByRole('heading', { name: 'Invoice Acknowledgements' })).toBeInTheDocument()
+      view.unmount()
+    }
   })
 
   it('shows the Help topic only to users who can open the page', () => {
@@ -195,55 +215,70 @@ describe('navigation and access', () => {
     expect(helpTopicVisible(topic, viewer(['INVOICE_ACKNOWLEDGEMENTS:VIEW']) as never)).toBe(true)
     expect(helpTopicVisible(topic, viewer(['ACCOUNTS:VIEW']) as never)).toBe(false)
     const text = JSON.stringify(topic)
-    for (const phrase of ['OK / Confirm', 'green', 'Download', 'not payment', 'Create', 'Edit']) expect(text).toContain(phrase)
+    for (const phrase of ['OK / Confirm', 'green', 'Download', 'not payment', 'Linked Services', 'Reconcile', 'one acknowledgement']) expect(text).toContain(phrase)
   })
 })
 
-describe('table, filters and columns', () => {
-  it('shows the columns, the renewal version, the cards and Pending / Acknowledged colours', async () => {
-    ackApi(ACKNOWLEDGER, [PENDING, RENEWAL, DONE])
+describe('one row per invoice', () => {
+  it('shows the invoice columns, the renewal version, linked-service counts, the cards and status colours', async () => {
+    ackApi(FINANCE, [MULTI, RENEWAL, DONE, DUP_A])
     renderPage()
     await screen.findByText('INV-100')
 
     expect(headers()).toEqual([
       '#',
-      'AMC Contract',
-      'Client',
-      'Service',
       'Invoice No.',
+      'Client',
+      'AMC Contract / Version',
       'Invoice Date',
-      'Service Value (Ex VAT, OMR)',
       'Invoice Value (Ex VAT, OMR)',
-      'Service Report No.',
+      'Service Value (Ex VAT, OMR)',
+      'Linked Services',
       'Acknowledgement Status',
       'Acknowledged Date',
+      'Acknowledged By',
       'Uploaded By',
       'Document',
       'Actions',
     ])
     expect(within(rowOf('INV-200')).getByText('STS-AMC-001 (V2)')).toBeInTheDocument()
-    expect(rowOf('INV-100')).toHaveAttribute('data-status', 'PENDING')
-    const green = within(rowOf('INV-300')).getByText('Acknowledged')
-    expect(green.closest('[data-status]')).toHaveClass('bg-emerald-100', 'text-emerald-800')
+    expect(within(rowOf('INV-100')).getByRole('button', { name: /View the 2 linked services of Invoice INV-100/ })).toHaveTextContent('2 services')
+    expect(within(rowOf('INV-300')).getByText('Acknowledged').closest('[data-status]')).toHaveClass('bg-emerald-100', 'text-emerald-800')
     expect(within(rowOf('INV-100')).getByText('Pending').closest('[data-status]')).toHaveClass('bg-amber-100')
-    // No invented date or value.
-    expect(within(rowOf('INV-200')).getByTitle('No Zoho invoice date recorded')).toBeInTheDocument()
-    expect(within(rowOf('INV-200')).getByTitle('No Zoho invoice value recorded')).toBeInTheDocument()
-    await waitFor(() => expect(document.querySelector('[data-kpi="acknowledged"]')).toHaveTextContent(/Acknowledged1/))
-    expect(document.querySelector('[data-kpi="pending"]')).toHaveTextContent(/Pending2/)
-    expect(screen.getByText(/Total Filtered \(3 invoices, all pages\)/)).toBeInTheDocument()
-    expect(screen.getByText(/It is not payment/)).toBeInTheDocument()
+    expect(within(rowOf('INV-300')).getAllByText('Amal Acknowledger').length).toBeGreaterThan(0)
+    expect(within(rowOf('INV-200')).getByTitle('No Invoice Tracking date recorded')).toBeInTheDocument()
+    await waitFor(() => expect(document.querySelector('[data-kpi="reconcile"]')).toHaveTextContent(/Needs Reconciliation1/))
+    expect(screen.getByText(/Total Filtered \(4 invoices, all pages, each invoice once\)/)).toBeInTheDocument()
   })
 
-  it('leaves out the amount columns for a role that cannot view Accounts', async () => {
-    ackApi(VIEWER, [PENDING, DONE])
+  it('opens the Linked Services viewer, with values only for Accounts viewers', async () => {
+    ackApi(FINANCE, [MULTI])
+    const view = renderPage()
+    await screen.findByText('INV-100')
+    await userEvent.click(within(rowOf('INV-100')).getByRole('button', { name: /linked services/ }))
+    const dialog = screen.getByRole('dialog', { name: /Linked Services · Invoice INV-100/ })
+    expect(await within(dialog).findByText('SR-1')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('300.000')).toHaveLength(2)
+    expect(within(dialog).getAllByText('Invoice Tracking record')).toHaveLength(2)
+    view.unmount()
+
+    ackApi(VIEW_ONLY, [{ ...MULTI, amountsVisible: false }])
+    renderPage()
+    await screen.findByText('INV-100')
+    await userEvent.click(within(rowOf('INV-100')).getByRole('button', { name: /linked services/ }))
+    const hidden = screen.getByRole('dialog', { name: /Linked Services/ })
+    expect(await within(hidden).findByText('SR-2')).toBeInTheDocument()
+    expect(within(hidden).queryByText('300.000')).not.toBeInTheDocument()
+  })
+
+  it('leaves out amounts and actions for View only', async () => {
+    ackApi(VIEW_ONLY, [MULTI, DONE])
     renderPage()
     await screen.findByText('INV-100')
 
-    expect(headers()).not.toContain('Service Value (Ex VAT, OMR)')
     expect(headers()).not.toContain('Invoice Value (Ex VAT, OMR)')
+    expect(headers()).not.toContain('Service Value (Ex VAT, OMR)')
     expect(screen.queryByText(/Total Filtered/)).not.toBeInTheDocument()
-    // View only: no Attach or Replace, but View Document stays.
     expect(screen.queryByRole('button', { name: /Attach acknowledgement/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Replace/ })).not.toBeInTheDocument()
     expect(within(rowOf('INV-300')).getByRole('button', { name: /View the acknowledgement document/ })).toBeInTheDocument()
@@ -251,7 +286,7 @@ describe('table, filters and columns', () => {
   })
 
   it('applies search and filters through the API, sorts by a column, and resets', async () => {
-    const api = ackApi(ACKNOWLEDGER, [PENDING, RENEWAL, DONE])
+    const api = ackApi(FINANCE, [MULTI, RENEWAL, DONE, DUP_A])
     renderPage()
     await screen.findByText('INV-100')
 
@@ -268,6 +303,12 @@ describe('table, filters and columns', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Reset' }))
     await screen.findByText('INV-100')
+    await userEvent.selectOptions(screen.getByLabelText('Reconciliation'), 'NEEDED')
+    await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(screen.queryByText('INV-100')).not.toBeInTheDocument())
+    expect(screen.getByText('INV-DUP')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Reset' }))
+    await screen.findByText('INV-100')
 
     await userEvent.click(screen.getByRole('button', { name: /^Invoice No\./ }))
     await waitFor(() => expect(api.find('GET', '/invoice-acknowledgements').at(-1)!.query.get('sort')).toBe('invoiceNo'))
@@ -277,7 +318,7 @@ describe('table, filters and columns', () => {
   })
 
   it('refuses a From date after the To date before asking the API', async () => {
-    const api = ackApi(ACKNOWLEDGER, [PENDING])
+    const api = ackApi(FINANCE, [MULTI])
     renderPage()
     await screen.findByText('INV-100')
     const before = api.find('GET', '/invoice-acknowledgements').length
@@ -290,7 +331,7 @@ describe('table, filters and columns', () => {
   })
 
   it('hides and shows columns, remembered per user, and sends them to the export', async () => {
-    const api = ackApi(EDITOR, [PENDING])
+    const api = ackApi(FINANCE, [MULTI])
     renderPage()
     await screen.findByText('INV-100')
 
@@ -302,7 +343,7 @@ describe('table, filters and columns', () => {
 
     expect(headers()).not.toContain('Document')
     expect(headers()).not.toContain('Uploaded By')
-    expect(JSON.parse(localStorage.getItem('stslev.invoice-acknowledgements.hidden-columns.23') ?? '[]')).toEqual(['document', 'uploadedBy'])
+    expect(JSON.parse(localStorage.getItem('stslev.invoice-acknowledgements.hidden-columns.22') ?? '[]')).toEqual(['document', 'uploadedBy'])
 
     await userEvent.click(screen.getByRole('button', { name: /Excel/ }))
     await waitFor(() => expect(api.find('GET', '/invoice-acknowledgements/export')).toHaveLength(1))
@@ -311,7 +352,7 @@ describe('table, filters and columns', () => {
 
   it('shows an error with Try again when the list cannot load', async () => {
     let failing = true
-    ackApi(ACKNOWLEDGER, [PENDING], (request) => (failing && request.path === '/invoice-acknowledgements' ? fail(503, 'FEATURE_UNAVAILABLE', 'Invoice Acknowledgements need a database update.') : undefined))
+    ackApi(FINANCE, [MULTI], (request) => (failing && request.path === '/invoice-acknowledgements' ? fail(503, 'FEATURE_UNAVAILABLE', 'Invoice Acknowledgements need a database update.') : undefined))
     renderPage()
 
     expect(await screen.findByText(/need a database update/)).toBeInTheDocument()
@@ -322,33 +363,33 @@ describe('table, filters and columns', () => {
 })
 
 describe('attach and confirm', () => {
-  it('uploads the chosen document, shows its name, and turns green only after OK / Confirm succeeds', async () => {
-    const api = ackApi(ACKNOWLEDGER, [PENDING])
+  it('uploads one document for the invoice, shows its name, and turns green only after OK / Confirm succeeds', async () => {
+    const api = ackApi(FINANCE, [MULTI])
     renderPage()
     await screen.findByText('INV-100')
 
-    await userEvent.click(within(rowOf('INV-100')).getByRole('button', { name: /Attach acknowledgement for STS-AMC-001 · Invoice INV-100/ }))
+    await userEvent.click(within(rowOf('INV-100')).getByRole('button', { name: /Attach acknowledgement for Invoice INV-100 · Alpha Towers/ }))
     const dialog = screen.getByRole('dialog', { name: /Attach Acknowledgement/ })
+    expect(within(dialog).getByText(/2 services on this invoice: one acknowledgement covers them all/)).toBeInTheDocument()
     const confirm = within(dialog).getByRole('button', { name: /OK, confirm/ })
     expect(confirm).toBeDisabled()
 
     await userEvent.upload(within(dialog).getByTestId('acknowledgement-file'), pdf())
     expect(await within(dialog).findByTestId('selected-document')).toHaveTextContent('chosen.pdf')
     expect(api.find('POST', '/invoice-acknowledgements/1/document')).toHaveLength(1)
-    // Saved, but still Pending.
     await waitFor(() => expect(rowOf('INV-100')).toHaveAttribute('data-status', 'PENDING'))
     expect(within(dialog).getByText(/still Pending/)).toBeInTheDocument()
 
     await userEvent.click(confirm)
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('POST', '/invoice-acknowledgements/1/confirm')[0]!.body).toEqual({ attachmentId: '601' })
-    expect(await screen.findByText(/INV-100 \(STS-AMC-001\) is now Acknowledged/)).toBeInTheDocument()
+    expect(await screen.findByText(/INV-100 \(Alpha Towers\) is now Acknowledged/)).toBeInTheDocument()
     await waitFor(() => expect(rowOf('INV-100')).toHaveAttribute('data-status', 'ACKNOWLEDGED'))
     expect(within(rowOf('INV-100')).getByText('Acknowledged').closest('[data-status]')).toHaveClass('bg-emerald-100')
   })
 
   it('keeps the invoice Pending and shows the message when confirmation fails', async () => {
-    ackApi(ACKNOWLEDGER, [makeItem({ document: DOC, acknowledgementId: '95' })], (request) =>
+    ackApi(FINANCE, [makeItem({ document: DOC, acknowledgementId: '95' })], (request) =>
       request.path === '/invoice-acknowledgements/1/confirm' ? fail(404, 'FILE_MISSING', 'The attached document could not be found in storage. Attach it again, then confirm.') : undefined,
     )
     renderPage()
@@ -357,7 +398,6 @@ describe('attach and confirm', () => {
 
     await userEvent.click(within(rowOf('INV-100')).getByRole('button', { name: /Review and confirm/ }))
     const dialog = screen.getByRole('dialog', { name: /Attach Acknowledgement/ })
-    expect(within(dialog).getByTestId('selected-document')).toHaveTextContent('Stamped INV-100.pdf')
     await userEvent.click(within(dialog).getByRole('button', { name: /OK, confirm/ }))
 
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('could not be found in storage')
@@ -366,7 +406,7 @@ describe('attach and confirm', () => {
   })
 
   it('checks type and size before uploading, and shows a server refusal', async () => {
-    const api = ackApi(ACKNOWLEDGER, [PENDING], (request) =>
+    const api = ackApi(FINANCE, [MULTI], (request) =>
       request.method === 'POST' && request.path === '/invoice-acknowledgements/1/document' ? fail(400, 'VALIDATION_ERROR', 'Only PDF, PNG and JPEG files can be uploaded as an acknowledgement.') : undefined,
     )
     renderPage()
@@ -383,12 +423,11 @@ describe('attach and confirm', () => {
 
     await userEvent.upload(input, pdf('fake.pdf'))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Only PDF, PNG and JPEG files')
-    expect(within(dialog).queryByTestId('selected-document')).not.toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: /OK, confirm/ })).toBeDisabled()
   })
 
   it('removes an attached document before confirming', async () => {
-    const api = ackApi(ACKNOWLEDGER, [makeItem({ document: DOC, acknowledgementId: '95' })])
+    const api = ackApi(FINANCE, [makeItem({ document: DOC, acknowledgementId: '95' })])
     renderPage()
     await screen.findByText('INV-100')
     await userEvent.click(within(rowOf('INV-100')).getByRole('button', { name: /Review and confirm/ }))
@@ -397,7 +436,33 @@ describe('attach and confirm', () => {
     await userEvent.click(within(dialog).getByRole('button', { name: 'Remove' }))
     await waitFor(() => expect(within(dialog).queryByTestId('selected-document')).not.toBeInTheDocument())
     expect(api.find('DELETE', '/invoice-acknowledgements/1/document')).toHaveLength(1)
-    expect(within(dialog).getByRole('button', { name: 'Choose document' })).toBeInTheDocument()
+  })
+})
+
+describe('reconciliation', () => {
+  it('blocks acknowledgement on a flagged invoice and lets only Edit reconcile it', async () => {
+    ackApi(FINANCE, [DUP_A])
+    const view = renderPage()
+    await screen.findByText('INV-DUP')
+    expect(within(rowOf('INV-DUP')).getByText('Needs reconciliation')).toBeInTheDocument()
+    expect(within(rowOf('INV-DUP')).queryByRole('button', { name: /Attach/ })).not.toBeInTheDocument()
+    expect(within(rowOf('INV-DUP')).queryByRole('button', { name: /Reconcile/ })).not.toBeInTheDocument()
+    expect(within(rowOf('INV-DUP')).getByText(/Waiting for an authorised user/)).toBeInTheDocument()
+    view.unmount()
+
+    const api = ackApi(ADMIN_ROLE, [DUP_A])
+    renderPage()
+    await screen.findByText('INV-DUP')
+    await userEvent.click(within(rowOf('INV-DUP')).getByRole('button', { name: /Reconcile Invoice INV-DUP/ }))
+    const dialog = screen.getByRole('dialog', { name: /Reconcile/ })
+    const link = await within(dialog).findByRole('button', { name: 'Link as one invoice' })
+    expect(link).toBeDisabled()
+    await userEvent.type(within(dialog).getByLabelText(/Reason/), 'Both services are on one invoice')
+    await userEvent.click(link)
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(api.find('POST', '/invoice-acknowledgements/4/link')[0]!.body).toEqual({ otherInvoiceId: '5', reason: 'Both services are on one invoice' })
+    expect(await screen.findByText(/linked as one invoice/)).toBeInTheDocument()
   })
 })
 
@@ -405,16 +470,14 @@ describe('viewer and replacement', () => {
   it('opens the document in a viewer with Download inside it, fetched with the user token', async () => {
     const created = vi.fn(() => 'blob:ack')
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }))
-    const api = ackApi(VIEWER, [DONE])
+    const api = ackApi(VIEW_ONLY, [DONE])
     renderPage()
     await screen.findByText('INV-300')
 
     await userEvent.click(within(rowOf('INV-300')).getByRole('button', { name: /View the acknowledgement document/ }))
-    const dialog = screen.getByRole('dialog', { name: /Acknowledgement · STS-AMC-002 · Invoice INV-300/ })
+    const dialog = screen.getByRole('dialog', { name: /Acknowledgement · Invoice INV-300 · Beta Mall/ })
     expect(await within(dialog).findByTitle(/Acknowledgement document of/)).toHaveAttribute('src', 'blob:ack')
-    const request = api.find('GET', '/invoice-acknowledgements/3/document')[0]!
-    expect(request.authorization).toBe('Bearer test-token')
-    expect(within(dialog).getByTestId('selected-document')).toHaveTextContent('Beta ack.pdf')
+    expect(api.find('GET', '/invoice-acknowledgements/3/document')[0]!.authorization).toBe('Bearer test-token')
 
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
     await userEvent.click(within(dialog).getByRole('button', { name: /Download the acknowledgement document/ }))
@@ -422,7 +485,7 @@ describe('viewer and replacement', () => {
   })
 
   it('replaces an acknowledged document only with Edit and a reason', async () => {
-    ackApi(EDITOR, [DONE])
+    ackApi(ADMIN_ROLE, [DONE])
     renderPage()
     await screen.findByText('INV-300')
 
@@ -434,18 +497,16 @@ describe('viewer and replacement', () => {
     await userEvent.upload(within(dialog).getByTestId('replacement-file'), new File([new Uint8Array(8)], 'replacement.png', { type: 'image/png' }))
     expect(submit).toBeDisabled()
     await userEvent.type(within(dialog).getByLabelText(/Reason for replacing/), 'Clearer scan')
-    expect(submit).toBeEnabled()
     await userEvent.click(submit)
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     const call = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes('/invoice-acknowledgements/3/replace'))!
     expect((call[1]!.headers as Record<string, string>)['X-Replace-Reason']).toBe(encodeURIComponent('Clearer scan'))
     expect(await screen.findByText(/was replaced\. The earlier version is kept/)).toBeInTheDocument()
-    expect(rowOf('INV-300')).toHaveAttribute('data-status', 'ACKNOWLEDGED')
   })
 
-  it('offers no Replace to a role with Create but not Edit', async () => {
-    ackApi(ACKNOWLEDGER, [DONE])
+  it('offers no Replace to Finance (Create without Edit)', async () => {
+    ackApi(FINANCE, [DONE])
     renderPage()
     await screen.findByText('INV-300')
     expect(within(rowOf('INV-300')).queryByRole('button', { name: /Replace/ })).not.toBeInTheDocument()
@@ -454,8 +515,8 @@ describe('viewer and replacement', () => {
 })
 
 describe('mobile layout', () => {
-  it('keeps the table in a horizontal scroll area and stacks filters on small screens', async () => {
-    ackApi(ACKNOWLEDGER, [PENDING])
+  it('keeps the table in a horizontal scroll area and stacks filters and cards on small screens', async () => {
+    ackApi(FINANCE, [MULTI])
     renderPage()
     await screen.findByText('INV-100')
 

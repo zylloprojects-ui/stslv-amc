@@ -493,18 +493,24 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 
 ## Invoice Acknowledgements
 
-> **New module (2026-11-10, migrations 0112 and 0113, prepared for review).** Until Super Admin grants it in Roles &
-> Permissions, only Super Admin sees this page.
+> **Module (2026-11-10, migrations 0112–0115, prepared for review).** One acknowledgement per invoice, even when the
+> invoice covers several services.
 
-**Page:** Finance → Invoice Acknowledgements, `/finance/invoice-acknowledgements`. **Permissions:** *Invoice Acknowledgements: View* to see the page, view and download documents; *Create* to attach a document and confirm; *Edit* to replace the document of an acknowledged invoice; *Export* for Excel / PDF. Amounts are shown only to users who may also view Accounts.
+**Page:** Finance → Invoice Acknowledgements, `/finance/invoice-acknowledgements`. **Permissions:** *Invoice Acknowledgements: View* to see the page, view and download documents and the Linked Services; *Create* to attach a document and confirm; *Edit* to replace the document of an acknowledged invoice and to **Reconcile**; *Export* for Excel / PDF. Amounts are shown only to users who may also view Accounts. **Starting access:** Super Admin and Admin — View, Create, Edit, Export; Finance Executive — View, Create, Export; Viewer and other roles — none.
 
 - **Purpose:** keep the client's signed or stamped acknowledgement that it received each invoice, next to that invoice.
-- **Which invoices:** exactly the ones Accounts shows with an Invoice No.: one row per service with an Invoice No. Nothing is copied: the Invoice No., contract (with its renewal version, e.g. *STS-AMC-001 (V2)*), client and values are read from the same records as Accounts. If the Invoice No. of a service is corrected, the new number is a new invoice and starts Pending; the earlier acknowledgement is kept.
-- **Statuses:** **Pending** (amber) — no confirmed acknowledgement yet; "Document attached, awaiting OK / Confirm" when a document is waiting. **Acknowledged** (green) — the document was confirmed. Green appears only after the server confirms.
-- **KPIs:** Invoices, Pending, Awaiting Confirmation, Acknowledged.
-- **Filters (press Apply):** search (contract, client, invoice no., service report no., document name), Client, AMC Contract, Invoice No., Acknowledgement (Pending / Acknowledged), Date filter (*Invoice date* or *Acknowledged date*, Oman time) with From and To. Click a column heading to sort. Hide Columns as on Accounts.
-- **Columns:** AMC Contract, Client, Service, Invoice No. (with the date it was entered), Invoice Date, Service Value (Ex VAT, OMR), Invoice Value (Ex VAT, OMR), Service Report No., Acknowledgement Status, Acknowledged Date, Uploaded By, Document, Actions.
-- **Invoice Date and Invoice Value** come from Invoice Tracking: the Zoho invoice with the same number recorded against the service (cancelled ones are ignored). A manual Invoice No. carries no date or amount, so when no Zoho record exists the cell shows "—". Nothing is invented.
+- **One row per invoice.** An invoice may cover several services: one document and one confirmation acknowledge them all, and every linked service shows the same status. **Linked Services** (the count in the row) lists them.
+- **How invoices are identified:** when Invoice Tracking holds a record of the invoice, that record decides which services it covers. Otherwise each service's Invoice No. starts as its own invoice. Equal Invoice Nos. are **never merged automatically**: they are flagged **Needs reconciliation** until an authorised user links them as one invoice or confirms they are separate. Invoices of different clients are never linked.
+- **Corrected Invoice No.:** the new number is a new invoice and starts Pending; the earlier invoice and its acknowledgement are kept.
+- **Statuses:** **Pending** (amber) — no confirmed acknowledgement yet; "Document attached, awaiting OK / Confirm" when a document is waiting. **Acknowledged** (green) — the document was confirmed. Green appears only after the server confirms. **Needs reconciliation** (red note) — no new acknowledgement is taken until it is resolved.
+- **KPIs:** Invoices, Pending, Awaiting Confirmation, Acknowledged, Needs Reconciliation.
+- **Filters (press Apply):** search (invoice no., client, contract, service report no., document name), Client, AMC Contract, Invoice No., Acknowledgement (Pending / Acknowledged), Reconciliation, Date filter (*Invoice date* or *Acknowledged date*, Oman time) with From and To. Click a column heading to sort. Hide Columns as on Accounts.
+- **Columns:** Invoice No. (with the date it was entered), Client, AMC Contract / Version (e.g. *STS-AMC-001 (V2)*), Invoice Date, Invoice Value (Ex VAT, OMR), Service Value (Ex VAT, OMR), Linked Services, Acknowledgement Status, Acknowledged Date, Acknowledged By, Uploaded By, Document, Actions.
+- **Invoice Date and Invoice Value** come from the invoice's Invoice Tracking record, counted **once per invoice** (cancelled records are ignored). A manual Invoice No. carries no date or amount, so the cell shows "—". Nothing is invented.
+
+### Reconcile (Edit)
+- **Same Invoice No.:** choose **Link as one invoice** (the services join one invoice; one acknowledgement covers them) or **They are separate invoices**. A reason is required and recorded.
+- **More than one acknowledgement:** acknowledgements recorded per service by the earlier release, or brought together by a link, are all kept; none is chosen automatically. **Make current** picks the one that counts; the others stay in the document history.
 
 ### Workflow — acknowledge an invoice
 1. Find the invoice (Acknowledgement = Pending).
@@ -522,7 +528,8 @@ Acknowledgement only records that the client received the invoice. It does not c
 
 ### FAQs
 - **I cannot see the page.** Ask Super Admin for *Invoice Acknowledgements: View*.
-- **No Attach button.** You need *Create*; or the invoice is already Acknowledged (use Replace Document with *Edit*).
+- **No Attach button.** You need *Create*; or the invoice is already Acknowledged (use Replace Document with *Edit*); or it needs reconciliation first.
+- **Two rows with the same Invoice No.** They were not proven to be one invoice. Someone with *Edit* uses **Reconcile**.
 - **The amounts are empty.** Your role cannot view Accounts, or no value / Zoho invoice is recorded.
 
 ---

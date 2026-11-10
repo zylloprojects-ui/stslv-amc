@@ -131,10 +131,19 @@ const wholeModules = (modules: Module[]): PermissionKey[] =>
 const FINANCE_STARTING_MODULES = (): Module[] => modulesOf("Finance").filter((module) => module !== "SERVICES_SALES" && !NOT_SEEDED.includes(module));
 
 /**
- * Modules added after the seeded role model that no role but Super Admin starts with: Super Admin grants them on
- * purpose. Reports (no migration seeds it) and Invoice Acknowledgements (0113 grants Super Admin only, 2026-11-10).
+ * Modules added after the seeded role model whose starting grants are not derived from the sections: Reports (no
+ * migration seeds it; Super Admin grants it on purpose) and Invoice Acknowledgements (approved defaults below).
  */
 const NOT_SEEDED: readonly Module[] = ["REPORTS", "INVOICE_ACKNOWLEDGEMENTS"];
+
+/**
+ * Invoice Acknowledgements starting grants approved by the owner 2026-11-10 (0113 Super Admin, 0115 the others):
+ * Admin View, Create, Edit, Export; Finance Executive View, Create, Export; Viewer and every other role nothing.
+ */
+const INVOICE_ACKNOWLEDGEMENT_DEFAULTS: Record<"ADMINISTRATOR" | "FINANCE_EXECUTIVE", PermissionKey[]> = {
+  ADMINISTRATOR: ["INVOICE_ACKNOWLEDGEMENTS:VIEW", "INVOICE_ACKNOWLEDGEMENTS:CREATE", "INVOICE_ACKNOWLEDGEMENTS:EDIT", "INVOICE_ACKNOWLEDGEMENTS:EXPORT"],
+  FINANCE_EXECUTIVE: ["INVOICE_ACKNOWLEDGEMENTS:VIEW", "INVOICE_ACKNOWLEDGEMENTS:CREATE", "INVOICE_ACKNOWLEDGEMENTS:EXPORT"],
+};
 const OPERATIONS_STARTING_MODULES = (): Module[] => [...modulesOf("AMC Operations"), "SERVICES_SALES"];
 
 /** Every role could already submit and follow its own suggestions when the module was added (0092). */
@@ -151,10 +160,10 @@ export function defaultGrants(roleCode: string): PermissionKey[] {
   switch (roleCode) {
     case ADMINISTRATOR_ROLE_CODE:
       // Data-only Read is redundant next to View of the same module.
-      return all.filter((key) => !(key.endsWith(":READ") && all.includes(key.replace(/:READ$/, ":VIEW") as PermissionKey)));
+      return [...all.filter((key) => !(key.endsWith(":READ") && all.includes(key.replace(/:READ$/, ":VIEW") as PermissionKey))), ...INVOICE_ACKNOWLEDGEMENT_DEFAULTS.ADMINISTRATOR];
     case "FINANCE_EXECUTIVE":
       // Data only: Invoice Tracking and Accounts show the visits they invoice and reconcile.
-      return ["DASHBOARD:VIEW", "AMC_SCHEDULE:READ", ...SUGGESTIONS, ...wholeModules(FINANCE_STARTING_MODULES())];
+      return ["DASHBOARD:VIEW", "AMC_SCHEDULE:READ", ...SUGGESTIONS, ...wholeModules(FINANCE_STARTING_MODULES()), ...INVOICE_ACKNOWLEDGEMENT_DEFAULTS.FINANCE_EXECUTIVE];
     case "MASTER_DATA_EXECUTIVE":
       return ["DASHBOARD:VIEW", ...SUGGESTIONS, ...wholeModules(modulesOf("Master Data Center"))];
     case "AMC_OPERATIONS_EXECUTIVE":
