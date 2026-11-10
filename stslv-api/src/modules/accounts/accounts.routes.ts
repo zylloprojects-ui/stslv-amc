@@ -19,7 +19,10 @@ accountsRouter.use(authenticate);
 const accountsView = [authorize("ACCOUNTS", "VIEW"), requireSchema(["amc_visits.service_report_no"])];
 
 accountsRouter.get("/", ...accountsView, async (req, res) => {
-  res.json({ success: true, data: await listAccounts(listAccountsSchema.parse(req.query)) });
+  // The read-only acknowledgement indicator only for users who may view Invoice Acknowledgements.
+  const showAcknowledgements = requireAuth(req).permissions.has("INVOICE_ACKNOWLEDGEMENTS:VIEW");
+
+  res.json({ success: true, data: await listAccounts(listAccountsSchema.parse(req.query), showAcknowledgements) });
 });
 
 accountsRouter.get("/options", ...accountsView, async (_req, res) => {

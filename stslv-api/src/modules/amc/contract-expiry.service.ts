@@ -8,7 +8,7 @@ import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // Controlled contract expiry (P1 fixes, 2026-11-09). RULE APPROVED BY THE OWNER 2026-11-09:
 // an ACTIVE contract becomes EXPIRED on the first day after its Valid To date, measured in
-// the business time zone (Asia/Muscat, the time zone every STSLV report is printed in).
+// the business time zone (Asia/Muscat, the time zone every STS-ELV AMC report is printed in).
 // Open visits keep their statuses and values; an open renewal does not prevent expiry.
 // Business approval is not production activation: applying stays switched off by default
 // (AMC_CONTRACT_EXPIRY_ENABLED) until the approved release; see docs/CONTRACT_EXPIRY.md.
@@ -30,7 +30,7 @@ import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 // by a person or a host scheduler, once a day. Applying is disabled unless
 // AMC_CONTRACT_EXPIRY_ENABLED=true; a dry run is always allowed and changes nothing.
 
-/** The time zone the expiry date is measured in: the business (Oman) time zone of every STSLV report. */
+/** The time zone the expiry date is measured in: the business (Oman) time zone of every STS-ELV AMC report. */
 export const CONTRACT_TIME_ZONE = REPORT_TIME_ZONE;
 
 /** Arbitrary constant key of the advisory lock that serialises expiry runs. */

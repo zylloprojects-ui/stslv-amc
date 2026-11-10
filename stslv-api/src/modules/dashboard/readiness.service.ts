@@ -7,7 +7,7 @@ import { listBackups } from "../security/backups.service";
 
 // Production readiness, as far as this API can verify it itself at the moment
 // of the request. There is no composite score: each check is reported on its
-// own, and a check STSLV cannot verify says so instead of guessing.
+// own, and a check STS-ELV AMC cannot verify says so instead of guessing.
 
 export type CheckState = "OK" | "ATTENTION" | "UNAVAILABLE";
 

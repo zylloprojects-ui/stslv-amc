@@ -13,7 +13,7 @@ import { BUSINESS_TIME_ZONE, BUSINESS_TODAY_SQL, businessDateSql } from "../../s
 // is stored, estimated or annualised. A section the user may not see is null.
 //
 // "Today" and "this month" are Oman's (Asia/Muscat) business date (BUSINESS_TODAY_SQL, shared/business-date.ts), the
-// same date every other STSLV module measures due, overdue and expiry against,
+// same date every other STS-ELV AMC module measures due, overdue and expiry against,
 // so the dashboard never disagrees with the schedule or the reports. The time
 // zone in use is returned with the figures.
 
@@ -225,7 +225,7 @@ async function portfolio(): Promise<NonNullable<OperationsDashboard["portfolio"]
 
   return {
     total,
-    // Every status STSLV supports, in workflow order, including those with no contract.
+    // Every status STS-ELV AMC supports, in workflow order, including those with no contract.
     statuses: CONTRACT_STATUSES.map((status) => {
       const count = counts.get(status) ?? 0;
 

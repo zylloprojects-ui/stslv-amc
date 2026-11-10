@@ -1,4 +1,4 @@
-# User Access Handover — STSLEV AMC
+# User Access Handover — STS-ELV AMC
 
 Records who has access to the production application and with which role at the moment of handover. **Not yet completed.** Fill it from Users & Access in production (the list can be exported by an administrator) together with the client. Do not write passwords here.
 

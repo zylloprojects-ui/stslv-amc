@@ -218,7 +218,7 @@ export function DashboardPage() {
         <div className="mb-6 grid gap-x-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:grid-rows-[auto_1fr]">
           {data.portfolio && (
             <Panel id="dashboard-portfolio" className="max-lg:mb-6 lg:row-span-2 lg:grid lg:grid-rows-subgrid" icon="chart"
-              eyebrow="Portfolio" title="AMC Portfolio Status" description="Contracts by status, all statuses STSLV supports." link={{ to: '/amc/contracts', label: 'AMC Contracts' }}>
+              eyebrow="Portfolio" title="AMC Portfolio Status" description="Contracts by status, all statuses STS-ELV AMC supports." link={{ to: '/amc/contracts', label: 'AMC Contracts' }}>
               <PortfolioStatus portfolio={data.portfolio} />
             </Panel>
           )}

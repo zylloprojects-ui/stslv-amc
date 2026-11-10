@@ -598,3 +598,75 @@ describe("filters, sorting, export", () => {
     expect((await api().get(`${BASE}/export`).query({ format: "pdf" }).set(administrator.headers)).status).toBe(200);
   });
 });
+
+describe("Accounts: read-only acknowledgement indicator", () => {
+  it("shows Acknowledged / Pending beside the Invoice No. only to users who may view Invoice Acknowledgements", async () => {
+    const rows = async (session: Session) =>
+      new Map(((await api().get("/api/accounts").query({ clientId: clientA, pageSize: 200 }).set(session.headers)).body.data.items as { id: string; acknowledgementStatus: string | null; paymentStatus: string }[]).map((row) => [row.id, row]));
+    const asFinance = await rows(finance);
+    expect(asFinance.get(v[1]!)).toMatchObject({ acknowledgementStatus: "ACKNOWLEDGED", paymentStatus: "PAID" });
+    expect(asFinance.get(v[2]!)).toMatchObject({ acknowledgementStatus: "ACKNOWLEDGED" });
+    expect(asFinance.get(v[0]!)).toMatchObject({ acknowledgementStatus: "PENDING", paymentStatus: "PAID" });
+    // Viewer holds Accounts: View but not Invoice Acknowledgements: no indicator.
+    const asViewer = await rows(viewer);
+    expect([...asViewer.values()].every((row) => row.acknowledgementStatus === null)).toBe(true);
+  });
+});
+
+describe("cancelled Invoice Tracking record", () => {
+  const zohoId = async (number: string, status = "ISSUED") =>
+    (await pool.query<{ id: string }>("SELECT id FROM invoices WHERE invoice_number = $1 AND status = $2 ORDER BY id DESC LIMIT 1", [number, status])).rows[0]!.id;
+  const reassociate = (session: Session, invoiceId: string, zohoInvoiceId: string, reason = "Re-entered in Zoho after a correction") =>
+    api().post(`${BASE}/${invoiceId}/reassociate`).set(session.headers).send({ zohoInvoiceId, reason });
+
+  it("keeps the invoice, warns, and never reassociates on its own", async () => {
+    const before = await invoice("INV-100");
+    expect((await cancelInvoice(admin, await zohoId("INV-100"))).status).toBe(200);
+
+    const after = await invoice("INV-100");
+    expect(after).toMatchObject({ invoiceId: before.invoiceId, basis: "ZOHO", zohoCancelled: true, invoiceDate: null, invoiceValue: null, reconciliation: ["ZOHO_CANCELLED"], acknowledgementId: before.acknowledgementId });
+    // A warning, not a block: the invoice can still be acknowledged.
+    expect((await api().get(`${BASE}/${after.invoiceId}/reconciliation`).set(administrator.headers)).body.data.replacements).toEqual([]);
+
+    // The re-entered record exists now, but nothing moves until an authorised user decides.
+    await newInvoice(admin, invoiceBody(clientA, [{ amcVisitId: v[0]!, amount: "310.000" }], { invoiceNumber: "INV-100", amountExclVat: "310.000", vatAmount: "0.000", invoiceDate: "2026-04-01" }));
+    expect(await invoice("INV-100")).toMatchObject({ invoiceId: before.invoiceId, zohoCancelled: true, reconciliation: ["ZOHO_CANCELLED"] });
+  });
+
+  it("re-associates only a verified replacement, only with Edit and a reason, keeping identity and acknowledgement", async () => {
+    const target = await invoice("INV-100");
+    const replacement = await zohoId("INV-100");
+    const view = (await api().get(`${BASE}/${target.invoiceId}/reconciliation`).set(administrator.headers)).body.data;
+    expect(view.replacements).toEqual([{ zohoInvoiceId: replacement, invoiceNumber: "INV-100", invoiceDate: "2026-04-01", verified: true, problem: null }]);
+
+    expect((await reassociate(finance, target.invoiceId, replacement)).status).toBe(403);
+    expect((await api().post(`${BASE}/${target.invoiceId}/reassociate`).set(administrator.headers).send({ zohoInvoiceId: replacement })).status).toBe(400);
+    expect((await reassociate(administrator, target.invoiceId, await zohoId("INV-LEG"))).status).toBe(409);
+
+    const response = await reassociate(administrator, target.invoiceId, replacement);
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ invoiceId: target.invoiceId, basis: "ZOHO", zohoCancelled: false, reconciliation: [], invoiceDate: "2026-04-01", invoiceValue: "310.000", acknowledgementId: target.acknowledgementId, serviceCount: 1 });
+    const log = (await logsFor("ack_invoices", target.invoiceId)).at(-1)!;
+    expect(log).toMatchObject({ action: "invoice_acknowledgement.invoice_record_reassociated", user_id: administrator.id });
+    expect(log.metadata).toMatchObject({ to: replacement, reason: "Re-entered in Zoho after a correction" });
+    expect((await reassociate(administrator, target.invoiceId, replacement)).status).toBe(409);
+  });
+
+  it("refuses an unverified replacement and keeps the warning", async () => {
+    const multi = await invoice("INV-MULTI");
+    expect((await cancelInvoice(admin, await zohoId("INV-MULTI"))).status).toBe(200);
+    // Re-entered for one of its two services only: not provably the same invoice.
+    await newInvoice(admin, invoiceBody(clientA, [{ amcVisitId: v[1]!, amount: "300.000" }], { invoiceNumber: "INV-MULTI", amountExclVat: "300.000", vatAmount: "0.000", invoiceDate: "2026-10-01" }));
+    const partial = await zohoId("INV-MULTI");
+    const view = (await api().get(`${BASE}/${multi.invoiceId}/reconciliation`).set(administrator.headers)).body.data;
+    expect(view.replacements).toEqual([{ zohoInvoiceId: partial, invoiceNumber: "INV-MULTI", invoiceDate: "2026-10-01", verified: false, problem: expect.stringContaining("1 of the invoice's 2 services") }]);
+    expect((await reassociate(administrator, multi.invoiceId, partial)).status).toBe(409);
+    expect(await invoice("INV-MULTI")).toMatchObject({ invoiceId: multi.invoiceId, status: "ACKNOWLEDGED", serviceCount: 2, reconciliation: ["ZOHO_CANCELLED"] });
+  });
+
+  it("is also refused by the database outside the cancelled-to-active case", async () => {
+    const leg = await invoice("INV-LEG");
+    const other = await zohoId("INV-100");
+    await expect(pool.query("UPDATE ack_invoices SET zoho_invoice_id = $1 WHERE id = $2", [other, leg.invoiceId])).rejects.toThrow(/keeps its record/);
+  });
+});

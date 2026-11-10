@@ -70,7 +70,7 @@ async function main(): Promise<boolean> {
 
   const files = createFileStorage(config);
   const key = `${randomUUID()}.pdf`;
-  const probe = Buffer.from(`%PDF-1.4\n% STSLV AMC storage check ${new Date().toISOString()} ${randomUUID()}\n%%EOF\n`, "latin1");
+  const probe = Buffer.from(`%PDF-1.4\n% STS-ELV AMC storage check ${new Date().toISOString()} ${randomUUID()}\n%%EOF\n`, "latin1");
   let written = false;
 
   const step = async (name: string, run: () => Promise<void>): Promise<boolean> => {

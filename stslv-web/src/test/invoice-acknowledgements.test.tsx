@@ -125,7 +125,7 @@ function ackApi(user: SessionUser, start: AcknowledgementItem[], override?: (req
         },
       })
     }
-    const match = /^\/invoice-acknowledgements\/(\d+)\/(document|confirm|replace|history|services|reconciliation|separate|link|choose)$/.exec(request.path)
+    const match = /^\/invoice-acknowledgements\/(\d+)\/(document|confirm|replace|history|services|reconciliation|separate|link|choose|reassociate)$/.exec(request.path)
     const item = match ? items.find((row) => row.invoiceId === match[1]) : undefined
     if (match && item) {
       if (match[2] === 'document' && request.method === 'POST') return replace({ ...item, acknowledgementId: '95', document: { ...DOC, attachmentId: '601', originalName: 'chosen.pdf' } })
@@ -133,13 +133,25 @@ function ackApi(user: SessionUser, start: AcknowledgementItem[], override?: (req
       if (match[2] === 'document' && request.method === 'GET') return ok({})
       if (match[2] === 'history') return ok(item.document ? [{ ...item.document, acknowledgementId: item.acknowledgementId, invoiceNumber: item.invoiceNo, isCurrent: true, ofCurrentAcknowledgement: true, acknowledgementStatus: item.status }] : [])
       if (match[2] === 'services') return ok(amounts ? SERVICES : SERVICES.map((service) => ({ ...service, serviceValue: null })))
-      if (match[2] === 'reconciliation') return ok({ reasons: item.reconciliation, sameNumber: [{ invoiceId: '5', basis: 'SERVICE', serviceCount: 1, contracts: ['STS-AMC-001 (V2)'], status: 'PENDING', hasDocument: false }], acknowledgements: [] })
+      if (match[2] === 'reconciliation')
+        return ok({
+          reasons: item.reconciliation,
+          sameNumber: item.reconciliation.includes('SAME_NUMBER') ? [{ invoiceId: '5', basis: 'SERVICE', serviceCount: 1, contracts: ['STS-AMC-001 (V2)'], status: 'PENDING', hasDocument: false }] : [],
+          acknowledgements: [],
+          replacements: item.zohoCancelled
+            ? [
+                { zohoInvoiceId: '70', invoiceNumber: item.invoiceNo, invoiceDate: '2026-04-01', verified: true, problem: null },
+                { zohoInvoiceId: '71', invoiceNumber: item.invoiceNo, invoiceDate: '2026-04-02', verified: false, problem: "This record is allocated to 1 of the invoice's 2 services, so it cannot be verified as the same invoice." },
+              ]
+            : [],
+        })
       if (match[2] === 'separate' || match[2] === 'link') return replace({ ...item, reconciliation: [], serviceCount: match[2] === 'link' ? 2 : item.serviceCount })
       if (match[2] === 'confirm') {
         if ((request.body as { attachmentId?: string }).attachmentId !== item.document?.attachmentId) return fail(409, 'CONFLICT', 'The attached document has changed since you selected it.')
         return replace({ ...item, status: 'ACKNOWLEDGED', acknowledgedAt: '2026-11-10T08:00:00.000Z', acknowledgedBy: { id: user.id, fullName: user.fullName } })
       }
       if (match[2] === 'replace') return replace({ ...item, document: { ...DOC, attachmentId: '888', version: 2, originalName: 'replacement.png', mimeType: 'image/png' } })
+      if (match[2] === 'reassociate') return replace({ ...item, zohoCancelled: false, reconciliation: [], invoiceDate: '2026-04-01' })
     }
     return undefined
   })
@@ -463,6 +475,32 @@ describe('reconciliation', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(api.find('POST', '/invoice-acknowledgements/4/link')[0]!.body).toEqual({ otherInvoiceId: '5', reason: 'Both services are on one invoice' })
     expect(await screen.findByText(/linked as one invoice/)).toBeInTheDocument()
+  })
+})
+
+describe('cancelled Invoice Tracking record', () => {
+  const CANCELLED = makeItem({ invoiceId: '6', invoiceNo: 'INV-600', zohoCancelled: true, invoiceDate: null, invoiceValue: null, reconciliation: ['ZOHO_CANCELLED'] })
+
+  it('warns without blocking acknowledgement, and re-associates only a verified record with a reason', async () => {
+    const api = ackApi(ADMIN_ROLE, [CANCELLED])
+    renderPage()
+    await screen.findByText('INV-600')
+    expect(within(rowOf('INV-600')).getByText('Invoice Tracking record cancelled')).toBeInTheDocument()
+    expect(within(rowOf('INV-600')).queryByText('Needs reconciliation')).not.toBeInTheDocument()
+    expect(within(rowOf('INV-600')).getByRole('button', { name: /Attach acknowledgement/ })).toBeInTheDocument()
+
+    await userEvent.click(within(rowOf('INV-600')).getByRole('button', { name: /Reconcile Invoice INV-600/ }))
+    const dialog = screen.getByRole('dialog', { name: /Reconcile/ })
+    expect(await within(dialog).findByText(/cannot be verified as the same invoice/)).toBeInTheDocument()
+    const buttons = within(dialog).getAllByRole('button', { name: 'Re-associate' })
+    expect(buttons).toHaveLength(1)
+    expect(buttons[0]).toBeDisabled()
+    await userEvent.type(within(dialog).getByLabelText(/Reason/), 'Re-entered in Zoho')
+    await userEvent.click(buttons[0]!)
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(api.find('POST', '/invoice-acknowledgements/6/reassociate')[0]!.body).toEqual({ zohoInvoiceId: '70', reason: 'Re-entered in Zoho' })
+    expect(await screen.findByText(/now refers to its re-entered Invoice Tracking record/)).toBeInTheDocument()
   })
 })
 

@@ -178,7 +178,7 @@ const baseSql = (storedReference: boolean) => `
   )
   SELECT ai.id AS invoice_id, ai.basis, ai.invoice_number AS invoice_no, cl.id AS client_id, cl.name AS client_name,
          agg.contracts, agg.service_count, agg.report_nos, agg.first_reference,
-         z.invoice_date::text AS invoice_date, COALESCE(z.status = 'CANCELLED', false) AS zoho_cancelled, agg.entered_at,
+         (CASE WHEN z.status = 'ISSUED' THEN z.invoice_date END)::text AS invoice_date, COALESCE(z.status = 'CANCELLED', false) AS zoho_cancelled, agg.entered_at,
          (CASE WHEN z.status = 'ISSUED' THEN z.amount_excl_vat END)::numeric(16,3)::text AS invoice_value, agg.service_value::text AS service_value,
          ${STATUS_SQL} AS status, ack.id AS acknowledgement_id, ack.acknowledged_at, ack.acknowledged_by, ab.full_name AS acknowledged_by_name,
          doc.id AS document_id, doc.version AS document_version, doc.original_name AS document_name, doc.mime_type AS document_mime,
@@ -203,6 +203,7 @@ function toItem(row: Row, amountsVisible: boolean): AcknowledgementItem {
   const reconciliation: ReconciliationReason[] = [];
   if (row.same_number) reconciliation.push("SAME_NUMBER");
   if (row.ack_conflict) reconciliation.push("CONFLICTING_ACKNOWLEDGEMENTS");
+  if (row.zoho_cancelled) reconciliation.push("ZOHO_CANCELLED");
 
   return {
     invoiceId: row.invoice_id,
@@ -251,7 +252,7 @@ function filterSql(query: Omit<AcknowledgementFilters, "sort" | "dir">) {
   if (query.contractId) conditions.push(`b.contracts @> jsonb_build_array(jsonb_build_object('id', ${add(query.contractId)}::text))`);
   if (query.invoiceNo) conditions.push(`b.invoice_no ILIKE ${add(`%${escapeLike(query.invoiceNo)}%`)}`);
   if (query.status) conditions.push(`b.status = ${add(query.status)}`);
-  if (query.reconciliation === "NEEDED") conditions.push("(b.same_number OR b.ack_conflict)");
+  if (query.reconciliation === "NEEDED") conditions.push("(b.same_number OR b.ack_conflict OR b.zoho_cancelled)");
   if (query.fromDate || query.toDate) {
     const date = query.dateBasis === "ACKNOWLEDGED_DATE" ? businessDateSql("b.acknowledged_at") : "b.invoice_date::date";
 
@@ -285,7 +286,7 @@ const SORT_SQL: Record<AcknowledgementSort, string> = {
 
 /** The default order puts the work first: invoices needing reconciliation, then Pending, newest Invoice No. first. */
 function orderSql(query: Pick<AcknowledgementFilters, "sort" | "dir">): string {
-  if (!query.sort) return "ORDER BY (b.same_number OR b.ack_conflict) DESC, (b.status = 'ACKNOWLEDGED'), b.entered_at DESC NULLS LAST, b.invoice_id DESC";
+  if (!query.sort) return "ORDER BY (b.same_number OR b.ack_conflict OR b.zoho_cancelled) DESC, (b.status = 'ACKNOWLEDGED'), b.entered_at DESC NULLS LAST, b.invoice_id DESC";
   const dir = query.dir === "desc" ? "DESC" : "ASC";
 
   return `ORDER BY ${SORT_SQL[query.sort]} ${dir} NULLS LAST, b.invoice_id ${dir}`;
@@ -309,7 +310,7 @@ async function kpis(storedReference: boolean, where: string, params: unknown[], 
     `SELECT count(*)::int AS total,
             count(*) FILTER (WHERE b.status = 'ACKNOWLEDGED')::int AS acknowledged,
             count(*) FILTER (WHERE b.status = 'PENDING' AND b.document_id IS NOT NULL)::int AS awaiting,
-            count(*) FILTER (WHERE b.same_number OR b.ack_conflict)::int AS reconcile,
+            count(*) FILTER (WHERE b.same_number OR b.ack_conflict OR b.zoho_cancelled)::int AS reconcile,
             COALESCE(sum(b.invoice_value::numeric), 0)::numeric(16,3)::text AS invoice_value,
             COALESCE(sum(b.service_value::numeric), 0)::numeric(16,3)::text AS service_value
      FROM (${baseSql(storedReference)}) b ${where}`,
@@ -829,6 +830,48 @@ export interface ReconciliationView {
   sameNumber: { invoiceId: string; basis: "ZOHO" | "SERVICE"; serviceCount: number; contracts: string[]; status: AcknowledgementStatus; hasDocument: boolean }[];
   /** Acknowledgements with substance of this invoice, when more than one exists. */
   acknowledgements: { acknowledgementId: string; status: AcknowledgementStatus; acknowledgedAt: string | null; acknowledgedBy: string | null; documentName: string | null; legacyVisitId: string | null }[];
+  /**
+   * When the invoice's Invoice Tracking record is cancelled: active records of the same client and number. `verified`
+   * only when the record is allocated to every service the invoice covers and no other invoice holds it; only a
+   * verified record can be re-associated, and only on an authorised, reasoned request.
+   */
+  replacements: { zohoInvoiceId: string; invoiceNumber: string; invoiceDate: string; verified: boolean; problem: string | null }[];
+}
+
+interface ReplacementRow {
+  id: string;
+  invoice_number: string;
+  invoice_date: string;
+  covered: number;
+  services: number;
+  held_by: string | null;
+}
+
+/** Active Invoice Tracking records that could replace the invoice's cancelled record, with whether each is verified. */
+async function replacementCandidates(db: Queryable, invoice: LockedInvoice): Promise<ReplacementRow[]> {
+  const result = await db.query<ReplacementRow>(
+    `WITH active_services AS (
+       SELECT s.amc_visit_id FROM ack_invoice_services s
+       JOIN amc_visits v ON v.id = s.amc_visit_id AND v.manual_invoice_no = s.invoice_number
+       JOIN amc_contracts c ON c.id = v.amc_contract_id
+       WHERE s.ack_invoice_id = $1 AND ${IN_SCOPE}
+     )
+     SELECT i.id, i.invoice_number, i.invoice_date::text AS invoice_date,
+            (SELECT count(*)::int FROM active_services a WHERE EXISTS (SELECT 1 FROM invoice_allocations al WHERE al.invoice_id = i.id AND al.amc_visit_id = a.amc_visit_id)) AS covered,
+            (SELECT count(*)::int FROM active_services) AS services,
+            (SELECT o.id FROM ack_invoices o WHERE o.zoho_invoice_id = i.id AND o.merged_into_id IS NULL AND o.id <> $1 LIMIT 1) AS held_by
+     FROM invoices i
+     WHERE i.status = 'ISSUED' AND i.client_id = $2 AND lower(i.invoice_number) = lower($3)
+     ORDER BY i.id`,
+    [invoice.id, invoice.client_id, invoice.invoice_number]
+  );
+  return result.rows;
+}
+
+function replacementProblem(row: ReplacementRow): string | null {
+  if (row.held_by) return "This record already belongs to another invoice on this page. Reconcile that invoice instead.";
+  if (row.covered < row.services) return `This record is allocated to ${row.covered} of the invoice's ${row.services} services, so it cannot be verified as the same invoice.`;
+  return null;
 }
 
 export async function reconciliationView(invoiceId: string): Promise<ReconciliationView> {
@@ -867,7 +910,49 @@ export async function reconciliationView(invoiceId: string): Promise<Reconciliat
       documentName: row.original_name,
       legacyVisitId: row.amc_visit_id,
     })),
+    replacements: invoice.item.zohoCancelled
+      ? (await replacementCandidates(pool, invoice)).map((row) => {
+          const problem = replacementProblem(row);
+          return { zohoInvoiceId: row.id, invoiceNumber: row.invoice_number, invoiceDate: row.invoice_date, verified: problem === null, problem };
+        })
+      : [],
   };
+}
+
+/**
+ * Re-associate: the invoice's Invoice Tracking record was cancelled and re-entered; the invoice now refers to the
+ * verified active record. Same invoice identity, same services, same acknowledgement and history: only the record it
+ * is verified by changes. Never automatic: Edit, a reason, and an Audit Log entry. The database also refuses any
+ * record change that is not cancelled -> active of the same client and number (0116).
+ */
+export async function reassociateInvoice(auth: AuthContext, invoiceId: string, zohoInvoiceId: string, reason: string, amountsVisible: boolean): Promise<AcknowledgementItem> {
+  await ready();
+
+  return withTransaction(async (db) => {
+    const invoice = await lockInvoice(db, invoiceId, true);
+
+    if (!invoice.item.zohoCancelled || !invoice.zoho_invoice_id) throw conflict("This invoice's Invoice Tracking record is not cancelled, so it keeps its record.");
+
+    const candidate = (await replacementCandidates(db, invoice)).find((row) => row.id === zohoInvoiceId);
+
+    if (!candidate) throw conflict("That record is not an active Invoice Tracking record of this client with this Invoice No.");
+    const problem = replacementProblem(candidate);
+    if (problem) throw conflict(problem);
+
+    const from = invoice.zoho_invoice_id;
+    await db.query("UPDATE ack_invoices SET zoho_invoice_id = $2 WHERE id = $1", [invoice.id, zohoInvoiceId]);
+    await logActivity(db, {
+      userId: auth.user.id,
+      action: "invoice_acknowledgement.invoice_record_reassociated",
+      module: LOG_MODULE,
+      entityType: "ack_invoices",
+      entityId: invoice.id,
+      description: `${label(invoice)}: its cancelled Invoice Tracking record ${from} replaced by active record ${zohoInvoiceId} (allocated to all ${candidate.services} services). The invoice, its services and its acknowledgement are unchanged. Reason: ${reason}`,
+      metadata: { from, to: zohoInvoiceId, reason, services: candidate.services },
+    });
+
+    return readItem(db, invoiceId, amountsVisible);
+  });
 }
 
 /**

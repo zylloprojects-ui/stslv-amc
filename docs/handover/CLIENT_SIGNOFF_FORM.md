@@ -1,4 +1,4 @@
-# Client Acceptance and Sign-off — STSLEV AMC Phase 1
+# Client Acceptance and Sign-off — STS-ELV AMC Phase 1
 
 > Form only. **The client has not signed off.** This document records acceptance when, and only when, the client's authorised representative completes and signs it. Nothing in this repository should be read as acceptance.
 
@@ -6,7 +6,7 @@
 
 | Field | Value |
 |---|---|
-| Application | STSLEV AMC (operations management for AMC contracts) |
+| Application | STS-ELV AMC (operations management for AMC contracts) |
 | Release / commit | |
 | Production web address | |
 | Release notes | `docs/handover/RELEASE_NOTES.md` |
@@ -23,7 +23,7 @@
 | 5 | User accounts handed over; client controls Super Admin | `docs/handover/USER_ACCESS_HANDOVER.md` | | |
 | 6 | Infrastructure ownership agreed and recorded | `docs/handover/INFRASTRUCTURE_OWNERSHIP_REGISTER.md` | | |
 | 7 | Backup and restore responsibility accepted by a named owner | Register §Backups | | |
-| 8 | The client understands that "Paid" in STSLEV AMC is a reference status (manual Invoice No.), not verified receipt of money | Training records / this form | | |
+| 8 | The client understands that "Paid" in STS-ELV AMC is a reference status (manual Invoice No.), not verified receipt of money | Training records / this form | | |
 | 9 | Demo and test records in production removed, or explicitly accepted to remain | Outstanding Issues Register | | |
 
 ## 3. Exceptions accepted by the client

@@ -31,7 +31,8 @@ afterAll(async () => {
   fs.rmSync(workDir, { recursive: true, force: true });
 });
 
-const NEW = ["0114_acknowledgement_invoice_identity.sql", "0115_seed_invoice_acknowledgement_defaults.sql"];
+// 0116 (cancelled-record re-association guard) changes only a trigger function; it rides the same upgrade.
+const NEW = ["0114_acknowledgement_invoice_identity.sql", "0115_seed_invoice_acknowledgement_defaults.sql", "0116_acknowledgement_invoice_reassociation.sql"];
 const q = <T extends Record<string, unknown>>(sql: string, params: unknown[] = []) => upgradePool.query<T>(sql, params).then((result) => result.rows);
 const one = async (sql: string, params: unknown[] = []) => ((await q<{ id: string }>(sql, params))[0] as { id: string }).id;
 

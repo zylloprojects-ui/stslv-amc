@@ -1190,6 +1190,19 @@ input[type="datetime-local"] {
 .dark .text-\[\#0f62a3\] {
   color: #7cc0f0;
 }
+/* Help: related-topic chips, the current topic in the topic list and drawer, and role chips (were dark blue on dark). */
+.dark .text-\[\#0b5d8f\],
+.dark .aria-\[current\=page\]\:text-\[\#0b5d8f\][aria-current='page'],
+.dark .aria-\[current\=true\]\:text-\[\#0b5d8f\][aria-current='true'] {
+  color: #7cc0f0;
+}
+/* Invoice Acknowledgements: row tints of Acknowledged and blocked invoices. */
+.dark .bg-emerald-50\/40 {
+  background-color: rgb(16 185 129 / 0.08);
+}
+.dark .bg-red-50\/40 {
+  background-color: rgb(239 68 68 / 0.1);
+}
 /* Row numbers in tables, including tinted rows. */
 .dark .table-scroll td.text-slate-400 {
   color: #cbd5e1;

@@ -57,6 +57,8 @@ export interface AccountsItem {
   /** The Service Report uploaded on Service Status, or null when none. Absent from an older API. */
   serviceReport?: { id: string; originalName: string; mimeType: string; sizeBytes: number; uploadedAt: string } | null
   salesEngineer: { id: string; name: string } | null
+  /** Read-only, from Invoice Acknowledgements; null when no Invoice No. or the user may not view that page. */
+  acknowledgementStatus?: 'PENDING' | 'ACKNOWLEDGED' | null
   colour: AccountsColour
 }
 

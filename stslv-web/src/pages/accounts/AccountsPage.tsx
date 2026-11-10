@@ -716,6 +716,20 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
             completed={item.visitStatus === 'COMPLETED'}
             label={`${item.reference} ${serviceCodeLabel(item.service)}`} />
           {item.invoiceNumbers.length > 0 && <div className="mt-1 text-xs text-slate-500">Zoho: {item.invoiceNumbers.join(', ')}</div>}
+          {/* Read-only (Invoice Acknowledgements): never changes Paid / Unpaid. Sent only to users who may view that page. */}
+          {item.acknowledgementStatus && (
+            <Link
+              to="/finance/invoice-acknowledgements"
+              data-acknowledgement={item.acknowledgementStatus}
+              className={cx(
+                'mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset hover:underline',
+                item.acknowledgementStatus === 'ACKNOWLEDGED' ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-amber-50 text-amber-800 ring-amber-200',
+              )}
+              title="Client acknowledgement of this invoice (Invoice Acknowledgements). Not a payment."
+            >
+              Ack: {item.acknowledgementStatus === 'ACKNOWLEDGED' ? 'Acknowledged' : 'Pending'}
+            </Link>
+          )}
         </td>
       )}
       {shown('invoiceValue') && (

@@ -503,3 +503,19 @@ describe('Accounts contract filter', () => {
     await waitFor(() => expect(api.find('GET', '/accounts/export')[0]?.query.get('contractId')).toBe('7'))
   })
 })
+
+describe('Accounts acknowledgement indicator (read only)', () => {
+  it('shows the acknowledgement state beside the Invoice No. only when the API sends it, without changing Paid', async () => {
+    const PAID_ACK = makeItem({ ...GREEN, id: '7', reference: 'AMC-0020', manualInvoiceNo: 'INV-77', paymentStatus: 'PAID', acknowledgementStatus: 'ACKNOWLEDGED' })
+    const PAID_PENDING = makeItem({ ...GREEN, id: '8', reference: 'AMC-0021', manualInvoiceNo: 'INV-78', paymentStatus: 'PAID', acknowledgementStatus: 'PENDING' })
+    accountsApi(VIEWER, [PAID_ACK, PAID_PENDING, RED])
+    renderPage()
+    await screen.findByText('AMC-0020')
+
+    expect(within(rowOf('AMC-0020')).getByRole('link', { name: 'Ack: Acknowledged' })).toHaveAttribute('href', '/finance/invoice-acknowledgements')
+    expect(within(rowOf('AMC-0021')).getByRole('link', { name: 'Ack: Pending' })).toBeInTheDocument()
+    expect(within(rowOf('AMC-0007')).queryByText(/^Ack:/)).not.toBeInTheDocument()
+    // Paid / Unpaid colours are untouched by the indicator.
+    expect(rowOf('AMC-0021')).toHaveAttribute('data-colour', 'GREEN')
+  })
+})

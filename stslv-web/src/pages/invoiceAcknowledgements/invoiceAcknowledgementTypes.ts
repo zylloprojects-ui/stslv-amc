@@ -5,7 +5,11 @@ import { useCallback, useState } from 'react'
 // checks before upload. The API checks everything again.
 
 export type AcknowledgementStatus = 'PENDING' | 'ACKNOWLEDGED'
-export type ReconciliationReason = 'SAME_NUMBER' | 'CONFLICTING_ACKNOWLEDGEMENTS'
+export type ReconciliationReason = 'SAME_NUMBER' | 'CONFLICTING_ACKNOWLEDGEMENTS' | 'ZOHO_CANCELLED'
+
+/** Reasons that stop new acknowledgement work until reconciled. ZOHO_CANCELLED is a warning only. */
+export const BLOCKING_REASONS: readonly ReconciliationReason[] = ['SAME_NUMBER', 'CONFLICTING_ACKNOWLEDGEMENTS']
+export const isBlocked = (item: { reconciliation: ReconciliationReason[] }) => item.reconciliation.some((reason) => BLOCKING_REASONS.includes(reason))
 
 export interface AcknowledgementDocument {
   attachmentId: string
@@ -93,6 +97,7 @@ export interface ReconciliationView {
   reasons: ReconciliationReason[]
   sameNumber: { invoiceId: string; basis: 'ZOHO' | 'SERVICE'; serviceCount: number; contracts: string[]; status: AcknowledgementStatus; hasDocument: boolean }[]
   acknowledgements: { acknowledgementId: string; status: AcknowledgementStatus; acknowledgedAt: string | null; acknowledgedBy: string | null; documentName: string | null; legacyVisitId: string | null }[]
+  replacements: { zohoInvoiceId: string; invoiceNumber: string; invoiceDate: string; verified: boolean; problem: string | null }[]
 }
 
 export const STATUS_LABELS: Record<AcknowledgementStatus, string> = { PENDING: 'Pending', ACKNOWLEDGED: 'Acknowledged' }
@@ -100,6 +105,7 @@ export const STATUS_LABELS: Record<AcknowledgementStatus, string> = { PENDING: '
 export const RECONCILIATION_LABELS: Record<ReconciliationReason, string> = {
   SAME_NUMBER: 'Another invoice of this client has the same Invoice No.',
   CONFLICTING_ACKNOWLEDGEMENTS: 'More than one acknowledgement exists for this invoice',
+  ZOHO_CANCELLED: 'Its Invoice Tracking record was cancelled',
 }
 
 export const BASIS_LABELS: Record<LinkedService['basis'], string> = {

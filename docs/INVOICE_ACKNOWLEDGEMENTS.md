@@ -2,8 +2,9 @@
 
 Status: implemented 2026-11-10 on `feature/sts-elv-client-fixes-20261109` (worktree `STSLV-AMC-client-fixes`): first
 version 8fbdeff (one acknowledgement per service), finalised to **one acknowledgement per invoice** in the following
-commit. **Prepared for review: not pushed, not merged, not deployed.** Migrations 0112–0115 were applied to
-disposable databases only.
+commit (81788d0), then completed with cancelled-record re-association (0116) and the read-only Accounts indicator.
+**Prepared for review: not pushed, not merged, not deployed.** Migrations 0112–0116 were applied to disposable
+databases only.
 
 Route: **Finance → Invoice Acknowledgements**, `/finance/invoice-acknowledgements` (after Accounts).
 
@@ -37,8 +38,15 @@ service associations, **`ack_invoice_services`**:
 - The contract period (including renewal version, e.g. `STS-AMC-001 (V2)`) comes from each linked service.
 - A `SERVICE` invoice is upgraded to `ZOHO` when every one of its services is later allocated to one active record. It
   joins an existing `ZOHO` invoice only if it has no acknowledgement work of its own; otherwise it stays flagged.
-- Invoice Tracking records cancelled after identification stay attached ("record cancelled" is shown) and contribute
-  no date or value.
+- Invoice Tracking records cancelled after identification stay attached and contribute no date or value. The invoice
+  shows the warning **ZOHO_CANCELLED** ("Invoice Tracking record cancelled"); it does not block acknowledgement.
+- **Re-association (0116):** when the invoice is re-entered as a new Invoice Tracking record, an Edit user can point the
+  same invoice identity to it (`POST /:invoiceId/reassociate`, reason required, audited as
+  `invoice_acknowledgement.invoice_record_reassociated`). Only an ISSUED record of the same client and number that is
+  allocated to **every** active service of the invoice, and held by no other invoice, is offered as verified; others
+  are listed with the reason they cannot be used. The database allows the record to change only from CANCELLED to an
+  ISSUED record of the same client and number. The invoice id, services, acknowledgement and history never change,
+  and nothing is re-associated automatically.
 
 The synchronisation (`invoice-sync.ts`) runs before every read and write: one transaction, one advisory lock,
 deterministic and idempotent.
@@ -109,7 +117,9 @@ deterministic and idempotent.
   Invoice No. is linked to exactly one listed invoice carrying that number.
 - **Invoice value is counted once per invoice** (the Invoice Tracking amount), never per service. Service value is the
   sum of the invoice's own services.
-- Accounts' page, API, Paid logic, colours, totals and exports are unchanged.
+- Accounts' Paid logic, colours, totals, filters and exports are unchanged. One read-only addition: users who also hold
+  Invoice Acknowledgements: View see **Ack: Acknowledged / Pending** under the Invoice No. (`acknowledgementStatus` in
+  `GET /api/accounts`, null for everyone else; not in the export).
 
 ## 7. Tests (disposable database `stslv_amc_invoice_ack`)
 
@@ -121,14 +131,15 @@ deterministic and idempotent.
   - link and separate, conflicting legacy acknowledgements and choice, single legacy adoption;
   - the role matrix and financial restriction;
   - database guards, failure cleanup, corrected Invoice No., filters and export.
-- `tests/migration-0114-upgrade.test.ts`: 0113 → 0114/0115 with legacy acknowledgements, a customised role, idempotency.
+- API cancelled-record tests: warning without block, no automatic change, verified and unverified replacements,
+  Edit-only with reason, audit, database guard. Accounts indicator: shown only with Invoice Acknowledgements: View.
+- `tests/migration-0114-upgrade.test.ts`: 0113 → 0114/0115/0116 with legacy acknowledgements, a customised role, idempotency.
 - Web, `src/test/invoice-acknowledgements.test.tsx`; isolated browser E2E (desktop and mobile).
 
 ## 8. Open points
 
-1. Invoice Tracking record cancelled after identification: the invoice keeps it (flag shown); re-identifying it against
-   a replacement record is left to a later decision.
-2. Super Admin's 0113 grant also includes the unused Delete/Approve/Read actions (Super Admin holds every action of
+1. Super Admin's 0113 grant also includes the unused Delete/Approve/Read actions (Super Admin holds every action of
    every module); they enable nothing.
-3. Optional read-only acknowledgement indicator on Accounts (not added).
-4. Releasing needs approval of 0112–0115 with the branch's 0110/0111 (and 0108/0109 from the integration branch).
+2. A re-entered record that covers only some of the invoice's services cannot be verified and is not offered; the
+   client decides whether such a split should become separate invoices (no rule exists yet).
+3. Releasing needs approval of 0112–0116 with the branch's 0110/0111 (and 0108/0109 from the integration branch).

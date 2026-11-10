@@ -1,4 +1,4 @@
-# Outstanding Issues Register — STSLEV AMC
+# Outstanding Issues Register — STS-ELV AMC
 
 Opened 2026-11-09 during handover preparation (branch `feature/stslv-p3-handover`, base `c6d8d19`); updated at the final local integration (`integration/stslv-amc-final-20261109`). Items come from the repository documentation and the code at that commit. **Items that the parallel P0 (security) and P1 (fixes) sessions may resolve are marked "P0/P1?" and must be re-checked at final integration.** The November 9 audit document named in the P3 brief was not found in the repository or the project folders; reconcile this register with it when it is supplied.
 

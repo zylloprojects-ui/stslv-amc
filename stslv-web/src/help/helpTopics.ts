@@ -801,6 +801,7 @@ const FINANCE: HelpTopic[] = [
           'View Service Report (under the Service Report No.) opens the report uploaded on Service Status in a read-only viewer. Download is inside the viewer.',
           'A Word report cannot be previewed in the browser: the viewer offers Download. "No report uploaded" means none is on file yet.',
           'Viewing needs only View on Accounts. The file is fetched with your sign-in; there is no public link.',
+          'Users who may also view Invoice Acknowledgements see "Ack: Acknowledged" or "Ack: Pending" under the Invoice No. It is read only, opens Invoice Acknowledgements, and never changes Paid / Unpaid.',
         ],
       },
       {
@@ -832,6 +833,7 @@ const FINANCE: HelpTopic[] = [
           'When Invoice Tracking holds a record of the invoice, that record decides its services. Otherwise each service’s Invoice No. starts as its own invoice.',
           'Equal Invoice Nos. are never merged automatically: they show Needs reconciliation until someone with Edit uses Reconcile to link them as one invoice or confirm they are separate.',
           'If two acknowledgements exist for one invoice (for example from the earlier per-service release), both are kept and none is chosen automatically: Reconcile → Make current.',
+          'If the invoice’s Invoice Tracking record is cancelled, the row says so and the invoice can still be acknowledged. When the invoice is re-entered in Invoice Tracking, Reconcile → Re-associate points it to the new record (Edit, with a reason). Only a record of the same client and number covering every linked service is offered; nothing changes automatically.',
         ],
       },
       {

@@ -1,4 +1,4 @@
-# Deployment Checklist — STSLEV AMC
+# Deployment Checklist — STS-ELV AMC
 
 Use for every release to production. Tick each line only when it has been done and the evidence is recorded. **Every push to `develop` deploys** (Cloudflare Pages and Render build from it), so the push itself is the deployment and needs explicit approval from the project owner.
 

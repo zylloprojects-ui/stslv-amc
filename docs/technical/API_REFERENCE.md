@@ -1,4 +1,4 @@
-# API Reference — STSLEV AMC
+# API Reference — STS-ELV AMC
 
 Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Described at commit `c6d8d19`. Routes are in `src/modules/<module>/<module>.routes.ts`; validation schemas beside them (Zod).
 
@@ -167,13 +167,13 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | GET | `/api/invoices/export`, `/billable/export` | VIEW + EXPORT |
 | POST | `/api/invoices` | CREATE |
 | PATCH / POST | `/api/invoices/:id`, `/api/invoices/:id/cancel` | EDIT |
-| GET | `/api/accounts`, `/api/accounts/options` (+ `/export`) | ACCOUNTS VIEW (+ EXPORT) |
+| GET | `/api/accounts`, `/api/accounts/options` (+ `/export`) | ACCOUNTS VIEW (+ EXPORT). Each list item carries the read-only `acknowledgementStatus` (PENDING / ACKNOWLEDGED) only for a user who also holds INVOICE_ACKNOWLEDGEMENTS VIEW; otherwise null. Not in the export |
 | GET | `/api/invoice-acknowledgements`, `/options`, `/:invoiceId`, `/:invoiceId/services`, `/:invoiceId/history`, `/:invoiceId/document`, `/:invoiceId/documents/:attachmentId` | INVOICE_ACKNOWLEDGEMENTS VIEW — one row per invoice (`invoiceId` = `ack_invoices.id`). List filters `search`, `clientId`, `contractId`, `invoiceNo`, `status` (PENDING / ACKNOWLEDGED), `reconciliation=NEEDED`, `dateBasis` (INVOICE_DATE / ACKNOWLEDGED_DATE), `fromDate`, `toDate`, `sort`, `dir`, `page`, `pageSize`. Amounts (`invoiceValue` once per invoice, `serviceValue`, totals, linked service values) are null unless the user also holds ACCOUNTS VIEW. Documents: current one, or an earlier version only when it belongs to this invoice (`Cache-Control: no-store`, attachment) |
 | GET | `/api/invoice-acknowledgements/export?format=xlsx\|pdf&hidden=…` | INVOICE_ACKNOWLEDGEMENTS VIEW + EXPORT (amount columns only with ACCOUNTS VIEW) |
 | POST / DELETE | `/api/invoice-acknowledgements/:invoiceId/document` | INVOICE_ACKNOWLEDGEMENTS CREATE — attach (raw body, `X-File-Name`; PDF/PNG/JPEG recognised by content, ≤ `ATTACHMENT_MAX_MB`) or remove an attached document before confirmation; status stays PENDING; 409 while the invoice needs reconciliation |
 | POST | `/api/invoice-acknowledgements/:invoiceId/confirm` `{ attachmentId }` | INVOICE_ACKNOWLEDGEMENTS CREATE — PENDING → ACKNOWLEDGED; invoice and acknowledgement locked; only the named current document, after its file is read back and matches its checksum; 409 when changed, already acknowledged or needing reconciliation |
 | POST | `/api/invoice-acknowledgements/:invoiceId/replace` | INVOICE_ACKNOWLEDGEMENTS VIEW + EDIT — new version of an ACKNOWLEDGED invoice's document; raw body, `X-File-Name`, `X-Replace-Reason` (URI-encoded, 3–500 characters) |
-| GET / POST | `/api/invoice-acknowledgements/:invoiceId/reconciliation`, `/link` `{ otherInvoiceId, reason }`, `/separate` `{ reason }`, `/choose` `{ acknowledgementId, reason }` | INVOICE_ACKNOWLEDGEMENTS VIEW + EDIT — link equal-numbered invoices of the same client as one (never two Invoice Tracking records, never across clients), confirm them separate, or choose the current acknowledgement among conflicting ones. Audited with the reason |
+| GET / POST | `/api/invoice-acknowledgements/:invoiceId/reconciliation`, `/link` `{ otherInvoiceId, reason }`, `/separate` `{ reason }`, `/choose` `{ acknowledgementId, reason }`, `/reassociate` `{ zohoInvoiceId, reason }` | INVOICE_ACKNOWLEDGEMENTS VIEW + EDIT — link equal-numbered invoices of the same client as one (never two Invoice Tracking records, never across clients), confirm them separate, choose the current acknowledgement among conflicting ones, or re-associate an invoice whose Invoice Tracking record was cancelled with a verified active replacement (same client and number, allocated to every linked service; reconciliation view lists `replacements` with `verified` / `problem`). Audited with the reason |
 | GET | `/api/services-sales`, `/options`, `/:id/report` (+ `/export`) | SERVICES_SALES VIEW (+ EXPORT) |
 | PATCH | `/api/services-sales/:id` | SERVICES_SALES EDIT — quotation number on completed services |
 

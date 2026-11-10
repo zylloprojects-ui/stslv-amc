@@ -511,6 +511,38 @@ export function ReconcileDialog({ item, onDone, onClose }: { item: Acknowledgeme
           </section>
         )}
 
+        {view.data && item.reconciliation.includes('ZOHO_CANCELLED') && (
+          <section aria-label="Cancelled Invoice Tracking record" className="space-y-2">
+            <h3 className="text-sm font-semibold text-slate-800">Cancelled Invoice Tracking record</h3>
+            <p className="text-sm text-slate-600">
+              The invoice and its acknowledgement are kept. If the invoice was re-entered in Invoice Tracking, re-associate it with the new record: only a record of this client and number that covers every linked service can be used.
+            </p>
+            {view.data.replacements.length === 0 ? (
+              <Alert tone="info">No active Invoice Tracking record with this number exists yet. Nothing is changed.</Alert>
+            ) : (
+              <ul className="space-y-2">
+                {view.data.replacements.map((record) => (
+                  <li key={record.zohoInvoiceId} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+                    <span>
+                      Record {record.invoiceNumber} · {formatDate(record.invoiceDate)}
+                      {record.problem && <span className="block text-xs text-amber-800">{record.problem}</span>}
+                    </span>
+                    {record.verified && (
+                      <Button
+                        size="sm"
+                        disabled={!reasonOk || act.isPending}
+                        onClick={() => act.mutate({ path: 'reassociate', body: { zohoInvoiceId: record.zohoInvoiceId }, message: `Invoice ${item.invoiceNo} now refers to its re-entered Invoice Tracking record. Its acknowledgement is unchanged.` })}
+                      >
+                        Re-associate
+                      </Button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
         {view.data && view.data.acknowledgements.length > 0 && (
           <section aria-label="Conflicting acknowledgements" className="space-y-2">
             <h3 className="text-sm font-semibold text-slate-800">Acknowledgements of this invoice — choose the current one</h3>

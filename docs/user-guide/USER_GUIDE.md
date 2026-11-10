@@ -485,6 +485,8 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 3. Type the number in **Invoice No.**, click **OK** → green, Paid.
 4. Wrong number? Correct it and click OK (the first-entered date is kept). Clear it and click OK to return to Unpaid.
 
+**Acknowledgement indicator (read only).** Users who may also view Invoice Acknowledgements see **Ack: Acknowledged** or **Ack: Pending** under the Invoice No. It opens Invoice Acknowledgements (§14), is not included in the Accounts export, and never changes Paid / Unpaid or the row colour.
+
 ### FAQs
 - **The Invoice No. box is disabled.** The service is not completed: "Complete the service before entering an invoice number."
 - **Does Paid mean the client paid?** No — see §2.
@@ -511,6 +513,7 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 ### Reconcile (Edit)
 - **Same Invoice No.:** choose **Link as one invoice** (the services join one invoice; one acknowledgement covers them) or **They are separate invoices**. A reason is required and recorded.
 - **More than one acknowledgement:** acknowledgements recorded per service by the earlier release, or brought together by a link, are all kept; none is chosen automatically. **Make current** picks the one that counts; the others stay in the document history.
+- **Invoice Tracking record cancelled** (amber note, not a block — the invoice can still be acknowledged): when the invoice is re-entered in Invoice Tracking, **Re-associate** points the same invoice to the new record. Only an active record of the same client and number that covers every linked service is offered; any other record is listed with the reason it cannot be used. The invoice, its services, its acknowledgement and its history stay as they are. Nothing is re-associated automatically.
 
 ### Workflow — acknowledge an invoice
 1. Find the invoice (Acknowledgement = Pending).

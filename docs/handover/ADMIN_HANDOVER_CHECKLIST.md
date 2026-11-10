@@ -1,4 +1,4 @@
-# Administrator Handover Checklist — STSLEV AMC
+# Administrator Handover Checklist — STS-ELV AMC
 
 For handing day-to-day administration of the application to the client's administrator(s). Tick only when done together with the client administrator; record who and when. **Nothing on this list has been completed yet.**
 

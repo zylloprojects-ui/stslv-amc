@@ -18,6 +18,7 @@ import {
   AMOUNT_COLUMNS,
   COLUMN_IDS,
   COLUMN_LABELS,
+  isBlocked,
   RECONCILIATION_LABELS,
   STATUS_LABELS,
   subjectOf,
@@ -76,13 +77,17 @@ export function AcknowledgementStatusBadge({ item }: { item: AcknowledgementItem
         </span>
       )}
       {item.status === 'PENDING' && item.document && <span className="mt-1 block text-xs text-amber-800">Document attached, awaiting OK / Confirm</span>}
-      {item.reconciliation.length > 0 && (
+      {isBlocked(item) && (
         <span data-reconciliation="NEEDED" className="mt-1 block text-xs font-semibold text-red-700" title={item.reconciliation.map((code) => RECONCILIATION_LABELS[code]).join(' · ')}>
           Needs reconciliation
           <span className="sr-only">: {item.reconciliation.map((code) => RECONCILIATION_LABELS[code]).join('; ')}</span>
         </span>
       )}
-      {item.zohoCancelled && <span className="mt-1 block text-xs text-slate-500">Invoice Tracking record cancelled</span>}
+      {item.zohoCancelled && (
+        <span data-reconciliation="WARNING" className="mt-1 block text-xs font-semibold text-amber-800">
+          Invoice Tracking record cancelled
+        </span>
+      )}
     </span>
   )
 }
@@ -422,7 +427,7 @@ export function InvoiceAcknowledgementsPage() {
                   {data.items.map((item, index) => (
                     <tr
                       key={item.invoiceId}
-                      className={cx(TABLE.row, item.status === 'ACKNOWLEDGED' && item.reconciliation.length === 0 && 'bg-emerald-50/40', item.reconciliation.length > 0 && 'bg-red-50/40')}
+                      className={cx(TABLE.row, item.status === 'ACKNOWLEDGED' && !isBlocked(item) && 'bg-emerald-50/40', isBlocked(item) && 'bg-red-50/40')}
                       data-status={item.status}
                       data-invoice={item.invoiceId}
                     >
@@ -476,7 +481,7 @@ export function InvoiceAcknowledgementsPage() {
                               Reconcile
                             </Button>
                           )}
-                          {item.status === 'PENDING' && canCreate && item.reconciliation.length === 0 && (
+                          {item.status === 'PENDING' && canCreate && !isBlocked(item) && (
                             <Button size="sm" variant={item.document ? 'primary' : 'secondary'} onClick={() => setDialog({ kind: 'attach', item })} aria-label={`${item.document ? 'Review and confirm' : 'Attach acknowledgement for'} ${subjectOf(item)}`}>
                               {item.document ? 'Review & Confirm' : 'Attach Acknowledgement'}
                             </Button>
@@ -491,7 +496,7 @@ export function InvoiceAcknowledgementsPage() {
                               Replace Document
                             </Button>
                           )}
-                          {item.reconciliation.length > 0 && !canEdit && <span className="text-xs text-slate-500">Waiting for an authorised user to reconcile</span>}
+                          {isBlocked(item) && !canEdit && <span className="text-xs text-slate-500">Waiting for an authorised user to reconcile</span>}
                         </div>
                       </td>
                     </tr>

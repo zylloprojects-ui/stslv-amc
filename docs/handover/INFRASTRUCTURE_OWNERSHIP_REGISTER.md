@@ -1,4 +1,4 @@
-# Infrastructure Ownership Register — STSLEV AMC
+# Infrastructure Ownership Register — STS-ELV AMC
 
 Prepared 2026-11-09 from the repository (`render.yaml`, `docs/DEPLOYMENT.md`, `docs/DOCUMENT_STORAGE.md`, `docs/BACKUP_RESTORE.md`). **Owners, account holders and billing contacts are not recorded in the repository and must be filled in and confirmed by the client and the supplier together.** No password, key, token or connection string belongs in this file.
 
@@ -15,7 +15,7 @@ Status key: **Live** = in use by the current client-review deployment. **Planned
 | 5 | Supabase project — private Storage bucket | Contract documents, service reports, attachments | Live (from 2026-11-04) | Supabase dashboard + Render env | TBC | TBC | Free plan | TBC | S3 keys are server-side only; rotation steps in `docs/DOCUMENT_STORAGE.md`. |
 | 6 | Hostinger VPS | Intended production host | Planned | — | TBC | TBC | TBC | TBC | Prerequisites in `docs/technical/TECHNICAL_HANDOVER.md` §9. Nothing is deployed there. |
 | 7 | Domain name and DNS | Client-facing address | TBC | TBC | TBC | TBC | TBC | TBC | Currently the `*.pages.dev` and `*.onrender.com` addresses are used. |
-| 8 | Zoho Books (client) | Official invoicing | Live (client system) | Zoho | Client | Client finance | Client | Client | Not integrated. STSLEV AMC only records Zoho invoice numbers. |
+| 8 | Zoho Books (client) | Official invoicing | Live (client system) | Zoho | Client | Client finance | Client | Client | Not integrated. STS-ELV AMC only records Zoho invoice numbers. |
 | 9 | Email sending | Not used | — | `MAIL_TRANSPORT=none` | — | — | — | — | Password recovery uses administrator-issued temporary passwords. |
 
 ## 2. Backups

@@ -1,4 +1,4 @@
-# Technical Handover — STSLEV AMC
+# Technical Handover — STS-ELV AMC
 
 Prepared 2026-11-09 on branch `feature/stslv-p3-handover` from commit `c6d8d19` (the commit live on `develop` since the 2026-11-04 release). Facts are taken from the code and existing documents named in each section. **No secret value appears in this document**; environment variables are listed by name only.
 

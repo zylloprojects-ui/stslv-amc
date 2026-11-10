@@ -6,8 +6,12 @@ import { idSchema } from "../../shared/validation";
 export const ACKNOWLEDGEMENT_STATUSES = ["PENDING", "ACKNOWLEDGED"] as const;
 export type AcknowledgementStatus = (typeof ACKNOWLEDGEMENT_STATUSES)[number];
 
-/** Why an invoice waits for an authorised user (reconciliation). Never decided automatically. */
-export const RECONCILIATION_REASONS = ["SAME_NUMBER", "CONFLICTING_ACKNOWLEDGEMENTS"] as const;
+/**
+ * Why an invoice waits for an authorised user (reconciliation). Never decided automatically. SAME_NUMBER and
+ * CONFLICTING_ACKNOWLEDGEMENTS block new acknowledgement work; ZOHO_CANCELLED (its Invoice Tracking record was
+ * cancelled) is a warning: the invoice can still be acknowledged, and can be re-associated with a verified replacement.
+ */
+export const RECONCILIATION_REASONS = ["SAME_NUMBER", "CONFLICTING_ACKNOWLEDGEMENTS", "ZOHO_CANCELLED"] as const;
 export type ReconciliationReason = (typeof RECONCILIATION_REASONS)[number];
 
 /**
@@ -115,6 +119,9 @@ export const linkInvoicesSchema = z.strictObject({ otherInvoiceId: idSchema, rea
 
 /** Reconciliation: invoices of this client with this number are separate invoices. */
 export const confirmSeparateSchema = z.strictObject({ reason: reasonSchema });
+
+/** Reconciliation: the invoice's cancelled Invoice Tracking record is replaced by this verified active record. */
+export const reassociateSchema = z.strictObject({ zohoInvoiceId: idSchema, reason: reasonSchema });
 
 /** Reconciliation: this acknowledgement is the current one of the invoice. */
 export const chooseAcknowledgementSchema = z.strictObject({ acknowledgementId: idSchema, reason: reasonSchema });

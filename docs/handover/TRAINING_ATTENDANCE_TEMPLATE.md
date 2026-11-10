@@ -1,4 +1,4 @@
-# Training Attendance Record — STSLEV AMC
+# Training Attendance Record — STS-ELV AMC
 
 > Template. **No training session has been held or recorded yet.** Fill in one sheet per session. Do not pre-fill attendance.
 
@@ -18,7 +18,7 @@
 
 ## Attendance
 
-| # | Name | Role in STSLEV AMC | Department | Attended (Y/N) | Exercises completed (IDs) | Signature |
+| # | Name | Role in STS-ELV AMC | Department | Attended (Y/N) | Exercises completed (IDs) | Signature |
 |---|---|---|---|---|---|---|
 | 1 | | | | | | |
 | 2 | | | | | | |

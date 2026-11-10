@@ -7,6 +7,7 @@ import { IN_SCOPE, serviceStatusSql } from "../amc/service-status.service";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import { readServiceReport, SERVICE_REPORT_JSON_SQL, serviceReportsAvailable, toServiceReport, type ServiceReport } from "../amc/service-reports.service";
 import { notFound } from "../../shared/errors";
+import { schemaHas } from "../../shared/schema-features";
 import type { AccountsColour, ListAccountsQuery } from "./accounts.schemas";
 
 // Accounts: a billing reconciliation with one row per scheduled maintenance visit
@@ -51,8 +52,19 @@ const FROM = `
     WHERE al.amc_visit_id = v.id AND i.status <> 'CANCELLED'
   ) inv ON true`;
 
+/**
+ * Read-only acknowledgement state of the service's invoice (Invoice Acknowledgements, 0112-0114), for the indicator
+ * beside the Invoice No. Only for a user who may view Invoice Acknowledgements; it changes nothing on Accounts. An
+ * Invoice No. with no acknowledgement recorded yet reads Pending.
+ */
+const ACKNOWLEDGEMENT_SQL = `CASE WHEN v.manual_invoice_no IS NULL THEN NULL ELSE COALESCE((
+    SELECT CASE WHEN ca.status = 'ACKNOWLEDGED' THEN 'ACKNOWLEDGED' ELSE 'PENDING' END
+    FROM ack_invoice_services s JOIN ack_invoices ai ON ai.id = s.ack_invoice_id
+    LEFT JOIN invoice_acknowledgements ca ON ca.id = ai.current_acknowledgement_id
+    WHERE s.amc_visit_id = v.id AND s.invoice_number = v.manual_invoice_no), 'PENDING') END`;
+
 /** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
-const selectSql = (storedReference: boolean, reports: boolean) => `
+const selectSql = (storedReference: boolean, reports: boolean, acknowledgements = false) => `
   SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
@@ -66,6 +78,7 @@ const selectSql = (storedReference: boolean, reports: boolean) => `
          (c.billing_basis IS NULL AND c.default_visit_amount IS NULL) AS no_amount_source,
          ${reports ? SERVICE_REPORT_JSON_SQL : "NULL::jsonb"} AS service_report,
          ${SERVICE_STATUS_SQL} AS service_status,
+         ${acknowledgements ? ACKNOWLEDGEMENT_SQL : "NULL"} AS acknowledgement_status,
          ${COLOUR_SQL} AS colour`;
 
 interface AccountsRow {
@@ -98,6 +111,7 @@ interface AccountsRow {
   no_amount_source: boolean;
   service_report: unknown;
   service_status: ServiceStatus;
+  acknowledgement_status: "PENDING" | "ACKNOWLEDGED" | null;
   colour: AccountsColour;
 }
 
@@ -140,6 +154,11 @@ export interface AccountsItem {
   /** The Service Report document uploaded on Service Status (0104), or null when none. Metadata only. */
   serviceReport: ServiceReport | null;
   salesEngineer: { id: string; name: string } | null;
+  /**
+   * Read-only: whether the invoice of this service's Invoice No. is acknowledged (Invoice Acknowledgements). Null when
+   * no Invoice No. is entered, or the user may not view Invoice Acknowledgements. Never affects Paid / Unpaid.
+   */
+  acknowledgementStatus: "PENDING" | "ACKNOWLEDGED" | null;
   colour: AccountsColour;
 }
 
@@ -167,6 +186,7 @@ function toItem(row: AccountsRow): AccountsItem {
     paidAt: row.manual_invoice_at?.toISOString() ?? null,
     updatedAt: row.updated_at.toISOString(),
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
+    acknowledgementStatus: row.acknowledgement_status,
     colour: row.colour,
   };
 }
@@ -285,12 +305,14 @@ async function kpis(where: string, params: unknown[]): Promise<AccountsKpis> {
   };
 }
 
-export async function listAccounts(query: ListAccountsQuery) {
+/** `showAcknowledgements`: the user may view Invoice Acknowledgements (the read-only indicator is then filled in). */
+export async function listAccounts(query: ListAccountsQuery, showAcknowledgements = false) {
   const storedReference = await hasStoredReference();
   const { where, params } = filterSql(query, storedReference);
+  const acknowledgements = showAcknowledgements && (await schemaHas(["ack_invoices", "ack_invoice_services"]));
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable())} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable(), acknowledgements)} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,

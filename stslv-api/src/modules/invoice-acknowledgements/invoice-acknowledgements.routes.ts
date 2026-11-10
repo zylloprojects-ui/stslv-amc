@@ -14,6 +14,7 @@ import {
   exportAcknowledgementsSchema,
   linkInvoicesSchema,
   listAcknowledgementsSchema,
+  reassociateSchema,
   replaceReasonSchema,
 } from "./invoice-acknowledgements.schemas";
 import {
@@ -28,6 +29,7 @@ import {
   linkInvoices,
   listAcknowledgements,
   readDocument,
+  reassociateInvoice,
   reconciliationView,
   replaceDocument,
   withdrawDocument,
@@ -168,6 +170,12 @@ invoiceAcknowledgementsRouter.post("/:invoiceId/separate", ...edit, async (req, 
   const { reason } = confirmSeparateSchema.parse(req.body);
 
   res.json({ success: true, data: await confirmSeparate(requireAuth(req), id(req), reason, amountsVisible(requireAuth(req))) });
+});
+
+invoiceAcknowledgementsRouter.post("/:invoiceId/reassociate", ...edit, async (req, res) => {
+  const { zohoInvoiceId, reason } = reassociateSchema.parse(req.body);
+
+  res.json({ success: true, data: await reassociateInvoice(requireAuth(req), id(req), zohoInvoiceId, reason, amountsVisible(requireAuth(req))) });
 });
 
 invoiceAcknowledgementsRouter.post("/:invoiceId/choose", ...edit, async (req, res) => {

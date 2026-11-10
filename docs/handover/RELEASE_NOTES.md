@@ -1,4 +1,4 @@
-# Release Notes — STSLEV AMC
+# Release Notes — STS-ELV AMC
 
 ## Unreleased — Final integration of P0, P1, P2 and P3 (branch `integration/stslv-amc-final-20261109`)
 
