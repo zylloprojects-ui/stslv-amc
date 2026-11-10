@@ -197,9 +197,34 @@ Added during this integration (tests and documents only):
 - removing demo data from production;
 - UAT and sign-off.
 
-## 12. Post-integration verification (local alpha)
+## 12. Integration and post-integration verification (local alpha)
 
-See §12a, added after alpha was updated.
+**Integration:**
+
+| Item | Value |
+|---|---|
+| Alpha before | `c6d8d19` (= `origin/alpha`) |
+| Backup reference | local branch `backup/alpha-pre-final-integration-20261110` → `c6d8d19` (verified before the update) |
+| Method | `git merge --ff-only feature/sts-elv-client-fixes-20261109` in `D:\Projects\STSLV-AMC`. A fast-forward: no merge commit, no conflict, no history rewritten |
+| Alpha after the fast-forward | `cc6c3a4` (= the verified source, including 02cc709 and 249a68b) |
+| Alpha now | the commit that adds this section on top of `cc6c3a4` (documentation only) |
+| Not changed | `origin/alpha` (still `c6d8d19`), `develop`, `main`, the feature branch, every other branch and worktree; the owner's untracked files and the `.gitignore` line endings in the alpha checkout |
+
+**Run in the alpha checkout itself** (`D:\Projects\STSLV-AMC`, HEAD `cc6c3a4`):
+- `.env` points at the development database there, so every command overrode `DB_NAME` to the disposable database.
+- The browser servers also overrode the storage folder, port and JWT secret.
+
+| Check | Result |
+|---|---|
+| API typecheck and build; web typecheck, build and lint | Pass (web lint: pre-existing warnings only) |
+| Full API suite (includes the migration upgrade tests 0110, 0111, 0112, 0114 and the 0107 / 0109 chain) | **113 files / 113 passed; 1867 passed, 0 failed, 2 skipped (by design)** |
+| Full web suite | **59 files; 874 passed, 0 failed** |
+| Browser, Super Admin (3 widths × light / dark) | 222 / 222 clean; Dashboard 12 cards, identical on `/dashboard` and `/amc/management` |
+| Browser, Finance Executive (2 widths × light / dark) | 148 / 148 clean; permitted pages only |
+| Workflow E2E | **34 / 34**. Covers: invoice acknowledgement, reconciliation, Accounts indicator, cancelled-record re-association, role refusals (Viewer, View-only), mobile |
+| Contract renewal, Accounts, Oman-time boundaries, role permissions | covered by the API and web suites above (`amc-renewals`, `contract-versions-sales-value`, `accounts`, `business-date-oman`, `business-date`, `role-model`, `permission-catalog`) |
+
+**Result: local alpha passes every gate.** Not pushed. `origin/alpha` is unchanged.
 
 ## 13. Traceability matrix
 
