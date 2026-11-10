@@ -15,7 +15,7 @@ describe("password policy (rules)", () => {
     expect(passwordProblems("Ab1!Ab1!Ab1")).toContain(PASSWORD_MESSAGES.tooShort);
     expect(passwordProblems("alllowercaseletters")).toContain(PASSWORD_MESSAGES.classes);
     expect(passwordProblems("Aa1!Aa1!Aa1!")).toContain(PASSWORD_MESSAGES.distinct);
-    for (const weak of ["P@ssw0rd2026!", "Password1234", "Welcome@12345", "Qwerty123456!", "Admin@202626", "Stslv@2026!!", "2026#Muscat!!"]) {
+    for (const weak of ["P@ssw0rd2026!", "Password1234", "Welcome@12345", "Qwerty123456!", "Admin@202626", "Stslv@2026!!", "Stselv@2026!!", "StselvAmc#2026", "2026#Muscat!!"]) {
       expect(passwordProblems(weak), weak).toContain(PASSWORD_MESSAGES.common);
     }
     expect(passwordProblems("é".repeat(40))).toContain(PASSWORD_MESSAGES.tooLong);

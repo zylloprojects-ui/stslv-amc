@@ -42,6 +42,8 @@ describe('dark theme status colours', () => {
     ['15-day expiry band', '.dark .text-red-900', '.dark .bg-red-50'],
     ['Master Status yellow badge', '.dark .text-yellow-900', '.dark .bg-yellow-100'],
     ['Postponed calendar visit', '.dark .text-violet-900', '.dark .bg-violet-50'],
+    // 2026-11-10: Help related-topic chips and the current topic were dark blue on dark (1.9:1).
+    ['Help related-topic chip', '.dark .text-\\[\\#0b5d8f\\]', '.dark .bg-sky-50'],
   ])('%s stays readable', (_name, text, background) => {
     expect(contrast(ruleValue(text, 'color'), ruleValue(background, 'background-color'))).toBeGreaterThanOrEqual(4.5)
   })
