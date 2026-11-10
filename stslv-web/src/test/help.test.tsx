@@ -207,6 +207,59 @@ describe('help in the application', () => {
     expect(await screen.findByRole('heading', { name: 'Recycle Bin', level: 2 })).toBeInTheDocument()
   })
 
+  it('shows an open-book Help & User Guide button that opens from the keyboard', async () => {
+    session(FINANCE)
+    renderApp('/dashboard')
+
+    const button = await screen.findByRole('button', { name: 'Help for this page' })
+    expect(button).toHaveAttribute('title', 'Help & User Guide')
+    expect(button).toHaveAttribute('aria-haspopup', 'dialog')
+    expect(button.querySelector('svg[data-icon="open-book"]')).not.toBeNull()
+    // The question-mark glyph is gone.
+    expect(button.querySelector('circle')).toBeNull()
+
+    button.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(await screen.findByRole('dialog', { name: 'Help' })).toBeInTheDocument()
+  })
+
+  it.each([
+    ['/finance/invoice-acknowledgements', 'Invoice Acknowledgements'],
+    ['/amc/renewal', 'AMC Renewal'],
+    ['/amc/service-sales', 'Service Sales (quotation numbers)'],
+    ['/amc/service-status', 'Service Status (completing a service)'],
+    ['/amc/calendar', 'Monthly Calendar'],
+    ['/amc/master-status', 'Master AMC Status'],
+    ['/amc/management', 'Dashboard'],
+    ['/invoices', 'Invoice Tracking (Zoho)'],
+  ])('opens the right topic on %s (Super Admin)', async (path, title) => {
+    session(ADMIN)
+    renderApp(path)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Help for this page' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Help' })
+    expect(within(dialog).getByText(`This page: ${title}`)).toBeInTheDocument()
+  })
+
+  it('keeps the AMC Management topic for Dashboard users although the page left the sidebar', () => {
+    const topic = HELP_TOPICS.find((entry) => entry.id === 'amc-management')!
+    expect(helpTopicVisible(topic, viewer(['DASHBOARD:VIEW']))).toBe(true)
+    expect(helpTopicVisible(topic, viewer(['CLIENTS:VIEW']))).toBe(false)
+  })
+
+  it('groups help topics as the sidebar groups the pages', () => {
+    const groupOf = (id: string) => HELP_TOPICS.find((topic) => topic.id === id)?.group
+    expect(groupOf('service-status')).toBe('AMC Execution')
+    expect(groupOf('monthly-calendar')).toBe('AMC Execution')
+    expect(groupOf('accounts')).toBe('Accounts')
+    expect(groupOf('invoice-acknowledgements')).toBe('Accounts')
+    expect(groupOf('service-sales')).toBe('AMC Sales')
+    expect(groupOf('amc-renewal')).toBe('AMC Sales')
+    expect(groupOf('master-amc-status')).toBe('AMC')
+    expect(groupOf('amc-contracts')).toBe('AMC')
+    expect(groupOf('reports')).toBe('Reports')
+  })
+
   it('offers a topic drop-down for narrow screens', async () => {
     session(ADMIN)
     const app = renderApp('/help')

@@ -178,12 +178,20 @@ describe('permission-based navigation', () => {
     const nav = await screen.findByRole('navigation', { name: 'Main' })
 
     // Settings sits in the footer, after the groups. The Master Data Center heading is itself a link, to its hub.
-    expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center', 'Settings'])
+    // The client-approved order (2026-11-10).
+    expect(linkNames(nav)).toEqual(['Dashboard', 'Master AMC Status', 'AMC Contracts', 'Master Data Center', 'Reports', 'Settings'])
+    expect(within(nav).getAllByRole('heading').map((heading) => heading.textContent)).toEqual([
+      'AMC Execution',
+      'Accounts',
+      'AMC Sales',
+      'Master Data Center',
+      'Administration',
+    ])
     expect(await linksByGroup(nav)).toEqual({
+      'AMC Execution': ['Service Status', 'Monthly Calendar', 'AMC Schedule'],
+      Accounts: ['Invoices', 'Invoice Ack', 'Invoice Tracking'],
+      'AMC Sales': ['Service Sales', 'AMC Renewals'],
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],
-      'AMC Operations': ['AMC Management', 'AMC Contracts', 'Master AMC Status', 'Service Status', 'AMC Renewal', 'Monthly Calendar', 'AMC Schedule'],
-      Finance: ['Invoice Tracking', 'Accounts', 'Invoice Acknowledgements', 'Service Sales'],
-      Reporting: ['Reports'],
       Administration: ['Users & Access', 'Roles & Permissions', 'Login History', 'Audit Log', 'Recycle Bin', 'Suggestions Review'],
     })
   })
@@ -199,7 +207,7 @@ describe('permission-based navigation', () => {
     expect(within(nav).getByRole('button', { name: 'Master Data Center pages' })).toHaveAttribute('aria-expanded', 'true')
     expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
 
-    await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
+    await userEvent.click(within(nav).getByRole('button', { name: 'Accounts' }))
     expect(within(nav).getByRole('link', { name: 'Invoice Tracking' })).toBeInTheDocument()
     expect(within(nav).queryByRole('link', { name: 'Clients' })).not.toBeInTheDocument()
     expect(within(nav).getByRole('button', { name: 'Master Data Center pages' })).toHaveAttribute('aria-expanded', 'false')
@@ -211,8 +219,44 @@ describe('permission-based navigation', () => {
 
     const nav = await screen.findByRole('navigation', { name: 'Main' })
 
-    expect(within(nav).getByRole('button', { name: 'Finance' })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(nav).getByRole('button', { name: 'Accounts' })).toHaveAttribute('aria-expanded', 'true')
     expect(within(nav).getByRole('link', { name: 'Invoice Tracking' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it.each([
+    ['/finance/accounts', 'Accounts', 'Invoices'],
+    ['/finance/invoice-acknowledgements', 'Accounts', 'Invoice Ack'],
+    ['/amc/renewal', 'AMC Sales', 'AMC Renewals'],
+    ['/amc/service-sales', 'AMC Sales', 'Service Sales'],
+    ['/amc/calendar', 'AMC Execution', 'Monthly Calendar'],
+    ['/amc/service-status', 'AMC Execution', 'Service Status'],
+  ])('opens %s with its parent %s expanded and %s marked current', async (path, group, link) => {
+    session(ADMIN)
+    renderApp(path)
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).getByRole('button', { name: group })).toHaveAttribute('aria-expanded', 'true')
+    expect(within(nav).getByRole('link', { name: link })).toHaveAttribute('aria-current', 'page')
+    expect(within(nav).getAllByRole('link', { name: link })).toHaveLength(1)
+  })
+
+  it('marks a top-level page current without expanding a group', async () => {
+    session(ADMIN)
+    renderApp('/amc/master-status')
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).getByRole('link', { name: 'Master AMC Status' })).toHaveAttribute('aria-current', 'page')
+    for (const group of ['AMC Execution', 'Accounts', 'AMC Sales', 'Administration']) {
+      expect(within(nav).getByRole('button', { name: group })).toHaveAttribute('aria-expanded', 'false')
+    }
+  })
+
+  it('names the brand STS-ELV at the top of the sidebar', async () => {
+    session(ADMIN)
+    renderApp('/dashboard')
+
+    const nav = await screen.findByRole('navigation', { name: 'Main' })
+    expect(within(nav).getByText('STS-ELV')).toBeInTheDocument()
   })
 
   it('shows a restricted role only the modules it may view', async () => {
@@ -223,8 +267,8 @@ describe('permission-based navigation', () => {
 
     // No Settings link: the role may not view it. Clients makes the Master Data Center hub available.
     expect(linkNames(nav)).toEqual(['Dashboard', 'Master Data Center'])
-    // AMC Management is the shared Dashboard (2026-11-09), so a role that may view the Dashboard may open it too.
-    expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'], 'AMC Operations': ['AMC Management'] })
+    // AMC Management is the shared Dashboard and is not listed again (2026-11-10).
+    expect(await linksByGroup(nav)).toEqual({ 'Master Data Center': ['Clients'] })
     expect(within(nav).queryByRole('heading', { name: 'Administration' })).not.toBeInTheDocument()
   })
 
@@ -360,7 +404,7 @@ describe('sidebar', () => {
     expect(within(nav).getByRole('link', { name: 'Dashboard' })).toBeInTheDocument()
     expect(within(nav).getByRole('button', { name: 'Sign Out' })).toBeInTheDocument()
 
-    await userEvent.click(within(nav).getByRole('button', { name: 'AMC Operations' }))
+    await userEvent.click(within(nav).getByRole('button', { name: 'AMC Execution' }))
 
     expect(localStorage.getItem('stslev.sidebar-collapsed')).toBe('0')
     expect(within(nav).getByRole('link', { name: 'Clients' })).toBeInTheDocument()
@@ -403,7 +447,7 @@ describe('page search', () => {
     await userEvent.click(await screen.findByRole('combobox', { name: 'Search pages' }))
 
     const options = (await screen.findAllByRole('option')).map((option) => option.querySelector('span.font-semibold')?.textContent)
-    expect(options).toEqual(['Dashboard', 'Master Data Center', 'Clients', 'AMC Management', 'My Account'])
+    expect(options).toEqual(['Dashboard', 'Master Data Center', 'Clients', 'My Account'])
   })
 })
 

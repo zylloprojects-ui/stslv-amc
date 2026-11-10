@@ -7,7 +7,23 @@ import type { Theme } from '../lib/preferences'
 import { isAdmin } from '../auth/roles'
 import { NAVIGATION, navItemVisible } from './navigation'
 
-type IconKey = 'close' | 'panel-close' | 'panel-open' | 'moon' | 'sun' | 'dashboard' | 'Master Data Center' | 'AMC Operations' | 'Finance' | 'Reporting' | 'Administration' | 'settings' | 'logout'
+type IconKey =
+  | 'close'
+  | 'panel-close'
+  | 'panel-open'
+  | 'moon'
+  | 'sun'
+  | 'dashboard'
+  | 'status'
+  | 'contracts'
+  | 'reports'
+  | 'Master Data Center'
+  | 'AMC Execution'
+  | 'Accounts'
+  | 'AMC Sales'
+  | 'Administration'
+  | 'settings'
+  | 'logout'
 
 const NAV_ICONS: Record<IconKey, ReactNode> = {
   close: <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />,
@@ -44,18 +60,37 @@ const NAV_ICONS: Record<IconKey, ReactNode> = {
       <path d="M4.5 6v6c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5V6M4.5 12v6c0 1.4 3.4 2.5 7.5 2.5s7.5-1.1 7.5-2.5v-6" strokeLinecap="round" />
     </>
   ),
-  'AMC Operations': (
+  // Master AMC Status: a status list.
+  status: (
+    <>
+      <path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10" strokeLinecap="round" />
+      <path d="m3.5 6.5 1.3 1.3 2.2-2.6M3.5 12l1.3 1.3 2.2-2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="5.2" cy="17.5" r="1.4" />
+    </>
+  ),
+  // AMC Contracts: a signed document.
+  contracts: (
+    <>
+      <path d="M14 3.5H7A1.5 1.5 0 0 0 5.5 5v14A1.5 1.5 0 0 0 7 20.5h10a1.5 1.5 0 0 0 1.5-1.5V8L14 3.5Z" strokeLinejoin="round" />
+      <path d="M14 3.5V8h4.5M8.5 12h7M8.5 15.5h4" strokeLinecap="round" strokeLinejoin="round" />
+    </>
+  ),
+  reports: <path d="M4 20V10M10 20V4M16 20v-7M21 20H3" strokeLinecap="round" strokeLinejoin="round" />,
+  // AMC Execution: a toolbox (the work carried out on site).
+  'AMC Execution': (
     <>
       <rect x="3.5" y="7" width="17" height="12.5" rx="2.5" />
       <path d="M9 7V5.5A1.5 1.5 0 0 1 10.5 4h3A1.5 1.5 0 0 1 15 5.5V7M3.5 12.5h17" strokeLinecap="round" />
     </>
   ),
-  Reporting: (
+  // AMC Sales: a price tag.
+  'AMC Sales': (
     <>
-      <path d="M4 20V10M10 20V4M16 20v-7M21 20H3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 12.6V4.8c0-.7.6-1.3 1.3-1.3h7.8l8 8a1.3 1.3 0 0 1 0 1.8l-7.4 7.4a1.3 1.3 0 0 1-1.8 0l-7.9-8.1Z" strokeLinejoin="round" />
+      <circle cx="8.2" cy="8.2" r="1.6" />
     </>
   ),
-  Finance: (
+  Accounts: (
     <path
       d="M12 3v18M16.5 7.5c-.6-1.4-2.3-2.2-4.5-2.2-2.5 0-4 1.1-4 2.8 0 4 9 1.7 9 6 0 1.8-1.7 3-4.5 3-2.3 0-4.1-.9-4.7-2.5"
       strokeLinecap="round"
@@ -170,8 +205,8 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
           <img src="/stslv-logo.png" alt="" className="h-9 w-9 object-contain" />
         </span>
         <div className={cx('min-w-0 flex-1 leading-tight', collapsed && 'hidden')}>
-          <span className="block whitespace-nowrap sb-strong text-base font-bold tracking-tight">STS-ELV AMC</span>
-          <span className="sb-muted block text-xs">ERP System</span>
+          <span className="block whitespace-nowrap sb-strong text-base font-bold tracking-tight">STS-ELV</span>
+          <span className="sb-muted block text-xs">AMC ERP System</span>
         </div>
         {onToggleCollapse && (
           <button
@@ -200,18 +235,18 @@ export function Sidebar({ onNavigate, collapsed = false, onExpand, theme, onTogg
       <div className="sidebar-scroll relative flex-1 overflow-y-auto px-3 py-3">
         {sections.length === 0 && <p className="sb-muted px-3 text-sm">No modules are available for your role.</p>}
 
-        {sections.map((section) => {
+        {sections.map((section, index) => {
           const title = section.title
           const open = openGroup === title
 
-          // Ungrouped items (Dashboard) are plain top-level links.
+          // Ungrouped items (Dashboard, Master AMC Status, AMC Contracts, Reports) are plain top-level links, in place.
           if (!title) {
             return (
-              <ul key="top" className="mb-1 space-y-0.5">
+              <ul key={`top-${index}`} className="mb-1 space-y-0.5">
                 {section.items.map((item) => (
                   <li key={item.path}>
                     <NavLink to={item.path} onClick={onNavigate} title={collapsed ? item.label : undefined} className={({ isActive }) => topLevel(isActive ? TOP_ACTIVE : TOP_IDLE)}>
-                      <NavIcon name="dashboard" />
+                      <NavIcon name={item.icon ?? 'dashboard'} />
                       {label(item.label)}
                     </NavLink>
                   </li>

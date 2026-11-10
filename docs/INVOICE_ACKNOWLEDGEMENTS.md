@@ -6,7 +6,7 @@ commit (81788d0), then completed with cancelled-record re-association (0116) and
 **Prepared for review: not pushed, not merged, not deployed.** Migrations 0112–0116 were applied to disposable
 databases only.
 
-Route: **Finance → Invoice Acknowledgements**, `/finance/invoice-acknowledgements` (after Accounts).
+Route: **Accounts → Invoice Ack** in the sidebar (since 2026-11-10; formerly Finance → Invoice Acknowledgements), `/finance/invoice-acknowledgements`, after Invoices.
 
 Acknowledgement is **not payment**. It changes no Invoice No., no Paid / Unpaid reference status, no amount, no
 service status and no Invoice Tracking record.

@@ -186,18 +186,19 @@ afterEach(() => {
 })
 
 describe('navigation and access', () => {
-  it('appears under Finance after Accounts, keeping the other Finance entries, and opens the page', async () => {
+  it('appears as Invoice Ack under Accounts, after Invoices, and opens the page', async () => {
     ackApi(ADMIN, [MULTI])
     renderApp('/dashboard')
 
     await screen.findByRole('heading', { name: 'AMC Operations Dashboard' })
     const nav = screen.getByRole('navigation', { name: 'Main' })
-    await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
+    await userEvent.click(within(nav).getByRole('button', { name: 'Accounts' }))
     const links = within(nav).getAllByRole('link').map((link) => link.textContent)
-    const finance = ['Invoice Tracking', 'Accounts', 'Invoice Acknowledgements', 'Service Sales']
-    expect(links.filter((text) => finance.includes(text ?? ''))).toEqual(finance)
+    const accounts = ['Invoices', 'Invoice Ack', 'Invoice Tracking']
+    expect(links.filter((text) => accounts.includes(text ?? ''))).toEqual(accounts)
+    expect(within(nav).getByRole('link', { name: 'Invoice Ack' })).toHaveAttribute('href', '/finance/invoice-acknowledgements')
 
-    await userEvent.click(within(nav).getByRole('link', { name: 'Invoice Acknowledgements' }))
+    await userEvent.click(within(nav).getByRole('link', { name: 'Invoice Ack' }))
     expect(await screen.findByRole('heading', { name: 'Invoice Acknowledgements' })).toBeInTheDocument()
     expect(document.title).toBe('Invoice Acknowledgements · STS-ELV AMC')
   })
@@ -207,7 +208,7 @@ describe('navigation and access', () => {
     renderApp('/finance/invoice-acknowledgements')
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Invoice Acknowledgements' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Invoice Ack' })).not.toBeInTheDocument()
   })
 
   it('opens the page for Finance Executive and Admin defaults', async () => {

@@ -23,9 +23,9 @@ const sidebarLabels = (permissions: string[]) =>
 
 describe('pages with their own permission module', () => {
   it.each([
-    ['MONTHLY_CALENDAR', 'Monthly Calendar', ['AMC Schedule', 'Service Status', 'AMC Renewal']],
+    ['MONTHLY_CALENDAR', 'Monthly Calendar', ['AMC Schedule', 'Service Status', 'AMC Renewals']],
     ['SERVICE_STATUS', 'Service Status', ['AMC Schedule', 'Monthly Calendar']],
-    ['AMC_RENEWAL', 'AMC Renewal', ['AMC Contracts', 'AMC Management']],
+    ['AMC_RENEWAL', 'AMC Renewals', ['AMC Contracts', 'Dashboard']],
     ['SYSTEM_TYPES', 'System Types', ['Sales Engineers', 'Departments', 'Maintenance Frequencies', 'Settings']],
   ])('offers only the %s page in the sidebar', (module, shown, hidden) => {
     const links = sidebarLabels([`${module}:VIEW`])

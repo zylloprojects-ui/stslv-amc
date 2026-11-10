@@ -38,7 +38,7 @@ describe('application shell', () => {
     expect(document.title).toBe('Dashboard · STS-ELV AMC')
 
     const nav = screen.getByRole('navigation', { name: 'Main' })
-    await userEvent.click(within(nav).getByRole('button', { name: 'Finance' }))
+    await userEvent.click(within(nav).getByRole('button', { name: 'Accounts' }))
     await userEvent.click(within(nav).getByRole('link', { name: 'Invoice Tracking' }))
 
     await screen.findByRole('heading', { name: 'Invoice Tracking' })
@@ -186,8 +186,8 @@ describe('mobile menu', () => {
         .map((link) => link.textContent)
 
     // One group is open at a time; the role has no Administration group and no Settings link.
-    // AMC Management is the shared Dashboard (2026-11-09), so the AMC Operations group appears with it.
-    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Master Data Center', 'AMC Operations'])
+    // AMC Management is the shared Dashboard and no longer listed (2026-11-10), so no AMC group appears for this role.
+    expect(within(menu).getAllByRole('heading').map((heading) => heading.textContent)).toEqual(['Master Data Center'])
     await userEvent.click(within(menu).getByRole('button', { name: 'Master Data Center pages' }))
     expect(links()).toEqual(['Dashboard', 'Master Data Center', 'Clients'])
 

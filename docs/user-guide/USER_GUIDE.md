@@ -78,13 +78,34 @@ Master Data ─► AMC Contract ─► Generated services ─► Service complet
 
 | Area | What it does |
 |---|---|
-| Sidebar | Pages your role may open, grouped: Master Data Center, AMC Operations, Finance, Reporting, Administration. On a phone, open it with the menu button (☰). It can be collapsed on a desktop. |
+| Sidebar | Pages your role may open, in the client-approved order (2026-11-10) shown under **The menu** below. On a phone, open it with the menu button (☰). On a desktop it can be minimised to icons; each icon names its page when you point at it. |
 | Header search | Finds the pages you may open (arrow keys, Enter, Esc). Records are searched on each page. |
 | Bell | Alerts for your work: overdue services, contracts past validity, work waiting for an invoice. Mark them read individually or all at once. |
-| **?** (Help) | Help for the current page, with search and a list of all topics you may read. |
+| Open book (Help & User Guide) | Help for the current page, with search, related topics and a list of all topics you may read. |
 | Light bulb | Send a suggestion or report a problem. |
 | Palette / moon | Colour palette and light/dark mode. |
 | Account menu | My Profile (change password), Help & User Guide, My Suggestions, Sign out. |
+
+### The menu
+
+```
+STS-ELV
+Dashboard
+Master AMC Status
+AMC Contracts
+AMC Execution      ▸ Service Status · Monthly Calendar · AMC Schedule
+Accounts           ▸ Invoices · Invoice Ack · Invoice Tracking
+AMC Sales          ▸ Service Sales · AMC Renewals
+Master Data Center ▸ Clients · Sales Engineers · System Types · Maintenance Frequencies · Departments
+Reports
+Administration     ▸ Users & Access · Roles & Permissions · Login History · Audit Log · Recycle Bin · Suggestions Review
+Settings (foot of the sidebar) ▸ Security Center · Backup & Restore
+```
+
+- **Invoices** opens the Accounts page (Invoice No. entry). **Invoice Ack** opens Invoice Acknowledgements. **AMC Renewals** opens AMC Renewal.
+- **AMC Schedule** and **Invoice Tracking** stay available under AMC Execution and Accounts. **My Suggestions** is in the account menu.
+- **AMC Management** is not listed: it is the same page as the Dashboard. Its address `/amc/management` still opens it.
+- A group, or a page, appears only when your role may view it. One group is open at a time; the group of the page you are on opens by itself, with the page highlighted. Hiding is a convenience only: the server checks every request.
 
 ### Common errors
 
@@ -252,7 +273,7 @@ Department code * (permanent, e.g. AMC, FIN), Department name *, Description. No
 
 ## AMC Management
 
-**Page:** `/amc/management`. **Permission:** *Dashboard: View* (the same as the Dashboard).
+**Page:** `/amc/management` — not in the sidebar since 2026-11-10 (it is the same page as the Dashboard); the address and bookmarks still open it. **Permission:** *Dashboard: View* (the same as the Dashboard).
 
 Since 2026-11-09 AMC Management shows **the Dashboard itself**: one shared page with exactly the same twelve cards in
 the same order, the same values, the same AMC Maintenance Calendar, Upcoming Service Workload and Payment Trend, the
@@ -269,7 +290,7 @@ expiring contracts are followed on AMC Contracts (Validity filter) and AMC Renew
 > ending today or within 45 days. The Status filter still uses the stored status. Hide Columns can hide the Contract
 > (Upload Contract) column.
 
-**Page:** `/amc/contracts`. **Permissions:** View; Create to add; Edit to edit, change status, generate; Delete (+Edit) to cancel; Export.
+**Page:** AMC Contracts (`/amc/contracts`). **Permissions:** View; Create to add; Edit to edit, change status, generate; Delete (+Edit) to cancel; Export.
 
 ### Columns
 #, AMC Reference (opens Contract 360), Client, System, Engineer, Validity (progress bar and days remaining), Frequency, Contract value (and per-visit amount), Credit, Visits (% completed), Contract (Upload Contract link, Edit only), Status, Actions. Footer: **Filtered Total**. An amber **Validity ended** pill marks an Active contract past its end date.
@@ -364,7 +385,7 @@ Errors: "A schedule is generated only for an active contract. Activate the contr
 
 ## AMC Schedule
 
-**Page:** `/amc/schedule`. **Permissions:** *AMC Schedule: View*; Edit to edit visits and colours; *AMC Execution: Edit* for Visit actions; *Invoice Tracking: Edit* for Invoice No.; Export.
+**Page:** AMC Execution → AMC Schedule (`/amc/schedule`). **Permissions:** *AMC Schedule: View*; Edit to edit visits and colours; *AMC Execution: Edit* for Visit actions; *Invoice Tracking: Edit* for Invoice No.; Export.
 
 ### Views
 - **All Visits** — tiles Due this month, Overdue, Completed this month, Ready for invoice ("Raise these in Zoho"); tiles ignore filters.
@@ -389,7 +410,7 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 
 ## Monthly Calendar
 
-**Page:** `/amc/calendar`. **Permissions:** *Monthly Calendar: View*; Export for month downloads.
+**Page:** AMC Execution → Monthly Calendar (`/amc/calendar`). **Permissions:** *Monthly Calendar: View*; Export for month downloads.
 
 - **Year view:** Services in year, Scheduled value, Paid, Unpaid (blue, as in Month view); a card per month with values, Zoho invoiced / not yet invoiced and completed / open / overdue / cancelled counts; per-month **Excel / PDF**. No By service / By contract switch here.
 - **Month view — By service / By contract:** *By service* (default) is the calendar grid below. *By contract* lists the same services, with the same filters, as one entry per AMC contract: reference (opens the contract), client, system, engineer, state (Open, Partly completed, All completed, Overdue, Cancelled), each service with its date and status, and Services / Paid / Unpaid counts. The choice is kept in the address (`group=contract`).
@@ -406,7 +427,7 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 > Service Report No. and saved with the row (up to 120 characters, recorded in the Audit Log). It is separate from the
 > Sales Engineer column, which comes from the contract.
 
-**Page:** `/amc/service-status`. **Permissions:** *Service Status: View*; *AMC Execution: Edit* to save, upload and use Actions; *Service Status: Export*.
+**Page:** AMC Execution → Service Status (`/amc/service-status`). **Permissions:** *Service Status: View*; *AMC Execution: Edit* to save, upload and use Actions; *Service Status: Export*.
 
 ### Purpose
 One row per scheduled service (Scheduled, In progress, Postponed, Completed; open services of cancelled contracts excluded): completion, Service Report and report number.
@@ -452,7 +473,7 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 > Year of each service's contract period, and *Total AMC Value of matching contracts* adds up the matching contract
 > periods on every page, each counted once. It is not an invoice value or a payment.
 
-**Page:** `/amc/service-sales` (old `/amc/quotations` links redirect). **Permissions:** *Service Sales: View / Edit / Export*.
+**Page:** AMC Sales → Service Sales (`/amc/service-sales`; old `/amc/quotations` links redirect). **Permissions:** *Service Sales: View / Edit / Export*.
 
 - **Purpose:** track completed services and record quotation numbers for follow-up sales.
 - **KPIs:** Total Services, Not Completed, Completed / Quote Pending, Quoted.
@@ -471,7 +492,7 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 > Invoice Value (OMR) — the Zoho amounts allocated in Invoice Tracking (cancelled invoices excluded). A service with no
 > value whose contract has no Billing Basis or Cost per Visit says so; no value is invented.
 
-**Page:** `/finance/accounts`. **Permissions:** *Accounts: View / Export*; *Invoice Tracking: Edit* to change the Invoice No.
+**Page:** Accounts → Invoices (`/finance/accounts`; the page is titled Accounts). **Permissions:** *Accounts: View / Export*; *Invoice Tracking: Edit* to change the Invoice No.
 
 - **Purpose:** billing reconciliation of every scheduled service; enter the Invoice No. to mark a service Paid.
 - **Row colours:** Red = service not completed · Blue = completed, Unpaid · Green = completed, Paid. A Zoho record does not make a row green.
@@ -498,7 +519,7 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 > **Module (2026-11-10, migrations 0112–0115, prepared for review).** One acknowledgement per invoice, even when the
 > invoice covers several services.
 
-**Page:** Finance → Invoice Acknowledgements, `/finance/invoice-acknowledgements`. **Permissions:** *Invoice Acknowledgements: View* to see the page, view and download documents and the Linked Services; *Create* to attach a document and confirm; *Edit* to replace the document of an acknowledged invoice and to **Reconcile**; *Export* for Excel / PDF. Amounts are shown only to users who may also view Accounts. **Starting access:** Super Admin and Admin — View, Create, Edit, Export; Finance Executive — View, Create, Export; Viewer and other roles — none.
+**Page:** Accounts → Invoice Ack (`/finance/invoice-acknowledgements`; the page is titled Invoice Acknowledgements). **Permissions:** *Invoice Acknowledgements: View* to see the page, view and download documents and the Linked Services; *Create* to attach a document and confirm; *Edit* to replace the document of an acknowledged invoice and to **Reconcile**; *Export* for Excel / PDF. Amounts are shown only to users who may also view Accounts. **Starting access:** Super Admin and Admin — View, Create, Edit, Export; Finance Executive — View, Create, Export; Viewer and other roles — none.
 
 - **Purpose:** keep the client's signed or stamped acknowledgement that it received each invoice, next to that invoice.
 - **One row per invoice.** An invoice may cover several services: one document and one confirmation acknowledge them all, and every linked service shows the same status. **Linked Services** (the count in the row) lists them.
@@ -539,7 +560,7 @@ Acknowledgement only records that the client received the invoice. It does not c
 
 ## Invoice Tracking
 
-**Page:** `/invoices`. **Permissions:** *Invoice Tracking: View*; Create to record; Edit to edit/cancel; Export.
+**Page:** Accounts → Invoice Tracking (`/invoices`). **Permissions:** *Invoice Tracking: View*; Create to record; Edit to edit/cancel; Export.
 
 - **Waiting for an invoice:** completed visits (and projects) with an amount and no active invoice.
 - **Invoices recorded:** search (number, client, Zoho reference, job number), Status (Issued green / Cancelled grey), From, To. Columns: #, Invoice no., Invoice date, Client, Covers, Excl. VAT, VAT, Total, Status. Footer: total invoiced excl. VAT.
@@ -560,7 +581,7 @@ Requires a reason; the record is kept but excluded from totals, the work becomes
 > **Values (2026-11-09).** The Value cell also shows the Zoho invoice amount and, for users who may view AMC Contracts,
 > the contract's AMC Value / Year. A Total Filtered row covers every matching service on every page.
 
-**Page:** `/amc/master-status`. **Permissions:** *Master AMC Status: View / Export*. Read only.
+**Page:** Master AMC Status (`/amc/master-status`). **Permissions:** *Master AMC Status: View / Export*. Read only.
 
 | Row colour (first rule wins) | Meaning |
 |---|---|
@@ -583,7 +604,7 @@ KPIs: Total Services, Green/Blue/Yellow/Red Rows, Total Value (Ex VAT). Filters 
 > the first renewal version 2, and so on. Lists, reports and exports show a renewal as "STS-AMC-001 (V2)", so services,
 > invoices and documents stay with the right period. A version is never reused, and no other contract can take the number.
 
-**Page:** `/amc/renewal`. A renewal is a **new contract**; the contract it renews is never changed.
+**Page:** AMC Sales → AMC Renewals (`/amc/renewal`; the page is titled AMC Renewal). A renewal is a **new contract**; the contract it renews is never changed.
 
 ### Statuses (derived)
 Due / Expired (amber) · Under Client Approval (light blue, draft renewal) · Renewed (green) · Cancelled (grey).
@@ -612,7 +633,7 @@ Errors: "A renewal needs an active sales engineer." · "This contract already ha
 
 **Page:** `/reports`. **Permissions:** *Reports: View / Export* (no built-in role starts with Reports; Super Admin grants it), **plus the source page of each report**: opening a report also needs *View* of its source, exporting also needs *Export* of its source. Sources: **AMC Contracts** — AMC Contract Summary, Contract Value Review; **AMC Renewal** — AMC Renewal, Expiry & Renewal Due, Renewal History; **Accounts** — Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise and Sales Engineer-wise Summary. The list shows only the reports you may open; "No reports available" when there is none. The server refuses the rest.
 
-Choose a report; only its filters are shown (From, To, Client, Sales Engineer, System, Status…). "The From date is after the To date." Exports carry the filters and a "Total (N rows)" line.
+Choose a report; only its filters are shown (From, To, Client, Sales Engineer, System, Status…). "The From date is after the To date." Exports carry the filters and a "Total (N rows)" line. Today, this month, due and expiring follow Oman time (Asia/Muscat), as everywhere in the application.
 
 | Report | Notes |
 |---|---|
@@ -665,9 +686,9 @@ Nobody changes their own role. A custom role cannot use a built-in code or an ex
 |---|---|
 | Super Admin | Fixed full access (cannot be changed) |
 | Admin | All operational and administrative modules, as configured by Super Admin |
-| Finance Executive | Dashboard; Invoice Tracking and Accounts; data read of AMC Schedule; Suggestions |
+| Finance Executive | Dashboard; Invoice Tracking and Accounts; Invoice Acknowledgements (View, Create, Export); data read of AMC Schedule; Suggestions |
 | Master Data Executive | Dashboard; the five Master Data modules; Suggestions |
-| AMC Operations Executive | Dashboard; AMC Operations modules and Service Sales; data read of Clients and Invoice Tracking; Suggestions |
+| AMC Operations Executive | Dashboard; the AMC modules (permission group "AMC Operations": Master AMC Status, AMC Contracts, AMC Execution pages, AMC Renewal) and Service Sales; data read of Clients and Invoice Tracking; Suggestions |
 | Viewer | View of every non-administration module; submit suggestions |
 
 Reports is granted by Super Admin on purpose (no built-in role starts with it). The four operational roles can never hold *Users* permissions. Full matrix: `docs/technical/ROLE_PERMISSION_MATRIX.md`.
@@ -699,7 +720,7 @@ Also: user access tiles (active, inactive, administrators, awaiting approval, mu
 
 ## Login History
 
-**Page:** `/admin/login-history`. *Users: View*. Read only, newest first, 25 per page.
+**Page:** Administration → Login History (`/admin/login-history`). *Users: View*. Read only, newest first, 25 per page.
 
 Columns: User · Outcome (Successful green / Failed amber) · Network address · Browser / device. Failure reasons: No account with this email · Wrong password · Account inactive or awaiting approval · Temporary password expired. Filters: search (name, email, address), Outcome, From/To. Export: administrators.
 
@@ -709,7 +730,7 @@ Sign-in limits (defaults, per 15 minutes): 50 sign-in requests per network addre
 
 ## Audit Log
 
-**Page:** `/admin/audit-log`. Super Admin and Admin. "What was changed, by whom and when, across every module. Newest first."
+**Page:** Administration → Audit Log (`/admin/audit-log`). Super Admin and Admin. "What was changed, by whom and when, across every module. Newest first."
 
 Tiles: Entries, Modules, People, On this page. Quick ranges: Today / Last 7 days / Last 30 days. Filters: search, Module, Record type, User, From, To. Timeline dot colours: red removed or blocked; green created or enabled; blue changed; grey other. Optional columns: Module, User, Record, Changes, Reason, Network address. Export Excel/PDF.
 

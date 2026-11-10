@@ -331,8 +331,9 @@ describe('Services Sales page', () => {
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
     const nav = within(screen.getByRole('navigation', { name: 'Main' }))
     expect(nav.queryByRole('link', { name: 'Service Sales' })).not.toBeInTheDocument()
-    // Service Sales is under Finance, which this user does not see, so AMC Operations opens on request.
-    await userEvent.click(nav.getByRole('button', { name: 'AMC Operations' }))
+    // Service Sales is under AMC Sales, which this user does not see; AMC Execution opens on request.
+    expect(nav.queryByRole('button', { name: 'AMC Sales' })).not.toBeInTheDocument()
+    await userEvent.click(nav.getByRole('button', { name: 'AMC Execution' }))
     expect(await nav.findByRole('link', { name: 'Service Status' })).toBeInTheDocument()
     expect(api.find('GET', '/services-sales')).toHaveLength(0)
   })

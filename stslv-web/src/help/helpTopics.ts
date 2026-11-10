@@ -18,22 +18,25 @@ const GENERAL: HelpTopic[] = [
       {
         heading: 'The everyday flow',
         steps: [
-          'Master Data: the client, system type, sales engineer and maintenance frequency exist.',
+          'Master Data Center: the client, system type, sales engineer and maintenance frequency exist.',
           'AMC Contracts: the contract is added with its validity, frequency and value, and made Active.',
-          'Schedule: the services are generated from the contract dates and frequency.',
-          'Service Status: each service is carried out, its Service Report uploaded, and it is marked Completed.',
-          'Accounts: the invoice is raised in Zoho, and its number is entered on the completed service (Paid reference status).',
-          'Invoice Tracking (optional): the Zoho invoice details are recorded and allocated to the work.',
-          'AMC Renewal: contracts ending within 45 days are renewed.',
+          'Schedule Engine: the services are generated from the contract dates and frequency.',
+          'AMC Execution → Service Status: each service is carried out, its Service Report uploaded, and it is marked Completed.',
+          'Accounts → Invoices: the invoice is raised in Zoho, and its number is entered on the completed service (Paid reference status).',
+          'Accounts → Invoice Ack: the client’s signed acknowledgement of the invoice is uploaded and confirmed.',
+          'Accounts → Invoice Tracking (optional): the Zoho invoice details are recorded and allocated to the work.',
+          'AMC Sales → AMC Renewals: contracts ending within 45 days are renewed.',
         ],
       },
       {
         heading: 'Finding your way',
         bullets: [
           'The sidebar shows only the pages your role may open. On a phone, open it with the menu button at the top left.',
+          'Sidebar order: Dashboard · Master AMC Status · AMC Contracts · AMC Execution (Service Status, Monthly Calendar, AMC Schedule) · Accounts (Invoices, Invoice Ack, Invoice Tracking) · AMC Sales (Service Sales, AMC Renewals) · Master Data Center · Reports · Administration. Settings, with Security Center and Backup & Restore, is at the foot of the sidebar.',
+          'A group opens when you choose it, and the group of the page you are on opens by itself, with that page highlighted. One group is open at a time. The arrow button at the top minimises the sidebar to icons; each icon names its page when you point at it.',
           'The search box in the header finds the pages you may open (use each page’s own search for records).',
           'The bell shows alerts for your work: overdue services, contracts past validity and work waiting for an invoice.',
-          'The question-mark button opens help for the page you are on. Help & User Guide in your account menu opens the whole guide.',
+          'The open-book button at the top right (Help & User Guide) opens help for the page you are on; search it, or follow the related topics. Help & User Guide in your account menu opens the whole guide.',
           'Dates follow Oman time (Asia/Muscat) everywhere: "today", due and overdue services, contract expiry and "this month" change at midnight in Oman, wherever you are. A contract is valid through its Valid To date and shows as expired from the next day.',
           'The light-bulb button (if your role allows suggestions) sends an idea or a problem report to the administrators.',
         ],
@@ -370,12 +373,14 @@ const CONTRACTS: HelpTopic[] = [
   {
     id: 'amc-management',
     title: 'AMC Management',
-    group: 'AMC Operations',
-    access: { kind: 'nav', path: '/amc/management' },
+    group: 'AMC',
+    // Not in the sidebar since 2026-11-10 (it is the same Dashboard); its address still opens, with Dashboard's permission.
+    access: { kind: 'module', module: 'DASHBOARD' },
     pages: [],
     guideChapter: 'AMC Management',
     summary: 'AMC Management shows the Dashboard: exactly the same cards, figures, calendar and charts as the Dashboard page (client decision, 2026-11-09).',
     sections: [
+      { heading: 'Where to find it', text: ['AMC Management is not listed in the sidebar (since 2026-11-10), because it is the same page as Dashboard. Its address, /amc/management, and existing bookmarks still open it.'] },
       {
         heading: 'One shared Dashboard',
         bullets: [
@@ -390,7 +395,7 @@ const CONTRACTS: HelpTopic[] = [
   {
     id: 'amc-contracts',
     title: 'AMC Contracts',
-    group: 'AMC Operations',
+    group: 'AMC',
     access: { kind: 'nav', path: '/amc/contracts' },
     pages: ['/amc/contracts'],
     guideChapter: 'AMC Contracts',
@@ -442,7 +447,7 @@ const CONTRACTS: HelpTopic[] = [
   {
     id: 'contract-360',
     title: 'Contract 360',
-    group: 'AMC Operations',
+    group: 'AMC',
     access: { kind: 'nav', path: '/amc/contracts' },
     pages: ['/amc/contracts/:id'],
     guideChapter: 'Contract 360',
@@ -489,7 +494,7 @@ const CONTRACTS: HelpTopic[] = [
   {
     id: 'schedule-engine',
     title: 'Schedule Engine',
-    group: 'AMC Operations',
+    group: 'AMC',
     access: { kind: 'nav', path: '/amc/contracts' },
     pages: [],
     guideChapter: 'Schedule Engine',
@@ -531,12 +536,13 @@ const OPERATIONS: HelpTopic[] = [
   {
     id: 'amc-schedule',
     title: 'AMC Schedule',
-    group: 'AMC Operations',
+    group: 'AMC Execution',
     access: { kind: 'nav', path: '/amc/schedule' },
     pages: ['/amc/schedule'],
     guideChapter: 'AMC Schedule',
     summary: 'Every maintenance visit generated from the contracts, by scheduled date. Two views: All Visits and Monthly by AMC.',
     sections: [
+      { heading: 'Where to find it', text: ['Sidebar: AMC Execution → AMC Schedule.'] },
       {
         heading: 'Filters',
         bullets: [
@@ -576,12 +582,13 @@ const OPERATIONS: HelpTopic[] = [
   {
     id: 'monthly-calendar',
     title: 'Monthly Calendar',
-    group: 'AMC Operations',
+    group: 'AMC Execution',
     access: { kind: 'nav', path: '/amc/calendar' },
     pages: ['/amc/calendar'],
     guideChapter: 'Monthly Calendar',
     summary: 'Scheduled services by year and by month, with values and Paid / Unpaid at a glance, and renewal warnings.',
     sections: [
+      { heading: 'Where to find it', text: ['Sidebar: AMC Execution → Monthly Calendar.'] },
       {
         heading: 'Views',
         bullets: [
@@ -605,12 +612,13 @@ const OPERATIONS: HelpTopic[] = [
   {
     id: 'service-status',
     title: 'Service Status (completing a service)',
-    group: 'AMC Operations',
+    group: 'AMC Execution',
     access: { kind: 'nav', path: '/amc/service-status' },
     pages: ['/amc/service-status'],
     guideChapter: 'Service Status',
     summary: 'One row per scheduled service: completion, Service Report and report number. This is where services are completed.',
     sections: [
+      { heading: 'Where to find it', text: ['Sidebar: AMC Execution → Service Status.'] },
       {
         heading: 'Complete a service',
         steps: [
@@ -666,7 +674,7 @@ const OPERATIONS: HelpTopic[] = [
   {
     id: 'master-amc-status',
     title: 'Master AMC Status',
-    group: 'AMC Operations',
+    group: 'AMC',
     access: { kind: 'nav', path: '/amc/master-status' },
     pages: ['/amc/master-status'],
     guideChapter: 'Master AMC Status',
@@ -707,12 +715,13 @@ const OPERATIONS: HelpTopic[] = [
   {
     id: 'amc-renewal',
     title: 'AMC Renewal',
-    group: 'AMC Operations',
+    group: 'AMC Sales',
     access: { kind: 'nav', path: '/amc/renewal' },
     pages: ['/amc/renewal'],
     guideChapter: 'AMC Renewal',
     summary: 'The renewal queue and renewal history. A renewal is a new contract; the contract it renews is never changed.',
     sections: [
+      { heading: 'Where to find it', text: ['Sidebar: AMC Sales → AMC Renewals. The page itself is titled AMC Renewal.'] },
       {
         heading: 'Renew a contract',
         steps: [
@@ -763,12 +772,13 @@ const FINANCE: HelpTopic[] = [
   {
     id: 'accounts',
     title: 'Accounts (Invoice No. entry)',
-    group: 'Finance',
+    group: 'Accounts',
     access: { kind: 'nav', path: '/finance/accounts' },
     pages: ['/finance/accounts'],
     guideChapter: 'Accounts',
     summary: 'Billing reconciliation of every scheduled service: completion, service report and Invoice No. Amounts are OMR excluding VAT.',
     sections: [
+      { heading: 'Where to find it', text: ['Sidebar: Accounts → Invoices. The page itself is titled Accounts.'] },
       {
         heading: 'Mark a service Paid',
         steps: [
@@ -819,13 +829,14 @@ const FINANCE: HelpTopic[] = [
   {
     id: 'invoice-acknowledgements',
     title: 'Invoice Acknowledgements',
-    group: 'Finance',
+    group: 'Accounts',
     access: { kind: 'nav', path: '/finance/invoice-acknowledgements' },
     pages: ['/finance/invoice-acknowledgements'],
     guideChapter: 'Invoice Acknowledgements',
     summary:
       "The client's signed or stamped acknowledgement of each invoice: one row and one acknowledgement per invoice, even when it covers several services. Pending until a document is attached and confirmed, then Acknowledged in green.",
     sections: [
+      { heading: 'Where to find it', text: ['Sidebar: Accounts → Invoice Ack. Also opened from the Ack: indicator under an Invoice No. in Accounts.'] },
       {
         heading: 'One acknowledgement per invoice',
         bullets: [
@@ -884,12 +895,13 @@ const FINANCE: HelpTopic[] = [
   {
     id: 'invoice-tracking',
     title: 'Invoice Tracking (Zoho)',
-    group: 'Finance',
+    group: 'Accounts',
     access: { kind: 'nav', path: '/invoices' },
     pages: ['/invoices'],
     guideChapter: 'Invoice Tracking',
     summary: 'Invoices raised in Zoho, recorded against the completed visits and projects they cover. STS-ELV AMC does not create invoices.',
     sections: [
+      { heading: 'Where to find it', text: ['Sidebar: Accounts → Invoice Tracking.'] },
       {
         heading: 'Record a Zoho invoice',
         steps: [
@@ -919,12 +931,13 @@ const FINANCE: HelpTopic[] = [
   {
     id: 'service-sales',
     title: 'Service Sales (quotation numbers)',
-    group: 'Finance',
+    group: 'AMC Sales',
     access: { kind: 'nav', path: '/amc/service-sales' },
     pages: ['/amc/service-sales'],
     guideChapter: 'Service Sales',
     summary: 'Track completed services and record the quotation number of any follow-up sale.',
     sections: [
+      { heading: 'Where to find it', text: ['Sidebar: AMC Sales → Service Sales.'] },
       {
         heading: 'Record a quotation number',
         steps: ['Find the completed service (light blue, Completed / Quote Pending).', 'Type the Quote No. and click Save (needs Edit on Service Sales).', 'The row turns green; who saved it and when is shown.'],
@@ -958,7 +971,7 @@ const FINANCE: HelpTopic[] = [
   {
     id: 'reports',
     title: 'Reports',
-    group: 'Reporting',
+    group: 'Reports',
     access: { kind: 'nav', path: '/reports' },
     pages: ['/reports'],
     guideChapter: 'Reports',
@@ -991,6 +1004,7 @@ const FINANCE: HelpTopic[] = [
         bullets: [
           'Monthly Maintenance (and the client and sales engineer summaries) show, per scheduled month: Value, Unpaid Value, Paid Value (Invoice No. entered), Zoho Invoice Value (Invoice Tracking) and Services Without Value.',
           'They use the same services as Accounts, so for the same filters and period the totals match Accounts. An Invoice No. is a reference status, not proof that money was received.',
+          'Today, this month, due and expiring follow Oman time (Asia/Muscat), as everywhere in the application.',
           'A report opens only with View on Reports and View on its source page (Accounts for these reports); exporting also needs Export on both.',
         ],
       },
@@ -1053,9 +1067,9 @@ const ADMINISTRATION: HelpTopic[] = [
         terms: [
           { term: 'Super Admin', meaning: 'Fixed full access; cannot be edited or deactivated.' },
           { term: 'Admin', meaning: 'Operational and administrative access as configured by Super Admin.' },
-          { term: 'Finance Executive', meaning: 'Starts with Invoice Tracking and Accounts.' },
+          { term: 'Finance Executive', meaning: 'Starts with Invoice Tracking, Accounts (Invoices) and Invoice Acknowledgements (View, Create, Export).' },
           { term: 'Master Data Executive', meaning: 'Starts with the Master Data Center.' },
-          { term: 'AMC Operations Executive', meaning: 'Starts with the AMC Operations pages and Service Sales.' },
+          { term: 'AMC Operations Executive', meaning: 'Starts with the AMC pages (Master AMC Status, AMC Contracts, AMC Execution, AMC Renewals) and Service Sales.' },
           { term: 'Viewer', meaning: 'Starts with View only, and submitting suggestions.' },
         ],
       },
@@ -1066,6 +1080,7 @@ const ADMINISTRATION: HelpTopic[] = [
           'Data read shows a module’s data inside another page (for example client names in the contract form) without opening that module’s pages.',
           'Starting grants are only a starting point; Super Admin may change them. Users permissions never go to the four operational roles.',
           'Saved permissions apply immediately. If someone else saved first, nothing is overwritten.',
+          'The sidebar shows a page, and a group heading, only when the role holds View on it. Hiding is a convenience: the server checks every request.',
           'Fixed access (Audit Log, Recycle Bin, Security Center, Backup) cannot be changed here.',
         ],
       },

@@ -84,10 +84,7 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
         <div className="app-modal-header relative shrink-0 px-4 pb-3 pt-4 sm:px-5">
           <div className="flex items-center gap-3">
             <span className="app-modal-logo flex h-10 w-10 shrink-0 items-center justify-center rounded-xl" aria-hidden="true">
-              <svg viewBox="0 0 24 24" className="h-5 w-5 text-[#0f5f98]" fill="none" stroke="currentColor" strokeWidth="1.9">
-                <circle cx="12" cy="12" r="9" />
-                <path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17h.01" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <OpenBookIcon className="h-5 w-5 text-[#0f5f98]" strokeWidth="1.9" />
             </span>
             <div className="min-w-0 flex-1">
               <h2 id={titleId} className="app-modal-title text-lg font-bold leading-tight">
@@ -151,6 +148,16 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
 }
 
 /** The Help button in the header. */
+/** An open book: the Help & User Guide icon (header button and the Help panel). */
+function OpenBookIcon({ className, strokeWidth }: { className: string; strokeWidth: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={strokeWidth} aria-hidden="true" data-icon="open-book">
+      <path d="M12 6.5C10.2 5 7.6 4.5 3.5 4.5v13c4.1 0 6.7.5 8.5 2 1.8-1.5 4.4-2 8.5-2v-13c-4.1 0-6.7.5-8.5 2Z" strokeLinejoin="round" />
+      <path d="M12 6.5v13" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function HelpButton() {
   const [open, setOpen] = useState(false)
 
@@ -161,13 +168,10 @@ export function HelpButton() {
         onClick={() => setOpen(true)}
         aria-label="Help for this page"
         aria-haspopup="dialog"
-        title="Help"
-        className="shrink-0 rounded-full p-2 text-slate-600 transition-colors hover:bg-sky-50"
+        title="Help & User Guide"
+        className="shrink-0 rounded-full p-2 text-slate-600 transition-colors hover:bg-sky-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
       >
-        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
-          <circle cx="12" cy="12" r="9" />
-          <path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17h.01" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <OpenBookIcon className="h-5 w-5" strokeWidth="1.7" />
       </button>
       {open && <HelpPanel onClose={() => setOpen(false)} />}
     </>

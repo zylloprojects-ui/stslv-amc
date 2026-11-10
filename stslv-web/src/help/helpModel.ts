@@ -27,9 +27,18 @@ export type HelpAccess =
   /** Super Admin and Admin only. */
   | { kind: 'admin' }
 
-export type HelpGroup = 'Getting started' | 'Master Data Center' | 'AMC Operations' | 'Finance' | 'Reporting' | 'Administration'
+/** Help groups follow the sidebar order approved by the client (2026-11-10). 'AMC' holds the top-level AMC pages. */
+export type HelpGroup =
+  | 'Getting started'
+  | 'AMC'
+  | 'AMC Execution'
+  | 'Accounts'
+  | 'AMC Sales'
+  | 'Master Data Center'
+  | 'Reports'
+  | 'Administration'
 
-export const HELP_GROUPS: HelpGroup[] = ['Getting started', 'Master Data Center', 'AMC Operations', 'Finance', 'Reporting', 'Administration']
+export const HELP_GROUPS: HelpGroup[] = ['Getting started', 'AMC', 'AMC Execution', 'Accounts', 'AMC Sales', 'Master Data Center', 'Reports', 'Administration']
 
 export interface HelpTopic {
   /** Stable id, used in the address /help/<id>. */

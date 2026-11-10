@@ -449,14 +449,17 @@ describe('Accounts page', () => {
 })
 
 describe('Accounts routing and permissions', () => {
-  it('is routed at /finance/accounts and listed once in the menu under Finance', async () => {
+  it('is routed at /finance/accounts and listed once in the menu, as Invoices under Accounts', async () => {
     accountsApi(ADMIN, [RED])
     renderApp('/finance/accounts')
 
-    expect(await screen.findByRole('heading', { name: 'Accounts' })).toBeInTheDocument()
+    // The page heading (h1); the sidebar's Accounts group heading is an h2.
+    expect(await screen.findByRole('heading', { name: 'Accounts', level: 1 })).toBeInTheDocument()
     const menu = within(screen.getByRole('navigation', { name: 'Main' }))
-    expect(menu.getAllByRole('link', { name: 'Accounts' })).toHaveLength(1)
-    expect(menu.getByRole('link', { name: 'Accounts' })).toHaveAttribute('href', '/finance/accounts')
+    expect(menu.getByRole('button', { name: 'Accounts' })).toHaveAttribute('aria-expanded', 'true')
+    expect(menu.getAllByRole('link', { name: 'Invoices' })).toHaveLength(1)
+    expect(menu.getByRole('link', { name: 'Invoices' })).toHaveAttribute('href', '/finance/accounts')
+    expect(menu.getByRole('link', { name: 'Invoices' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('stays hidden and closed without its own permission', async () => {
@@ -465,7 +468,7 @@ describe('Accounts routing and permissions', () => {
     renderApp('/finance/accounts')
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Accounts' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument()
     expect(api.find('GET', '/accounts')).toHaveLength(0)
   })
 
@@ -475,7 +478,7 @@ describe('Accounts routing and permissions', () => {
     renderApp('/finance/accounts')
 
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
-    expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Accounts' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: 'Main' })).queryByRole('link', { name: 'Invoices' })).not.toBeInTheDocument()
   })
 
   it('shows the contract reference as plain text to a user who may not open contracts', async () => {

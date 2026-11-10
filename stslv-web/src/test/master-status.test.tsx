@@ -428,7 +428,9 @@ describe('Master AMC Status routing and permissions', () => {
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
     const menu = within(screen.getByRole('navigation', { name: 'Main' }))
     expect(menu.queryByRole('link', { name: 'Master AMC Status' })).not.toBeInTheDocument()
-    expect(menu.getByRole('link', { name: 'Service Status' })).toBeInTheDocument()
+    // Master AMC Status is a top-level link (2026-11-10); Service Status sits under AMC Execution.
+    await userEvent.click(menu.getByRole('button', { name: 'AMC Execution' }))
+    expect(await menu.findByRole('link', { name: 'Service Status' })).toBeInTheDocument()
     expect(api.find('GET', '/amc/master-status')).toHaveLength(0)
   })
 
