@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form'
 import { Link } from 'react-router-dom'
 import { z } from 'zod'
 import { useAuth } from '../../auth/context'
+import { ADMINISTRATOR_NAME } from '../../auth/roleNames'
 import { isSuperAdmin } from '../../auth/roles'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Alert, Badge, Button, ConfirmDialog, EmptyState, Modal, SelectField, TableScroll, TextAreaField, TextField } from '../../components/ui'
@@ -281,7 +282,7 @@ export function RoleListPanel() {
         <Link to="/admin/roles" className="font-semibold text-[#1479BD] hover:underline">
           Roles &amp; Permissions
         </Link>
-        . A new role starts with no permissions, so it opens nothing until permissions are given. Super Admin manages every role. Admin, with Users &amp; Access Edit,
+        . A new role starts with no permissions, so it opens nothing until permissions are given. Super Admin manages every role. {ADMINISTRATOR_NAME}, with Users &amp; Access Edit,
         adds and changes custom roles, but only within its own permissions; built-in roles stay with Super Admin. A role that still has people, and any built-in role,
         cannot be deleted.
       </p>

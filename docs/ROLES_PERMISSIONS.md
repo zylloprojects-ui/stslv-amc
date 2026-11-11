@@ -375,3 +375,32 @@ The API reads permissions from the database on every request, so a revocation is
 ### Start page
 
 `/` and sign-in go to the first page the role may open. With none, `/dashboard` shows Access denied.
+
+## 14. Client role names (2026-11-11)
+
+Requested by the client: three built-in roles are shown under new names everywhere a role is named. Only the
+display name changes.
+
+| Code (unchanged) | Old name | New name |
+|---|---|---|
+| `ADMINISTRATOR` | Admin | Service Dept |
+| `FINANCE_EXECUTIVE` | Finance Executive | Accounts |
+| `MASTER_DATA_EXECUTIVE` | Master Data Executive | AMC Sales |
+
+Super Admin (`ADMIN`), AMC Operations Executive and Viewer are unchanged.
+
+- **Where the names live.** `roles.name` in the database, which every role list, user row, dropdown, filter,
+  session, export and the users search reads. Migration `0117_client_role_display_names.sql` renames the three
+  rows by code, only while each still has its seeded name (a name Super Admin already changed is kept), and stops
+  without changing anything if another role already uses a new name. Fixed text that names a role (API messages,
+  the permission catalog's fixed-access list, help, hints) uses one constant:
+  `stslv-api/src/shared/role-names.ts` and `stslv-web/src/auth/roleNames.ts`. `tests/role-display-names.test.ts`
+  checks that both files and the migrated database agree.
+- **Unchanged.** Role ids and codes, `role_permissions`, `user_roles`, every authorization check (all by code),
+  API paths, the Accounts page and the "Finance" permission-catalog section (a module group, not a role), and
+  Super Admin.
+- **Audit history.** `activity_logs` is append-only (0109) and is not touched. Entries written before the rename
+  keep the role names of their time in their description; new entries use the new names. Role changes in audit
+  metadata are recorded by code.
+- **Reverse** (only with approval): the three `UPDATE` statements in the header of 0117, then delete its
+  `schema_migrations` row, and restore the constants.

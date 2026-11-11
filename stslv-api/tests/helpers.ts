@@ -5,6 +5,7 @@ import { loadMigrationFiles } from "../src/db/migrate";
 import { hashPassword } from "../src/modules/auth/password";
 import { permissionsVersionOf } from "../src/modules/roles/roles.service";
 import type { Action, Module } from "../src/shared/permissions";
+import { BUILT_IN_ROLE_NAMES, LEGACY_ROLE_NAMES } from "../src/shared/role-names";
 import { restoreSeededFrequencies } from "./frequency-fixtures";
 
 export const app = createApp();
@@ -61,13 +62,11 @@ export async function resetData(): Promise<void> {
   // Migration 0088 makes the legacy roles inactive. The tests keep them active: their fixed grant
   // sets are what most permission tests sign in with. tests/role-model.test.ts covers 0088 itself.
   await pool.query("UPDATE roles SET is_active = true");
-  // Tests may rename a built-in role (Super Admin is allowed to); put the seeded names back.
+  // Tests may rename a built-in role (Super Admin is allowed to); put the current names back (0087, 0117).
+  const names = Object.entries({ ...BUILT_IN_ROLE_NAMES, ...LEGACY_ROLE_NAMES });
   await pool.query(
-    `UPDATE roles r SET name = v.name FROM (VALUES
-       ('ADMIN', 'Super Admin'), ('ACCOUNTANT', 'Accountant'), ('PROCUREMENT', 'Procurement'), ('EXECUTION', 'Execution'), ('INVOICING', 'Invoicing'),
-       ('ADMINISTRATOR', 'Admin'), ('FINANCE_EXECUTIVE', 'Finance Executive'), ('MASTER_DATA_EXECUTIVE', 'Master Data Executive'),
-       ('AMC_OPERATIONS_EXECUTIVE', 'AMC Operations Executive'), ('VIEWER', 'Viewer')
-     ) AS v (code, name) WHERE r.code = v.code AND r.name <> v.name`
+    `UPDATE roles r SET name = v.name FROM unnest($1::text[], $2::text[]) AS v (code, name) WHERE r.code = v.code AND r.name <> v.name`,
+    [names.map(([code]) => code), names.map(([, name]) => name)]
   );
   await pool.query(seedSql);
   // The TRUNCATE above also empties maintenance_frequencies (its created_by refers to users).

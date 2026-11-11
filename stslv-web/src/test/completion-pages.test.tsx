@@ -11,7 +11,7 @@ function api(user: SessionUser, handler: (request: MockRequest) => MockReply | u
   return mockApi((request) => (request.path === '/auth/me' ? ok({ user }) : (handler(request) ?? (request.path === '/accounts/options' || request.path === '/amc/calendar/options' ? ok({ clients: [], salesEngineers: [], years: [] }) : request.path === '/amc/contracts/systems' ? ok([]) : ok({ items: [], total: 0, page: 1, pageSize: 50 })))))
 }
 
-const OPERATOR: SessionUser = { id: '20', email: 'admin2@example.com', fullName: 'Second Admin', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: ['USERS:VIEW'] }
+const OPERATOR: SessionUser = { id: '20', email: 'admin2@example.com', fullName: 'Second Admin', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Service Dept' }], permissions: ['USERS:VIEW'] }
 const NO_ACCESS: SessionUser = { id: '21', email: 'viewer@example.com', fullName: 'Viewer', roles: [{ id: '7', code: 'VIEWER', name: 'Viewer' }], permissions: ['USERS:VIEW', 'DASHBOARD:VIEW'] }
 
 const REPORT = {

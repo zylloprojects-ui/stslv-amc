@@ -1,3 +1,4 @@
+import { ADMINISTRATOR_NAME, BUILT_IN_ROLE_NAMES, FINANCE_ROLE_NAME, MASTER_DATA_ROLE_NAME, PRIVILEGED_ROLES_LABEL } from '../auth/roleNames'
 import type { HelpTopic } from './helpModel'
 
 // The in-app help. Each topic is a short version of a chapter of docs/user-guide/USER_GUIDE.md
@@ -657,7 +658,7 @@ const OPERATIONS: HelpTopic[] = [
         heading: 'Completion is final',
         bullets: [
           'Without a report, choosing Completed shows "Please upload service report." and nothing is saved.',
-          'Once saved as Completed, the status, completion date and report are locked for every user, Admin included. There is no reopen.',
+          `Once saved as Completed, the status, completion date and report are locked for every user, ${PRIVILEGED_ROLES_LABEL} included. There is no reopen.`,
           'Before completion the report can be replaced (the earlier version is kept) or removed.',
           'The Service Report No. and work notes can still be saved after completion.',
         ],
@@ -666,7 +667,7 @@ const OPERATIONS: HelpTopic[] = [
         heading: 'Service Report No. after Paid',
         bullets: [
           'Approved rule, switched on at the approved release: once the service is Paid (Invoice No. entered), its Service Report No. is locked.',
-          'Super Admin and Admin can still change it by giving a reason; every change is recorded in the Audit Log. Clearing the Invoice No. unlocks it.',
+          `${PRIVILEGED_ROLES_LABEL} can still change it by giving a reason; every change is recorded in the Audit Log. Clearing the Invoice No. unlocks it.`,
           'Until the release the number stays editable as before.',
         ],
       },
@@ -912,7 +913,7 @@ const FINANCE: HelpTopic[] = [
           { term: 'Edit', meaning: 'Replace the document of an acknowledged invoice, with a reason; Reconcile invoices, with a reason.' },
           { term: 'Export', meaning: 'Excel or PDF of the filtered list.' },
           { term: 'Amounts', meaning: 'Service and invoice values are shown only to users who may also view Accounts.' },
-          { term: 'Starting access', meaning: 'Super Admin and Admin: View, Create, Edit, Export. Finance Executive: View, Create, Export. Viewer and other roles: none.' },
+          { term: 'Starting access', meaning: `${PRIVILEGED_ROLES_LABEL}: View, Create, Edit, Export. ${FINANCE_ROLE_NAME}: View, Create, Export. Viewer and other roles: none.` },
         ],
       },
       {
@@ -1067,7 +1068,7 @@ const ADMINISTRATION: HelpTopic[] = [
       {
         heading: 'Forgotten password',
         steps: [
-          'Click Generate temporary password on the user’s row (Super Admin or Admin).',
+          `Click Generate temporary password on the user’s row (Super Admin or ${ADMINISTRATOR_NAME}).`,
           'Tick that you verified the person asking is the account owner.',
           'Pass on the password shown (once only). It works for 15 minutes and one sign-in, signs the user out everywhere, and must be changed at sign-in.',
         ],
@@ -1075,8 +1076,8 @@ const ADMINISTRATION: HelpTopic[] = [
       {
         heading: 'Rules',
         bullets: [
-          'Only Super Admin manages Super Admin and Admin accounts and assigns those roles.',
-          'Super Admin and Admin may assign a custom role; Admin only one whose every permission Admin holds.',
+          `Only Super Admin manages ${PRIVILEGED_ROLES_LABEL} accounts and assigns those roles.`,
+          `${PRIVILEGED_ROLES_LABEL} may assign a custom role; ${ADMINISTRATOR_NAME} only one whose every permission ${ADMINISTRATOR_NAME} holds.`,
           'You cannot change your own role or deactivate yourself.',
           'The last active Super Admin cannot lose the role.',
           'Changes apply on the user’s next request. Deactivation or a temporary password signs the user out everywhere; Security Center lists and ends open sessions.',
@@ -1093,17 +1094,17 @@ const ADMINISTRATION: HelpTopic[] = [
     access: { kind: 'nav', path: '/admin/roles' },
     pages: ['/admin/roles'],
     guideChapter: 'Users and Roles',
-    summary: 'What each role may do, module by module. Super Admin changes every role; Admin changes custom roles within its own permissions.',
+    summary: `What each role may do, module by module. Super Admin changes every role; ${ADMINISTRATOR_NAME} changes custom roles within its own permissions.`,
     sections: [
       {
         heading: 'Built-in roles',
         terms: [
-          { term: 'Super Admin', meaning: 'Fixed full access; cannot be edited or deactivated.' },
-          { term: 'Admin', meaning: 'Operational and administrative access as configured by Super Admin.' },
-          { term: 'Finance Executive', meaning: 'Starts with Invoice Tracking, Accounts (Invoices) and Invoice Acknowledgements (View, Create, Export).' },
-          { term: 'Master Data Executive', meaning: 'Starts with the Master Data Center.' },
-          { term: 'AMC Operations Executive', meaning: 'Starts with the AMC pages (Master AMC Status, AMC Contracts, AMC Execution, AMC Renewals) and Service Sales.' },
-          { term: 'Viewer', meaning: 'Starts with View only, and submitting suggestions.' },
+          { term: BUILT_IN_ROLE_NAMES.ADMIN, meaning: 'Fixed full access; cannot be edited or deactivated.' },
+          { term: ADMINISTRATOR_NAME, meaning: 'Operational and administrative access as configured by Super Admin.' },
+          { term: FINANCE_ROLE_NAME, meaning: 'Starts with Invoice Tracking, the Accounts page (Invoices) and Invoice Acknowledgements (View, Create, Export).' },
+          { term: MASTER_DATA_ROLE_NAME, meaning: 'Starts with the Master Data Center.' },
+          { term: BUILT_IN_ROLE_NAMES.AMC_OPERATIONS_EXECUTIVE, meaning: 'Starts with the AMC pages (Master AMC Status, AMC Contracts, AMC Execution, AMC Renewals) and Service Sales.' },
+          { term: BUILT_IN_ROLE_NAMES.VIEWER, meaning: 'Starts with View only, and submitting suggestions.' },
         ],
       },
       {
@@ -1122,7 +1123,7 @@ const ADMINISTRATION: HelpTopic[] = [
         bullets: [
           'Add custom roles in Settings → Organization → Role list; set their permissions here.',
           'Super Admin: every role, except Super Admin’s own permissions; may give a role Users & Access.',
-          'Admin (needs Edit on Users & Access): adds custom roles and changes those whose every permission Admin holds. Never a built-in role, never its own role, never Super Admin or Admin, and never gives a role Users & Access (may remove it).',
+          `${ADMINISTRATOR_NAME} (needs Edit on Users & Access): adds custom roles and changes those whose every permission ${ADMINISTRATOR_NAME} holds. Never a built-in role, never its own role, never Super Admin or ${ADMINISTRATOR_NAME}, and never gives a role Users & Access (may remove it).`,
           'Nobody grants, removes or assigns a permission they do not hold. The server enforces every rule; a role you may not change shows why.',
         ],
       },
@@ -1160,7 +1161,7 @@ const ADMINISTRATION: HelpTopic[] = [
     access: { kind: 'nav', path: '/admin/audit-log' },
     pages: ['/admin/audit-log'],
     guideChapter: 'Audit Log',
-    summary: 'What was changed, by whom and when, across every module. Read only; Super Admin and Admin.',
+    summary: `What was changed, by whom and when, across every module. Read only; ${PRIVILEGED_ROLES_LABEL}.`,
     sections: [
       {
         heading: 'Reading the timeline',
@@ -1189,7 +1190,7 @@ const ADMINISTRATION: HelpTopic[] = [
     sections: [
       {
         heading: 'Who sees what',
-        bullets: ['Super Admin: Recycle Bin and Deletion History tabs.', 'Admin: Deletion History only.'],
+        bullets: ['Super Admin: Recycle Bin and Deletion History tabs.', `${ADMINISTRATOR_NAME}: Deletion History only.`],
       },
       {
         heading: 'Recycle Bin (Super Admin)',
@@ -1214,7 +1215,7 @@ const ADMINISTRATION: HelpTopic[] = [
     access: { kind: 'nav', path: '/settings/security' },
     pages: ['/settings/security', '/admin/security'],
     guideChapter: 'Security Center',
-    summary: 'Access, sign-in activity, open sessions and the security settings in force. Super Admin and Admin.',
+    summary: `Access, sign-in activity, open sessions and the security settings in force. ${PRIVILEGED_ROLES_LABEL}.`,
     sections: [
       {
         heading: 'Health checks',
@@ -1250,7 +1251,7 @@ const ADMINISTRATION: HelpTopic[] = [
     access: { kind: 'nav', path: '/settings/backups' },
     pages: ['/settings/backups', '/admin/backups'],
     guideChapter: 'Backup status',
-    summary: 'The status of manual database backups. Super Admin and Admin see it; only Super Admin runs or downloads a backup.',
+    summary: `The status of manual database backups. ${PRIVILEGED_ROLES_LABEL} see it; only Super Admin runs or downloads a backup.`,
     sections: [
       {
         heading: 'When backups are not configured',

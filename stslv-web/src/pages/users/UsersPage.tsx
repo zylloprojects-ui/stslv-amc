@@ -11,6 +11,7 @@ import { cx, formatDateTime } from '../../lib/format'
 import type { RolesResponse, User } from '../../lib/types'
 import { RolesPanel } from './RolesPanel'
 import { isAdmin, isPrivilegedRole, isSuperAdmin } from '../../auth/roles'
+import { PRIVILEGED_ROLES_LABEL } from '../../auth/roleNames'
 import { CreateUserModal, EditRolesModal, EditUserModal, TemporaryPasswordModal } from './UserDialogs'
 import { queryString } from '../amc/amcApi'
 import { Filter, FilterPanel } from '../amc/components'
@@ -56,7 +57,7 @@ const ONE_ROLE_TO_APPROVE = 'This user has more than one role. Choose one role b
 
 const ROLE_REQUIRED_TO_APPROVE = 'Assign a role before approving this user.'
 
-const PRIVILEGED_ACCOUNT_ONLY = 'Only Super Admin can manage Super Admin and Admin accounts.'
+const PRIVILEGED_ACCOUNT_ONLY = `Only Super Admin can manage ${PRIVILEGED_ROLES_LABEL} accounts.`
 
 /** Why an administrator cannot issue a temporary password to this user, if they cannot. The API enforces the same. */
 function temporaryPasswordBlock(user: User, isSelf: boolean): string | undefined {

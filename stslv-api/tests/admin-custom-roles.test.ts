@@ -19,7 +19,7 @@ let superAdmin: Session;
 let admin: Session;
 let finance: Session;
 
-const ROLE_ADMINISTRATORS_ONLY = "Only Super Admin, and Admin with Users & Access Edit, can change roles and their permissions.";
+const ROLE_ADMINISTRATORS_ONLY = "Only Super Admin, and Service Dept with Users & Access Edit, can change roles and their permissions.";
 const BUILT_IN = "Only Super Admin can change a built-in role or its permissions.";
 const BEYOND = "This role grants permissions you do not hold. Only Super Admin can change it.";
 

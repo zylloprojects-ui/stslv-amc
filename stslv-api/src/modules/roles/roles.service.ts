@@ -5,7 +5,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { isGrantable } from "../../shared/permission-catalog";
 import { ADMIN_ROLE_CODE, holdsPermission, permissionKey, type Action, type Module, type PermissionKey } from "../../shared/permissions";
-import { dependencyProblem, hasAdminAccess, isBuiltInRole, isInRoleScope, isPrivilegedRole, isSuperAdmin, roleScope, SECURITY_MODULES } from "../../shared/role-model";
+import { BUILT_IN_ROLE_NAMES, dependencyProblem, hasAdminAccess, PRIVILEGED_ROLES_LABEL, isBuiltInRole, isInRoleScope, isPrivilegedRole, isSuperAdmin, roleScope, SECURITY_MODULES } from "../../shared/role-model";
 import type { AuthContext } from "../auth/access";
 
 export interface Permission {
@@ -56,7 +56,7 @@ export interface Role {
 }
 
 const SUPER_ADMIN_LOCKED = "Super Admin always has full access. Its permissions cannot be changed.";
-export const ROLE_ADMINISTRATORS_ONLY = "Only Super Admin, and Admin with Users & Access Edit, can change roles and their permissions.";
+export const ROLE_ADMINISTRATORS_ONLY = `Only Super Admin, and ${BUILT_IN_ROLE_NAMES.ADMINISTRATOR} with Users & Access Edit, can change roles and their permissions.`;
 const BUILT_IN_SUPER_ADMIN_ONLY = "Only Super Admin can change a built-in role or its permissions.";
 const OWN_ROLE = "You cannot change a role you hold yourself.";
 const BEYOND_AUTHORITY = "This role grants permissions you do not hold. Only Super Admin can change it.";
@@ -223,7 +223,7 @@ export function setRolePermissions(auth: AuthContext, roleId: string, permission
     const outside = added.find((permission) => !isInRoleScope(role.code, permission.module, permission.action));
 
     if (outside) {
-      throw forbidden(`The role "${role.name}" cannot be given ${keyOf(outside)}: account and access administration is reserved to Super Admin and Admin.`);
+      throw forbidden(`The role "${role.name}" cannot be given ${keyOf(outside)}: account and access administration is reserved to ${PRIVILEGED_ROLES_LABEL}.`);
     }
 
     // Every action needs View of its module (and cancelling a contract needs Edit), so no role is left half-able.

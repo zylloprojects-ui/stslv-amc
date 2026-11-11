@@ -4,7 +4,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { escapeLike } from "../../shared/validation";
 import { conflict, forbidden, isUniqueViolation, notFound, validationError } from "../../shared/errors";
 import { ADMIN_ROLE_CODE, holdsPermission, type PermissionKey } from "../../shared/permissions";
-import { hasAdminAccess, isPrivilegedRole, isSuperAdmin } from "../../shared/role-model";
+import { hasAdminAccess, isPrivilegedRole, isSuperAdmin, PRIVILEGED_ROLES_LABEL } from "../../shared/role-model";
 import { loadUserPermissions, type AuthContext, type RoleSummary } from "../auth/access";
 import { hashPassword } from "../auth/password";
 import { revokeResetTokens } from "../auth/password-reset.service";
@@ -227,7 +227,7 @@ async function lockUser(db: Queryable, id: string): Promise<void> {
 
 const isAdmin = (user: User) => user.roles.some((role) => role.code === ADMIN_ROLE_CODE);
 
-const PRIVILEGED_ACCOUNT_ONLY = "Only Super Admin can manage Super Admin and Admin accounts.";
+const PRIVILEGED_ACCOUNT_ONLY = `Only Super Admin can manage ${PRIVILEGED_ROLES_LABEL} accounts.`;
 
 const ROLE_REQUIRED_TO_APPROVE = "Assign a role before approving this user.";
 const ONE_ROLE_TO_APPROVE = "This user has more than one role. Choose one role before approving.";

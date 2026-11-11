@@ -13,7 +13,7 @@ const ADMIN_ROLE: SessionUser = {
   id: '6',
   email: 'admin-role@example.com',
   fullName: 'Ari Admin',
-  roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }],
+  roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Service Dept' }],
   permissions: ['RECYCLE_BIN:VIEW', 'AUDIT_LOG:VIEW', 'AMC_CONTRACTS:VIEW', 'AMC_CONTRACTS:DELETE'],
 }
 

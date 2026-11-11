@@ -846,7 +846,7 @@ const CONTRACT_MANAGER = {
   id: '8',
   email: 'manager@example.com',
   fullName: 'Mira Manager',
-  roles: [{ id: '8', code: 'ADMINISTRATOR', name: 'Admin' }],
+  roles: [{ id: '8', code: 'ADMINISTRATOR', name: 'Service Dept' }],
   permissions: ['AMC_CONTRACTS:VIEW', 'AMC_CONTRACTS:CREATE', 'AMC_CONTRACTS:EDIT', 'AMC_CONTRACTS:DELETE'],
 }
 

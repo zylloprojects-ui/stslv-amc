@@ -676,7 +676,7 @@ describe('service report number lock', () => {
   })
 
   it('gives Admin (not only Super Admin) the override reason field', async () => {
-    const ADMINISTRATOR: SessionUser = { ...ADMIN, id: '6', email: 'office@example.com', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }] }
+    const ADMINISTRATOR: SessionUser = { ...ADMIN, id: '6', email: 'office@example.com', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Service Dept' }] }
     serviceApi(ADMINISTRATOR, { items: [PAID_LOCKED] })
     renderApp('/amc/service-status')
     const row = within(await rowOf(DONE.reference))
