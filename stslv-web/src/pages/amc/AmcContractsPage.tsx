@@ -19,6 +19,7 @@ import { MoveContractDialog } from './ContractRecycleBinUsage'
 import { StatTile } from '../../components/StatTile'
 import { businessToday, daysBetween } from '../../lib/businessDate'
 import {
+  BILLING_BASIS_LABELS,
   CONTRACT_STATUSES,
   CONTRACT_STATUS_LABELS,
   frequencyLabel,
@@ -248,6 +249,46 @@ function validityElapsed(contract: Contract): number {
   return Math.min(100, Math.max(0, Math.round(((today - from) / (to - from)) * 100)))
 }
 
+// --- Column sorting (2026-11-11) -------------------------------------------------------------------------------------
+// The API sorts the whole filtered list before paging (GET /amc/contracts?sort=&direction=), so every page follows the
+// same order. No sort chosen: the register's usual order.
+type ContractSortColumn = 'reference' | 'client' | 'engineer' | 'validFrom' | 'validTo' | 'contractValue' | 'finalCredit' | 'status'
+interface ContractSort {
+  column: ContractSortColumn
+  direction: 'asc' | 'desc'
+}
+
+function SortButton({ label, column, sort, onSort }: { label: string; column: ContractSortColumn; sort: ContractSort | null; onSort: (column: ContractSortColumn) => void }) {
+  const active = sort?.column === column
+  const next = active && sort?.direction === 'asc' ? 'descending' : 'ascending'
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className="inline-flex items-center gap-1 rounded-sm font-semibold uppercase hover:text-[#1479BD] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1479BD]"
+      aria-label={`${label}: sort ${next}`}
+      data-sort-column={column}
+    >
+      {label}
+      <span aria-hidden="true" className={active ? 'text-[#1479BD]' : 'text-slate-300'}>
+        {active ? (sort?.direction === 'asc' ? '▲' : '▼') : '↕'}
+      </span>
+    </button>
+  )
+}
+
+/** A header cell that sorts by one or more columns (Validity: start and end). aria-sort names the active direction. */
+function SortHeader({ children, columns, sort, right }: { children: ReactNode; columns: ContractSortColumn[]; sort: ContractSort | null; right?: boolean }) {
+  const active = sort !== null && columns.includes(sort.column)
+
+  return (
+    <th scope="col" aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={`${TABLE.th}${right ? ' text-right' : ''}`}>
+      {children}
+    </th>
+  )
+}
+
 const STATUS_EDGE: Record<ContractStatus, string> = {
   ACTIVE: '#10b981',
   DRAFT: '#f59e0b',
@@ -288,6 +329,13 @@ export function AmcContractsPage() {
   const [year, setYear] = useState('')
   const [salesEngineerId, setSalesEngineerId] = useState('')
   const [page, setPage] = useState(1)
+  const [sort, setSort] = useState<ContractSort | null>(null)
+  // A new column sorts ascending; the same column again switches direction. Either way the list starts at page 1.
+  const chooseSort = (column: ContractSortColumn) => {
+    setSort((current) => (current?.column === column ? { column, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { column, direction: 'asc' }))
+    setPage(1)
+  }
+  const sortQuery = sort ? { sort: sort.column, direction: sort.direction } : {}
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
   const [notice, setNotice] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
@@ -307,10 +355,10 @@ export function AmcContractsPage() {
   const options = useQuery({ queryKey: ['amc', 'contracts', 'filter-options'], queryFn: () => api.get<ContractFilterOptions>('/amc/contracts/filter-options') })
 
   const contracts = useQuery({
-    queryKey: ['amc', 'contracts', 'list', { search, status, validity, clientId, system, year, salesEngineerId, frequency, page }],
+    queryKey: ['amc', 'contracts', 'list', { search, status, validity, clientId, system, year, salesEngineerId, frequency, page, sort }],
     queryFn: () =>
       api.get<ContractList>(
-        `/amc/contracts${queryString({ search, status, validity: validity === 'all' ? '' : validity, clientId, system, year, salesEngineerId, frequency, page, pageSize: PAGE_SIZE })}`,
+        `/amc/contracts${queryString({ search, status, validity: validity === 'all' ? '' : validity, clientId, system, year, salesEngineerId, frequency, ...sortQuery, page, pageSize: PAGE_SIZE })}`,
       ),
     placeholderData: keepPreviousData,
   })
@@ -371,7 +419,7 @@ export function AmcContractsPage() {
               <ExportButtons
                 what="AMC Contracts"
                 fileStem="amc-contracts"
-                path={(format) => `/amc/contracts/export${queryString({ search, status, validity: validity === 'all' ? '' : validity, clientId, system, year, salesEngineerId, frequency, format, hidden: [...hiddenColumns].filter((key) => !PAGE_ONLY_COLUMNS.has(key)).join(',') })}`}
+                path={(format) => `/amc/contracts/export${queryString({ search, status, validity: validity === 'all' ? '' : validity, clientId, system, year, salesEngineerId, frequency, ...sortQuery, format, hidden: [...hiddenColumns].filter((key) => !PAGE_ONLY_COLUMNS.has(key)).join(',') })}`}
                 onError={setExportError}
               />
             )}
@@ -586,27 +634,31 @@ export function AmcContractsPage() {
                       #
                     </th>
                     {show('reference') && (
-                      <th scope="col" className={TABLE.th}>
-                        AMC Reference
-                      </th>
+                      <SortHeader columns={['reference']} sort={sort}>
+                        <SortButton label="AMC Reference" column="reference" sort={sort} onSort={chooseSort} />
+                      </SortHeader>
                     )}
-                    <th scope="col" className={TABLE.th}>
-                      Client
-                    </th>
+                    <SortHeader columns={['client']} sort={sort}>
+                      <SortButton label="Client" column="client" sort={sort} onSort={chooseSort} />
+                    </SortHeader>
                     {show('system') && (
                       <th scope="col" className={TABLE.th}>
                         System
                       </th>
                     )}
                     {show('engineer') && (
-                      <th scope="col" className={TABLE.th}>
-                        Engineer
-                      </th>
+                      <SortHeader columns={['engineer']} sort={sort}>
+                        <SortButton label="Engineer" column="engineer" sort={sort} onSort={chooseSort} />
+                      </SortHeader>
                     )}
                     {show('validity') && (
-                      <th scope="col" className={TABLE.th}>
-                        Validity
-                      </th>
+                      <SortHeader columns={['validFrom', 'validTo']} sort={sort}>
+                        <span className="block">Validity</span>
+                        <span className="mt-0.5 flex gap-3 text-[11px]">
+                          <SortButton label="Start" column="validFrom" sort={sort} onSort={chooseSort} />
+                          <SortButton label="End" column="validTo" sort={sort} onSort={chooseSort} />
+                        </span>
+                      </SortHeader>
                     )}
                     {show('frequency') && (
                       <th scope="col" className={TABLE.th}>
@@ -614,14 +666,14 @@ export function AmcContractsPage() {
                       </th>
                     )}
                     {show('contractValue') && (
-                      <th scope="col" className={`${TABLE.th} text-right`}>
-                        Contract value
-                      </th>
+                      <SortHeader columns={['contractValue']} sort={sort} right>
+                        <SortButton label="Contract value" column="contractValue" sort={sort} onSort={chooseSort} />
+                      </SortHeader>
                     )}
                     {show('finalCredit') && (
-                      <th scope="col" className={`${TABLE.th} text-right`}>
-                        Credit
-                      </th>
+                      <SortHeader columns={['finalCredit']} sort={sort} right>
+                        <SortButton label="Credit" column="finalCredit" sort={sort} onSort={chooseSort} />
+                      </SortHeader>
                     )}
                     {show('visits') && (
                       <th scope="col" className={TABLE.th}>
@@ -634,9 +686,9 @@ export function AmcContractsPage() {
                       </th>
                     )}
                     {show('status') && (
-                      <th scope="col" className={TABLE.th}>
-                        Status
-                      </th>
+                      <SortHeader columns={['status']} sort={sort}>
+                        <SortButton label="Status" column="status" sort={sort} onSort={chooseSort} />
+                      </SortHeader>
                     )}
                     <th scope="col" className={`${TABLE.th} text-right`}>
                       Actions
@@ -700,8 +752,18 @@ export function AmcContractsPage() {
                       </td>}
                       {show('contractValue') && <td className={`${TABLE.td} whitespace-nowrap text-right`}>
                         <span className="block text-base font-extrabold tabular-nums text-[#0b3b66]">{formatMoney(contract.contractValue)}</span>
-                        {contract.defaultVisitAmount && (
-                          <span className="mt-0.5 block text-xs tabular-nums text-slate-500">{formatMoney(contract.defaultVisitAmount)} per visit</span>
+                        {/* The value of one service (2026-11-11): with a billing basis, the authoritative per-service amount
+                            (annual amount ÷ services in a year); the Cost per Visit is not used then. Without one, the
+                            manual Cost per Visit, as before. */}
+                        {contract.billingBasis && contract.schedule.perServiceAmount ? (
+                          <span
+                            className="mt-0.5 block text-xs tabular-nums text-slate-500"
+                            title={`${BILLING_BASIS_LABELS[contract.billingBasis]} ${formatMoney(contract.schedule.annualAmount)} ÷ ${contract.schedule.servicesPerCycle} services a year. The last service of each year takes any rounding remainder.`}
+                          >
+                            {formatMoney(contract.schedule.perServiceAmount)} per service
+                          </span>
+                        ) : (
+                          contract.defaultVisitAmount && <span className="mt-0.5 block text-xs tabular-nums text-slate-500">{formatMoney(contract.defaultVisitAmount)} per visit</span>
                         )}
                       </td>}
                       {show('finalCredit') && <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{formatMoney(contract.finalCredit)}</td>}

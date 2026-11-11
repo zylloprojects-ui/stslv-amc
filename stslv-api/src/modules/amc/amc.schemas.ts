@@ -92,6 +92,13 @@ const page = z.coerce.number().int().min(1).default(1);
 
 export const BILLING_BASES = ["CONTRACT_VALUE", "FINAL_CREDIT", "CUSTOM"] as const;
 
+/**
+ * The billing basis a NEW contract gets when the request leaves it out (client-approved 2026-11-11): AMC Value / Year.
+ * An explicit choice, including an explicit null ("Not set"), is kept. Renewals, updates and stored contracts are not
+ * affected: a renewal keeps what its form sends (the renewed contract's basis).
+ */
+export const NEW_CONTRACT_DEFAULT_BILLING_BASIS = "CONTRACT_VALUE" satisfies (typeof BILLING_BASES)[number];
+
 /** A System Types master record (migration 0070). */
 const systemTypeLink = z.string({ error: "Select a system." }).regex(/^[1-9]\d{0,17}$/, "Select a system.");
 export type BillingBasis = (typeof BILLING_BASES)[number];
@@ -105,7 +112,7 @@ const contractFields = {
   description: optionalText("Description", 2000),
   contractValue: requiredMoney("Contract value"),
   finalCredit: optionalMoney("Final credit"),
-  // Which amount the contract is billed on. Recorded only; no calculation reads it.
+  // Which annual amount the services are billed on (docs/FINANCE_WORKFLOW.md); null: the manual Cost per Visit.
   billingBasis: z.enum(BILLING_BASES, { error: "Select a billing basis." }).nullable(),
   customBillingValue: optionalMoney("Custom billing value"),
   maintenanceFrequency: frequency,
@@ -193,6 +200,8 @@ export const createNewContractFieldsSchema = createContractSchema.extend({
       else if (!MONEY_PATTERN.test(value)) ctx.addIssue({ code: "custom", message: moneyMessage("Final credit") });
     })
     .transform(normalizeMoney),
+  // Left out: AMC Value / Year (NEW_CONTRACT_DEFAULT_BILLING_BASIS). Sent (a basis or null): kept as sent.
+  billingBasis: contractFields.billingBasis.default(NEW_CONTRACT_DEFAULT_BILLING_BASIS),
   contractDocument,
   // Internal callers (seed scripts, test setup) may still add a draft through the service; the API may not.
   status: z.enum(["DRAFT", "ACTIVE"]).default("ACTIVE"),
@@ -274,6 +283,9 @@ export const changeContractStatusSchema = z.strictObject({
 
 const CONTRACT_YEAR_MESSAGE = "Year must be between 2000 and 2100.";
 
+/** The AMC Contracts columns that can be sorted. */
+export const CONTRACT_SORTS = ["reference", "client", "engineer", "validFrom", "validTo", "contractValue", "finalCredit", "status"] as const;
+
 export const listContractsSchema = z.object({
   search: z.string().trim().max(200).optional(),
   status: z.enum([...CONTRACT_STATUSES, "all"]).default("all"),
@@ -288,6 +300,10 @@ export const listContractsSchema = z.object({
   system: z.string().trim().max(200).optional(),
   // Contracts whose validity period covers any day of this calendar year (approved 2026-10-28).
   year: z.coerce.number({ error: CONTRACT_YEAR_MESSAGE }).int(CONTRACT_YEAR_MESSAGE).min(2000, CONTRACT_YEAR_MESSAGE).max(2100, CONTRACT_YEAR_MESSAGE).optional(),
+  // Column sorting (2026-11-11), applied to the whole filtered list on the server before paging. Left out: the
+  // register's usual order (client, newest validity first).
+  sort: z.enum(CONTRACT_SORTS, { error: "Select a column to sort by." }).optional(),
+  direction: z.enum(["asc", "desc"], { error: "Select ascending or descending." }).default("asc"),
   page,
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });

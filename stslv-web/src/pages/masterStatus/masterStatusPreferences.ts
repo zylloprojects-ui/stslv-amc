@@ -7,7 +7,9 @@ export const MASTER_STATUS_PREFIX = 'stslev.master-amc-status'
 const PREFIX = MASTER_STATUS_PREFIX
 
 /** The columns a user may hide, in table order. The same ids the export accepts. */
-export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'scheduledMonth', 'visitValue', 'serviceStatus', 'invoiceNo', 'quotationNo', 'salesEngineer'] as const
+// 'acknowledgement' (2026-11-11): Invoice Acknowledged, right after Quote No.; offered only to users who may view
+// Invoice Acknowledgements (the API says so with acknowledgementsVisible).
+export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'scheduledMonth', 'visitValue', 'serviceStatus', 'invoiceNo', 'quotationNo', 'acknowledgement', 'salesEngineer'] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
 
 export const COLUMN_LABELS: Record<ColumnId, string> = {
@@ -20,6 +22,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceStatus: 'Service Status',
   invoiceNo: 'Invoice No.',
   quotationNo: 'Quote No.',
+  acknowledgement: 'Invoice Acknowledged',
   salesEngineer: 'Sales Engineer',
 }
 

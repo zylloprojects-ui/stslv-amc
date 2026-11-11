@@ -1,6 +1,8 @@
 // The Master AMC Status API (/api/amc/master-status): a read-only overview with
 // one row per scheduled AMC visit, its invoice numbers and its quotation number.
 
+import type { ServiceAcknowledgement } from '../invoiceAcknowledgements/ServiceAcknowledgement'
+
 export const SERVICE_STATUSES = ['NOT_COMPLETED', 'COMPLETED', 'WAITING_FOR_RENEWAL'] as const
 export type ServiceStatus = (typeof SERVICE_STATUSES)[number]
 
@@ -52,6 +54,8 @@ export interface MasterStatusItem {
   valueSourceMissing?: boolean
   /** The contract's AMC Value / Year; null unless the user may see contract values (AMC Contracts: View). */
   amcValue?: string | null
+  /** Invoice Acknowledged of this service's invoice; null without Invoice Acknowledgements: View, absent from an older API. */
+  acknowledgement?: ServiceAcknowledgement | null
 }
 
 export interface MasterStatusKpis {
@@ -74,6 +78,8 @@ export interface MasterStatusList {
   page: number
   pageSize: number
   kpis: MasterStatusKpis
+  /** The Invoice Acknowledged column is offered (Invoice Acknowledgements: View). Absent from an older API. */
+  acknowledgementsVisible?: boolean
 }
 
 export interface MasterStatusOptions {

@@ -28,6 +28,8 @@ export interface ServicesSalesItem {
   id: string
   /** The AMC Value / Year of this visit's contract period (OMR, ex VAT); null for a user who may not see it. */
   amcValue?: string | null
+  /** This service's own value (OMR, ex VAT); same access as amcValue; null when none is recorded. Absent from an older API. */
+  serviceValue?: string | null
   reference: string
   contract: { id: string; status: string }
   client: { id: string; name: string }

@@ -352,7 +352,7 @@ export function ServicesSalesPage() {
   const data = sales.data
   // AMC Value is offered only when the API says this user may see contract values (it then sends them).
   const amcValueVisible = data?.amcValueVisible === true
-  const available = COLUMN_IDS.filter((id) => id !== 'amcValue' || amcValueVisible)
+  const available = COLUMN_IDS.filter((id) => (id !== 'amcValue' && id !== 'serviceValue') || amcValueVisible)
   const shown = (id: ColumnId) => available.includes(id) && !hidden.has(id)
 
   return (
@@ -596,7 +596,7 @@ export function ServicesSalesPage() {
                       AMC Reference
                     </th>
                     {COLUMN_IDS.filter(shown).map((id) => (
-                      <th key={id} scope="col" className={cx(TABLE.th, id === 'amcValue' && 'text-right')}>
+                      <th key={id} scope="col" className={cx(TABLE.th, (id === 'amcValue' || id === 'serviceValue') && 'text-right')}>
                         {COLUMN_LABELS[id]}
                       </th>
                     ))}
@@ -654,6 +654,11 @@ export function ServicesSalesPage() {
                           {item.amcValue ? formatMoney(item.amcValue) : <span className="text-slate-400">—</span>}
                         </td>
                       )}
+                      {shown('serviceValue') && (
+                        <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`} title="This service's value, OMR excluding VAT">
+                          {item.serviceValue ? formatMoney(item.serviceValue) : <span className="text-slate-400" title="No value recorded for this service">—</span>}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -661,13 +666,15 @@ export function ServicesSalesPage() {
                   <tfoot>
                     {/* PostgreSQL's sum over the unique contract periods of every matching service, on every page. */}
                     <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
-                      <th scope="row" colSpan={2 + COLUMN_IDS.filter(shown).length - 1} className={`${TABLE.td} text-right`}>
+                      <th scope="row" colSpan={2 + COLUMN_IDS.filter(shown).indexOf('amcValue')} className={`${TABLE.td} text-right`}>
                         Total AMC Value of matching contracts ({data.amcValueTotal.contracts} unique contract {data.amcValueTotal.contracts === 1 ? 'period' : 'periods'}, all pages)
                         <span className="block text-xs font-medium text-slate-500">
                           Each contract period counts once, however many of its services match; a renewal is its own period. Not an invoice value or a payment.
                         </span>
                       </th>
                       <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.amcValueTotal.total)}</td>
+                      {/* Service values are not totalled here: the total is of contract periods. */}
+                      {shown('serviceValue') && <td className={TABLE.td} />}
                     </tr>
                   </tfoot>
                 )}

@@ -16,6 +16,8 @@ import { applyExecution } from "./visits.service";
 import { hasStoredReference, referenceSql } from "./contract-reference";
 import { SERVICE_IN_SCOPE } from "./service-scope";
 import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
+import { NO_AMOUNT_SOURCE_SQL } from "./value-source";
+import { SERVICE_ACKNOWLEDGEMENT_SQL, serviceAcknowledgementsVisible, toServiceAcknowledgement, type ServiceAcknowledgement } from "../invoice-acknowledgements/service-acknowledgement";
 
 // The Service Status page: one row per scheduled maintenance visit (amc_visits),
 // never one per contract. It reads the same visit records as the AMC Schedule
@@ -89,7 +91,7 @@ function fromSql(f: Features): string {
   ${f.frequencies ? "LEFT JOIN maintenance_frequencies mf ON mf.code = c.maintenance_frequency" : ""}`;
 }
 
-function selectSql(f: Features): string {
+function selectSql(f: Features, acknowledgements = false): string {
   return `
   SELECT v.id, c.id AS contract_id, ${referenceSql("c", f.storedReference)} AS contract_reference, c.status AS contract_status, c.valid_to::text AS valid_to,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
@@ -106,6 +108,11 @@ function selectSql(f: Features): string {
          ${f.engineerName ? "v.sales_engineer_name" : "NULL::text"} AS manual_engineer_name,
          -- The contract's AMC Value / Year (OMR excluding VAT). Read from the contract, never copied onto the visit.
          c.contract_value::text AS amc_value,
+         -- This service's own value: amc_visits.visit_amount, the same field Master AMC Status shows as its Service Value
+         -- (the per-service share of the billing basis, or the manual Cost per Visit). Never recalculated here.
+         v.visit_amount::text AS service_value,
+         ${NO_AMOUNT_SOURCE_SQL} AS no_amount_source,
+         ${acknowledgements ? SERVICE_ACKNOWLEDGEMENT_SQL : "NULL::jsonb"} AS acknowledgement,
          (v.manual_invoice_no IS NOT NULL) AS is_paid,
          ${serviceStatusSql(f)} AS service_status,
          ${f.reports ? SERVICE_REPORT_JSON_SQL : "NULL::jsonb"} AS service_report,
@@ -139,6 +146,9 @@ interface ServiceRow {
   service_report_no: string | null;
   manual_engineer_name: string | null;
   amc_value: string;
+  service_value: string | null;
+  no_amount_source: boolean;
+  acknowledgement: unknown;
   is_paid: boolean;
   service_status: ServiceStatus;
   service_report: unknown;
@@ -189,6 +199,15 @@ export interface ServiceStatusItem {
    * not see contract values (needs AMC Contracts: View): it is then never sent.
    */
   amcValue: string | null;
+  /**
+   * This service's value (visit_amount), OMR excluding VAT: the per-service share of the billing basis, or the manual
+   * Cost per Visit. Same permission as amcValue; null when not shown or when no value was recorded (never 0.000).
+   */
+  serviceValue: string | null;
+  /** No service value, and the contract has neither a Billing Basis nor a Cost per Visit (as on Master AMC Status). */
+  valueSourceMissing: boolean;
+  /** The acknowledgement of this service's invoice; null when the user may not view Invoice Acknowledgements. */
+  acknowledgement: ServiceAcknowledgement | null;
   /** The uploaded Service Report document (0104), or null. */
   serviceReport: ServiceReport | null;
   /** Completed and saved: the status and completion date can no longer change. */
@@ -204,14 +223,19 @@ export interface ServiceStatusItem {
 export interface ServiceStatusAccess {
   /** The contract's AMC Value: the permission that shows contract values on AMC Contracts (AMC_CONTRACTS:VIEW). */
   amcValue: boolean;
+  /** The invoice acknowledgement indicator: Invoice Acknowledgements: View (serviceAcknowledgementsVisible). */
+  acknowledgements?: boolean;
 }
 
 /** Nothing extra: the safe default for any caller that does not say who is asking. */
-const NO_EXTRA_ACCESS: ServiceStatusAccess = { amcValue: false };
+const NO_EXTRA_ACCESS: ServiceStatusAccess = { amcValue: false, acknowledgements: false };
 
-export function serviceStatusAccess(auth: Pick<AuthContext, "permissions">): ServiceStatusAccess {
+export async function serviceStatusAccess(auth: Pick<AuthContext, "permissions">): Promise<ServiceStatusAccess> {
   // No permission set (an internal caller): nothing extra is shown.
-  return { amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false };
+  return {
+    amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false,
+    acknowledgements: await serviceAcknowledgementsVisible(auth),
+  };
 }
 
 function toItem(row: ServiceRow, access: ServiceStatusAccess = NO_EXTRA_ACCESS): ServiceStatusItem {
@@ -237,6 +261,9 @@ function toItem(row: ServiceRow, access: ServiceStatusAccess = NO_EXTRA_ACCESS):
     reportNumber: row.service_report_no,
     salesEngineerName: row.manual_engineer_name,
     amcValue: access.amcValue ? row.amc_value : null,
+    serviceValue: access.amcValue ? row.service_value : null,
+    valueSourceMissing: access.amcValue ? row.service_value === null && row.no_amount_source : false,
+    acknowledgement: access.acknowledgements ? toServiceAcknowledgement(row.acknowledgement) : null,
     serviceReport: toServiceReport(row.service_report),
     locked: row.status === "COMPLETED",
     paid: row.is_paid,
@@ -331,7 +358,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
   const statusParamCount = query.serviceStatus ? params.length - 1 : params.length;
   const figures = await kpis(withoutStatus, params.slice(0, statusParamCount), f);
   const rows = await pool.query<ServiceRow>(
-    `${selectSql(f)} ${fromSql(f)} ${where} ${ORDER}
+    `${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${ORDER}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
@@ -348,6 +375,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
     reportNumberLockEnabled: reportNumberLockEnabled(),
     salesEngineerNameAvailable: f.engineerName,
     amcValueVisible: access.amcValue,
+    acknowledgementsVisible: access.acknowledgements === true,
   };
 }
 
@@ -355,7 +383,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
 export async function getServiceStatusItem(id: string, access: ServiceStatusAccess = NO_EXTRA_ACCESS): Promise<ServiceStatusItem> {
   const f = await features();
 
-  return toItem(await findServiceRow(pool, id, f), access);
+  return toItem(await findServiceRow(pool, id, f, access.acknowledgements), access);
 }
 
 /**
@@ -372,7 +400,7 @@ export async function listAllServiceStatus(filters: ServiceStatusFilters, checkS
 
   checkSize(total);
 
-  const rows = await pool.query<ServiceRow>(`${selectSql(f)} ${fromSql(f)} ${where} ${ORDER}`, params);
+  const rows = await pool.query<ServiceRow>(`${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map((row) => toItem(row, access)), total, kpis: figures, features: f };
 }
@@ -431,8 +459,8 @@ async function filterOptions(scope: string) {
   };
 }
 
-async function findServiceRow(db: Queryable, id: string, f: Features): Promise<ServiceRow> {
-  const result = await db.query<ServiceRow>(`${selectSql(f)} ${fromSql(f)} WHERE v.id = $1`, [id]);
+async function findServiceRow(db: Queryable, id: string, f: Features, acknowledgements = false): Promise<ServiceRow> {
+  const result = await db.query<ServiceRow>(`${selectSql(f, acknowledgements)} ${fromSql(f)} WHERE v.id = $1`, [id]);
   const row = result.rows[0];
 
   if (!row) throw notFound("AMC visit not found.");
@@ -543,6 +571,8 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
       }
     }
 
-    return toItem(await findServiceRow(client, id, f), serviceStatusAccess(auth));
+    const access = await serviceStatusAccess(auth);
+
+    return toItem(await findServiceRow(client, id, f, access.acknowledgements), access);
   });
 }

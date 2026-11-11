@@ -25,6 +25,7 @@ import { ManualInvoiceField } from './ManualInvoiceField'
 import { ScheduleRulePanel } from './ScheduleRulePanel'
 import { ServiceColor } from './ServiceColor'
 import { BILLING_BASIS_LABELS } from './types'
+import { ServiceAcknowledgementIndicator } from '../invoiceAcknowledgements/ServiceAcknowledgement'
 import { validityState } from './contractValidity'
 import {
   CONTRACT_STATUS_LABELS,
@@ -608,6 +609,11 @@ export function ContractDetailPage() {
                                 <th scope="col" className={TABLE.th}>
                                   Invoice No.
                                 </th>
+                                {visits.data.acknowledgementsVisible && (
+                                  <th scope="col" className={TABLE.th}>
+                                    Invoice Acknowledgement
+                                  </th>
+                                )}
                                 <th scope="col" className={TABLE.th}>
                                   Paid date
                                 </th>
@@ -644,6 +650,11 @@ export function ContractDetailPage() {
                                   <td className={TABLE.td}>
                                     <ManualInvoiceField visitId={visit.id} invoiceNo={visit.manualInvoiceNo} updatedAt={visit.updatedAt} canEdit={auth.can('INVOICES', 'EDIT') && visit.status !== 'CANCELLED' && visit.status !== 'HISTORICAL'} completed={visit.status === 'COMPLETED'} label={visitNumberLabel(visit)} />
                                   </td>
+                                  {visits.data.acknowledgementsVisible && (
+                                    <td className={`${TABLE.td} min-w-[9rem]`}>
+                                      {visit.acknowledgement ? <ServiceAcknowledgementIndicator acknowledgement={visit.acknowledgement} /> : '—'}
+                                    </td>
+                                  )}
                                   <td className={`${TABLE.td} whitespace-nowrap`}>{visit.paidAt ? formatDateTime(visit.paidAt) : '—'}</td>
                                   <td className={TABLE.td}>
                                     <EligibilityPill eligibility={visit.invoiceEligibility} />

@@ -697,3 +697,87 @@ describe('service report number lock', () => {
     await waitFor(() => expect(api.requests.find((request) => request.method === 'PATCH')?.body).toEqual({ reportNumber: 'SR-11', expectedUpdatedAt: DONE.updatedAt }))
   })
 })
+
+// 2026-11-11: this service's own value beside the contract's annual value, and the invoice acknowledgement shown
+// separately from the execution status.
+describe('service value and invoice acknowledgement', () => {
+  const withExtras = (visible: { amcValue: boolean; acknowledgements: boolean }) => (request: MockRequest) => {
+    if (request.method !== 'GET' || request.path !== '/amc/service-status') return undefined
+    const item = makeItem({
+      ...DONE,
+      amcValue: visible.amcValue ? '1200.000' : null,
+      serviceValue: visible.amcValue ? '300.000' : null,
+      acknowledgement: visible.acknowledgements ? { state: 'PENDING', acknowledged: 'NO', invoiceId: '9', documentAvailable: false, acknowledgedAt: null, needsReconciliation: false } : null,
+    })
+    const list: ServiceStatusList = {
+      items: [item],
+      total: 1,
+      page: 1,
+      pageSize: 50,
+      kpis: { total: 1, completed: 1, notCompleted: 0, waitingForRenewal: 0 },
+      reportNumberAvailable: true,
+      serviceReportsAvailable: true,
+      serviceReportLimits: { maxMb: 12, allowedTypes: 'PDF, DOC and DOCX' },
+      amcValueVisible: visible.amcValue,
+      acknowledgementsVisible: visible.acknowledgements,
+    }
+    return ok(list)
+  }
+  const columnHeaders = () => within(screen.getByRole('table')).getAllByRole('columnheader').map((cell) => cell.textContent ?? '')
+
+  it('shows the service value (not the contract value) in Service Value, and a separate acknowledgement after Service Status', async () => {
+    serviceApi(ADMIN, { override: withExtras({ amcValue: true, acknowledgements: true }) })
+    renderApp('/amc/service-status')
+
+    const cell = (await screen.findByText('300.000')).closest('td') as HTMLElement
+    const columns = columnHeaders()
+    // Owner decision 2026-11-11: the existing AMC Value (OMR) column stays as it was, and Service Value (OMR) follows it.
+    expect(columns.indexOf('AMC Value (OMR)')).toBe(columns.indexOf('Service') + 1)
+    expect(columns.indexOf('Service Value (OMR)')).toBe(columns.indexOf('AMC Value (OMR)') + 1)
+    expect(columns.indexOf('Invoice Acknowledgement')).toBe(columns.indexOf('Service Status') + 1)
+    // The service column shows the service's own share, never the full contract value; that has its own column.
+    expect(cell).toHaveTextContent(/^300\.000$/)
+    const row = cell.closest('tr') as HTMLElement
+    expect(within(row).getByText('1,200.000')).toBeInTheDocument()
+    // Completed stays Completed; the missing acknowledgement is its own red No.
+    expect(within(row).getByText('Completed')).toBeInTheDocument()
+    expect(row.querySelector('[data-acknowledged="NO"]')).not.toBeNull()
+  })
+
+  it('says why a service has no value, as Master AMC Status does, without inventing one', async () => {
+    serviceApi(ADMIN, {
+      override: (request: MockRequest) => {
+        if (request.method !== 'GET' || request.path !== '/amc/service-status') return undefined
+        const list: ServiceStatusList = {
+          items: [makeItem({ ...DONE, amcValue: '1200.000', serviceValue: null, valueSourceMissing: true })],
+          total: 1,
+          page: 1,
+          pageSize: 50,
+          kpis: { total: 1, completed: 1, notCompleted: 0, waitingForRenewal: 0 },
+          reportNumberAvailable: true,
+          serviceReportsAvailable: true,
+          serviceReportLimits: { maxMb: 12, allowedTypes: 'PDF, DOC and DOCX' },
+          amcValueVisible: true,
+        }
+        return ok(list)
+      },
+    })
+    renderApp('/amc/service-status')
+
+    const cell = (await screen.findByText('No Billing Basis or Cost per Visit')).closest('td') as HTMLElement
+    expect(within(cell).getByText('No value recorded')).toBeInTheDocument()
+    // The contract's AMC Value stays in its own column; it never fills a missing service value.
+    expect(cell).not.toHaveTextContent('1,200.000')
+    expect(within(cell.closest('tr') as HTMLElement).getByText('1,200.000')).toBeInTheDocument()
+  })
+
+  it('offers neither column to a user who may not see them', async () => {
+    serviceApi(ADMIN, { override: withExtras({ amcValue: false, acknowledgements: false }) })
+    renderApp('/amc/service-status')
+
+    await screen.findByRole('table')
+    expect(columnHeaders()).not.toContain('Service Value (OMR)')
+    expect(columnHeaders()).not.toContain('AMC Value (OMR)')
+    expect(columnHeaders()).not.toContain('Invoice Acknowledgement')
+  })
+})

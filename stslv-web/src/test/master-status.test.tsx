@@ -469,3 +469,67 @@ describe('Master AMC Status KPI cards', () => {
     expect(within(document.querySelector('[data-kpi="total"]') as HTMLElement).getByText('Total Services')).toBeInTheDocument()
   })
 })
+
+// Invoice Acknowledged (2026-11-11): Yes / No / Not Applicable for each service's invoice, right after Quote No.,
+// offered only when the API says the user may view Invoice Acknowledgements.
+describe('Invoice Acknowledged column', () => {
+  const ACK_YES = makeItem({
+    id: '21',
+    reference: 'AMC-0021',
+    visitStatus: 'COMPLETED',
+    serviceStatus: 'COMPLETED',
+    manualInvoiceNo: 'INV-21',
+    paymentStatus: 'PAID',
+    quotationNo: 'QT-21',
+    colour: 'GREEN',
+    acknowledgement: { state: 'ACKNOWLEDGED', acknowledged: 'YES', invoiceId: '9', documentAvailable: true, acknowledgedAt: '2026-11-05T09:00:00.000Z', needsReconciliation: false },
+  })
+  const ACK_NO = makeItem({
+    id: '22',
+    reference: 'AMC-0022',
+    visitStatus: 'COMPLETED',
+    serviceStatus: 'COMPLETED',
+    manualInvoiceNo: 'INV-22',
+    paymentStatus: 'PAID',
+    colour: 'BLUE',
+    acknowledgement: { state: 'PENDING', acknowledged: 'NO', invoiceId: '10', documentAvailable: false, acknowledgedAt: null, needsReconciliation: false },
+  })
+  const ACK_NA = makeItem({
+    id: '23',
+    reference: 'AMC-0023',
+    acknowledgement: { state: 'NOT_APPLICABLE', acknowledged: 'NOT_APPLICABLE', invoiceId: null, documentAvailable: false, acknowledgedAt: null, needsReconciliation: false },
+  })
+  const withVisibility = (visible: boolean, items: MasterStatusItem[]) => (request: MockRequest) =>
+    request.method === 'GET' && request.path === '/amc/master-status'
+      ? ok({ items, total: items.length, page: 1, pageSize: 50, kpis: { total: items.length, green: 1, blue: 1, yellow: 0, red: 1, totalValue: '0.000', valueMissing: 0 }, acknowledgementsVisible: visible })
+      : undefined
+
+  it('shows Yes, No and Not Applicable right after Quote No., keeping every other column', async () => {
+    signIn()
+    statusApi(VIEWER, [], withVisibility(true, [ACK_YES, ACK_NO, ACK_NA]))
+    renderPage()
+
+    await screen.findByText('AMC-0021')
+    const columns = headers()
+    expect(columns.indexOf('Invoice Acknowledged')).toBe(columns.indexOf('Quote No.') + 1)
+    for (const kept of ['Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Value (Ex VAT)', 'Service Status', 'Invoice No.', 'Quote No.', 'Sales Engineer', 'Details']) {
+      expect(columns.some((header) => header?.includes(kept))).toBe(true)
+    }
+    expect(rowOf('AMC-0021').querySelector('[data-acknowledged]')?.getAttribute('data-acknowledged')).toBe('YES')
+    expect(rowOf('AMC-0022').querySelector('[data-acknowledged]')?.getAttribute('data-acknowledged')).toBe('NO')
+    expect(rowOf('AMC-0023').querySelector('[data-acknowledged]')?.getAttribute('data-acknowledged')).toBe('NOT_APPLICABLE')
+    // The service status stays its own: Completed while the acknowledgement is missing.
+    expect(within(rowOf('AMC-0022')).getByText('Completed')).toBeInTheDocument()
+    expect(within(rowOf('AMC-0021')).getByRole('button', { name: /Download the acknowledgement document/ })).toBeInTheDocument()
+  })
+
+  it('is not offered, and not counted, for a user without Invoice Acknowledgements', async () => {
+    signIn()
+    statusApi(VIEWER, [], withVisibility(false, [{ ...ACK_YES, acknowledgement: null }]))
+    renderPage()
+
+    await screen.findByText('AMC-0021')
+    expect(headers()).not.toContain('Invoice Acknowledged')
+    expect(screen.getByRole('button', { name: /Hide Columns · 10 of 10 shown/ })).toBeInTheDocument()
+  })
+})

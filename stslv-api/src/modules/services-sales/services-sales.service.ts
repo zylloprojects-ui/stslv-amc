@@ -81,6 +81,8 @@ const selectSql = (storedReference: boolean, reports: boolean) => `
          ${reports ? SERVICE_REPORT_SQL : "NULL::jsonb"} AS service_report,
          -- The AMC Value / Year of this visit's own contract period (its contract row: a renewal version has its own).
          c.contract_value::text AS amc_value,
+         -- This service's own value (visit_amount), 2026-11-11: the per-service share, not the contract's annual value.
+         v.visit_amount::text AS service_value,
          v.updated_at`;
 
 interface SalesRow {
@@ -113,6 +115,7 @@ interface SalesRow {
   sales_status: SalesStatus;
   service_report: { id: string; originalName: string; mimeType: string; sizeBytes: number | string; uploadedAt: string } | null;
   amc_value: string;
+  service_value: string | null;
   updated_at: Date;
 }
 
@@ -158,6 +161,11 @@ export interface ServicesSalesItem {
    * View: the value is then never sent. Not an invoice value and not money received.
    */
   amcValue: string | null;
+  /**
+   * This service's own value (visit_amount), OMR excluding VAT (2026-11-11). Same permission as amcValue; null when not
+   * shown or when no value was recorded (never 0.000).
+   */
+  serviceValue: string | null;
   updatedAt: string;
 }
 
@@ -205,6 +213,7 @@ function toItem(row: SalesRow, access: ServicesSalesAccess = NO_EXTRA_ACCESS): S
         }
       : null,
     amcValue: access.amcValue ? row.amc_value : null,
+    serviceValue: access.amcValue ? row.service_value : null,
     updatedAt: row.updated_at.toISOString(),
   };
 }

@@ -39,11 +39,13 @@ const COLUMNS: (ReportColumn & { hideable?: ServicesSalesColumn })[] = [
   // The contract period's AMC Value / Year, repeated on each of its services, so never totalled as a column: the
   // unique-contract total is in the notes. Only for a user with AMC Contracts: View.
   { key: "amcValue", header: "AMC Value / Year (OMR)", kind: "money", width: 16, hideable: "amcValue" },
+  // 2026-11-11: this service's own value (blank when none was recorded); same permission as AMC Value.
+  { key: "serviceValue", header: "Service Value (OMR)", kind: "money", width: 14, hideable: "serviceValue" },
 ];
 
 /** The report's columns: everything the page shows. AMC Reference and the sales status are always included. */
 export function servicesSalesColumns(hidden: readonly ServicesSalesColumn[], amcValue = false): ReportColumn[] {
-  return COLUMNS.filter((column) => (column.key !== "amcValue" || amcValue) && (!column.hideable || !hidden.includes(column.hideable))).map(
+  return COLUMNS.filter((column) => ((column.key !== "amcValue" && column.key !== "serviceValue") || amcValue) && (!column.hideable || !hidden.includes(column.hideable))).map(
     ({ hideable: _hideable, ...column }) => column
   );
 }
@@ -69,6 +71,7 @@ function toRow(item: ServicesSalesItem, index: number): ReportRow {
     salesStatus: item.quotationBeforeCompletion ? `${SALES_STATUS_LABELS[item.salesStatus]} (quote recorded before completion)` : SALES_STATUS_LABELS[item.salesStatus],
     salesEngineer: item.salesEngineer?.name ?? null,
     amcValue: item.amcValue,
+    serviceValue: item.serviceValue,
   };
 }
 

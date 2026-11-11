@@ -13,6 +13,7 @@ import { assertVisitNotPaid, PAYMENT_STATUS_SQL, type PaymentStatus } from "./ma
 import { assertServiceReportPresent } from "./service-reports.service";
 import type { ContractStatus, InvoiceEligibility, VisitStatus } from "./amc.constants";
 import { referenceStaticSql } from "./contract-reference";
+import { SERVICE_ACKNOWLEDGEMENT_SQL, serviceAcknowledgementsVisible, toServiceAcknowledgement, type ServiceAcknowledgement } from "../invoice-acknowledgements/service-acknowledgement";
 import type {
   ListExecutionQuery,
   ListVisitsQuery,
@@ -346,7 +347,21 @@ async function visitTotals(where: string, params: unknown[]) {
   };
 }
 
-export async function listVisits(query: ListVisitsQuery) {
+/**
+ * The invoice acknowledgement of each listed visit (2026-11-11, Contract 360's Invoice Acknowledgement column), in one
+ * query for the whole page. Only for a user who may view Invoice Acknowledgements; read-only.
+ */
+async function acknowledgementsOf(ids: string[]): Promise<Map<string, ServiceAcknowledgement>> {
+  if (ids.length === 0) return new Map();
+  const result = await pool.query<{ id: string; acknowledgement: unknown }>(
+    `SELECT v.id, ${SERVICE_ACKNOWLEDGEMENT_SQL} AS acknowledgement FROM amc_visits v WHERE v.id = ANY($1::bigint[])`,
+    [ids]
+  );
+
+  return new Map(result.rows.map((row) => [row.id, toServiceAcknowledgement(row.acknowledgement)]));
+}
+
+export async function listVisits(query: ListVisitsQuery, auth?: Pick<AuthContext, "permissions">) {
   await assertFiltersAvailable(query);
   const { where, params } = visitFilter(query);
   const { total, totals } = await visitTotals(where, params);
@@ -356,8 +371,16 @@ export async function listVisits(query: ListVisitsQuery) {
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
+  const acknowledgementsVisible = await serviceAcknowledgementsVisible(auth);
+  const acknowledgements = acknowledgementsVisible ? await acknowledgementsOf(rows.rows.map((row) => row.id)) : null;
+  const items = rows.rows.map((row) => {
+    const visit = toScheduleVisit(row);
 
-  return { items: rows.rows.map(toScheduleVisit), total, page: query.page, pageSize: query.pageSize, totals };
+    // Only added for a user who may see it; otherwise the field is not sent at all.
+    return acknowledgements ? { ...visit, acknowledgement: acknowledgements.get(row.id) ?? null } : visit;
+  });
+
+  return { items, total, page: query.page, pageSize: query.pageSize, totals, acknowledgementsVisible };
 }
 
 /**

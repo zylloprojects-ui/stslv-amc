@@ -300,7 +300,9 @@ same name, figure, wording, icon and colour, from the same calculation.
 **Page:** AMC Contracts (`/amc/contracts`). **Permissions:** View; Create to add; Edit to edit, change status, generate; Delete (+Edit) to cancel; Export.
 
 ### Columns
-#, AMC Reference (opens Contract 360), Client, System, Engineer, Validity (progress bar and days remaining), Frequency, Contract value (and per-visit amount), Credit, Visits (% completed), Contract (Upload Contract link, Edit only), Status, Actions. Footer: **Filtered Total**. An amber **Validity ended** pill marks an Active contract past its end date.
+#, AMC Reference (opens Contract 360), Client, System, Engineer, Validity (progress bar and days remaining), Frequency, Contract value (and the value of one service: *per service* from the Billing basis, or *per visit* from the Default visit amount when there is no basis), Credit, Visits (% completed), Contract (Upload Contract link, Edit only), Status, Actions. Footer: **Filtered Total**. An amber **Validity ended** pill marks an Active contract past its end date.
+
+**Sorting (2026-11-11):** click AMC Reference, Client, Engineer, Validity *Start* or *End*, Contract value, Credit or Status to sort ascending; click again for descending (▲ / ▼; keyboard: Tab to the heading, Enter). The whole filtered list is sorted before it is split into pages, together with search and filters; the download uses the same order. Amounts sort as numbers, dates as dates, Status as Draft → Active → Expired → Cancelled; an empty Engineer or Credit comes last.
 
 KPI tiles: All AMC Contracts, Total AMC Value, Total Final Credit, Expired.
 
@@ -319,9 +321,9 @@ Search (reference, client, system, engineer), Client, System, Year (validity cov
 | Maintenance frequency | Yes | Active frequencies; custom frequencies also need **Service months** (≤11) |
 | Valid from / Valid to | Yes | Valid to ≥ Valid from; at most 10 years. *Contract duration* (1–6 years) fills Valid to |
 | AMC Value / Year | Yes | Annual, ≥0, 3 decimals |
-| Final credit | Yes (new) | Enter 0 when none; cannot be cleared once recorded |
+| Final credit | Yes (new) | Filled with the AMC Value / Year as you type it, until you change it yourself (2026-11-11); enter 0 when none; cannot be cleared once recorded. Editing a saved contract never changes it |
 | Default visit amount | No | Ignored while a Billing basis is selected |
-| Billing basis / Custom Billing Value | No | §2 |
+| Billing basis / Custom Billing Value | No | §2. A new contract starts on **AMC Value / Year** (2026-11-11); choose another basis or *Not set* if needed. Renewals and saved contracts keep their own |
 | Contract document | Yes (new) | PDF/DOC/DOCX, ≤12 MB — "Attach the contract document." |
 | Description, Notes | No | ≤2000 |
 
@@ -428,6 +430,15 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 ---
 
 ## Service Status
+
+> **Service Value and Invoice Acknowledgement (2026-11-11).** *AMC Value (OMR)* (the contract's AMC Value / Year) is
+> unchanged and is now followed by *Service Value (OMR)*: the value of that one service, the same value Master AMC
+> Status shows (its share of the annual billing basis, e.g. 300.000 a quarter of 1,200.000 a year, or the Cost per Visit
+> without a basis; "—" when none is recorded, with "No Billing Basis or Cost per Visit" when the contract has neither).
+> Same access as AMC Value; each can be hidden on its own, and the download carries both. *Invoice Acknowledgement* (after Service Status, for users who may view Invoice Acknowledgements) shows
+> **Yes** (green, confirmed acknowledgement on file), **No** (red, Invoice No. entered, acknowledgement missing or
+> awaiting confirmation) or **Not Applicable** (no invoice), with *Download document* when a file is on file. It never
+> changes the Service Status: a service can be Completed while its acknowledgement is No. Both are in the download.
 
 > **AMC Value and Sales Engineer Name (2026-11-09).** *AMC Value (OMR)* shows the contract's AMC Value / Year on each
 > service, only to users who may view AMC Contracts; it is not added up. *Sales Engineer Name* is typed beside the
@@ -584,6 +595,11 @@ Requires a reason; the record is kept but excluded from totals, the work becomes
 ---
 
 ## Master AMC Status
+
+> **Invoice Acknowledged (2026-11-11).** For users who may view Invoice Acknowledgements, a column after *Quote No.*
+> shows **Yes** / **No** / **Not Applicable** for each service's invoice (same rule as Service Status), with a private
+> *Download document*. Each row is one service, so a contract with several invoices shows each separately. It does not
+> change the row colour, and it is in the download when shown.
 
 > **Values (2026-11-09).** The Value cell also shows the Zoho invoice amount and, for users who may view AMC Contracts,
 > the contract's AMC Value / Year. A Total Filtered row covers every matching service on every page.

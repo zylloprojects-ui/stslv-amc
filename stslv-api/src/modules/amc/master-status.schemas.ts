@@ -26,6 +26,8 @@ export const MASTER_STATUS_HIDEABLE_COLUMNS = [
   "serviceStatus",
   "invoiceNo",
   "quotationNo",
+  // 2026-11-11: Invoice Acknowledged (Yes / No / Not Applicable), after Quote No.
+  "acknowledgement",
   "salesEngineer",
 ] as const;
 export type MasterStatusColumn = (typeof MASTER_STATUS_HIDEABLE_COLUMNS)[number];

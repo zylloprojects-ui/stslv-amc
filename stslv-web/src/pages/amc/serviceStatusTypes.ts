@@ -1,3 +1,4 @@
+import type { ServiceAcknowledgement } from '../invoiceAcknowledgements/ServiceAcknowledgement'
 import type { ContractStatus, VisitStatus } from './types'
 
 // Shapes returned by /api/amc/service-status. One item is one scheduled visit.
@@ -39,6 +40,12 @@ export interface ServiceStatusItem {
   salesEngineerName?: string | null
   /** The contract's AMC Value / Year (OMR, excluding VAT); null when this user may not see contract values. */
   amcValue?: string | null
+  /** This service's own value (OMR, excluding VAT); same access as amcValue; null when none is recorded. Absent from an older API. */
+  serviceValue?: string | null
+  /** No service value, and the contract has neither a Billing Basis nor a Cost per Visit. Absent from an older API. */
+  valueSourceMissing?: boolean
+  /** The service's invoice acknowledgement; null without Invoice Acknowledgements: View. Absent from an older API. */
+  acknowledgement?: ServiceAcknowledgement | null
   /** The uploaded Service Report document (database update 0104), or null. */
   serviceReport: ServiceReport | null
   /** Completed and saved: the status and completion date can no longer change. */
@@ -90,6 +97,8 @@ export interface ServiceStatusList {
   salesEngineerNameAvailable?: boolean
   /** The signed-in user may see contract values (AMC Contracts: View), so the AMC Value column is offered. */
   amcValueVisible?: boolean
+  /** The Invoice Acknowledgement column is offered (Invoice Acknowledgements: View). Absent from an older API. */
+  acknowledgementsVisible?: boolean
 }
 
 export interface ServiceStatusOptions {

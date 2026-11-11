@@ -4,7 +4,8 @@ import { logActivity } from "../../shared/activity-log";
 import { assertExportSize, displayMoney, displayMonth, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
 import type { ServiceStatus } from "./amc.constants";
-import { listAllMasterStatus, type MasterStatusItem } from "./master-status.service";
+import { listAllMasterStatus, masterStatusAccess, type MasterStatusItem } from "./master-status.service";
+import { acknowledgedLabel } from "../invoice-acknowledgements/service-acknowledgement";
 import type { ExportMasterStatusQuery, MasterStatusColumn, RowColour } from "./master-status.schemas";
 
 // Master AMC Status as a report: the visits the page lists for the same
@@ -43,13 +44,17 @@ const COLUMNS: (ReportColumn & { hideable?: MasterStatusColumn })[] = [
   // Their separate Zoho references (Invoice Tracking "Zoho reference"), one per invoice in the same order.
   { key: "zohoReferences", header: "Zoho References (Tracking)", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   { key: "quotationNo", header: "Quote No.", kind: "identifier", width: 15, hideable: "quotationNo" },
+  // 2026-11-11: Yes / No / Not Applicable for this service's invoice; only for Invoice Acknowledgements: View.
+  { key: "acknowledgement", header: "Invoice Acknowledged", kind: "text", width: 18, wrap: true, hideable: "acknowledgement" },
   { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
   { key: "colour", header: "Row Colour", kind: "text", width: 24 },
 ];
 
 /** The report's columns: everything the page shows. AMC Reference and the row colour are always included. */
-export function masterStatusColumns(hidden: readonly MasterStatusColumn[]): ReportColumn[] {
-  return COLUMNS.filter((column) => !column.hideable || !hidden.includes(column.hideable)).map(({ hideable: _hideable, ...column }) => column);
+export function masterStatusColumns(hidden: readonly MasterStatusColumn[], options: { acknowledgements?: boolean } = {}): ReportColumn[] {
+  return COLUMNS.filter(
+    (column) => (column.key !== "acknowledgement" || options.acknowledgements === true) && (!column.hideable || !hidden.includes(column.hideable))
+  ).map(({ hideable: _hideable, ...column }) => column);
 }
 
 /** "Year 2 · Q3", or the visit number on a visit generated before service codes existed. */
@@ -82,6 +87,7 @@ function toRow(item: MasterStatusItem, index: number): ReportRow {
     zohoInvoices: item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(", ") : null,
     zohoReferences: zohoReferencesCell(item.invoiceReferences),
     quotationNo: item.quotationNo,
+    acknowledgement: item.acknowledgement ? acknowledgedLabel(item.acknowledgement) : null,
     salesEngineer: item.salesEngineer?.name ?? null,
     colour: ROW_COLOUR_LABELS[item.colour],
   };
@@ -112,8 +118,10 @@ export async function buildMasterStatusExport(
   query: ExportMasterStatusQuery
 ): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
   const { format, hidden, ...filters } = query;
-  const { items, kpis } = await listAllMasterStatus(filters, (count) => assertExportSize(format, count));
-  const columns = masterStatusColumns(hidden);
+  // Contract values are not exported here; only the acknowledgement column depends on the user.
+  const { acknowledgements } = await masterStatusAccess(auth);
+  const { items, kpis } = await listAllMasterStatus(filters, (count) => assertExportSize(format, count), { amcValue: false, acknowledgements });
+  const columns = masterStatusColumns(hidden, { acknowledgements });
   const notes = [
     `Total services ${kpis.total} · Green ${kpis.green} · Blue ${kpis.blue} · Yellow ${kpis.yellow} · Red ${kpis.red} · Total value (Ex VAT) ${displayMoney(kpis.totalValue)}.`,
     "Red: not completed. Yellow: completed, no invoice recorded. Blue: completed and invoiced, no quotation number. Green: completed, invoiced and quoted.",
