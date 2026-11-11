@@ -286,7 +286,7 @@ const MASTER_DATA: HelpTopic[] = [
       {
         heading: 'Good to know',
         bullets: [
-          'Every new contract and every renewal needs an active sales engineer.',
+          'Every new contract and every renewal needs an active service engineer.',
           'Disable (needs Edit) instead of deleting: contracts keep the engineer. A warning lists assignments first.',
         ],
       },
@@ -432,7 +432,7 @@ const CONTRACTS: HelpTopic[] = [
         steps: [
           'Click Add Contract (needs Create on AMC Contracts).',
           'Enter the AMC Reference Number (typed by you, unique, e.g. AMC-2026-001).',
-          'Choose the Client, System, Sales engineer and Maintenance frequency (active records only).',
+          'Choose the Client, System, Service engineer and Maintenance frequency (active records only).',
           'Enter Valid from and Valid to, or pick a Contract duration of 1–6 years.',
           'Enter AMC Value / Year; Final credit is filled with the same amount until you change it (0 when there is none). Billing basis starts on AMC Value / Year and can be changed; optionally a Default visit amount.',
           'Attach the contract document (PDF or Word, up to 12 MB) and save. The contract is added as Active and its services are generated.',
@@ -449,7 +449,7 @@ const CONTRACTS: HelpTopic[] = [
       {
         heading: 'Filters and export',
         bullets: [
-          'Search by reference, client, system or engineer; filter by Client, System, Year, Sales engineer, Frequency, Validity and Status. Reset filters clears them.',
+          'Search by reference, client, system or engineer; filter by Client, System, Year, Service engineer, Frequency, Validity and Status. Reset filters clears them.',
           'Validity → Due: Active contracts ending today or within 45 days (the AMC Renewal window).',
           'Validity → Expired: status Expired, or Active with its Valid To date passed. This is the same rule as the Expired figure, so the list and the figure always agree. A renewed contract still shows; its renewal never hides it.',
           'The Status filter uses the stored status only: an Active contract past its end date is listed under Validity → Expired, not under Status → Expired, until its status changes.',
@@ -626,7 +626,7 @@ const OPERATIONS: HelpTopic[] = [
       },
       {
         heading: 'Filters',
-        text: ['Search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid, and Billing status (Zoho): Invoiced, Not yet invoiced, No invoice required, Not completed, Cancelled.'],
+        text: ['Search, Client, Service engineer, System, Frequency, Visit status, Paid / Unpaid, and Billing status (Zoho): Invoiced, Not yet invoiced, No invoice required, Not completed, Cancelled.'],
       },
       {
         heading: 'Renewal warnings',
@@ -692,7 +692,7 @@ const OPERATIONS: HelpTopic[] = [
           'AMC Value (OMR): the AMC Value / Year of the service’s contract, excluding VAT, to plan manpower and days. Shown only to users who may view AMC Contracts; it is the contract’s value repeated on each service, so it is not added up.',
           'Service Value (OMR): the value of this one service, excluding VAT, the same value Master AMC Status shows: its share of the annual billing basis (for example 300.000 a quarter of 1,200.000 a year), or the Cost per Visit when the contract has no basis. “—” when no value is recorded; “No Billing Basis or Cost per Visit” when the contract has neither. Same access as AMC Value.',
           'Invoice Acknowledgement: Yes (green) when the client’s acknowledgement of this service’s invoice is on file and confirmed, No (red) when the service has an Invoice No. but no confirmed acknowledgement, Not Applicable when there is no invoice. It never changes the Service Status. Shown to users who may view Invoice Acknowledgements.',
-          'Sales Engineer Name: typed by hand beside the Service Report No. and saved with the row’s Save (up to 120 characters). It is separate from the Sales Engineer column, which comes from the contract’s Sales Engineer master record.',
+          'Sales Engineer Name: typed by hand beside the Service Report No. and saved with the row’s Save (up to 120 characters). It is separate from the Service Engineer column, which comes from the contract’s Sales Engineer master record.',
           'Changing the Sales Engineer Name needs Edit on AMC Execution and is recorded in the Audit Log. It is not locked by the Paid rule.',
         ],
       },
@@ -725,7 +725,7 @@ const OPERATIONS: HelpTopic[] = [
       },
       {
         heading: 'Filters',
-        text: ['Search, Client, Sales Engineer, Scheduled month and year, Service Status, Paid / Unpaid, Quotation Status and Row Colour. Press Apply; Reset clears them.'],
+        text: ['Search, Client, Service Engineer, Scheduled month and year, Service Status, Paid / Unpaid, Quotation Status and Row Colour. Press Apply; Reset clears them.'],
       },
       {
         heading: 'Good to know',
@@ -761,7 +761,7 @@ const OPERATIONS: HelpTopic[] = [
         steps: [
           'On Renewal Queue, find the contract (ending within 45 days or already ended) and click Start Renewal. On a contract page, Start Renewal opens the same form.',
           'The form is the Add AMC Contract form, filled from the contract being renewed (client, system, frequency, values). The contract being renewed is shown at the top.',
-          'The AMC Reference Number is kept: the renewal shows the same contract number and is saved as its next version (Version 2, 3, …). Check the dates, value and active sales engineer, and add renewal notes.',
+          'The AMC Reference Number is kept: the renewal shows the same contract number and is saved as its next version (Version 2, 3, …). Check the dates, value and active service engineer, and add renewal notes.',
           'Attach the updated renewal contract document (PDF or Word, up to 12 MB). It is required; the old contract’s document is never reused.',
           'Click Create renewal. It is saved as a draft, Under Client Approval, with no schedule yet.',
           'When the client approves, click Approve: the renewal becomes Active and its services are generated.',
@@ -833,7 +833,7 @@ const FINANCE: HelpTopic[] = [
       {
         heading: 'Filters and figures',
         bullets: [
-          'Search, Client, Sales Engineer, AMC Contract, Scheduled month and year, Paid / Unpaid and Service Status. Press Apply.',
+          'Search, Client, Service Engineer, AMC Contract, Scheduled month and year, Paid / Unpaid and Service Status. Press Apply.',
           'Figures: Rows, Completed, Not Completed, Invoice No. Filled, Total Value (Ex VAT).',
           'Entering a number needs Edit on Invoice Tracking; export needs Export on Accounts.',
         ],
@@ -1013,14 +1013,14 @@ const FINANCE: HelpTopic[] = [
     sections: [
       {
         heading: 'Run a report',
-        steps: ['Choose a report in the Report list.', 'Set the filters it offers (From, To, Client, Sales Engineer, System, Status…).', 'Read the results on screen, or export to Excel or PDF (needs Export on Reports). Exports include the filters and a total line.'],
+        steps: ['Choose a report in the Report list.', 'Set the filters it offers (From, To, Client, Service Engineer, System, Status…).', 'Read the results on screen, or export to Excel or PDF (needs Export on Reports). Exports include the filters and a total line.'],
       },
       {
         heading: 'Who sees which report',
         bullets: [
           'Each report also needs View of its source page; exporting it also needs Export of that page. The list shows only the reports you may open.',
           'AMC Contracts: AMC Contract Summary, Contract Value Review. AMC Renewal: AMC Renewal, Expiry & Renewal Due, Renewal History.',
-          'Accounts: Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise and Sales Engineer-wise Summary.',
+          'Accounts: Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise and Service Engineer-wise Summary.',
         ],
       },
       {
@@ -1028,7 +1028,7 @@ const FINANCE: HelpTopic[] = [
         bullets: [
           'AMC Contract Summary · Billing Schedule (with Paid / Unpaid) · Completed Services · Pending Services · Monthly Maintenance',
           'AMC Renewal · Expiry & Renewal Due (active contracts ending within 90 days or past validity) · Renewal History',
-          'Accounts / Paid and Unpaid Summary · Client-wise Summary · Sales Engineer-wise Summary',
+          'Accounts / Paid and Unpaid Summary · Client-wise Summary · Service Engineer-wise Summary',
           'Contract Value Review: flags multi-year contracts whose value may be whole-term rather than annual. It changes nothing.',
         ],
       },
@@ -1036,7 +1036,7 @@ const FINANCE: HelpTopic[] = [
       {
         heading: 'Monthly invoice values',
         bullets: [
-          'Monthly Maintenance (and the client and sales engineer summaries) show, per scheduled month: Value, Unpaid Value, Paid Value (Invoice No. entered), Zoho Invoice Value (Invoice Tracking) and Services Without Value.',
+          'Monthly Maintenance (and the client and service engineer summaries) show, per scheduled month: Value, Unpaid Value, Paid Value (Invoice No. entered), Zoho Invoice Value (Invoice Tracking) and Services Without Value.',
           'They use the same services as Accounts, so for the same filters and period the totals match Accounts. An Invoice No. is a reference status, not proof that money was received.',
           'Today, this month, due and expiring follow Oman time (Asia/Muscat), as everywhere in the application.',
           'A report opens only with View on Reports and View on its source page (Accounts for these reports); exporting also needs Export on both.',

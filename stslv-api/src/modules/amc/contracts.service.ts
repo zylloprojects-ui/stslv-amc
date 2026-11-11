@@ -1106,10 +1106,10 @@ async function assertRenewalEngineerChosen(db: Queryable, sourceId: string): Pro
   const previous = result.rows[0];
   const message =
     previous && !previous.is_active
-      ? `${previous.name}, the sales engineer of the contract being renewed, is no longer active. Select an active sales engineer.`
-      : "Select an active sales engineer for the renewal.";
+      ? `${previous.name}, the service engineer of the contract being renewed, is no longer active. Select an active service engineer.`
+      : "Select an active service engineer for the renewal.";
 
-  throw validationError("Select an active sales engineer for the renewal.", [{ field: "salesEngineerId", message }]);
+  throw validationError("Select an active service engineer for the renewal.", [{ field: "salesEngineerId", message }]);
 }
 
 async function linkRenewal(db: Queryable, auth: AuthContext, source: Contract, renewal: Contract, notes: string | null): Promise<void> {

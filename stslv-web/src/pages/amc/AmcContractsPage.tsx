@@ -517,11 +517,11 @@ export function AmcContractsPage() {
             )}
           </Filter>
           {options.data?.salesEngineers !== null && (
-            <Filter label="Sales engineer">
+            <Filter label="Service engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={choose(setSalesEngineerId)} className={className}>
-                  <option value="">All sales engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers linked to AMC contracts" />
+                  <option value="">All service engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No service engineers linked to AMC contracts" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}

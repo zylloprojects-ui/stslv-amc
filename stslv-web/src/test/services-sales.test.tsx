@@ -215,7 +215,7 @@ describe('Services Sales page', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: 'Esha Engineer' })).toBeInTheDocument())
     await userEvent.type(screen.getByLabelText('Search'), 'alpha')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
+    await userEvent.selectOptions(screen.getByLabelText('Service Engineer'), '4')
     await userEvent.selectOptions(screen.getByLabelText('System'), '3')
     await userEvent.selectOptions(screen.getByLabelText('Maintenance Frequency'), 'HALF_YEARLY')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
@@ -242,16 +242,16 @@ describe('Services Sales page', () => {
     renderPage()
 
     await screen.findByText('AMC-0007')
-    expect(screen.getByRole('columnheader', { name: 'Sales Engineer' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Service Engineer' })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Hide Columns' }))
     const dialog = within(screen.getByRole('dialog', { name: 'Hide columns' }))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Engineer' }))
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Frequency' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
-    expect(screen.queryByRole('columnheader', { name: 'Sales Engineer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Service Engineer' })).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Frequency' })).not.toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'AMC Reference' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide Columns (2)' })).toBeInTheDocument()
@@ -259,7 +259,7 @@ describe('Services Sales page', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Hide Columns (2)' }))
     await userEvent.click(within(screen.getByRole('dialog', { name: 'Hide columns' })).getByRole('button', { name: 'Show all' }))
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    expect(screen.getByRole('columnheader', { name: 'Sales Engineer' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Service Engineer' })).toBeInTheDocument()
   })
 
   it('renames and reorders the cards without changing their figures, and resets names and order separately', async () => {

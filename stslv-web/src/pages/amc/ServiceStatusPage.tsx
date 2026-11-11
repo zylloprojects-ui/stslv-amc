@@ -124,7 +124,7 @@ const COLUMNS = [
   // Separate from the execution status (2026-11-11): Yes / No / Not Applicable for the service's invoice. Offered only
   // to users who may view Invoice Acknowledgements.
   { key: 'acknowledgement', label: 'Invoice Acknowledgement' },
-  { key: 'engineer', label: 'Sales Engineer' },
+  { key: 'engineer', label: 'Service Engineer' },
   { key: 'report', label: 'Service Report No.' },
   // Typed by hand beside the report number (database update 0110); not the contract's Sales Engineer link.
   { key: 'engineerName', label: 'Sales Engineer Name' },
@@ -740,11 +740,11 @@ export function ServiceStatusPage() {
               )}
             </Filter>
             {opts?.salesEngineers !== null && (
-              <Filter label="Sales Engineer">
+              <Filter label="Service Engineer">
                 {(id, className) => (
                   <select id={id} value={filters.salesEngineerId} onChange={(event) => change('salesEngineerId')(event.target.value)} className={className}>
                     <option value="">All engineers</option>
-                    <OptionsNotice source={options} count={opts?.salesEngineers?.length ?? 0} empty="No sales engineers linked to current AMC visits" />
+                    <OptionsNotice source={options} count={opts?.salesEngineers?.length ?? 0} empty="No service engineers linked to current AMC visits" />
                     {(opts?.salesEngineers ?? []).map((engineer) => (
                       <option key={engineer.id} value={engineer.id}>
                         {engineer.name}

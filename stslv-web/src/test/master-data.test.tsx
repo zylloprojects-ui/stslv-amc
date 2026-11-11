@@ -141,7 +141,7 @@ describe('contract master links', () => {
     await userEvent.click(overview.getByRole('button', { name: 'Link master records' }))
     const dialog = await screen.findByRole('dialog', { name: 'Link master records' })
     await within(dialog).findByRole('option', { name: 'Test Engineer (E-001)' })
-    await userEvent.selectOptions(within(dialog).getByLabelText('Sales engineer'), '5')
+    await userEvent.selectOptions(within(dialog).getByLabelText('Service engineer'), '5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save links' }))
 
     // Only the link that changed is sent (2026-11-03).

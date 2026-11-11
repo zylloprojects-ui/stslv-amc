@@ -81,7 +81,7 @@ export function ServiceDetailsDialog({ visitId, onClose }: { visitId: string; on
               </span>
             </DetailRow>
             <DetailRow label="Completion date">{item.completedDate ? formatDate(item.completedDate) : <OrDash value={null} />}</DetailRow>
-            <DetailRow label="Sales Engineer">
+            <DetailRow label="Service Engineer">
               <OrDash value={item.salesEngineer?.name ?? null} />
             </DetailRow>
             <DetailRow label="Service Report No.">

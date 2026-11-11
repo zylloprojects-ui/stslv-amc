@@ -231,7 +231,7 @@ describe('Consolidated schedule', () => {
 
     await screen.findByRole('option', { name: 'Raghu' })
     await userEvent.selectOptions(within(form).getByLabelText('Client'), '10')
-    await userEvent.selectOptions(within(form).getByLabelText('Sales Engineer'), '5')
+    await userEvent.selectOptions(within(form).getByLabelText('Service Engineer'), '5')
     await userEvent.selectOptions(within(form).getByLabelText('System'), 'FIRE')
     await waitFor(() => {
       const query = api.find('GET', '/amc/visits/monthly-consolidated').at(-1)?.query

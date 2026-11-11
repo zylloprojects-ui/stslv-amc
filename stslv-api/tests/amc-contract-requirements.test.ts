@@ -84,7 +84,7 @@ describe("sales engineer", () => {
   it("is required, and must be an existing, active engineer", async () => {
     const missing = await post(await newContractBody(clientId, { salesEngineerId: undefined }));
     expect(missing.status).toBe(400);
-    expect(missing.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select a sales engineer." }]);
+    expect(missing.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select a service engineer." }]);
 
     expect(fields(await post(await newContractBody(clientId, { salesEngineerId: null })))).toEqual(["salesEngineerId"]);
     expect(fields(await post(await newContractBody(clientId, { salesEngineerId: "not-an-id" })))).toEqual(["salesEngineerId"]);
@@ -98,7 +98,7 @@ describe("sales engineer", () => {
     await pool.query("UPDATE sales_engineers SET is_active = false WHERE id = $1", [inactive]);
     const refused = await post(await newContractBody(clientId, { salesEngineerId: inactive }));
     expect(refused.status).toBe(400);
-    expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select an active sales engineer." }]);
+    expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select an active service engineer." }]);
     expect(await contractCount()).toBe(before);
   });
 

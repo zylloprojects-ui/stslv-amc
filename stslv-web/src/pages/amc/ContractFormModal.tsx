@@ -421,10 +421,10 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     if (engineerRequired && engineerPicker && !engineerId) {
       setEngineerError(
         previousInactive
-          ? `Select an active sales engineer. ${previousInactive.name}, the previous engineer, is no longer active.`
+          ? `Select an active service engineer. ${previousInactive.name}, the previous engineer, is no longer active.`
           : renewalOf
-            ? 'Select an active sales engineer for the renewal.'
-            : 'Select a sales engineer.',
+            ? 'Select an active service engineer for the renewal.'
+            : 'Select a service engineer.',
       )
       ok = false
     }
@@ -678,22 +678,22 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             {engineerListUnavailable && (
               <Alert>
                 {isForbidden(engineers.error) || isForbidden(currentLinks.error)
-                  ? `${renewalOf ? 'A renewal' : 'A new contract'} needs a sales engineer, but your role cannot read the sales engineer list. Ask an administrator to grant access.`
+                  ? `${renewalOf ? 'A renewal' : 'A new contract'} needs a service engineer, but your role cannot read the sales engineer list. Ask an administrator to grant access.`
                   : `The sales engineer list could not be loaded, and ${renewalOf ? 'a renewal' : 'a new contract'} needs one. Close this form and try again.`}
               </Alert>
             )}
             {engineerPicker && (
               <SelectField
-                label="Sales engineer (master list)"
+                label="Service engineer (master list)"
                 required={engineerRequired}
                 error={engineerError ?? undefined}
                 hint={
                   previousInactive
-                    ? `Previously assigned: ${previousInactive.name} (inactive). Select an active sales engineer for the renewal.`
+                    ? `Previously assigned: ${previousInactive.name} (inactive). Select an active service engineer for the renewal.`
                     : renewalOf
                       ? renewedEngineer
-                        ? 'Kept from the contract being renewed. A renewal needs an active sales engineer; you can choose another.'
-                        : 'A renewal needs an active sales engineer.'
+                        ? 'Kept from the contract being renewed. A renewal needs an active service engineer; you can choose another.'
+                        : 'A renewal needs an active service engineer.'
                       : (engineers.data ?? []).length === 0 && engineerRequired
                         ? 'No active sales engineers. Add one in Master Data → Sales Engineers first.'
                         : contract === null
@@ -705,7 +705,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               >
                 {engineerRequired ? (
                   <option value="" disabled>
-                    Select a sales engineer…
+                    Select a service engineer…
                   </option>
                 ) : (
                   <option value="">Not linked</option>

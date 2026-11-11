@@ -82,7 +82,7 @@ const visitColumns = (ctx: SqlContext) => `${ctx.reference("c")} AS reference, c
 const VISIT_REPORT_COLUMNS = [
   IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("frequency", "Frequency", 15),
   IDENT("service", "Service"), DATE("scheduled_date", "Scheduled Date"), TEXT("status", "Status", 13), IDENT("report_no", "Service Report No."),
-  IDENT("invoice_no", "Invoice No."), TEXT("payment", "Paid / Unpaid", 9), IDENT("zoho_invoices", "Zoho Invoices"), TEXT("engineer", "Sales Engineer", 16), MONEY("value", "Value (Ex VAT)"),
+  IDENT("invoice_no", "Invoice No."), TEXT("payment", "Paid / Unpaid", 9), IDENT("zoho_invoices", "Zoho Invoices"), TEXT("engineer", "Service Engineer", 16), MONEY("value", "Value (Ex VAT)"),
   MONEY("zoho_invoice_value", "Zoho Invoice Value"),
 ];
 
@@ -190,7 +190,7 @@ export const REPORTS = {
       { id: "unpaid", label: "Unpaid Amount", kind: "money", source: "unpaid_amount", hint: "Visits with no manual Invoice No., excluding VAT" },
     ],
     columns: [
-      IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("frequency", "Frequency", 15), TEXT("engineer", "Sales Engineer", 16),
+      IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("frequency", "Frequency", 15), TEXT("engineer", "Service Engineer", 16),
       DATE("valid_from", "Valid From"), DATE("valid_to", "Valid To"), TEXT("status", "Status", 10), MONEY("contract_value", "AMC Value / Year"), MONEY("final_credit", "Final Credit"),
       TEXT("billing_basis", "Billing Basis", 13), COUNT("services", "Services"), COUNT("completed", "Completed"), MONEY("scheduled_current_year", "Scheduled (Current Year)"), MONEY("unpaid_amount", "Unpaid Amount"),
     ],
@@ -298,7 +298,7 @@ export const REPORTS = {
     description: `Active contracts ending within ${EXPIRING_LIST_DAYS} days or already past validity, with days left and renewal state.`,
     filters: ["client", "engineer", "system"],
     columns: [
-      IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("engineer", "Sales Engineer", 16), DATE("valid_to", "Valid To"), COUNT("days_left", "Days Left"),
+      IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("engineer", "Service Engineer", 16), DATE("valid_to", "Valid To"), COUNT("days_left", "Days Left"),
       TEXT("renewal_state", "Renewal State", 18), IDENT("renewal_reference", "Renewal"), MONEY("contract_value", "AMC Value / Year"),
     ],
     sql: (where, ctx) => `
@@ -320,7 +320,7 @@ export const REPORTS = {
     filters: STANDARD_FILTERS,
     statuses: CONTRACT_STATUSES,
     columns: [
-      IDENT("reference", "AMC Reference"), IDENT("renewed_from", "Renewed From"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("engineer", "Sales Engineer", 16), DATE("source_valid_to", "Previous Valid To"),
+      IDENT("reference", "AMC Reference"), IDENT("renewed_from", "Renewed From"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("engineer", "Service Engineer", 16), DATE("source_valid_to", "Previous Valid To"),
       DATE("valid_from", "Valid From"), DATE("valid_to", "Valid To"), TEXT("status", "Status", 10), DATE("created_on", "Renewed On"), MONEY("source_value", "Previous AMC Value / Year"), MONEY("contract_value", "AMC Value / Year"),
     ],
     sql: (where, ctx) => `
@@ -369,12 +369,12 @@ export const REPORTS = {
     notes: [PAYMENT_NOTE],
   },
   "engineer-summary": {
-    title: "Sales Engineer-wise Summary",
+    title: "Service Engineer-wise Summary",
     sources: ["ACCOUNTS"],
-    description: "Services and values per sales engineer.",
+    description: "Services and values per service engineer.",
     filters: STANDARD_FILTERS,
     statuses: VISIT_REPORT_STATUSES,
-    columns: [TEXT("engineer", "Sales Engineer", 28), ...GROUP_COLUMNS],
+    columns: [TEXT("engineer", "Service Engineer", 28), ...GROUP_COLUMNS],
     sql: groupedVisits("COALESCE(se.name, 'Not linked') AS engineer", "se.id, se.name"),
     where: visitWhere,
     orderBy: "engineer",
@@ -526,7 +526,7 @@ export async function buildReportExport(auth: AuthContext, type: ReportType, que
   const nameOf = async (table: "clients" | "sales_engineers", id: string) => (await pool.query<{ name: string }>(`SELECT name FROM ${table} WHERE id = $1`, [id])).rows[0]?.name ?? "Unknown";
   const described: ReportDefinition["filters"] = [];
   if (rest.clientId) described.push({ label: "Client", value: await nameOf("clients", rest.clientId) });
-  if (rest.salesEngineerId) described.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", rest.salesEngineerId) });
+  if (rest.salesEngineerId) described.push({ label: "Service Engineer", value: await nameOf("sales_engineers", rest.salesEngineerId) });
   if (rest.system) described.push({ label: "System", value: rest.system });
   if (rest.status) described.push({ label: "Status", value: statusLabel(rest.status) });
   if (rest.payment) described.push({ label: "Paid / Unpaid", value: rest.payment === "PAID" ? "Paid" : "Unpaid" });

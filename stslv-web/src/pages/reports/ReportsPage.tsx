@@ -198,11 +198,11 @@ export function ReportsPage() {
             </Filter>
           )}
           {offers('engineer') && options.isSuccess && (
-            <Filter label="Sales Engineer">
+            <Filter label="Service Engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={change(setSalesEngineerId)} className={className}>
-                  <option value="">All sales engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers" />
+                  <option value="">All service engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No service engineers" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}

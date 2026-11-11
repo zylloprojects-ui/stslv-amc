@@ -37,7 +37,7 @@ const COLUMNS: (ReportColumn & { hideable?: ServiceStatusColumn })[] = [
   { key: "dueDate", header: "Due date", kind: "date", width: 13, hideable: "due" },
   { key: "serviceStatus", header: "Service status", kind: "text", width: 18, hideable: "status" },
   { key: "completedDate", header: "Completed date", kind: "date", width: 14, hideable: "status" },
-  { key: "salesEngineer", header: "Sales engineer", kind: "text", width: 20, wrap: true, hideable: "engineer" },
+  { key: "salesEngineer", header: "Service engineer", kind: "text", width: 20, wrap: true, hideable: "engineer" },
   { key: "reportNumber", header: "Service report no.", kind: "identifier", width: 18, hideable: "report" },
   { key: "salesEngineerName", header: "Sales Engineer Name", kind: "text", width: 20, wrap: true, hideable: "engineerName" },
   // The contract's AMC Value / Year on each of its services: repeated per service, so it is never totalled.
@@ -98,7 +98,7 @@ async function describeFilters(query: ExportServiceStatusQuery): Promise<ReportD
 
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("SELECT name FROM clients WHERE id = $1", query.clientId, "Unknown client") });
   if (query.salesEngineerId) {
-    filters.push({ label: "Sales engineer", value: await nameOf("SELECT name FROM sales_engineers WHERE id = $1", query.salesEngineerId, "Unknown engineer") });
+    filters.push({ label: "Service engineer", value: await nameOf("SELECT name FROM sales_engineers WHERE id = $1", query.salesEngineerId, "Unknown engineer") });
   }
   if (query.systemTypeId) {
     filters.push({ label: "System", value: await nameOf("SELECT name FROM system_types WHERE id = $1", query.systemTypeId, "Unknown system type") });

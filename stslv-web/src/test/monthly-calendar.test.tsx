@@ -195,7 +195,7 @@ describe('Monthly Calendar, Year view', () => {
     renderApp(`/amc/calendar?month=${YEAR}-03`)
 
     await monthsOf(YEAR)
-    await userEvent.selectOptions(await screen.findByLabelText('Sales engineer'), '7')
+    await userEvent.selectOptions(await screen.findByLabelText('Service engineer'), '7')
     await userEvent.selectOptions(screen.getByLabelText('Frequency'), 'QUARTERLY')
     await userEvent.selectOptions(screen.getByLabelText('Billing status (Zoho)'), 'NOT_YET_INVOICED')
     await userEvent.selectOptions(screen.getByLabelText('Visit status'), 'COMPLETED')

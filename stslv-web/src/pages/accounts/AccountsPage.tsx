@@ -403,11 +403,11 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Sales Engineer">
+            <Filter label="Service Engineer">
               {(id, className) => (
                 <select id={id} value={draft.salesEngineerId} onChange={(event) => set('salesEngineerId')(event.target.value)} className={className}>
-                  <option value="">All sales engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
+                  <option value="">All service engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No service engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -737,7 +737,7 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
           {item.invoiceValue ? formatMoney(item.invoiceValue) : <Missing title="No Zoho invoice recorded in Invoice Tracking for this service" />}
         </td>
       )}
-      {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
+      {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No service engineer" />}</td>}
     </tr>
   )
 }

@@ -46,7 +46,7 @@ const COLUMNS: (ReportColumn & { hideable?: MasterStatusColumn })[] = [
   { key: "quotationNo", header: "Quote No.", kind: "identifier", width: 15, hideable: "quotationNo" },
   // 2026-11-11: Yes / No / Not Applicable for this service's invoice; only for Invoice Acknowledgements: View.
   { key: "acknowledgement", header: "Invoice Acknowledged", kind: "text", width: 18, wrap: true, hideable: "acknowledgement" },
-  { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
+  { key: "salesEngineer", header: "Service Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
   { key: "colour", header: "Row Colour", kind: "text", width: 24 },
 ];
 
@@ -100,7 +100,7 @@ async function describeFilters(query: ExportMasterStatusQuery): Promise<ReportDe
     (await pool.query<{ name: string }>(`SELECT name FROM ${table} WHERE id = $1`, [id])).rows[0]?.name ?? unknown;
 
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
-  if (query.salesEngineerId) filters.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
+  if (query.salesEngineerId) filters.push({ label: "Service Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown service engineer") });
   if (query.month) filters.push({ label: "Month", value: MONTH_NAMES[query.month - 1] ?? String(query.month) });
   if (query.year) filters.push({ label: "Year", value: String(query.year) });
   if (query.serviceStatus) filters.push({ label: "Service status", value: SERVICE_STATUS_LABELS[query.serviceStatus] });

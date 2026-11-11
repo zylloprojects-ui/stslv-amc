@@ -32,7 +32,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceReportNo: 'Service Report No.',
   invoiceNo: 'Invoice No.',
   invoiceValue: 'Zoho Invoice Value (Ex VAT, OMR)',
-  salesEngineer: 'Sales Engineer',
+  salesEngineer: 'Service Engineer',
 }
 
 function load(key: string): ReadonlySet<ColumnId> {
