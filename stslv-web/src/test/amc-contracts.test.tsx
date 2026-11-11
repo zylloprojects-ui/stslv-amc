@@ -266,6 +266,8 @@ describe('add contract', () => {
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-02-29')
     await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '9000')
     await userEvent.type(within(dialog).getByLabelText('Default visit amount'), '4500.000')
+    // Final credit was filled from AMC Value (2026-11-11); a different amount typed over it is kept.
+    await userEvent.clear(within(dialog).getByLabelText(/Final credit/))
     await userEvent.type(within(dialog).getByLabelText(/Final credit/), '8000.5')
     await userEvent.upload(documentInput(dialog), new File(['%PDF-1.4'], 'signed.pdf', { type: 'application/pdf' }))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
@@ -274,7 +276,8 @@ describe('add contract', () => {
     expect(api.find('POST', '/amc/contracts')[0]?.body).toEqual({
       amcReference: 'STSLV-AMC-2026-015',
       clientId: '11',
-      billingBasis: null,
+      // A new contract starts on AMC Value / Year (2026-11-11).
+      billingBasis: 'CONTRACT_VALUE',
       systemTypeId: '22',
       systemDescription: 'Automation',
       salesEngineerId: '5',

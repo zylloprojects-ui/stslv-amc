@@ -124,6 +124,9 @@ export async function newContractBody(clientId: string, overrides: Record<string
     salesEngineerId: "salesEngineerId" in overrides ? undefined : await renewalEngineer("Contract Test Engineer"),
     systemTypeId: "systemTypeId" in overrides ? undefined : await systemTypeNamed(system),
     finalCredit: "0.000",
+    // Explicitly "Not set", so fixtures keep their manual Cost per Visit (defaultVisitAmount) as before the
+    // 2026-11-11 default (AMC Value / Year when left out). Tests of the default leave it out themselves.
+    billingBasis: null,
     contractDocument: contractDocument(),
     ...body,
   };

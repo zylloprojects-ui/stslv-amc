@@ -5,8 +5,10 @@ import type { AuthContext } from "../auth/access";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants";
 import type { ListMasterStatusQuery, RowColour } from "./master-status.schemas";
 import { serviceStatusSql } from "./service-status.service";
+import { NO_AMOUNT_SOURCE_SQL } from "./value-source";
 import { hasStoredReference, referenceSql } from "./contract-reference";
 import { SERVICE_IN_SCOPE } from "./service-scope";
+import { SERVICE_ACKNOWLEDGEMENT_SQL, serviceAcknowledgementsVisible, toServiceAcknowledgement, type ServiceAcknowledgement } from "../invoice-acknowledgements/service-acknowledgement";
 
 // Master AMC Status: a read-only overview with one row per scheduled
 // maintenance visit (amc_visits), never one per contract. It reads the same
@@ -52,7 +54,7 @@ const FROM = `
   ) inv ON true`;
 
 /** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
-const selectSql = (storedReference: boolean) => `
+const selectSql = (storedReference: boolean, acknowledgements = false) => `
   SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
@@ -63,8 +65,9 @@ const selectSql = (storedReference: boolean) => `
          se.id AS sales_engineer_id, se.name AS sales_engineer_name,
          COALESCE(inv.numbers, '{}') AS invoice_numbers, COALESCE(inv.refs, '{}') AS invoice_references, v.quotation_no,
          inv.amount::text AS invoice_amount, c.contract_value::text AS amc_value,
-         (c.billing_basis IS NULL AND c.default_visit_amount IS NULL) AS no_amount_source,
+         ${NO_AMOUNT_SOURCE_SQL} AS no_amount_source,
          ${SERVICE_STATUS_SQL} AS service_status,
+         ${acknowledgements ? SERVICE_ACKNOWLEDGEMENT_SQL : "NULL::jsonb"} AS acknowledgement,
          ${COLOUR_SQL} AS colour`;
 
 interface MasterRow {
@@ -96,6 +99,7 @@ interface MasterRow {
   amc_value: string;
   no_amount_source: boolean;
   service_status: ServiceStatus;
+  acknowledgement: unknown;
   colour: RowColour;
 }
 
@@ -131,19 +135,29 @@ export interface MasterStatusItem {
   valueSourceMissing: boolean;
   /** The contract's AMC Value / Year; null unless the user may see contract values (AMC Contracts: View). */
   amcValue: string | null;
+  /**
+   * "Invoice Acknowledged" of THIS service's invoice (2026-11-11): Yes / No / Not Applicable, see
+   * service-acknowledgement.ts. Per service, never per contract. Null when the user may not view Invoice Acknowledgements.
+   */
+  acknowledgement: ServiceAcknowledgement | null;
 }
 
 /** What the signed-in user may see here beyond the page itself: contract values need AMC Contracts: View. */
 export interface MasterStatusAccess {
   amcValue: boolean;
+  /** The Invoice Acknowledged column: Invoice Acknowledgements: View. */
+  acknowledgements?: boolean;
 }
 
-export function masterStatusAccess(auth: Pick<AuthContext, "permissions">): MasterStatusAccess {
+export async function masterStatusAccess(auth: Pick<AuthContext, "permissions">): Promise<MasterStatusAccess> {
   // No permission set (an internal caller): nothing extra is shown.
-  return { amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false };
+  return {
+    amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false,
+    acknowledgements: await serviceAcknowledgementsVisible(auth),
+  };
 }
 
-const NO_EXTRA_ACCESS: MasterStatusAccess = { amcValue: false };
+const NO_EXTRA_ACCESS: MasterStatusAccess = { amcValue: false, acknowledgements: false };
 
 function toItem(row: MasterRow, access: MasterStatusAccess = NO_EXTRA_ACCESS): MasterStatusItem {
   return {
@@ -169,6 +183,7 @@ function toItem(row: MasterRow, access: MasterStatusAccess = NO_EXTRA_ACCESS): M
     invoiceValue: row.invoice_amount,
     valueSourceMissing: row.visit_amount === null && row.no_amount_source,
     amcValue: access.amcValue ? row.amc_value : null,
+    acknowledgement: access.acknowledgements ? toServiceAcknowledgement(row.acknowledgement) : null,
   };
 }
 
@@ -284,14 +299,14 @@ export async function listMasterStatus(query: ListMasterStatusQuery, access: Mas
   const { where, params } = filterSql(query, storedReference);
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<MasterRow>(`${selectSql(storedReference)} ${FROM} ${where} ORDER BY ${sortSql(query.sort, storedReference)} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements)} ${FROM} ${where} ORDER BY ${sortSql(query.sort, storedReference)} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,
     ]),
   ]);
 
-  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue };
+  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue, acknowledgementsVisible: access.acknowledgements === true };
 }
 
 /**
@@ -306,7 +321,7 @@ export async function listAllMasterStatus(filters: MasterStatusFilters, checkSiz
 
   checkSize(figures.total);
 
-  const rows = await pool.query<MasterRow>(`${selectSql(storedReference)} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements)} ${FROM} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map((row) => toItem(row, access)), kpis: figures };
 }

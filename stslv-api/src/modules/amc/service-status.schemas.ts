@@ -5,7 +5,11 @@ import { z } from "zod";
  * "serviceReport" (the uploaded document, 0104) is a page column only: the export has no file column, so hiding it
  * changes nothing in an export.
  */
-export const SERVICE_STATUS_HIDEABLE_COLUMNS = ["client", "system", "frequency", "service", "due", "status", "engineer", "report", "engineerName", "amcValue", "serviceReport"] as const;
+export const SERVICE_STATUS_HIDEABLE_COLUMNS = [
+  "client", "system", "frequency", "service", "due", "status", "engineer", "report", "engineerName", "amcValue", "serviceReport",
+  // 2026-11-11: this service's own value (beside the contract's AMC Value), and the invoice acknowledgement indicator.
+  "serviceValue", "acknowledgement",
+] as const;
 export type ServiceStatusColumn = (typeof SERVICE_STATUS_HIDEABLE_COLUMNS)[number];
 
 /** The `hidden` query value of an export: a comma-separated list of known columns. An unknown column is refused. */

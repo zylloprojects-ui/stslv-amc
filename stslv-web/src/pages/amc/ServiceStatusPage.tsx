@@ -8,6 +8,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
+import { ServiceAcknowledgementIndicator } from '../invoiceAcknowledgements/ServiceAcknowledgement'
 import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
@@ -115,8 +116,14 @@ const COLUMNS = [
   { key: 'service', label: 'Service' },
   // The linked contract's AMC Value / Year: offered only to users who may see contract values (AMC Contracts: View).
   { key: 'amcValue', label: 'AMC Value (OMR)' },
+  // This service's own value (2026-11-11): visit_amount, the same value Master AMC Status shows (its share of the
+  // billing basis, or the manual Cost per Visit), never the contract's full value. Same access as AMC Value.
+  { key: 'serviceValue', label: 'Service Value (OMR)' },
   { key: 'due', label: 'Scheduled Month / Due Date' },
   { key: 'status', label: 'Service Status' },
+  // Separate from the execution status (2026-11-11): Yes / No / Not Applicable for the service's invoice. Offered only
+  // to users who may view Invoice Acknowledgements.
+  { key: 'acknowledgement', label: 'Invoice Acknowledgement' },
   { key: 'engineer', label: 'Sales Engineer' },
   { key: 'report', label: 'Service Report No.' },
   // Typed by hand beside the report number (database update 0110); not the contract's Sales Engineer link.
@@ -301,6 +308,20 @@ function ServiceRow({
           {item.amcValue === null || item.amcValue === undefined ? <span className="text-slate-400">—</span> : formatMoney(item.amcValue)}
         </td>
       )}
+      {shown('serviceValue') && (
+        <td className={cx(TABLE.td, 'whitespace-nowrap text-right font-semibold tabular-nums text-slate-900')} title="This service's value, OMR excluding VAT">
+          {item.serviceValue === null || item.serviceValue === undefined ? (
+            <span className="text-slate-400" title="No value recorded for this service">
+              —<span className="sr-only">No value recorded</span>
+            </span>
+          ) : (
+            formatMoney(item.serviceValue)
+          )}
+          {(item.serviceValue === null || item.serviceValue === undefined) && item.valueSourceMissing && (
+            <div className="text-xs font-normal text-amber-700">No Billing Basis or Cost per Visit</div>
+          )}
+        </td>
+      )}
       {shown('due') && (
         <td className={cx(TABLE.td, 'whitespace-nowrap')}>
           <div className="font-medium text-slate-900">{MONTH_NAMES[Number(item.scheduledDate.slice(5, 7)) - 1]} {item.scheduledDate.slice(0, 4)}</div>
@@ -337,6 +358,11 @@ function ServiceRow({
               <option value="COMPLETED">{SERVICE_STATUS_LABELS.COMPLETED}</option>
             </select>
           )}
+        </td>
+      )}
+      {shown('acknowledgement') && (
+        <td className={cx(TABLE.td, 'min-w-[9rem]')}>
+          {item.acknowledgement ? <ServiceAcknowledgementIndicator acknowledgement={item.acknowledgement} /> : <span className="text-slate-400">—</span>}
         </td>
       )}
       {shown('engineer') && (
@@ -601,7 +627,13 @@ export function ServiceStatusPage() {
   const amcValueVisible = data?.amcValueVisible === true
   const engineerNameAvailable = data?.salesEngineerNameAvailable === true
   // Columns this user and database can have at all; the rest of the choice is the user's Hide Columns setting.
-  const availableColumns = COLUMNS.filter((column) => (column.key !== 'amcValue' || amcValueVisible) && (column.key !== 'engineerName' || engineerNameAvailable))
+  const acknowledgementsVisible = data?.acknowledgementsVisible === true
+  const availableColumns = COLUMNS.filter(
+    (column) =>
+      ((column.key !== 'amcValue' && column.key !== 'serviceValue') || amcValueVisible) &&
+      (column.key !== 'acknowledgement' || acknowledgementsVisible) &&
+      (column.key !== 'engineerName' || engineerNameAvailable),
+  )
   const shown = (key: ColumnKey) => availableColumns.some((column) => column.key === key) && !hidden.has(key)
   const hiddenCount = availableColumns.filter((column) => hidden.has(column.key)).length
   const years = [...new Set([...(opts?.years ?? []), Number(todayIso().slice(0, 4))])].sort((a, b) => a - b)
@@ -866,7 +898,7 @@ export function ServiceStatusPage() {
                       AMC Reference
                     </th>
                     {COLUMNS.filter((column) => shown(column.key)).map((column) => (
-                      <th key={column.key} scope="col" className={cx(TABLE.th, column.key === 'amcValue' && 'text-right')}>
+                      <th key={column.key} scope="col" className={cx(TABLE.th, (column.key === 'amcValue' || column.key === 'serviceValue') && 'text-right')}>
                         {column.label}
                       </th>
                     ))}

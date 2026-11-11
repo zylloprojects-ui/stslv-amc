@@ -16,6 +16,9 @@ import { frequencyLabel, type Contract, type SavedContract, type SchedulePreview
 
 const DURATION_YEARS = [1, 2, 3, 4, 5, 6]
 
+/** The billing basis a new contract starts with (2026-11-11, as the API's default): AMC Value / Year. It can be changed. */
+const NEW_CONTRACT_BILLING_BASIS = 'CONTRACT_VALUE'
+
 /** The System choice of an older contract whose typed system is not linked to the System Types list: kept as it is. */
 const CURRENT_SYSTEM = '__current__'
 
@@ -154,7 +157,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       contractValue: start?.contractValue ?? '',
       defaultVisitAmount: start?.defaultVisitAmount ?? '',
       finalCredit: start?.finalCredit ?? '',
-      billingBasis: start?.billingBasis ?? '',
+      // A new contract starts on AMC Value / Year (2026-11-11); an edit or renewal keeps the stored basis.
+      billingBasis: start ? (start.billingBasis ?? '') : NEW_CONTRACT_BILLING_BASIS,
       customBillingValue: start?.customBillingValue ?? '',
       description: start?.description ?? '',
       notes: contract?.notes ?? '',
@@ -296,6 +300,20 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
 
   // Final Credit is required on a new contract, and on a contract that already has one (it cannot be cleared).
   const finalCreditRequired = isNew || (contract !== null && contract.finalCredit !== null)
+
+  // Final credit follows AMC Value / Year while the user has not typed it (2026-11-11): on a new contract, and on a
+  // renewal whose renewed contract had the two equal. Never on an edit, so stored values are never changed. Typing in
+  // Final credit ends it for this form; each new form starts again.
+  const finalFollowsAtStart = isNew || (renewalOf !== undefined && renewalOf.finalCredit === renewalOf.contractValue)
+  const [finalTyped, setFinalTyped] = useState(false)
+  const contractValueField = register('contractValue', {
+    onChange: (event: { target: { value: string } }) => {
+      if (finalFollowsAtStart && !finalTyped) setValue('finalCredit', event.target.value, { shouldDirty: true })
+    },
+  })
+  const finalCreditField = register('finalCredit', {
+    onChange: () => setFinalTyped(true),
+  })
 
   const save = useMutation({
     mutationFn: async (values: ContractForm) => {
@@ -782,7 +800,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
           )}
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <TextField label="AMC Value / Year" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.contractValue?.message} {...register('contractValue')} />
+            <TextField label="AMC Value / Year" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.contractValue?.message} {...contractValueField} />
             <TextField
               label="Default visit amount"
               inputMode="decimal"
@@ -795,12 +813,13 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               required={finalCreditRequired}
               inputMode="decimal"
               hint={
-                finalCreditRequired
+                (finalCreditRequired
                   ? 'Annual amount in OMR, excluding VAT; 0 when there is none. Used for visit amounts only when it is the selected billing basis.'
-                  : 'Not recorded on this older contract. Annual amount; used for visit amounts only when it is the selected billing basis.'
+                  : 'Not recorded on this older contract. Annual amount; used for visit amounts only when it is the selected billing basis.') +
+                (finalFollowsAtStart ? ' Filled from AMC Value / Year until you change it.' : '')
               }
               error={errors.finalCredit?.message}
-              {...register('finalCredit')}
+              {...finalCreditField}
             />
           </div>
 

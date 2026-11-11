@@ -16,7 +16,7 @@ import { contractParents, restoreBlockers } from "../recycle-bin/contract-parent
 import { amountForService, expectedTermTotal, serviceAmounts, servicesPerCycle, subtractMoney } from "./amc.billing";
 import { applyContractMasters } from "./contract-masters.service";
 import { RENEWAL_WARNING_DAYS } from "./management.service";
-import { CONTRACT_TRANSITIONS, MAX_CONTRACT_YEARS, type ContractStatus, type VisitStatus } from "./amc.constants";
+import { CONTRACT_STATUSES, CONTRACT_TRANSITIONS, MAX_CONTRACT_YEARS, type ContractStatus, type VisitStatus } from "./amc.constants";
 import {
   addMonths,
   buildSchedulePeriods,
@@ -426,6 +426,30 @@ export const CONTRACT_VALIDITY_FILTERS = {
   due: `(c.status = 'ACTIVE' AND c.valid_to BETWEEN ${BUSINESS_TODAY_SQL} AND ${BUSINESS_TODAY_SQL} + ${RENEWAL_WARNING_DAYS})`,
 } as const;
 
+/** The register's usual order, also the tie-breaker of every sort so paging is stable. */
+const DEFAULT_CONTRACT_ORDER = "lower(cl.name), c.valid_from DESC, c.id";
+
+/**
+ * ORDER BY for a sorted column (2026-11-11): whitelisted expressions only, never request text. Amounts sort as numbers
+ * and dates as dates; text ignores case; status follows the workflow (Draft, Active, Expired, Cancelled). Empty values
+ * (no engineer, no Final Credit) come last in either direction.
+ */
+function contractOrderSql(sort: ListContractsQuery["sort"], direction: "asc" | "desc", storedReference: boolean): string {
+  if (!sort) return `ORDER BY ${DEFAULT_CONTRACT_ORDER}`;
+  const expressions: Record<NonNullable<ListContractsQuery["sort"]>, string> = {
+    reference: `lower(${referenceSql("c", storedReference)})`,
+    client: "lower(cl.name)",
+    engineer: "lower(NULLIF(btrim(c.responsible_engineer), ''))",
+    validFrom: "c.valid_from",
+    validTo: "c.valid_to",
+    contractValue: "c.contract_value",
+    finalCredit: "c.final_credit",
+    status: `array_position(ARRAY[${CONTRACT_STATUSES.map((status) => `'${status}'`).join(", ")}]::text[], c.status::text)`,
+  };
+
+  return `ORDER BY ${expressions[sort]} ${direction === "desc" ? "DESC" : "ASC"} NULLS LAST, ${DEFAULT_CONTRACT_ORDER}`;
+}
+
 export async function listContracts(query: ListContractsQuery) {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -480,7 +504,7 @@ export async function listContracts(query: ListContractsQuery) {
   );
   const rows = await pool.query<ContractRow>(
     `${contractSelect(await hasFrequencyRules(), storedReference)} ${where}
-     ORDER BY lower(cl.name), c.valid_from DESC, c.id
+     ${contractOrderSql(query.sort, query.direction, storedReference)}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );

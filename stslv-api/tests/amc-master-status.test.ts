@@ -325,7 +325,8 @@ describe("Master AMC Status", () => {
       // Zoho Invoices (Tracking) and their Zoho References follow Invoice No. (P2, 2026-11-09) and are hidden with it.
       expect(header).toEqual([
         "#", "AMC Reference", "Client", "Frequency", "Service", "Scheduled Month", "Value (Ex VAT)", "Service Status",
-        "Invoice No.", "Zoho Invoices (Tracking)", "Zoho References (Tracking)", "Quote No.", "Row Colour",
+        // Invoice Acknowledged (2026-11-11) follows Quote No. for a user who may view Invoice Acknowledgements (this admin).
+        "Invoice No.", "Zoho Invoices (Tracking)", "Zoho References (Tracking)", "Quote No.", "Invoice Acknowledged", "Row Colour",
       ]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
       expect(rows.map((row) => row[2])).toEqual(["Alpha Towers", "Alpha Towers", "Alpha Towers", "Alpha Towers"]);
@@ -337,8 +338,11 @@ describe("Master AMC Status", () => {
       // A formula-like number is written as text, never run.
       expect(rows[0]?.[11]).not.toBe("=QT-1");
       expect(String(rows[0]?.[11])).toContain("QT-1");
-      expect(rows[0]?.[12]).toBe("Green · Paid and quoted");
-      expect(rows[1]?.[12]).toBe("Red · Not completed");
+      // Invoice Acknowledged: INV-9 has an Invoice No. but no confirmed acknowledgement; the second visit has no invoice.
+      expect(rows[0]?.[12]).toBe("No");
+      expect(rows[1]?.[12]).toBe("Not Applicable");
+      expect(rows[0]?.[13]).toBe("Green · Paid and quoted");
+      expect(rows[1]?.[13]).toBe("Red · Not completed");
 
       const audit = await pool.query<{ metadata: { rowCount: number; hidden: string[] } }>(
         "SELECT metadata FROM activity_logs WHERE action = 'master_amc_status.exported' ORDER BY id DESC LIMIT 1"

@@ -1,6 +1,8 @@
 // Shapes returned by the AMC API (/api/amc). Money is text with three decimals
 // ("405.000") and is never converted to a JavaScript number. Dates are "YYYY-MM-DD".
 
+import type { ServiceAcknowledgement } from '../invoiceAcknowledgements/ServiceAcknowledgement'
+
 /** The four built-in frequencies, offered when the frequency master (migration 0076) is not available. */
 export const MAINTENANCE_FREQUENCIES = ['MONTHLY', 'QUARTERLY', 'HALF_YEARLY', 'ANNUALLY'] as const
 
@@ -204,6 +206,8 @@ export interface ScheduleVisit extends ExecutionVisit {
   /** The quotation number recorded for this visit on Service Sales; read-only everywhere else. Null when none. */
   quotationNo: string | null
   colorState?: 'MANUAL' | 'CANCELLED' | 'INVOICE_PENDING' | 'FIRST_SERVICE' | 'NORMAL'
+  /** The visit's invoice acknowledgement: only in the list, and only for Invoice Acknowledgements: View (2026-11-11). */
+  acknowledgement?: ServiceAcknowledgement | null
 }
 
 export const COLOR_PRIORITY_RULE = 'Manual → Cancelled → Invoice Pending → First Service → Normal'
@@ -216,4 +220,6 @@ export interface VisitList {
   page: number
   pageSize: number
   totals: { visitAmount: string; amountMissingCount: number }
+  /** The items carry their invoice acknowledgement (Invoice Acknowledgements: View). Absent from an older API. */
+  acknowledgementsVisible?: boolean
 }

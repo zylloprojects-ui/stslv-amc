@@ -328,7 +328,8 @@ amcRouter.post("/contracts/:id/schedule/regenerate", authorize("AMC_CONTRACTS", 
 const SCHEDULE_PAGES: Parameters<typeof authorizeOnAny>[0] = ["AMC_SCHEDULE", "MONTHLY_CALENDAR"];
 
 amcRouter.get("/visits", authorizeOnAny(SCHEDULE_PAGES, "VIEW"), async (req, res) => {
-  res.json({ success: true, data: await listVisits(listVisitsSchema.parse(req.query)) });
+  // The invoice acknowledgement of each visit is added only for Invoice Acknowledgements: View (service-acknowledgement.ts).
+  res.json({ success: true, data: await listVisits(listVisitsSchema.parse(req.query), requireAuth(req)) });
 });
 
 // The schedule as an Excel workbook or a PDF, with the list's own filters. Exporting needs
@@ -399,7 +400,7 @@ amcRouter.patch("/execution/visits/:id", authorize("AMC_EXECUTION", "EDIT"), asy
 // execution, so it needs AMC_EXECUTION:EDIT. Completing needs the visit's service
 // report and a completed visit is locked (checked by the execution rules).
 amcRouter.get("/service-status", authorize("SERVICE_STATUS", "VIEW"), async (req, res) => {
-  res.json({ success: true, data: await listServiceStatus(listServiceStatusSchema.parse(req.query), serviceStatusAccess(requireAuth(req))) });
+  res.json({ success: true, data: await listServiceStatus(listServiceStatusSchema.parse(req.query), await serviceStatusAccess(requireAuth(req))) });
 });
 
 // The filter lists (sales engineers, frequencies, years on visits), shared with the Monthly Calendar.
@@ -422,7 +423,7 @@ amcRouter.get("/service-status/export", authorize("SERVICE_STATUS", "VIEW"), aut
 
 // One service, by its visit id, for the read-only View dialog.
 amcRouter.get("/service-status/:id", authorize("SERVICE_STATUS", "VIEW"), async (req, res) => {
-  res.json({ success: true, data: await getServiceStatusItem(parseIdParam(req.params.id), serviceStatusAccess(requireAuth(req))) });
+  res.json({ success: true, data: await getServiceStatusItem(parseIdParam(req.params.id), await serviceStatusAccess(requireAuth(req))) });
 });
 
 // The Service Report document of one service (migration 0104). Viewing or downloading it needs SERVICE_STATUS:VIEW;
@@ -478,7 +479,7 @@ const masterStatusReady = requireSchema(["amc_visits.quotation_no"]);
 const masterStatusView = [authorize("MASTER_AMC_STATUS", "VIEW"), masterStatusReady];
 
 amcRouter.get("/master-status", ...masterStatusView, async (req, res) => {
-  res.json({ success: true, data: await listMasterStatus(listMasterStatusSchema.parse(req.query), masterStatusAccess(requireAuth(req))) });
+  res.json({ success: true, data: await listMasterStatus(listMasterStatusSchema.parse(req.query), await masterStatusAccess(requireAuth(req))) });
 });
 
 amcRouter.get("/master-status/options", ...masterStatusView, async (_req, res) => {

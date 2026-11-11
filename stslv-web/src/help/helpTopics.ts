@@ -433,7 +433,7 @@ const CONTRACTS: HelpTopic[] = [
           'Enter the AMC Reference Number (typed by you, unique, e.g. AMC-2026-001).',
           'Choose the Client, System, Sales engineer and Maintenance frequency (active records only).',
           'Enter Valid from and Valid to, or pick a Contract duration of 1–6 years.',
-          'Enter AMC Value / Year and Final credit (0 when there is none); optionally a Default visit amount and a Billing basis.',
+          'Enter AMC Value / Year; Final credit is filled with the same amount until you change it (0 when there is none). Billing basis starts on AMC Value / Year and can be changed; optionally a Default visit amount.',
           'Attach the contract document (PDF or Word, up to 12 MB) and save. The contract is added as Active and its services are generated.',
         ],
       },
@@ -689,6 +689,8 @@ const OPERATIONS: HelpTopic[] = [
         heading: 'AMC Value and Sales Engineer Name',
         bullets: [
           'AMC Value (OMR): the AMC Value / Year of the service’s contract, excluding VAT, to plan manpower and days. Shown only to users who may view AMC Contracts; it is the contract’s value repeated on each service, so it is not added up.',
+          'Service Value (OMR): the value of this one service, excluding VAT, the same value Master AMC Status shows: its share of the annual billing basis (for example 300.000 a quarter of 1,200.000 a year), or the Cost per Visit when the contract has no basis. “—” when no value is recorded; “No Billing Basis or Cost per Visit” when the contract has neither. Same access as AMC Value.',
+          'Invoice Acknowledgement: Yes (green) when the client’s acknowledgement of this service’s invoice is on file and confirmed, No (red) when the service has an Invoice No. but no confirmed acknowledgement, Not Applicable when there is no invoice. It never changes the Service Status. Shown to users who may view Invoice Acknowledgements.',
           'Sales Engineer Name: typed by hand beside the Service Report No. and saved with the row’s Save (up to 120 characters). It is separate from the Sales Engineer column, which comes from the contract’s Sales Engineer master record.',
           'Changing the Sales Engineer Name needs Edit on AMC Execution and is recorded in the Audit Log. It is not locked by the Paid rule.',
         ],
@@ -712,6 +714,12 @@ const OPERATIONS: HelpTopic[] = [
           { term: 'Yellow', meaning: 'Completed, invoice pending (Unpaid: no manual Invoice No.).' },
           { term: 'Blue', meaning: 'Paid, quote pending (no quotation number).' },
           { term: 'Green', meaning: 'Paid and quoted.' },
+        ],
+      },
+      {
+        heading: 'Invoice Acknowledged',
+        text: [
+          'For users who may view Invoice Acknowledgements, a column after Quote No. shows each service’s invoice: Yes (green: the acknowledgement document is on file and confirmed), No (red: an Invoice No. is entered but the acknowledgement is missing or awaiting confirmation) or Not Applicable (no invoice). Each row is one service, so a contract with several invoices shows each one separately. It does not change the row colour. Download document opens the file privately.',
         ],
       },
       {

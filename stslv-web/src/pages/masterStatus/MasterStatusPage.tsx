@@ -11,6 +11,7 @@ import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
 import { PaymentBadge } from '../amc/ManualInvoiceField'
+import { ServiceAcknowledgementIndicator } from '../invoiceAcknowledgements/ServiceAcknowledgement'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
 import { Filter, FilterPanel, Pager } from '../amc/components'
@@ -209,7 +210,7 @@ const Missing = ({ title }: { title: string }) => (
 )
 
 /** Show or hide columns. AMC Reference and the View action always stay. */
-function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<ColumnId>; onSave: (hidden: ReadonlySet<ColumnId>) => void; onClose: () => void }) {
+function HideColumnsDialog({ columns, hidden, onSave, onClose }: { columns: readonly ColumnId[]; hidden: ReadonlySet<ColumnId>; onSave: (hidden: ReadonlySet<ColumnId>) => void; onClose: () => void }) {
   const [draft, setDraft] = useState<Set<ColumnId>>(new Set(hidden))
   const toggle = (id: ColumnId) => {
     const next = new Set(draft)
@@ -240,7 +241,7 @@ function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<Co
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">
-          {COLUMN_IDS.map((id) => (
+          {columns.map((id) => (
             <li key={id}>
               <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-sky-50">
                 <input type="checkbox" checked={!draft.has(id)} onChange={() => toggle(id)} className="h-4 w-4 rounded border-slate-300 accent-[#1479BD]" />
@@ -381,8 +382,10 @@ export function MasterStatusPage() {
   const pendingChanges = JSON.stringify({ ...draft, search: draft.search.trim() }) !== JSON.stringify(filters)
 
   const data = status.data
-  const shown = (id: ColumnId) => !hidden.has(id)
-  const visible = COLUMN_IDS.filter(shown)
+  // Invoice Acknowledged is offered only when the API sends it (Invoice Acknowledgements: View).
+  const columns = COLUMN_IDS.filter((id) => id !== 'acknowledgement' || data?.acknowledgementsVisible === true)
+  const shown = (id: ColumnId) => !hidden.has(id) && columns.includes(id)
+  const visible = columns.filter(shown)
 
   return (
     <>
@@ -545,7 +548,7 @@ export function MasterStatusPage() {
                 {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
               </div>
               <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
-                Hide Columns · {visible.length} of {COLUMN_IDS.length} shown
+                Hide Columns · {visible.length} of {columns.length} shown
               </Button>
             </div>
           </form>
@@ -632,6 +635,7 @@ export function MasterStatusPage() {
 
       {columnsOpen && (
         <HideColumnsDialog
+          columns={columns}
           hidden={hidden}
           onSave={(next) => {
             setHidden(next)
@@ -718,6 +722,11 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
       {shown('quotationNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
           {item.quotationNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.quotationNo}</span> : <Missing title="No quotation number recorded" />}
+        </td>
+      )}
+      {shown('acknowledgement') && (
+        <td className={`${TABLE.td} min-w-[9rem]`}>
+          {item.acknowledgement ? <ServiceAcknowledgementIndicator acknowledgement={item.acknowledgement} /> : <Missing title="Acknowledgement not available" />}
         </td>
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
