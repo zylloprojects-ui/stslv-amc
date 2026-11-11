@@ -35,11 +35,12 @@ UAT environment: ____________ Application version: ____________ Test period: ___
 
 | Test ID | Pri | Role | Preconditions | Test steps | Expected result | Actual result | Pass/Fail | Tester | Date | Comments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| DASH-01 | C | AD | Contracts and services exist | Open Dashboard | Three KPI rows (AMC Portfolio, Current Month, Overall); figures load | | | | | |
+| DASH-01 | C | AD | Contracts and services exist | Open Dashboard | Four KPI rows (AMC Portfolio, Current Month, Overall, Current Year (YTD)); figures load | | | | | |
 | DASH-02 | C | AD | Known count of Active contracts | Compare Active AMCs with AMC Contracts filtered to Active | Same number | | | | | |
 | DASH-03 | C | FIN | One service marked Paid this month | Check Invoices Generated (Current Month) | Count and OMR include it; hint says reference status, not verified payment | | | | | |
 | DASH-04 | H | MD | Role without schedule/invoice access | Open Dashboard | Only permitted figures shown; no errors | | | | | |
 | DASH-05 | M | OPS | Service today | Click it in Today panel | Service details with payment status wording | | | | | |
+| DASH-06 | H | OPS | Services this year before, on and after today | Compare Current Year (YTD) with AMC Schedule filtered from January 1 to today | Due = services in that range (cancelled excluded); Completed + Pending = Due; services after today not counted | | | | | |
 
 ## 3. Master Data Center
 

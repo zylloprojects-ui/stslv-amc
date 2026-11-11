@@ -178,11 +178,12 @@ const MASTER_DATA: HelpTopic[] = [
     summary: 'The AMC Operations Dashboard: contracts, this month’s services, invoice numbers and renewals at a glance. Each figure is shown only if your role can view its module.',
     sections: [
       {
-        heading: 'Key figures (three rows)',
+        heading: 'Key figures (four rows)',
         terms: [
           { term: 'AMC Portfolio', meaning: 'Active AMCs, Annual AMC Value (Ex VAT), Final Credit (Ex VAT) and Expiring ≤45 Days, over Active contracts.' },
           { term: 'Current Month', meaning: 'Services This Month, Services Pending, Invoices Generated and Invoices Not Generated for services scheduled this month.' },
           { term: 'Overall', meaning: 'The same service and invoice figures across all service records, earlier years and visits ahead.' },
+          { term: 'Current Year (YTD)', meaning: 'Services Due, Services Completed and Services Pending for services scheduled from January 1 through today (Oman time). Visits after today are not counted; Pending = Due − Completed.' },
         ],
       },
       {

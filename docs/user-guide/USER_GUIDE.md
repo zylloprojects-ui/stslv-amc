@@ -200,6 +200,9 @@ Where a Zoho record exists it is shown beneath the Invoice No. as "Zoho: INV-…
 | | Invoices Generated | Services with a manual Invoice No. (count and OMR: the service values; *Amount not recorded* when they have none) |
 | | Invoices Not Generated | Services without one |
 | Overall | Same four service/invoice figures across all records, including earlier years and visits ahead | |
+| Current Year (YTD) | Services Due | Services scheduled from January 1 of this year through today (Oman time), completed or not; visits after today are not counted |
+| | Services Completed | Of those, the completed ones |
+| | Services Pending | Due − Completed (Scheduled, In progress or Postponed); notes how many are overdue |
 
 "Invoices Generated" is the Paid reference status (§2), not verified payment.
 

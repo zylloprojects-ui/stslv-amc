@@ -77,9 +77,9 @@ function KpiCard({ kpi, state, column, order }: { kpi: KpiDefinition; state: Car
 }
 
 /**
- * The twelve key figures in three fixed rows: AMC Portfolio, Current Month and Overall. Four cards a row on
- * a wide screen, two on a tablet, one on a phone. Rows 2 and 3 share card names, so each row carries its own
- * heading. A row with no card this user may see is left out.
+ * The twelve key figures in three fixed rows: AMC Portfolio, Current Month and Overall, then the three-card
+ * Current Year (YTD) row. Four cards a row on a wide screen, two on a tablet, one on a phone. Rows share card
+ * names, so each row carries its own heading. A row with no card this user may see is left out.
  */
 export function KpiStrip({ data, failed, canView }: KpiStripProps) {
   let order = 0

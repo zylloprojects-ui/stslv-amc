@@ -96,6 +96,26 @@ export interface OperationsDashboard {
   workload: { months: WorkloadMonth[] } | null
   schedule: { today: ScheduleItem[]; todayTotal: number; upcoming: ScheduleItem[]; upcomingTotal: number; upcomingDays: number } | null
   paymentTrend: { months: PaymentTrendMonth[] } | null
+  /** The Current Year (YTD) row. Null without schedule or execution view; absent from an older API (the row is then not shown). */
+  yearToDate?: YearToDateServices | null
+}
+
+/**
+ * Counted services (the same scope as Current Month and Overall) scheduled from January 1 of Oman's year through Oman's
+ * today, both included. Visits ahead are not counted. pending = due - completed; overdue is part of pending.
+ */
+export interface YearToDateServices {
+  from: string
+  to: string
+  due: number
+  completed: number
+  pending: number
+  overdue: number
+}
+
+/** What a Dashboard card reads: the shared KPI figures, and the Dashboard-only YTD figures (AMC Management has none). */
+export interface DashboardKpiSource extends SharedKpiSource {
+  yearToDate?: YearToDateServices | null
 }
 
 export interface CalendarDay {

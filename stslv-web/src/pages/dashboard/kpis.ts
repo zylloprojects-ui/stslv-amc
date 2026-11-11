@@ -2,11 +2,12 @@ import { formatCount } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import type { Module } from '../../lib/types'
 import type { IconName } from './icons'
-import type { OperationsDashboard, SharedKpiSource } from './operationsTypes'
+import type { DashboardKpiSource, OperationsDashboard } from './operationsTypes'
 
 // The twelve KPI cards of the AMC Operations Dashboard, in three fixed rows of
-// four (the client's meeting reference). Each card reads one figure the API
-// returned; none is calculated here. The order is fixed: there is no arranging.
+// four (the client's meeting reference), followed by the three-card Current Year
+// (YTD) row (2026-11-11). Each card reads one figure the API returned; none is
+// calculated here. The order is fixed: there is no arranging.
 //
 // These definitions are also THE definitions of the cards AMC Management shares with the Dashboard
 // (SHARED_WITH_MANAGEMENT): same label, icon, colour, figure, wording and permission on both pages. They read only
@@ -30,7 +31,7 @@ export interface DashboardReading {
   hint?: string
 }
 
-export type KpiRowId = 'portfolio' | 'month' | 'overall'
+export type KpiRowId = 'portfolio' | 'month' | 'overall' | 'ytd'
 
 export interface KpiDefinition {
   /** Unique across all twelve cards: rows 2 and 3 share labels, never ids. */
@@ -41,7 +42,7 @@ export interface KpiDefinition {
   /** Mirrors the API's permission check, so the right cards show while loading. The API decides. */
   visible: (canView: (module: Module) => boolean) => boolean
   /** Null when the API left the section out: the card is then not shown. */
-  read: (data: SharedKpiSource) => DashboardReading | null
+  read: (data: DashboardKpiSource) => DashboardReading | null
 }
 
 export interface KpiRow {
@@ -53,6 +54,9 @@ export interface KpiRow {
 
 const INVOICE_HINT =
   'An invoice counts as generated when its manual Invoice No. is entered on the service (shown as Paid in Accounts). That is a reference status: it does not verify that money was received. Amounts are the service values excluding VAT, as on Accounts: the Invoice No. itself carries no amount. A service whose value was never recorded adds nothing and is shown as without amount, never as 0.000.'
+
+const YTD_HINT =
+  'Services scheduled from January 1 of the current year through today (Oman time), completed or not. Visits after today are not counted. Cancelled visits, contracts in the Recycle Bin and the open unpaid visits of cancelled contracts are not counted, as on Current Month and Overall.'
 
 const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`
 
@@ -81,6 +85,7 @@ export const KPI_ROWS: KpiRow[] = [
   { id: 'portfolio', title: 'AMC Portfolio', subtitle: () => 'Active contracts' },
   { id: 'month', title: 'Current Month', subtitle: (data) => (data ? `Services scheduled in ${monthName(data.asOf)}` : 'Services scheduled this month') },
   { id: 'overall', title: 'Overall', subtitle: () => 'All service records, earlier years and visits ahead' },
+  { id: 'ytd', title: 'Current Year (YTD)', subtitle: () => 'Services scheduled from January 1 through today.' },
 ]
 
 const contractsVisible = (canView: (module: Module) => boolean) => canView('AMC_CONTRACTS')
@@ -255,6 +260,53 @@ export const KPIS: KpiDefinition[] = [
         detail: `${invoiceAmountText(payments.unpaid, payments.unpaidValue, payments.unpaidAmountMissing)} · no Invoice No.`,
         hint: INVOICE_HINT,
       },
+  },
+
+  // Row 4 — Current Year (YTD): services scheduled from January 1 through today (Oman). Dashboard only.
+  {
+    id: 'ytd-due',
+    row: 'ytd',
+    label: 'Services Due',
+    icon: 'calendar',
+    visible: servicesVisible,
+    read: ({ yearToDate }) =>
+      yearToDate
+        ? {
+            value: formatCount(yearToDate.due),
+            detail: 'Scheduled this year through today',
+            hint: YTD_HINT,
+          }
+        : null,
+  },
+  {
+    id: 'ytd-completed',
+    row: 'ytd',
+    label: 'Services Completed',
+    icon: 'shield',
+    visible: servicesVisible,
+    read: ({ yearToDate }) =>
+      yearToDate
+        ? {
+            value: formatCount(yearToDate.completed),
+            detail: `of ${formatCount(yearToDate.due)} due this year`,
+            hint: YTD_HINT,
+          }
+        : null,
+  },
+  {
+    id: 'ytd-pending',
+    row: 'ytd',
+    label: 'Services Pending',
+    icon: 'execution',
+    visible: servicesVisible,
+    read: ({ yearToDate }) =>
+      yearToDate
+        ? {
+            value: formatCount(yearToDate.pending),
+            detail: yearToDate.overdue > 0 ? `Not yet completed · ${formatCount(yearToDate.overdue)} overdue` : 'Not yet completed',
+            hint: `${YTD_HINT} Pending = Due − Completed: Scheduled, In Progress or Postponed. Overdue: Scheduled or Postponed before today.`,
+          }
+        : null,
   },
 ]
 

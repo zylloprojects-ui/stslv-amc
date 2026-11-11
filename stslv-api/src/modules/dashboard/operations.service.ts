@@ -142,10 +142,32 @@ export interface ScheduleItem {
   isOverdue: boolean;
 }
 
+/**
+ * The Current Year (YTD) row (2026-11-11): the counted services (COUNTED_VISIT, the same scope as Current Month and
+ * Overall) scheduled from January 1 of Oman's current year through Oman's today, both included. Visits ahead are not
+ * counted. Dashboard only: it is not part of sharedKpis(), so AMC Management is unchanged.
+ */
+export interface YearToDateServices {
+  /** January 1 of the current Oman year (YYYY-MM-DD). */
+  from: string;
+  /** Oman's today (YYYY-MM-DD), the last day counted. */
+  to: string;
+  /** Every counted service scheduled in the period, completed or not. */
+  due: number;
+  /** Of due, the services with status Completed. */
+  completed: number;
+  /** due - completed: Scheduled, In Progress or Postponed. */
+  pending: number;
+  /** Of pending, the services already overdue (Scheduled or Postponed before today), by the schedule's own rule. */
+  overdue: number;
+}
+
 export interface OperationsDashboard {
   asOf: string;
   timeZone: string;
   kpis: OperationsKpis;
+  /** Requires AMC_SCHEDULE:VIEW or AMC_EXECUTION:VIEW. */
+  yearToDate: YearToDateServices | null;
   /** Requires AMC_CONTRACTS:VIEW. */
   portfolio: { total: number; statuses: PortfolioStatus[] } | null;
   /** Requires AMC_CONTRACTS:VIEW. */
@@ -321,6 +343,33 @@ export async function overallServiceCounts(): Promise<{ overall: number; openOve
   );
 
   return { overall: result.rows[0]?.overall ?? 0, openOverall: result.rows[0]?.open_overall ?? 0 };
+}
+
+/**
+ * The Current Year (YTD) figures. The period is measured in Oman: January 1 of the year of `today` through `today`,
+ * so it moves forward every day and starts again on January 1. `today` (YYYY-MM-DD) is only for tests; the Dashboard
+ * always uses Oman's today from the database clock (BUSINESS_TODAY_SQL).
+ */
+export async function yearToDateServiceCounts(today?: string): Promise<YearToDateServices> {
+  const result = await pool.query<{ from: string; to: string; due: number; completed: number; overdue: number }>(
+    `WITH period AS (
+       SELECT date_trunc('year', d)::date AS first_day, d AS last_day
+       FROM (SELECT COALESCE($1::date, ${BUSINESS_TODAY_SQL}) AS d) AS t
+     )
+     SELECT p.first_day::text AS "from", p.last_day::text AS "to",
+            count(v.id)::int AS due,
+            count(v.id) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
+            count(v.id) FILTER (WHERE v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < p.last_day)::int AS overdue
+     FROM period p
+     LEFT JOIN amc_visits v ON v.scheduled_date BETWEEN p.first_day AND p.last_day AND ${COUNTED_VISIT}
+     GROUP BY p.first_day, p.last_day`,
+    [today ?? null]
+  );
+  const row = result.rows[0];
+  const due = row?.due ?? 0;
+  const completed = row?.completed ?? 0;
+
+  return { from: row?.from ?? "", to: row?.to ?? "", due, completed, pending: due - completed, overdue: row?.overdue ?? 0 };
 }
 
 export async function paymentFigures(): Promise<PaymentFigures> {
@@ -502,7 +551,7 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
   const canInvoices = auth.permissions.has("INVOICES:VIEW");
   const renewals = canContracts ? await schemaHas(["amc_contracts.renewed_from_id"]) : false;
 
-  const [clock, kpis, statusBreakdown, expiringList, workload, todayWork, trend] = await Promise.all([
+  const [clock, kpis, statusBreakdown, expiringList, workload, todayWork, trend, yearToDate] = await Promise.all([
     pool.query<{ today: string; time_zone: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today, '${BUSINESS_TIME_ZONE}'::text AS time_zone`),
     // The cards shared with AMC Management come from the one shared calculation.
     sharedKpis({ contracts: canContracts, visits: canVisits, invoices: canInvoices }, renewals),
@@ -511,12 +560,14 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
     canVisits ? getWorkload({ months: CHART_MONTHS }) : null,
     canVisits ? schedule() : null,
     canInvoices ? paymentTrend() : null,
+    canVisits ? yearToDateServiceCounts() : null,
   ]);
 
   return {
     asOf: clock.rows[0]?.today ?? "",
     timeZone: clock.rows[0]?.time_zone ?? "",
     kpis,
+    yearToDate,
     portfolio: statusBreakdown,
     expiring: expiringList,
     workload,
