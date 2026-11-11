@@ -25,7 +25,7 @@ async function openAddForm() {
   const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
   await within(dialog).findByLabelText(/Client/)
   await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
-  await within(dialog).findByLabelText(/Sales engineer \(master list\)/)
+  await within(dialog).findByLabelText(/Service engineer \(master list\)/)
   return dialog
 }
 
@@ -33,7 +33,7 @@ async function fillOthers(dialog: HTMLElement) {
   await typeReference(dialog)
   await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '10')
   await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '21')
-  await userEvent.selectOptions(within(dialog).getByLabelText(/Sales engineer \(master list\)/), '5')
+  await userEvent.selectOptions(within(dialog).getByLabelText(/Service engineer \(master list\)/), '5')
   await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'QUARTERLY')
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
   await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
