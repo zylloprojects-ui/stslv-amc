@@ -302,7 +302,7 @@ function DetailsDialog({ item, canViewContract, onClose }: { item: MasterStatusI
     ['Paid / Unpaid', item.manualInvoiceNo ? 'Paid (reference status)' : 'Unpaid'],
     ['Zoho invoices', item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(', ') : 'None recorded'],
     ['Quote No.', item.quotationNo ?? 'Not recorded'],
-    ['Sales Engineer', item.salesEngineer?.name ?? '—'],
+    ['Service Engineer', item.salesEngineer?.name ?? '—'],
   ]
 
   return (
@@ -448,11 +448,11 @@ export function MasterStatusPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Sales Engineer">
+            <Filter label="Service Engineer">
               {(id, className) => (
                 <select id={id} value={draft.salesEngineerId} onChange={(event) => set('salesEngineerId')(event.target.value)} className={className}>
-                  <option value="">All sales engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
+                  <option value="">All service engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No service engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -720,7 +720,7 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
           {item.quotationNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.quotationNo}</span> : <Missing title="No quotation number recorded" />}
         </td>
       )}
-      {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
+      {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No service engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
         <button
           type="button"

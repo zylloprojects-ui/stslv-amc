@@ -38,7 +38,7 @@ const COLUMNS: (ReportColumn & { hideable?: AccountsColumn })[] = [
   { key: "payment", header: "Paid / Unpaid", kind: "text", width: 10, hideable: "invoiceNo" },
   { key: "zohoInvoices", header: "Zoho Invoices (Tracking)", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   { key: "invoiceValue", header: "Zoho Invoice Value (Ex VAT, OMR)", kind: "money", width: 15, hideable: "invoiceValue" },
-  { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
+  { key: "salesEngineer", header: "Service Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
   { key: "colour", header: "Row Colour", kind: "text", width: 30 },
 ];
 
@@ -82,7 +82,7 @@ async function describeFilters(query: ExportAccountsQuery): Promise<ReportDefini
     (await pool.query<{ name: string }>(`SELECT name FROM ${table} WHERE id = $1`, [id])).rows[0]?.name ?? unknown;
 
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
-  if (query.salesEngineerId) filters.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
+  if (query.salesEngineerId) filters.push({ label: "Service Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown service engineer") });
   if (query.contractId) filters.push({ label: "AMC Contract", value: (await findContractReference(query.contractId)) ?? "Unknown contract" });
   if (query.month) filters.push({ label: "Month", value: MONTH_NAMES[query.month - 1] ?? String(query.month) });
   if (query.year) filters.push({ label: "Year", value: String(query.year) });

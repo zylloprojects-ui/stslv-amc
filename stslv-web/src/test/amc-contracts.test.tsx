@@ -28,7 +28,7 @@ async function openAddForm() {
   await within(dialog).findByLabelText(/Client/)
   // The System and Sales engineer lists come from the master data.
   await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
-  await within(dialog).findByLabelText(/Sales engineer \(master list\)/)
+  await within(dialog).findByLabelText(/Service engineer \(master list\)/)
 
   return dialog
 }
@@ -47,7 +47,7 @@ async function fillRequired(dialog: HTMLElement, system = '21') {
   if (reference && !reference.readOnly && reference.value === '') await typeReference(dialog)
   await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '10')
   await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), system)
-  await userEvent.selectOptions(within(dialog).getByLabelText(/Sales engineer \(master list\)/), '5')
+  await userEvent.selectOptions(within(dialog).getByLabelText(/Service engineer \(master list\)/), '5')
   await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'MONTHLY')
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
   await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
@@ -116,7 +116,7 @@ describe('contract list', () => {
       ['Client', 'All clients', ['Test Hotel One', 'Test Hotel Two']],
       ['System', 'All systems', ['FIRE', 'CCTV']],
       ['Year', 'All years', ['2027']],
-      ['Sales engineer', 'All sales engineers', ['Test Sales Engineer']],
+      ['Service engineer', 'All service engineers', ['Test Sales Engineer']],
       ['Frequency', 'All frequencies', ['Quarterly']],
       ['Contract status', 'All contract statuses', ['Draft', 'Active', 'Expired', 'Cancelled']],
     ]
@@ -143,7 +143,7 @@ describe('contract list', () => {
     expect(lastQuery()?.get('system')).toBeNull()
 
     await userEvent.selectOptions(screen.getByLabelText('System'), 'CCTV')
-    await userEvent.selectOptions(screen.getByLabelText('Sales engineer'), '5')
+    await userEvent.selectOptions(screen.getByLabelText('Service engineer'), '5')
     await waitFor(() => expect(lastQuery()?.get('salesEngineerId')).toBe('5'))
     expect(lastQuery()?.get('year')).toBe('2027')
     expect(lastQuery()?.get('system')).toBe('CCTV')
@@ -165,7 +165,7 @@ describe('contract list', () => {
     await userEvent.selectOptions(await screen.findByLabelText('Client'), '11')
     await userEvent.selectOptions(screen.getByLabelText('System'), 'CCTV')
     await userEvent.selectOptions(screen.getByLabelText('Year'), '2027')
-    await userEvent.selectOptions(screen.getByLabelText('Sales engineer'), '5')
+    await userEvent.selectOptions(screen.getByLabelText('Service engineer'), '5')
     await userEvent.selectOptions(screen.getByLabelText('Frequency'), 'QUARTERLY')
     await userEvent.selectOptions(screen.getByLabelText('Contract status'), 'ACTIVE')
     await userEvent.type(screen.getByLabelText('Search'), 'nothing matches')
@@ -173,7 +173,7 @@ describe('contract list', () => {
 
     await userEvent.click(reset)
 
-    for (const label of ['Client', 'System', 'Year', 'Sales engineer', 'Frequency']) {
+    for (const label of ['Client', 'System', 'Year', 'Service engineer', 'Frequency']) {
       expect((screen.getByLabelText(label) as HTMLSelectElement).value, label).toBe('')
     }
     expect((screen.getByLabelText('Contract status') as HTMLSelectElement).value).toBe('all')
@@ -217,7 +217,7 @@ describe('add contract', () => {
     expect(await within(dialog).findByText('Select a client.')).toBeInTheDocument()
     expect(within(dialog).getByText('AMC Reference Number is required.')).toBeInTheDocument()
     expect(within(dialog).getByText('Select a system.')).toBeInTheDocument()
-    expect(within(dialog).getByText('Select a sales engineer.')).toBeInTheDocument()
+    expect(within(dialog).getByText('Select a service engineer.')).toBeInTheDocument()
     expect(within(dialog).getByText('Attach the contract document.')).toBeInTheDocument()
     expect(within(dialog).getByText('Valid from is required.')).toBeInTheDocument()
     expect(within(dialog).getByText('Select a maintenance frequency.')).toBeInTheDocument()
@@ -260,7 +260,7 @@ describe('add contract', () => {
     await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '11')
     await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '22')
     await userEvent.type(within(dialog).getByLabelText('Responsible engineer'), 'Second Engineer')
-    await userEvent.selectOptions(within(dialog).getByLabelText(/Sales engineer \(master list\)/), '5')
+    await userEvent.selectOptions(within(dialog).getByLabelText(/Service engineer \(master list\)/), '5')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'HALF_YEARLY')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-03-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-02-29')
@@ -375,13 +375,13 @@ describe('add contract', () => {
     renderApp('/amc/contracts')
     const dialog = await openAddForm()
 
-    const engineer = within(dialog).getByLabelText(/Sales engineer \(master list\)/)
+    const engineer = within(dialog).getByLabelText(/Service engineer \(master list\)/)
     expect(engineer).toHaveAttribute('aria-required', 'true')
     expect(within(engineer).queryByRole('option', { name: 'Not linked' })).not.toBeInTheDocument()
-    expect(within(engineer).getByRole('option', { name: 'Select a sales engineer…' })).toBeDisabled()
+    expect(within(engineer).getByRole('option', { name: 'Select a service engineer…' })).toBeDisabled()
 
     await fillRequired(dialog)
-    expect(within(engineer).getAllByRole('option').map((option) => option.textContent)).toEqual(['Select a sales engineer…', 'Test Sales Engineer'])
+    expect(within(engineer).getAllByRole('option').map((option) => option.textContent)).toEqual(['Select a service engineer…', 'Test Sales Engineer'])
   })
 
   it('requires Final Credit and accepts zero', async () => {

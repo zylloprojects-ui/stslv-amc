@@ -132,7 +132,7 @@ export const createContractSchema = z.strictObject({
   defaultVisitAmount: contractFields.defaultVisitAmount.optional(),
   notes: contractFields.notes.optional(),
   // Optional link to the Sales Engineer master (migration 0070); null or left out: no link.
-  salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
+  salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid service engineer." }).optional(),
   // The System Types master record (migration 0070). When given, it must be active, and the contract's system
   // becomes that type's name, so the two never disagree. Required when adding a contract (createNewContractSchema).
   systemTypeId: systemTypeLink.optional(),
@@ -180,7 +180,7 @@ const contractDocument = z.strictObject(
  * to new contracts only: renewals keep createRenewalSchema, and existing contracts are never re-checked.
  */
 export const createNewContractFieldsSchema = createContractSchema.extend({
-  salesEngineerId: z.string({ error: "Select a sales engineer." }).regex(/^[1-9]\d{0,17}$/, "Select a sales engineer."),
+  salesEngineerId: z.string({ error: "Select a service engineer." }).regex(/^[1-9]\d{0,17}$/, "Select a service engineer."),
   systemTypeId: z.string({ error: "Select a system." }).regex(/^[1-9]\d{0,17}$/, "Select a system."),
   // Set from the chosen system type; a value sent here is replaced by the type's name.
   systemDescription: contractFields.systemDescription.optional(),
@@ -254,7 +254,7 @@ export const updateContractSchema = z
     customMonths: contractFields.customMonths.optional(),
     defaultVisitAmount: contractFields.defaultVisitAmount.optional(),
     notes: contractFields.notes.optional(),
-    salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid sales engineer." }).optional(),
+    salesEngineerId: z.union([idSchema, z.null()], { error: "Select a valid service engineer." }).optional(),
     // A new system type link (it cannot be removed here); the contract's system becomes its name.
     systemTypeId: systemTypeLink.optional(),
     // Editable (2026-11-04) under the same rules as at creation; unique over every contract (0105's index).
@@ -327,7 +327,7 @@ const optionalLink = (label: string) => z.union([idSchema, z.null()], { error: `
 
 /** Links a contract to master records (migration 0070). */
 export const contractMastersSchema = z
-  .strictObject({ salesEngineerId: optionalLink("sales engineer"), systemTypeId: optionalLink("system type") })
+  .strictObject({ salesEngineerId: optionalLink("service engineer"), systemTypeId: optionalLink("system type") })
   .refine((value) => value.salesEngineerId !== undefined || value.systemTypeId !== undefined, "Provide at least one link to change.");
 
 /** Active contracts whose validity ends within this many days (the user's choice of window). */

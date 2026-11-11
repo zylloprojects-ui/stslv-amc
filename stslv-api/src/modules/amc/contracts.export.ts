@@ -81,7 +81,7 @@ async function describeFilters(query: ExportContractsQuery): Promise<ReportDefin
   if (query.validity === "due") filters.push({ label: "Validity", value: "Due: active, ending within 45 days" });
   if (query.validity === "expired") filters.push({ label: "Validity", value: "Expired: status Expired, or validity ended" });
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
-  if (query.salesEngineerId) filters.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
+  if (query.salesEngineerId) filters.push({ label: "Service Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown service engineer") });
   if (query.system) filters.push({ label: "System", value: query.system });
   if (query.frequency) filters.push({ label: "Frequency", value: query.frequency });
   if (query.year) filters.push({ label: "Year", value: String(query.year) });

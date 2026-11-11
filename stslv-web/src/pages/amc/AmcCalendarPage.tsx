@@ -343,11 +343,11 @@ export function AmcCalendarPage() {
             <RestrictedFilter label="Client" reason="Not available for your role (needs the client list)" />
           )}
           {options.data?.salesEngineers !== null && (
-            <Filter label="Sales engineer">
+            <Filter label="Service engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={(event) => setSalesEngineerId(event.target.value)} className={className}>
-                  <option value="">All sales engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers linked to AMC visits" />
+                  <option value="">All service engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No service engineers linked to AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}

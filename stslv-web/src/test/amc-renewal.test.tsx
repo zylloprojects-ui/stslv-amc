@@ -192,7 +192,7 @@ describe('AMC Renewal page', () => {
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2026-11-06')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-11-05')
     // Every renewal names an active sales engineer.
-    await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '7')
+    await userEvent.selectOptions(await within(dialog).findByLabelText(/Service engineer \(master list\)/), '7')
     await attachRenewalDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 

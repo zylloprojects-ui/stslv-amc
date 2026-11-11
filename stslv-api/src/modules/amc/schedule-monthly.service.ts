@@ -129,7 +129,7 @@ const COLUMNS: ReportColumn[] = [
   { key: "client", header: "Client", kind: "text", width: 28, wrap: true },
   { key: "system", header: "System", kind: "text", width: 18, wrap: true },
   { key: "frequency", header: "Frequency", kind: "text", width: 16, wrap: true },
-  { key: "engineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true },
+  { key: "engineer", header: "Service Engineer", kind: "text", width: 18, wrap: true },
   { key: "services", header: "Services", kind: "text", width: 28, wrap: true },
   { key: "invoices", header: "Invoice No.", kind: "identifier", width: 18, wrap: true },
   { key: "paid", header: "Paid / Unpaid", kind: "text", width: 14, wrap: true },
@@ -144,7 +144,7 @@ async function describeFilters(query: MonthlyFilters): Promise<ReportDefinition[
     (await pool.query<{ name: string }>(`SELECT name FROM ${table} WHERE id = $1`, [id])).rows[0]?.name ?? unknown;
 
   if (query.clientId) found.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
-  if (query.salesEngineerId) found.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
+  if (query.salesEngineerId) found.push({ label: "Service Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown service engineer") });
   if (query.system) found.push({ label: "System", value: query.system });
   if (query.search) found.push({ label: "Search", value: query.search });
 

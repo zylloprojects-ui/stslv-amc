@@ -211,7 +211,7 @@ describe('service status page', () => {
     await table()
 
     await userEvent.selectOptions(screen.getByLabelText('Client'), '11')
-    await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '7')
+    await userEvent.selectOptions(screen.getByLabelText('Service Engineer'), '7')
     await userEvent.selectOptions(screen.getByLabelText('System'), '1')
     await userEvent.selectOptions(screen.getByLabelText('Maintenance Frequency'), 'MONTHLY')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '')
@@ -419,17 +419,17 @@ describe('service status page', () => {
     expect(button).toHaveTextContent('Hide Columns· 9 of 9 shown')
     await userEvent.click(button)
     const dialog = screen.getByRole('dialog', { name: 'Hide columns' })
-    await userEvent.click(within(dialog).getByLabelText('Sales Engineer'))
+    await userEvent.click(within(dialog).getByLabelText('Service Engineer'))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Done' }))
 
-    expect(screen.queryByRole('columnheader', { name: 'Sales Engineer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Service Engineer' })).not.toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'AMC Reference' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide Columns: 8 of 9 columns shown' })).toBeInTheDocument()
 
     unmount()
     renderApp('/amc/service-status')
     await table()
-    expect(screen.queryByRole('columnheader', { name: 'Sales Engineer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Service Engineer' })).not.toBeInTheDocument()
   })
 
   it('renames and reorders the KPI cards without changing what they count, and resets them', async () => {
@@ -542,9 +542,9 @@ describe('service status filter lists', () => {
       { text: 'All clients', disabled: false },
       { text: 'No clients with current AMC visits', disabled: true },
     ]))
-    expect(entries('Sales Engineer')).toEqual([
+    expect(entries('Service Engineer')).toEqual([
       { text: 'All engineers', disabled: false },
-      { text: 'No sales engineers linked to current AMC visits', disabled: true },
+      { text: 'No service engineers linked to current AMC visits', disabled: true },
     ])
     expect(entries('System')[1]).toEqual({ text: 'No system types linked to current AMC visits', disabled: true })
     expect(entries('Maintenance Frequency')[1]).toEqual({ text: 'No frequencies on current AMC visits', disabled: true })
@@ -556,7 +556,7 @@ describe('service status filter lists', () => {
     serviceApi(ADMIN, { override: (request) => (request.path === '/amc/service-status/options' ? fail(500, 'INTERNAL', 'Database unavailable.') : undefined) })
     renderApp('/amc/service-status')
 
-    await waitFor(() => expect(entries('Sales Engineer')[1]).toEqual({ text: 'The list could not be loaded', disabled: true }))
+    await waitFor(() => expect(entries('Service Engineer')[1]).toEqual({ text: 'The list could not be loaded', disabled: true }))
     expect(entries('Client')[1]).toEqual({ text: 'The list could not be loaded', disabled: true })
     expect(screen.getByLabelText('System')).toBeInTheDocument()
   })
@@ -566,7 +566,7 @@ describe('service status filter lists', () => {
     renderApp('/amc/service-status')
 
     await waitFor(() => expect(entries('Client').map((entry) => entry.text)).toEqual(['All clients', 'Test Hotel One', 'Test Hotel Two']))
-    expect(entries('Sales Engineer').map((entry) => entry.text)).toEqual(['All engineers', 'Sara Sales'])
+    expect(entries('Service Engineer').map((entry) => entry.text)).toEqual(['All engineers', 'Sara Sales'])
     expect(entries('Maintenance Frequency').map((entry) => entry.text)).toEqual(['All frequencies', 'Monthly', 'Quarterly'])
   })
 
@@ -575,7 +575,7 @@ describe('service status filter lists', () => {
     renderApp('/amc/service-status')
 
     await waitFor(() => expect(entries('Client')).toHaveLength(3))
-    expect(screen.queryByLabelText('Sales Engineer')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Service Engineer')).not.toBeInTheDocument()
     expect(screen.queryByLabelText('System')).not.toBeInTheDocument()
   })
 })
@@ -589,7 +589,7 @@ describe('service status download', () => {
     await table()
 
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Sales Engineer' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Service Engineer' }))
     await userEvent.keyboard('{Escape}')
     await userEvent.click(screen.getByRole('button', { name: 'Export service status to Excel' }))
     await waitFor(() => expect(api.find('GET', '/amc/service-status/export').length).toBe(1))

@@ -180,7 +180,7 @@ describe('Accounts page', () => {
       'Value (Ex VAT, OMR)',
       'Invoice No.',
       'Zoho Invoice Value (Ex VAT, OMR)',
-      'Sales Engineer',
+      'Service Engineer',
     ])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'BLUE')
@@ -230,7 +230,7 @@ describe('Accounts page', () => {
     const before = api.find('GET', '/accounts').length
     await userEvent.type(screen.getByLabelText('Search'), 'sr-14')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
+    await userEvent.selectOptions(screen.getByLabelText('Service Engineer'), '4')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Paid / Unpaid'), 'NOT_RECORDED')
@@ -320,11 +320,11 @@ describe('Accounts page', () => {
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Invoice No.' }))
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Engineer' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
     expect(headers()).not.toContain('Invoice No.')
-    expect(headers()).not.toContain('Sales Engineer')
+    expect(headers()).not.toContain('Service Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(headers()).not.toContain('Actions')
     expect(screen.getByRole('button', { name: 'Hide Columns · 9 of 11 shown' })).toBeInTheDocument()

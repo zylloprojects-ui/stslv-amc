@@ -75,7 +75,7 @@ const FIELD_LABELS: Record<string, string> = {
   defaultVisitAmount: 'Default visit amount',
   notes: 'Notes',
   status: 'Status',
-  salesEngineer: 'Sales engineer',
+  salesEngineer: 'Service engineer',
   systemType: 'System type',
 }
 

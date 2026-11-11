@@ -238,7 +238,7 @@ describe('sales engineers', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Add Contract' }))
     const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
     // Required on a new contract (2026-11-03), so its label carries the asterisk.
-    const picker = await within(dialog).findByLabelText(/^Sales engineer \(master list\)/)
+    const picker = await within(dialog).findByLabelText(/^Service engineer \(master list\)/)
     await userEvent.selectOptions(picker, '5')
     expect(within(dialog).getByLabelText('Responsible engineer')).toHaveValue('Test Engineer')
 
@@ -265,7 +265,7 @@ describe('sales engineers', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Add Contract' }))
     const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
     await within(dialog).findByLabelText(/^Client/)
-    expect(within(dialog).queryByLabelText(/^Sales engineer \(master list\)/)).not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText(/^Service engineer \(master list\)/)).not.toBeInTheDocument()
   })
 
   it('is refused to a role without Settings access', async () => {

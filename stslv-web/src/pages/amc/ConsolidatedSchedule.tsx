@@ -122,11 +122,11 @@ export function ConsolidatedSchedule() {
             )}
           </Filter>
           {options.data?.salesEngineers !== null && (
-            <Filter label="Sales Engineer">
+            <Filter label="Service Engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={choose(setSalesEngineerId)} className={className}>
-                  <option value="">All sales engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers on the schedule yet" />
+                  <option value="">All service engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No service engineers on the schedule yet" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -187,7 +187,7 @@ export function ConsolidatedSchedule() {
               <caption className="sr-only">Consolidated monthly schedule</caption>
               <thead>
                 <tr>
-                  {['AMC Reference', 'Client', 'System', 'Frequency', 'Sales Engineer', 'Services', 'Value (Ex VAT)'].map((heading) => (
+                  {['AMC Reference', 'Client', 'System', 'Frequency', 'Service Engineer', 'Services', 'Value (Ex VAT)'].map((heading) => (
                     <th key={heading} scope="col" className={cx(TABLE.th, heading === 'Value (Ex VAT)' && 'text-right')}>
                       {heading}
                     </th>

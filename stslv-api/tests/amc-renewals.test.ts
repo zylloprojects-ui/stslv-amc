@@ -156,7 +156,7 @@ describe("the sales engineer of a renewal", () => {
       expect(refused.body.error.details).toEqual([
         {
           field: "salesEngineerId",
-          message: "Renewal Engineer Former, the sales engineer of the contract being renewed, is no longer active. Select an active sales engineer.",
+          message: "Renewal Engineer Former, the service engineer of the contract being renewed, is no longer active. Select an active service engineer.",
         },
       ]);
     }
@@ -179,7 +179,7 @@ describe("the sales engineer of a renewal", () => {
     for (const overrides of [{ salesEngineerId: undefined }, { salesEngineerId: null }]) {
       const refused = await renew(source, { systemDescription: "SE-NONE", ...overrides });
       expect(refused.status).toBe(400);
-      expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select an active sales engineer for the renewal." }]);
+      expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select an active service engineer for the renewal." }]);
     }
     expect(await contractCount()).toBe(before);
 
@@ -192,7 +192,7 @@ describe("the sales engineer of a renewal", () => {
     // Through the endpoint, as a user adds one: a new contract is Active (2026-11-04), so no status is sent.
     const refused = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { systemDescription: "SE-NEW", salesEngineerId: undefined }));
     expect(refused.status).toBe(400);
-    expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select a sales engineer." }]);
+    expect(refused.body.error.details).toEqual([{ field: "salesEngineerId", message: "Select a service engineer." }]);
 
     const created = await api().post("/api/amc/contracts").set(admin.headers).send(await newContractBody(clientId, { systemDescription: "SE-NEW", salesEngineerId: defaultEngineerId }));
     expect(created.status).toBe(201);

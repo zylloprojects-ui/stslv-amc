@@ -38,7 +38,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceReportNo: 'Service Report No.',
   serviceReport: 'Service Report',
   quotation: 'Quote No.',
-  salesEngineer: 'Sales Engineer',
+  salesEngineer: 'Service Engineer',
   amcValue: 'AMC Value (OMR)',
 }
 

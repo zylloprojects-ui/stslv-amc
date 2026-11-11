@@ -20,7 +20,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceStatus: 'Service Status',
   invoiceNo: 'Invoice No.',
   quotationNo: 'Quote No.',
-  salesEngineer: 'Sales Engineer',
+  salesEngineer: 'Service Engineer',
 }
 
 function load(key: string): ReadonlySet<ColumnId> {

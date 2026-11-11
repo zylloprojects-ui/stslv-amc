@@ -139,7 +139,7 @@ async function describeFilters(query: ExportVisitsQuery): Promise<ReportDefiniti
     // listAllVisits has already refused this filter on a database without the link (migration 0070).
     const engineer = await pool.query<{ name: string }>("SELECT name FROM sales_engineers WHERE id = $1", [query.salesEngineerId]);
 
-    filters.push({ label: "Sales engineer", value: engineer.rows[0]?.name ?? "Unknown sales engineer" });
+    filters.push({ label: "Service engineer", value: engineer.rows[0]?.name ?? "Unknown service engineer" });
   }
   if (query.frequency) {
     filters.push({ label: "Frequency", value: await frequencyLabel(query.frequency) });

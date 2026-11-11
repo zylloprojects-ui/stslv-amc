@@ -70,7 +70,7 @@ describe('contract renewals', () => {
 
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-12-31')
-    await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '7')
+    await userEvent.selectOptions(await within(dialog).findByLabelText(/Service engineer \(master list\)/), '7')
     await attachRenewalDocument()
     await userEvent.click(within(dialog).getByRole('button', { name: 'Create renewal' }))
 
@@ -149,7 +149,7 @@ describe('renewal form lists', () => {
     })
     const dialog = await openRenewal()
 
-    await waitFor(() => expect(dialog.getByLabelText(/Sales engineer \(master list\)/)).toHaveValue('7'))
+    await waitFor(() => expect(dialog.getByLabelText(/Service engineer \(master list\)/)).toHaveValue('7'))
     await userEvent.type(dialog.getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(dialog.getByLabelText(/Valid to/), '2028-12-31')
     await attachRenewalDocument()
@@ -180,7 +180,7 @@ describe('renewal form lists', () => {
     const api = engineerApi({ id: '7', name: 'Sara Sales', isActive: true })
     const dialog = await openRenewal()
 
-    const picker = dialog.getByLabelText(/Sales engineer \(master list\)/)
+    const picker = dialog.getByLabelText(/Service engineer \(master list\)/)
     await waitFor(() => expect(picker).toHaveValue('7'))
     await userEvent.selectOptions(picker, '8')
     await fillValidity(dialog)
@@ -195,18 +195,18 @@ describe('renewal form lists', () => {
     const api = engineerApi({ id: '5', name: 'Fatima Former', isActive: false })
     const dialog = await openRenewal()
 
-    const picker = (await dialog.findByLabelText(/Sales engineer \(master list\)/)) as HTMLSelectElement
+    const picker = (await dialog.findByLabelText(/Service engineer \(master list\)/)) as HTMLSelectElement
     expect(picker).toHaveValue('')
     expect(picker).toBeRequired()
-    expect(picker.selectedOptions[0]).toHaveTextContent('Select a sales engineer…')
+    expect(picker.selectedOptions[0]).toHaveTextContent('Select a service engineer…')
     // The former engineer is shown, but is not one of the choices.
-    expect(dialog.getByText('Previously assigned: Fatima Former (inactive). Select an active sales engineer for the renewal.')).toBeInTheDocument()
+    expect(dialog.getByText('Previously assigned: Fatima Former (inactive). Select an active service engineer for the renewal.')).toBeInTheDocument()
     expect([...picker.options].map((option) => option.value)).toEqual(['', '7', '8'])
 
     await fillValidity(dialog)
     await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
-    expect(await dialog.findByText('Select an active sales engineer. Fatima Former, the previous engineer, is no longer active.')).toBeInTheDocument()
+    expect(await dialog.findByText('Select an active service engineer. Fatima Former, the previous engineer, is no longer active.')).toBeInTheDocument()
     expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(0)
 
     await userEvent.selectOptions(picker, '7')
@@ -222,20 +222,20 @@ describe('renewal form lists', () => {
     const api = engineerApi(null)
     const dialog = await openRenewal()
 
-    const picker = (await dialog.findByLabelText(/Sales engineer \(master list\)/)) as HTMLSelectElement
+    const picker = (await dialog.findByLabelText(/Service engineer \(master list\)/)) as HTMLSelectElement
     expect(picker).toHaveValue('')
     expect(picker).toBeRequired()
     expect([...picker.options].map((option) => [option.textContent, option.disabled])).toEqual([
-      ['Select a sales engineer…', true],
+      ['Select a service engineer…', true],
       ['Sara Sales (E7)', false],
       ['Omar Other', false],
     ])
-    expect(dialog.getByText('A renewal needs an active sales engineer.')).toBeInTheDocument()
+    expect(dialog.getByText('A renewal needs an active service engineer.')).toBeInTheDocument()
 
     await fillValidity(dialog)
     await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
-    expect(await dialog.findByText('Select an active sales engineer for the renewal.')).toBeInTheDocument()
+    expect(await dialog.findByText('Select an active service engineer for the renewal.')).toBeInTheDocument()
     expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(0)
 
     await userEvent.selectOptions(picker, '8')
@@ -257,23 +257,23 @@ describe('renewal form lists', () => {
     const dialog = await openRenewal()
 
     expect(await dialog.findByText(/your role cannot read the sales engineer list/)).toBeInTheDocument()
-    expect(dialog.queryByLabelText(/Sales engineer \(master list\)/)).not.toBeInTheDocument()
+    expect(dialog.queryByLabelText(/Service engineer \(master list\)/)).not.toBeInTheDocument()
     expect(dialog.getByRole('button', { name: 'Create renewal' })).toBeDisabled()
     expect(api.find('POST', '/amc/contracts/100/renewals')).toHaveLength(0)
   })
 
   it('shows the server’s sales engineer message on the field', async () => {
     engineerApi({ id: '7', name: 'Sara Sales', isActive: true }, () =>
-      fail(400, 'VALIDATION_ERROR', 'Select an active sales engineer for the renewal.', [{ field: 'salesEngineerId', message: 'Sara Sales is no longer active. Select an active sales engineer.' }]),
+      fail(400, 'VALIDATION_ERROR', 'Select an active service engineer for the renewal.', [{ field: 'salesEngineerId', message: 'Sara Sales is no longer active. Select an active service engineer.' }]),
     )
     const dialog = await openRenewal()
 
-    await waitFor(() => expect(dialog.getByLabelText(/Sales engineer \(master list\)/)).toHaveValue('7'))
+    await waitFor(() => expect(dialog.getByLabelText(/Service engineer \(master list\)/)).toHaveValue('7'))
     await fillValidity(dialog)
     await attachRenewalDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Create renewal' }))
 
-    expect(await dialog.findByText('Sara Sales is no longer active. Select an active sales engineer.')).toBeInTheDocument()
+    expect(await dialog.findByText('Sara Sales is no longer active. Select an active service engineer.')).toBeInTheDocument()
   })
 
   it('shows a client that has since been deactivated, and says it must be reactivated first', async () => {

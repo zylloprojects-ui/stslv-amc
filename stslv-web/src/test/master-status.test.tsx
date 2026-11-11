@@ -140,7 +140,7 @@ describe('Master AMC Status page', () => {
     await screen.findByText('AMC-0007')
     expect(api.find('GET', '/amc/master-status')[0]?.query.has('month')).toBe(false)
 
-    expect(headers()).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Value (Ex VAT)', 'Service Status', 'Invoice No.', 'Quote No.', 'Sales Engineer', 'Details'])
+    expect(headers()).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Value (Ex VAT)', 'Service Status', 'Invoice No.', 'Quote No.', 'Service Engineer', 'Details'])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'YELLOW')
     expect(rowOf('AMC-0009')).toHaveAttribute('data-colour', 'BLUE')
@@ -187,7 +187,7 @@ describe('Master AMC Status page', () => {
     const before = api.find('GET', '/amc/master-status').length
     await userEvent.type(screen.getByLabelText('Search'), 'inv-3')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
+    await userEvent.selectOptions(screen.getByLabelText('Service Engineer'), '4')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
@@ -241,11 +241,11 @@ describe('Master AMC Status page', () => {
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Value (Ex VAT)' }))
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Engineer' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
     expect(headers()).not.toContain('Value (Ex VAT)')
-    expect(headers()).not.toContain('Sales Engineer')
+    expect(headers()).not.toContain('Service Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(within(rowOf('AMC-0010')).getByRole('button', { name: /Details of AMC-0010/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide Columns · 8 of 10 shown' })).toBeInTheDocument()
@@ -260,7 +260,7 @@ describe('Master AMC Status page', () => {
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset to Default' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
     expect(headers()).toContain('Value (Ex VAT)')
-    expect(headers()).toContain('Sales Engineer')
+    expect(headers()).toContain('Service Engineer')
   })
 
   it('downloads Excel and PDF with the applied filters and the hidden columns', async () => {

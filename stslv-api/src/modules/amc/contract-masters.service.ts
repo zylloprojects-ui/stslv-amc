@@ -73,7 +73,7 @@ export async function applyContractMasters(db: Queryable, auth: AuthContext, con
   // removed, by any route (the contract form, the Link master records panel). An older contract without a link
   // stays valid and can be linked later; nothing is backfilled.
   if (input.salesEngineerId === null && before.salesEngineer !== null) {
-    throw validationError("Select a sales engineer.", [{ field: "salesEngineerId", message: "A sales engineer is required. Choose another engineer instead of removing the link." }]);
+    throw validationError("Select a service engineer.", [{ field: "salesEngineerId", message: "A service engineer is required. Choose another engineer instead of removing the link." }]);
   }
   if (input.systemTypeId === null && before.systemType !== null) {
     throw validationError("Select a system.", [{ field: "systemTypeId", message: "A system is required. Choose another system type instead of removing the link." }]);
@@ -82,7 +82,7 @@ export async function applyContractMasters(db: Queryable, auth: AuthContext, con
   let systemName: string | null = null;
 
   if (input.salesEngineerId !== undefined && input.salesEngineerId !== (before.salesEngineer?.id ?? null)) {
-    if (input.salesEngineerId) await assertActive(db, "sales_engineers", input.salesEngineerId, "salesEngineerId", "sales engineer");
+    if (input.salesEngineerId) await assertActive(db, "sales_engineers", input.salesEngineerId, "salesEngineerId", "service engineer");
     params.push(input.salesEngineerId);
     sets.push(`sales_engineer_id = $${params.length}`);
   }

@@ -42,7 +42,7 @@ async function fillRequired(dialog: HTMLElement) {
   // System, sales engineer, Final Credit and the contract document are required on a new contract (2026-11-03).
   await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
   await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '23')
-  await userEvent.selectOptions(await within(dialog).findByLabelText(/Sales engineer \(master list\)/), '5')
+  await userEvent.selectOptions(await within(dialog).findByLabelText(/Service engineer \(master list\)/), '5')
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-15')
   await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-01-14')
   await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '4000')

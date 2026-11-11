@@ -344,7 +344,7 @@ describe("Services Sales", () => {
       await workbook.xlsx.load(response.body as unknown as ExcelJS.Buffer);
       const sheet = workbook.getWorksheet("Service Sales") as ExcelJS.Worksheet;
       const header = (sheet.getRow(6).values as unknown[]).slice(1);
-      expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Frequency", "Service", "Due date", "Service status", "Completed date", "Service Report No.", "Quote No.", "Sales status", "Sales Engineer", "AMC Value / Year (OMR)"]);
+      expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Frequency", "Service", "Due date", "Service status", "Completed date", "Service Report No.", "Quote No.", "Sales status", "Service Engineer", "AMC Value / Year (OMR)"]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
       expect(rows.map((row) => row[2])).toEqual(["Alpha Towers", "Alpha Towers", "Alpha Towers", "Alpha Towers"]);
       // A formula-like number is written as text, never run.
