@@ -45,7 +45,7 @@ beforeEach(async () => {
 afterAll(closePool);
 
 describe("migration 0087: the six roles", () => {
-  it("renames ADMIN to Super Admin and adds the five roles, keeping the ADMIN code", async () => {
+  it("renames ADMIN to Super Admin and adds the five roles, keeping the ADMIN code (names as renamed by 0117)", async () => {
     const roles = await pool.query<{ code: string; name: string; is_active: boolean }>(
       "SELECT code, name, is_active FROM roles WHERE code = ANY($1::text[]) ORDER BY id",
       [[...SIX_ROLE_CODES]]
@@ -53,9 +53,9 @@ describe("migration 0087: the six roles", () => {
 
     expect(roles.rows.map((row) => [row.code, row.name])).toEqual([
       ["ADMIN", "Super Admin"],
-      ["ADMINISTRATOR", "Admin"],
-      ["FINANCE_EXECUTIVE", "Finance Executive"],
-      ["MASTER_DATA_EXECUTIVE", "Master Data Executive"],
+      ["ADMINISTRATOR", "Service Dept"],
+      ["FINANCE_EXECUTIVE", "Accounts"],
+      ["MASTER_DATA_EXECUTIVE", "AMC Sales"],
       ["AMC_OPERATIONS_EXECUTIVE", "AMC Operations Executive"],
       ["VIEWER", "Viewer"],
     ]);
@@ -263,7 +263,7 @@ describe("only Super Admin changes built-in roles and their permissions", () => 
     await pool.query("UPDATE roles SET is_active = false WHERE code = 'ACCOUNTANT'");
     expect((await api().patch(`/api/roles/${await roleId("ACCOUNTANT")}`).set(admin.headers).send({ isActive: true })).status).toBe(403);
     expect((await pool.query("SELECT is_active FROM roles WHERE code = 'ACCOUNTANT'")).rows[0].is_active).toBe(false);
-    expect((await pool.query("SELECT name FROM roles WHERE code = 'FINANCE_EXECUTIVE'")).rows[0].name).toBe("Finance Executive");
+    expect((await pool.query("SELECT name FROM roles WHERE code = 'FINANCE_EXECUTIVE'")).rows[0].name).toBe("Accounts");
   });
 
   it("no built-in role is ever deleted, even by Super Admin; a custom one may be", async () => {

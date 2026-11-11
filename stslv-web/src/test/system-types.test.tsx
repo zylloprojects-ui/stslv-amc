@@ -247,7 +247,7 @@ describe('linked contracts and deletion', () => {
   })
 
   it('offers Delete to Super Admin only, even to a role holding System Types Delete', async () => {
-    typesApi({ ...SETTINGS_VIEWER, id: '30', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: [...SETTINGS_VIEWER.permissions, 'SYSTEM_TYPES:EDIT', 'SYSTEM_TYPES:DELETE'] }, [CCTV])
+    typesApi({ ...SETTINGS_VIEWER, id: '30', roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Service Dept' }], permissions: [...SETTINGS_VIEWER.permissions, 'SYSTEM_TYPES:EDIT', 'SYSTEM_TYPES:DELETE'] }, [CCTV])
     renderPage()
     await table()
 

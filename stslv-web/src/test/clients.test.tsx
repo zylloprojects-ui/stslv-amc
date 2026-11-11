@@ -262,7 +262,7 @@ const CLIENT_MANAGER: SessionUser = {
   id: '7',
   email: 'manager@example.com',
   fullName: 'Mira Manager',
-  roles: [{ id: '7', code: 'ADMINISTRATOR', name: 'Admin' }],
+  roles: [{ id: '7', code: 'ADMINISTRATOR', name: 'Service Dept' }],
   permissions: ['CLIENTS:VIEW', 'CLIENTS:CREATE', 'CLIENTS:EDIT', 'CLIENTS:DELETE'],
 }
 

@@ -22,6 +22,8 @@ import { ACTIONS, ADMIN_ROLE_CODE, permissionKey, type Action, type Module, type
 
 export const ADMINISTRATOR_ROLE_CODE = "ADMINISTRATOR";
 
+export { BUILT_IN_ROLE_NAMES, LEGACY_ROLE_NAMES, PRIVILEGED_ROLES_LABEL } from "./role-names";
+
 /** Roles whose holders only Super Admin may manage: assign, remove, edit, deactivate, reset passwords. */
 export const PRIVILEGED_ROLE_CODES: readonly string[] = [ADMIN_ROLE_CODE, ADMINISTRATOR_ROLE_CODE];
 

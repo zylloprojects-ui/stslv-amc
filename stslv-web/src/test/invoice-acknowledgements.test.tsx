@@ -17,8 +17,8 @@ import { ADMIN, fail, mockApi, ok, renderApp, signIn, type MockReply, type MockR
 const base: SessionUser = { id: '20', email: 'ack@example.com', fullName: 'Amal Acknowledger', roles: [{ id: '9', code: 'CUSTOM', name: 'Custom' }], permissions: [] }
 const VIEW_ONLY: SessionUser = { ...base, id: '21', permissions: ['INVOICE_ACKNOWLEDGEMENTS:VIEW'] }
 // The approved defaults: Finance Executive View/Create/Export (+ Accounts); Admin View/Create/Edit/Export.
-const FINANCE: SessionUser = { ...base, id: '22', roles: [{ id: '3', code: 'FINANCE_EXECUTIVE', name: 'Finance Executive' }], permissions: ['INVOICE_ACKNOWLEDGEMENTS:VIEW', 'INVOICE_ACKNOWLEDGEMENTS:CREATE', 'INVOICE_ACKNOWLEDGEMENTS:EXPORT', 'ACCOUNTS:VIEW', 'AMC_CONTRACTS:VIEW'] }
-const ADMIN_ROLE: SessionUser = { ...FINANCE, id: '23', roles: [{ id: '2', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: [...FINANCE.permissions, 'INVOICE_ACKNOWLEDGEMENTS:EDIT'] }
+const FINANCE: SessionUser = { ...base, id: '22', roles: [{ id: '3', code: 'FINANCE_EXECUTIVE', name: 'Accounts' }], permissions: ['INVOICE_ACKNOWLEDGEMENTS:VIEW', 'INVOICE_ACKNOWLEDGEMENTS:CREATE', 'INVOICE_ACKNOWLEDGEMENTS:EXPORT', 'ACCOUNTS:VIEW', 'AMC_CONTRACTS:VIEW'] }
+const ADMIN_ROLE: SessionUser = { ...FINANCE, id: '23', roles: [{ id: '2', code: 'ADMINISTRATOR', name: 'Service Dept' }], permissions: [...FINANCE.permissions, 'INVOICE_ACKNOWLEDGEMENTS:EDIT'] }
 const VIEWER_ROLE: SessionUser = { ...base, id: '24', roles: [{ id: '6', code: 'VIEWER', name: 'Viewer' }], permissions: ['ACCOUNTS:VIEW', 'INVOICES:VIEW', 'DASHBOARD:VIEW'] }
 
 const DOC = {

@@ -1,4 +1,7 @@
 import type { Action, Module } from "./permissions";
+import { BUILT_IN_ROLE_NAMES, PRIVILEGED_ROLES_LABEL } from "./role-names";
+
+const ADMINISTRATOR = BUILT_IN_ROLE_NAMES.ADMINISTRATOR;
 
 // What each permission module governs in the current application: the pages it
 // opens and the actions the code actually checks. Roles & Permissions is drawn
@@ -293,7 +296,7 @@ export const PERMISSION_CATALOG: CatalogSection[] = [
         module: "USERS",
         label: "Users & Access",
         description:
-          "People and their roles. Built-in roles and their permissions are changed by Super Admin only; custom roles also by Admin with Edit, within Admin's own permissions. Super Admin and Admin accounts are managed by Super Admin only.",
+          `People and their roles. Built-in roles and their permissions are changed by Super Admin only; custom roles also by ${ADMINISTRATOR} with Edit, within ${ADMINISTRATOR}'s own permissions. ${PRIVILEGED_ROLES_LABEL} accounts are managed by Super Admin only.`,
         pages: [
           { label: "Users & Access", path: "/admin/users" },
           { label: "Roles & Permissions", path: "/admin/roles" },
@@ -387,12 +390,12 @@ export const FIXED_ACCESS = {
   superAdminOnly: [
     { label: "Changing built-in roles and their permissions", path: "/admin/roles" },
     { label: "Giving a role Users & Access permissions", path: "/admin/roles" },
-    { label: "Managing Super Admin and Admin accounts", path: "/admin/users" },
+    { label: `Managing ${PRIVILEGED_ROLES_LABEL} accounts`, path: "/admin/users" },
     { label: "Running and downloading backups", path: "/settings/backups" },
     { label: "Recycle Bin: viewing, restoring and permanently deleting records", path: "/admin/deletion-log" },
   ],
   adminOnly: [
-    { label: "Adding and changing custom roles (Admin also needs Users & Access Edit, and only within its own permissions)", path: "/settings?section=roles" },
+    { label: `Adding and changing custom roles (${ADMINISTRATOR} also needs Users & Access Edit, and only within its own permissions)`, path: "/settings?section=roles" },
     { label: "Audit Log", path: "/admin/audit-log" },
     // Admin opens the same page, but sees only Deletion History; the Recycle Bin view and its actions are Super Admin only (API: assertRecycleBinAdmin).
     { label: "Deletion History (Recycle Bin page, history only)", path: "/admin/deletion-log?view=history" },

@@ -218,7 +218,7 @@ describe('status row action', () => {
 const ENGINEER_MANAGER: SessionUser = {
   ...ADMIN,
   id: '7',
-  roles: [{ id: '7', code: 'ADMINISTRATOR', name: 'Admin' }],
+  roles: [{ id: '7', code: 'ADMINISTRATOR', name: 'Service Dept' }],
   permissions: afterPageSplit(['DASHBOARD:VIEW', 'SALES_ENGINEERS:VIEW', 'SALES_ENGINEERS:CREATE', 'SALES_ENGINEERS:EDIT', 'SALES_ENGINEERS:EXPORT']),
 }
 

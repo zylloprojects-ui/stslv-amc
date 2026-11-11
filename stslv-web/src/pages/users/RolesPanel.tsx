@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { PRIVILEGED_ROLES_LABEL } from '../../auth/roleNames'
 import { isSuperAdmin } from '../../auth/roles'
 import { Alert, Button, Card, ConfirmDialog, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
@@ -516,7 +517,7 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
       <div className="space-y-3 p-4 pb-0" aria-live="polite">
         {!role.permissionsEditable && <Alert tone="info">{role.lockedReason ?? 'This role always has full access. Its permissions cannot be changed.'}</Alert>}
         {!role.isActive && <Alert tone="info">This role is inactive: it cannot be assigned and grants nothing. Its permissions are kept for its history.</Alert>}
-        {role.scope && role.isActive && <Alert tone="info">What a role can open follows the boxes below, whatever its name. {role.name} can be given any of them; Users & Access stays with Super Admin and Admin.</Alert>}
+        {role.scope && role.isActive && <Alert tone="info">What a role can open follows the boxes below, whatever its name. {role.name} can be given any of them; Users & Access stays with {PRIVILEGED_ROLES_LABEL}.</Alert>}
         {editable && dirty && <Alert tone="info">You have unsaved changes. Save them, or Cancel to go back to the saved permissions.</Alert>}
         {(stale || (dirty && changedElsewhere)) && (
           <Alert>
@@ -638,7 +639,7 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
                 </div>
               )}
               <div className="rounded-lg border border-slate-200 bg-white p-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Super Admin and Admin only:</p>
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">{PRIVILEGED_ROLES_LABEL} only:</p>
                 <p className="mt-1">{catalogue.fixedAccess.adminOnly.map((page) => page.label).join(' · ')}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-white p-3">

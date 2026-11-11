@@ -635,7 +635,7 @@ describe('roles and permissions drawn from the permission catalog', () => {
     expect(screen.queryByRole('checkbox', { name: 'AMC Contracts: Approve' })).not.toBeInTheDocument()
     expect(screen.getByText('AMC Renewal')).toBeInTheDocument()
     expect(screen.getByText('Cancel contracts (nothing is deleted; also needs Edit)')).toBeInTheDocument()
-    expect(screen.getByText(/Super Admin and Admin only:/).parentElement).toHaveTextContent('Audit Log')
+    expect(screen.getByText(/Super Admin and Service Dept only:/).parentElement).toHaveTextContent('Audit Log')
   })
 
   it('confirms a save after the roles list reloads with the new permissions, and keeps them ticked', async () => {

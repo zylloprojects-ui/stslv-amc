@@ -7,7 +7,7 @@ import { ADMIN, mockApi, ok, renderApp, signIn, type MockRequest } from './helpe
 
 // Security Center and Backup & Restore moved from the Administration menu into Settings, reusing the same pages.
 
-const FINANCE: SessionUser = { ...ADMIN, id: '9', roles: [{ id: '9', code: 'FINANCE_EXECUTIVE', name: 'Finance Executive' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'ACCOUNTS:VIEW'] }
+const FINANCE: SessionUser = { ...ADMIN, id: '9', roles: [{ id: '9', code: 'FINANCE_EXECUTIVE', name: 'Accounts' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'ACCOUNTS:VIEW'] }
 
 const BACKUPS = {
   status: { available: false, unavailableReason: 'Not configured.', automaticSchedule: false, storageConfigured: false, storageDeclaredDurable: false, toolVersion: null, checks: [] },

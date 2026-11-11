@@ -17,7 +17,7 @@ import { ADMIN, fail, mockApi, ok, renderApp, signIn } from './helpers'
 const finance = (permissions: string[]): SessionUser => ({
   ...ADMIN,
   id: '40',
-  roles: [{ id: '7', code: 'FINANCE_EXECUTIVE', name: 'Finance Executive' }],
+  roles: [{ id: '7', code: 'FINANCE_EXECUTIVE', name: 'Accounts' }],
   permissions,
 })
 

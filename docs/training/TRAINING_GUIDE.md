@@ -22,16 +22,16 @@ Reference material: `docs/user-guide/USER_GUIDE.md` (chapter numbers below refer
 | Clients | `TRN Alpha Facilities LLC`, `TRN Beta Towers LLC`, `TRN Gamma Clinic` (contact "Training Desk", email `desk@trn.example`) |
 | Contract documents | Any small PDF named `TRN-contract.pdf` with the text "Training document — not a contract" |
 | Service reports | `TRN-report-1.pdf`, `TRN-report-2.pdf` with "Training service report" |
-| Users | `trn.admin@trn.example` (Admin), `trn.ops@…` (AMC Operations Executive), `trn.fin@…` (Finance Executive), `trn.md@…` (Master Data Executive), `trn.view@…` (Viewer). Use temporary passwords (Users & Access) so each trainee sets their own |
+| Users | `trn.admin@trn.example` (Service Dept), `trn.ops@…` (AMC Operations Executive), `trn.fin@…` (Accounts), `trn.md@…` (AMC Sales), `trn.view@…` (Viewer). Use temporary passwords (Users & Access) so each trainee sets their own |
 
-Grant **Reports: View, Export** to the Admin, Finance and AMC Operations training roles if the reports exercise is included (no built-in role starts with Reports).
+Grant **Reports: View, Export** to the Service Dept, Accounts and AMC Operations training roles if the reports exercise is included (no built-in role starts with Reports).
 
 ## 3. Tracks
 
 | Track | Audience | Duration (guide) | Exercises |
 |---|---|---|---|
 | A. Super Admin | System owner(s) | 3 h | GS-1, SA-1…SA-6, all of B–E as demonstration |
-| B. Admin | Office administrators | 2 h | GS-1, AD-1…AD-4, OP-1, RP-1 |
+| B. Service Dept | Office administrators | 2 h | GS-1, AD-1…AD-4, OP-1, RP-1 |
 | C. AMC Operations | Operations executives, coordinators | 2.5 h | GS-1, OP-1…OP-6, RP-1 |
 | D. Finance | Accounts / invoicing staff | 2 h | GS-1, FN-1…FN-5, RP-1 |
 | E. Master Data | Master data maintainers | 1.5 h | GS-1, MD-1…MD-4 |
@@ -109,7 +109,7 @@ b) Upload `TRN-report-1.pdf`, choose Completed, enter Service Report No. `TRN-SR
 **VW-1 Read the Dashboard and Calendar** — Explain the three KPI rows; open Monthly Calendar Month view and read a Paid (green square) and an Unpaid (blue square) service. *Expected:* trainee explains colours correctly.
 **VW-2 No editing** — Open AMC Contracts and Accounts. *Expected:* no Add/Edit buttons; Invoice No. read-only.
 
-### Admin (track B; also A)
+### Service Dept (track B; also A)
 
 **AD-1 Approve a sign-up** — Trainer signs up `trn.new@trn.example`. Filter Pending → assign Viewer → Approve. *Expected:* status Active; user can sign in.
 **AD-2 Temporary password** — Generate a temporary password for `trn.view@…` after the verification tick. *Expected:* shown once; works 15 minutes; user must change it.
@@ -121,7 +121,7 @@ b) Upload `TRN-report-1.pdf`, choose Completed, enter Service Report No. `TRN-SR
 ### Super Admin (track A)
 
 **SA-1 Roles & Permissions** — Give the Finance training role *Reports: View* and save; try saving *AMC Contracts: Delete* without *Edit*. *Expected:* saved / refused with the dependency message. As the Finance trainee, open Reports. *Expected:* only the Accounts-sourced reports are listed (each report also needs View of its source page).
-**SA-2 Admin-only management** — As Admin (trainee second account) try to change a Super Admin's role. *Expected:* "Only Super Admin can manage Super Admin and Admin accounts."
+**SA-2 Privileged-account management** — As Service Dept (trainee second account) try to change a Super Admin's role. *Expected:* "Only Super Admin can manage Super Admin and Service Dept accounts."
 **SA-3 Recycle Bin** — Move client `TRN Delta Stores` (unused) to the Recycle Bin, restore it, move it again and **Delete permanently** by typing its code. *Expected:* each step succeeds; Deletion History lists them.
 **SA-4 Cancel a contract** — Cancel `TRN-AMC-003` with reason "TRN cancellation", ticking "Also cancel the scheduled and postponed visits". *Expected:* Cancelled (red); open services cancelled; nothing deleted.
 **SA-5 Backup status** — Read Backup & Restore; explain who takes production backups (Infrastructure Ownership Register).

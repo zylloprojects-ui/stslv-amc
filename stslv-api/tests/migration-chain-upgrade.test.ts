@@ -140,13 +140,21 @@ async function checksum(db: Pool, table: string, columns: string[], maxId: strin
   return result.rows[0] as { rows: number; md5: string };
 }
 
+/**
+ * Columns a later migration changes on purpose, left out of the checksum and checked on their own: 0117 renames three
+ * built-in roles (its BEFORE UPDATE trigger also stamps updated_at). Every other column of every row must not change.
+ */
+const CHANGED_ON_PURPOSE: Record<string, string[]> = { roles: ["name", "description", "updated_at"] };
+
 /** Checksums of every pre-existing row over the columns it had before the upgrade. */
 async function fingerprint(db: Pool, schema: string): Promise<Record<string, Fingerprint>> {
   const out: Record<string, Fingerprint> = {};
   for (const table of TABLES) {
     const columns = (
       await db.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_schema = $1 AND table_name = $2 ORDER BY ordinal_position", [schema, table])
-    ).rows.map((row) => row.column_name);
+    )
+      .rows.map((row) => row.column_name)
+      .filter((column) => !(CHANGED_ON_PURPOSE[table] ?? []).includes(column));
     const hasId = columns.includes("id");
     const maxId = hasId ? ((await db.query<{ m: string | null }>(`SELECT max(id)::text AS m FROM ${table}`)).rows[0]!.m ?? "0") : null;
     out[table] = { columns, hasId, maxId, ...(await checksum(db, table, columns, maxId)) };
@@ -173,6 +181,7 @@ describe("release chain 0108-0116 on the upgrade path", () => {
       const { db, dir } = await schemaAt(schema, level);
       const data = await seed(db);
       const before = await fingerprint(db, schema);
+      const descriptionsBefore = (await db.query<{ code: string; description: string | null }>("SELECT code, description FROM roles ORDER BY id")).rows;
       const grantsBefore = (await db.query("SELECT r.code, p.module, p.action FROM role_permissions p JOIN roles r ON r.id = p.role_id ORDER BY 1, 2, 3")).rows;
 
       // The rest of the chain, from the real migration folder.
@@ -189,6 +198,25 @@ describe("release chain 0108-0116 on the upgrade path", () => {
       expect(recorded.rows.map((row) => row.version)).toEqual([...files.keys()]);
 
       await sameRowsAfter(db, before);
+      // 0117: the three client role names, nothing else about any role (the checksum above covers the other columns).
+      expect(Object.fromEntries((await db.query<{ code: string; name: string }>("SELECT code, name FROM roles")).rows.map((row) => [row.code, row.name]))).toEqual({
+        ADMIN: "Super Admin",
+        ADMINISTRATOR: "Service Dept",
+        FINANCE_EXECUTIVE: "Accounts",
+        MASTER_DATA_EXECUTIVE: "AMC Sales",
+        AMC_OPERATIONS_EXECUTIVE: "AMC Operations Executive",
+        VIEWER: "Viewer",
+        ACCOUNTANT: "Accountant",
+        PROCUREMENT: "Procurement",
+        EXECUTION: "Execution",
+        INVOICING: "Invoicing",
+      });
+      // 0117 changes one description (Super Admin's mention of the Admin role); every other is as before.
+      const descriptionsAfter = (await db.query<{ code: string; description: string | null }>("SELECT code, description FROM roles ORDER BY id")).rows;
+      expect(descriptionsAfter.filter((row) => row.code !== "ADMIN")).toEqual(descriptionsBefore.filter((row) => row.code !== "ADMIN"));
+      expect(descriptionsAfter.find((row) => row.code === "ADMIN")?.description).toBe(
+        "Full access to every module, including Service Dept accounts and all role permissions. Cannot be changed."
+      );
       // Grants only gain the new module's approved defaults; the customised role keeps its removal.
       const grantsAfter = (await db.query<{ code: string; module: string; action: string }>("SELECT r.code, p.module, p.action FROM role_permissions p JOIN roles r ON r.id = p.role_id ORDER BY 1, 2, 3")).rows;
       expect(grantsAfter).toEqual(expect.arrayContaining(grantsBefore));

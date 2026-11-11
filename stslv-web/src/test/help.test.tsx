@@ -28,7 +28,7 @@ const FINANCE: SessionUser = {
   id: '5',
   email: 'finance@example.com',
   fullName: 'Fatma Finance',
-  roles: [{ id: '5', code: 'FINANCE_EXECUTIVE', name: 'Finance Executive' }],
+  roles: [{ id: '5', code: 'FINANCE_EXECUTIVE', name: 'Accounts' }],
   permissions: ['DASHBOARD:VIEW', 'AMC_SCHEDULE:READ', 'INVOICES:VIEW', 'INVOICES:EDIT', 'ACCOUNTS:VIEW', 'ACCOUNTS:EXPORT', 'SUGGESTIONS:VIEW', 'SUGGESTIONS:CREATE'],
 }
 

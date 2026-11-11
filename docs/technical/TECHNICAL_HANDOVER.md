@@ -64,7 +64,7 @@ See [API_REFERENCE.md](API_REFERENCE.md). Health checks: `GET /api/health`, `GET
 
 ## 5. Roles and permissions
 
-See [ROLE_PERMISSION_MATRIX.md](ROLE_PERMISSION_MATRIX.md). Six built-in roles: Super Admin (fixed), Admin, Finance Executive, Master Data Executive, AMC Operations Executive, Viewer.
+See [ROLE_PERMISSION_MATRIX.md](ROLE_PERMISSION_MATRIX.md). Six built-in roles: Super Admin (fixed), Service Dept, Accounts, AMC Sales, AMC Operations Executive, Viewer.
 
 ## 6. Neon database configuration (current production database)
 
@@ -170,7 +170,7 @@ Secrets (`DB_PASSWORD`, `JWT_SECRET`, storage keys) live only in the host's envi
 | "Contract documents … could not be saved" / 503 STORAGE_ERROR | Bucket unreachable or key revoked | `npm run storage:check`; Security Center → Document storage; rotate keys |
 | `FEATURE_UNAVAILABLE` (503) on a page | A migration that page needs is not applied | Security Center → Database updates; apply pending migrations |
 | Users report "Too many attempts" | Sign-in rate limit; or `TRUST_PROXY` wrong so all users share one address | Wait 15 minutes; check `metadata.ip` of `auth.login_failed` in the Audit Log |
-| A user cannot see a page | Role lacks View | Roles & Permissions (Super Admin; Admin for custom roles) |
+| A user cannot see a page | Role lacks View | Roles & Permissions (Super Admin; Service Dept for custom roles) |
 | "You were signed out after 30 minutes of inactivity" / "This session has been signed out" | Inactivity limit, sign-out elsewhere, administrator, password change | Sign in again; Security Center → Active sessions |
 | An Audit Log change fails with "append-only" | Migration 0109 protects `activity_logs` | Expected; audit entries are never changed or deleted |
 | Forgotten password | — | Users & Access → Generate temporary password (15 minutes) |

@@ -340,7 +340,7 @@ describe("the system always keeps an active Admin", () => {
     // Holding every permission is not enough: Super Admin accounts are managed by Super Admin only.
     expect(deactivate.status).toBe(403);
     expect(removeRole.status).toBe(403);
-    expect(deactivate.body.error.message).toBe("Only Super Admin can manage Super Admin and Admin accounts.");
+    expect(deactivate.body.error.message).toBe("Only Super Admin can manage Super Admin and Service Dept accounts.");
 
     // Another active Super Admin may.
     await insertUser({ email: "second-admin@example.com", roles: ["ADMIN"] });

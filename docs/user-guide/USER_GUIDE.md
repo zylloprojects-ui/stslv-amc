@@ -161,7 +161,7 @@ Errors: "Select a Billing Basis first. A contract without one keeps its manually
 
 ### Service completion
 
-A service is completed on **Service Status** (§11) after its Service Report is uploaded. Completion is **final**: the status, completion date and report are then locked for everyone, Admin included. Completing a service never makes it Paid.
+A service is completed on **Service Status** (§11) after its Service Report is uploaded. Completion is **final**: the status, completion date and report are then locked for everyone, Super Admin and Service Dept included. Completing a service never makes it Paid.
 
 ### Paid (manual Invoice No.) versus Zoho payment reconciliation
 
@@ -459,7 +459,7 @@ Search, Client, Sales Engineer, System, Maintenance Frequency, Scheduled month a
 Without a report: popup **"Service report required" — "Please upload service report."**, nothing saved. After saving: lock icon, "Completed services are locked: the status cannot be changed." Before completion a report can be replaced (earlier version kept) or removed.
 
 ### Service Report No. after Paid (approved 2026-11-09; switched on at release)
-Once a service is **Paid** (an Invoice No. is entered in Accounts), its Service Report No. is **locked**: "Locked: this service is Paid (an Invoice No. is entered). Only an administrator can change the report number, with a reason." **Super Admin and Admin** may still change it by giving a **reason** (required); every such change is written to the Audit Log. Other roles are refused, also through the API. Clearing the Invoice No. (Unpaid) unlocks it again.
+Once a service is **Paid** (an Invoice No. is entered in Accounts), its Service Report No. is **locked**: "Locked: this service is Paid (an Invoice No. is entered). Only an administrator can change the report number, with a reason." **Super Admin and Service Dept** may still change it by giving a **reason** (required); every such change is written to the Audit Log. Other roles are refused, also through the API. Clearing the Invoice No. (Unpaid) unlocks it again.
 > This rule is approved but **switched off** until the approved production release (`SERVICE_REPORT_NO_LOCK_ENABLED`). While it is off, the number stays editable as before.
 
 ### Which services are counted
@@ -526,7 +526,7 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 > **Module (2026-11-10, migrations 0112–0115, prepared for review).** One acknowledgement per invoice, even when the
 > invoice covers several services.
 
-**Page:** Accounts → Invoice Ack (`/finance/invoice-acknowledgements`; the page is titled Invoice Acknowledgements). **Permissions:** *Invoice Acknowledgements: View* to see the page, view and download documents and the Linked Services; *Create* to attach a document and confirm; *Edit* to replace the document of an acknowledged invoice and to **Reconcile**; *Export* for Excel / PDF. Amounts are shown only to users who may also view Accounts. **Starting access:** Super Admin and Admin — View, Create, Edit, Export; Finance Executive — View, Create, Export; Viewer and other roles — none.
+**Page:** Accounts → Invoice Ack (`/finance/invoice-acknowledgements`; the page is titled Invoice Acknowledgements). **Permissions:** *Invoice Acknowledgements: View* to see the page, view and download documents and the Linked Services; *Create* to attach a document and confirm; *Edit* to replace the document of an acknowledged invoice and to **Reconcile**; *Export* for Excel / PDF. Amounts are shown only to users who may also view Accounts. **Starting access:** Super Admin and Service Dept — View, Create, Edit, Export; Accounts (role) — View, Create, Export; Viewer and other roles — none.
 
 - **Purpose:** keep the client's signed or stamped acknowledgement that it received each invoice, next to that invoice.
 - **One row per invoice.** An invoice may cover several services: one document and one confirmation acknowledge them all, and every linked service shows the same status. **Linked Services** (the count in the row) lists them.
@@ -661,7 +661,7 @@ Choose a report; only its filters are shown (From, To, Client, Sales Engineer, S
 ## Users and Roles
 
 ### Users & Access (`/admin/users`)
-**Permissions:** *Users: View* to open; Create to add; Edit to rename, change role, activate/deactivate; Approve to approve or reject sign-ups. Temporary passwords: Super Admin and Admin only. Export: administrators only.
+**Permissions:** *Users: View* to open; Create to add; Edit to rename, change role, activate/deactivate; Approve to approve or reject sign-ups. Temporary passwords: Super Admin and Service Dept only. Export: administrators only.
 
 - **Columns:** #, Name ("(you)"), Email, Role (amber "Several roles: choose one" for older data), Status, Last sign-in, Actions.
 - **Filters:** search (name, email, role), Status: All / Active / Inactive / Pending / Rejected.
@@ -672,35 +672,37 @@ Choose a report; only its filters are shown (From, To, Client, Sales Engineer, S
 
 **Workflow — forgotten password:** Generate temporary password → tick "I have verified that the person asking is <name>…" → hand over the password shown once (format `xxxx-xxxx-xxxx-xxxx`). It replaces the old password at once, signs the user out everywhere, works for **15 minutes** and one sign-in, and must be changed at sign-in. Limit: 10 per administrator per 15 minutes.
 
-**Rules and messages:** "Only Super Admin can manage Super Admin and Admin accounts." · "Assign a role before approving this user." · "You cannot manage a user who holds permissions you do not hold." · "This is the only active Super Admin. Assign the Super Admin role to another active user first." · You cannot change your own role or deactivate yourself. Changes apply on the user's next request. A temporary password, a password change or deactivation signs the user out everywhere; administrators can also end any session in **Security Center → Active sessions**.
+**Rules and messages:** "Only Super Admin can manage Super Admin and Service Dept accounts." · "Assign a role before approving this user." · "You cannot manage a user who holds permissions you do not hold." · "This is the only active Super Admin. Assign the Super Admin role to another active user first." · You cannot change your own role or deactivate yourself. Changes apply on the user's next request. A temporary password, a password change or deactivation signs the user out everywhere; administrators can also end any session in **Security Center → Active sessions**.
 
 ### Roles & Permissions (`/admin/roles`) and the Role list (Settings → Organization → Role list)
 Anyone with *Users: View* can see roles. Who may change them (approved 2026-11-09, enforced by the server):
 
-| | Super Admin | Admin (needs *Users: Edit*) | Any other role |
+| | Super Admin | Service Dept (needs *Users: Edit*) | Any other role |
 |---|---|---|---|
 | Add a custom role | Yes | Yes | No |
-| Rename, deactivate, reactivate, delete a custom role | Yes | Only a role whose every permission Admin holds | No |
-| Change a custom role's permissions | Yes | Only within Admin's own permissions | No |
+| Rename, deactivate, reactivate, delete a custom role | Yes | Only a role whose every permission Service Dept holds | No |
+| Change a custom role's permissions | Yes | Only within Service Dept's own permissions | No |
 | Give a role *Users & Access* permissions | Yes | No (may remove them) | No |
 | Change a built-in role or its permissions | Yes (never Super Admin's) | No | No |
-| Assign a custom role to a user | Yes | Only if Admin holds all its permissions | No |
-| Assign Super Admin or Admin | Yes | No | No |
+| Assign a custom role to a user | Yes | Only if Service Dept holds all its permissions | No |
+| Assign Super Admin or Service Dept | Yes | No | No |
 
-Nobody changes their own role. A custom role cannot use a built-in code or an existing name. Built-in roles are never deleted. If Super Admin removes *Users: Edit* from Admin, Admin can no longer manage roles. Where you may not change a role, its row has no actions and says why.
+Nobody changes their own role. A custom role cannot use a built-in code or an existing name. Built-in roles are never deleted. If Super Admin removes *Users: Edit* from Service Dept, Service Dept can no longer manage roles. Where you may not change a role, its row has no actions and says why.
 
 | Role | Starts with |
 |---|---|
 | Super Admin | Fixed full access (cannot be changed) |
-| Admin | All operational and administrative modules, as configured by Super Admin |
-| Finance Executive | Dashboard; Invoice Tracking and Accounts; Invoice Acknowledgements (View, Create, Export); data read of AMC Schedule; Suggestions |
-| Master Data Executive | Dashboard; the five Master Data modules; Suggestions |
+| Service Dept | All operational and administrative modules, as configured by Super Admin |
+| Accounts | Dashboard; Invoice Tracking and the Accounts page; Invoice Acknowledgements (View, Create, Export); data read of AMC Schedule; Suggestions |
+| AMC Sales | Dashboard; the five Master Data modules; Suggestions |
 | AMC Operations Executive | Dashboard; the AMC modules (permission group "AMC Operations": Master AMC Status, AMC Contracts, AMC Execution pages, AMC Renewal) and Service Sales; data read of Clients and Invoice Tracking; Suggestions |
 | Viewer | View of every non-administration module; submit suggestions |
 
+Role names (renamed for the client on 2026-11-11; codes, permissions and assignments unchanged): Admin is now **Service Dept**, Finance Executive is now **Accounts**, Master Data Executive is now **AMC Sales**. The role named Accounts is not the Accounts page, and the role named AMC Sales is not a page: what a role opens is set only by its permissions. Audit Log entries written before the rename keep the names used at the time.
+
 Reports is granted by Super Admin on purpose (no built-in role starts with it). The four operational roles can never hold *Users* permissions. Full matrix: `docs/technical/ROLE_PERMISSION_MATRIX.md`.
 
-- **Fixed access:** Super Admin only — built-in roles and their permissions, giving a role *Users & Access*, Super Admin/Admin accounts, running and downloading backups, the Recycle Bin view and its actions. Super Admin and Admin — custom roles (as above), Audit Log, Deletion History, Backup status, Security Center (including Active sessions). Everyone — Notifications, My account (including your Active sessions), Help.
+- **Fixed access:** Super Admin only — built-in roles and their permissions, giving a role *Users & Access*, Super Admin/Service Dept accounts, running and downloading backups, the Recycle Bin view and its actions. Super Admin and Service Dept — custom roles (as above), Audit Log, Deletion History, Backup status, Security Center (including Active sessions). Everyone — Notifications, My account (including your Active sessions), Help.
 - **Saving:** "Permissions saved. They apply immediately." If someone else saved first: "Not saved: someone else changed these permissions since you opened them. Nothing was overwritten."
 - **Messages:** "X also needs Y. Grant both, or neither." · "A built-in role cannot be deleted. Deactivate it instead." · "N people still have this role. Move them to another role first."
 
@@ -708,7 +710,7 @@ Reports is granted by Super Admin on purpose (no built-in role starts with it). 
 
 ## Security Center
 
-**Page:** Settings → Security Center (`/settings/security`). Super Admin and Admin; read only.
+**Page:** Settings → Security Center (`/settings/security`). Super Admin and Service Dept; read only.
 
 | Check | OK / Attention / Not available |
 |---|---|
@@ -737,7 +739,7 @@ Sign-in limits (defaults, per 15 minutes): 50 sign-in requests per network addre
 
 ## Audit Log
 
-**Page:** Administration → Audit Log (`/admin/audit-log`). Super Admin and Admin. "What was changed, by whom and when, across every module. Newest first."
+**Page:** Administration → Audit Log (`/admin/audit-log`). Super Admin and Service Dept. "What was changed, by whom and when, across every module. Newest first."
 
 Tiles: Entries, Modules, People, On this page. Quick ranges: Today / Last 7 days / Last 30 days. Filters: search, Module, Record type, User, From, To. Timeline dot colours: red removed or blocked; green created or enabled; blue changed; grey other. Optional columns: Module, User, Record, Changes, Reason, Network address. Export Excel/PDF.
 
@@ -747,7 +749,7 @@ Useful entries: `amc_contract.schedule_regenerated` (reason and old/new amounts)
 
 ## Recycle Bin
 
-**Page:** Administration → Recycle Bin (`/admin/deletion-log`). Admin sees **Deletion History** only; Super Admin also sees the **Recycle Bin** tab.
+**Page:** Administration → Recycle Bin (`/admin/deletion-log`). Service Dept sees **Deletion History** only; Super Admin also sees the **Recycle Bin** tab.
 
 - **Contents:** AMC contracts, clients, system types and sales engineers moved there by Super Admin. Items stay until restored (no automatic expiry).
 - **Move to the bin:** from the record's Delete action. A record still in use cannot be moved: "This record is still in use and cannot be moved to the Recycle Bin. Deactivate it instead."
@@ -768,7 +770,7 @@ Useful entries: `amc_contract.schedule_regenerated` (reason and old/new amounts)
 
 ## Backup status
 
-**Page:** Settings → Backup & Restore (`/settings/backups`). Super Admin and Admin view; only Super Admin runs or downloads.
+**Page:** Settings → Backup & Restore (`/settings/backups`). Super Admin and Service Dept view; only Super Admin runs or downloads.
 
 - **Current hosted copy:** in-app backups are **not configured**. The page says "Manual backups are not available here." with the reason, and tiles show *Not available / Not configured / None yet*. Database backups are taken by the system owner with `pg_dump` outside the application (see `docs/technical/TECHNICAL_HANDOVER.md` §8 and the Infrastructure Ownership Register).
 - **When configured:** *Back up now* runs `pg_dump`, verifies with `pg_restore --list`, records size, tables and SHA-256. History: Running (blue), Verified (green), Failed (red). Only verified backups whose checksum still matches can be downloaded. Configuration checks: storage, durability, writable, pg_dump, pg_restore, tool version, free space.
@@ -790,7 +792,7 @@ Useful entries: `amc_contract.schedule_regenerated` (reason and old/new amounts)
 
 ## Integration review (2026-11-09)
 
-This guide was written against `c6d8d19` and updated during the final local integration of P0, P1, P2 and P3 (branch `integration/stslv-amc-final-20261109`). Updated chapters: Getting started (sessions, password rules), Monthly Calendar (By service / By contract), Service Status (Service Report No. lock, counted services), Master AMC Status (Zoho columns in the export), AMC Renewal (contract expiry, Recycle Bin check), Reports (source-page permissions), Users and Roles (custom-role management by Super Admin and Admin, active sessions), Security Center (Active sessions), Backup status (prepared off-site backups).
+This guide was written against `c6d8d19` and updated during the final local integration of P0, P1, P2 and P3 (branch `integration/stslv-amc-final-20261109`). Updated chapters: Getting started (sessions, password rules), Monthly Calendar (By service / By contract), Service Status (Service Report No. lock, counted services), Master AMC Status (Zoho columns in the export), AMC Renewal (contract expiry, Recycle Bin check), Reports (source-page permissions), Users and Roles (custom-role management by Super Admin and Service Dept, active sessions), Security Center (Active sessions), Backup status (prepared off-site backups).
 
 **Approved but switched off until the approved production release:** contract expiry (`AMC_CONTRACT_EXPIRY_ENABLED`) and the Service Report No. lock (`SERVICE_REPORT_NO_LOCK_ENABLED`). This guide describes both; while they are off, contracts past validity stay Active and report numbers stay editable.
 

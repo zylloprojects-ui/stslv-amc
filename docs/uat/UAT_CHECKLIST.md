@@ -7,7 +7,7 @@ Prepared 2026-11-09 against commit `c6d8d19` + `feature/stslv-p3-handover`; sect
 - Run in a UAT environment with synthetic data (see `docs/training/TRAINING_GUIDE.md` §2), not the live client database, unless the client approves specific read-only tests on production.
 - **Priority:** C = Critical (must pass for sign-off), H = High, M = Medium.
 - **Pass/Fail:** `Pass`, `Fail`, `Blocked` or `Not run`. A Fail gets an entry in `docs/handover/OUTSTANDING_ISSUES_REGISTER.md`; put its ID in Comments.
-- Roles: SA = Super Admin, AD = Admin, OPS = AMC Operations Executive, FIN = Finance Executive, MD = Master Data Executive, VW = Viewer.
+- Roles: SA = Super Admin, AD = Service Dept, OPS = AMC Operations Executive, FIN = Accounts (role), MD = AMC Sales, VW = Viewer.
 - Test data names start with `UAT-` or `TRN`.
 
 UAT environment: ____________ Application version: ____________ Test period: ____________
@@ -109,7 +109,7 @@ UAT environment: ____________ Application version: ____________ Test period: ___
 | SS-01 | C | OPS | Scheduled service, no report | Choose Completed, Save | Popup "Please upload service report."; nothing saved | | | | | |
 | SS-02 | C | OPS | — | Upload a .txt or .exe renamed .pdf | Refused (type checked by content) | | | | | |
 | SS-03 | C | OPS | — | Upload PDF; Completed; report no. UAT-SR-1; Save | Completed (green), locked; completion date today | | | | | |
-| SS-04 | C | AD | Completed service | Try to change status/report as Admin | Refused; lock tooltip | | | | | |
+| SS-04 | C | AD | Completed service | Try to change status/report as Service Dept | Refused; lock tooltip | | | | | |
 | SS-05 | H | OPS | Report uploaded, not completed | Replace report; then Remove | New version; removal leaves no current report | | | | | |
 | SS-06 | H | OPS | Contract expired, no renewal | View its open service | "Waiting for Renewal" (red) | | | | | |
 | SS-07 | M | VW | — | View report | View/Download works; no Save/Upload | | | | | |
@@ -177,8 +177,8 @@ UAT environment: ____________ Application version: ____________ Test period: ___
 
 | Test ID | Pri | Role | Preconditions | Test steps | Expected result | Actual result | Pass/Fail | Tester | Date | Comments |
 |---|---|---|---|---|---|---|---|---|---|---|
-| USR-01 | C | SA | — | Create user with role Finance Executive | User can sign in and sees only Finance pages | | | | | |
-| USR-02 | C | AD | Super Admin user exists | Try to change Super Admin's role | "Only Super Admin can manage Super Admin and Admin accounts." | | | | | |
+| USR-01 | C | SA | — | Create user with role Accounts | User can sign in and sees only Finance pages | | | | | |
+| USR-02 | C | AD | Super Admin user exists | Try to change Super Admin's role | "Only Super Admin can manage Super Admin and Service Dept accounts." | | | | | |
 | USR-03 | C | SA | Only one active Super Admin | Remove own Super Admin role | Refused ("This is the only active Super Admin…") | | | | | |
 | USR-04 | C | SA | — | Grant Viewer *Reports: View*, save; sign in as Viewer | Reports visible immediately | | | | | |
 | USR-05 | H | SA | — | Grant *AMC Contracts: Delete* without Edit | "… also needs … Grant both, or neither." | | | | | |
@@ -243,13 +243,13 @@ Rules marked *switch* need `SERVICE_REPORT_NO_LOCK_ENABLED=true` or `AMC_CONTRAC
 | INT-06 | H | SA | — | Try to edit or delete an Audit Log entry (any route or tool available to the application) | Not possible; entries are only added | | | | | |
 | INT-07 | C | AD | AD holds Users & Access Edit | Settings → Role list → Add role `UAT_SITE`; give it Dashboard View and AMC Schedule View; assign to a test user | Saved; the user sees only those pages | | | | | |
 | INT-08 | C | AD | INT-07 | Try to give `UAT_SITE` Users & Access View | Refused: only Super Admin can give a role Users & Access | | | | | |
-| INT-09 | C | AD | — | Try to rename or change permissions of Viewer, Admin or Super Admin; try to assign Super Admin to a user | All refused | | | | | |
-| INT-10 | C | SA | A custom role with Reports View exists (Admin lacks Reports) | As Admin, try to rename, delete or assign that role | Refused; the row says the role grants permissions Admin does not hold | | | | | |
-| INT-11 | H | SA | — | Remove Users & Access Edit from Admin; as Admin open Role list | No Add/Edit/Delete; server refuses role changes. Restore afterwards | | | | | |
+| INT-09 | C | AD | — | Try to rename or change permissions of Viewer, Service Dept or Super Admin; try to assign Super Admin to a user | All refused | | | | | |
+| INT-10 | C | SA | A custom role with Reports View exists (Service Dept lacks Reports) | As Service Dept, try to rename, delete or assign that role | Refused; the row says the role grants permissions Service Dept does not hold | | | | | |
+| INT-11 | H | SA | — | Remove Users & Access Edit from Service Dept; as Service Dept open Role list | No Add/Edit/Delete; server refuses role changes. Restore afterwards | | | | | |
 | INT-12 | C | VW+ | Viewer granted Reports View, not Accounts View | Open Reports | Only reports of permitted source pages listed; Monthly Maintenance needs Accounts View | | | | | |
 | INT-13 | H | OPS | Calendar data | Monthly Calendar → Month → By contract; then Year view | One entry per contract with counts; no switch in Year view | | | | | |
 | INT-14 | H | OPS | A service with two Zoho invoices, one with a reference | Master AMC Status → Export Excel | Zoho Invoices (Tracking) and Zoho References (Tracking) columns, reference beside its invoice, "—" for the other | | | | | |
-| INT-15 | C | OPS/AD | *switch* SERVICE_REPORT_NO_LOCK; a Paid service | Change its Service Report No. as OPS; then as Admin with a reason | OPS refused; Admin succeeds only with a reason; Audit Log entry | | | | | |
+| INT-15 | C | OPS/AD | *switch* SERVICE_REPORT_NO_LOCK; a Paid service | Change its Service Report No. as OPS; then as Service Dept with a reason | OPS refused; Service Dept succeeds only with a reason; Audit Log entry | | | | | |
 | INT-16 | C | SA | *switch* AMC_CONTRACT_EXPIRY; contract with Valid To = yesterday (Oman) and an open renewal; contract with Valid To = today | Run the expiry job | Yesterday's contract Expired; today's still Active; services and the renewal unchanged; Audit Log entry | | | | | |
 | INT-17 | C | FIN | A cancelled contract with a Completed+Paid service and an open service | Compare Dashboard, Accounts, Service Status, Master AMC Status, Service Sales | The Paid service counted everywhere; the open one nowhere | | | | | |
 | INT-18 | H | VW | — | Open Help on several pages | Only topics for pages the role may open; Help text matches the screen | | | | | |

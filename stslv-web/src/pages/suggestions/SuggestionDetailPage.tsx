@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { PRIVILEGED_ROLES_LABEL } from '../../auth/roleNames'
 import { DetailRow, LoadError } from '../../components/records'
 import { Alert, Button, Card, PageHeader, SelectField, Spinner, TextAreaField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
@@ -445,7 +446,7 @@ function AssignPanel({ suggestion, onSaved }: PanelProps) {
           value={suggestion.assignedTo?.id ?? ''}
           disabled={options.isPending || assign.isPending}
           onChange={(event) => assign.mutate(event.target.value === '' ? null : event.target.value)}
-          hint="Only active Admin users review suggestions."
+          hint={`Only active ${PRIVILEGED_ROLES_LABEL} users review suggestions.`}
         >
           <option value="">Not assigned</option>
           {(options.data?.reviewers ?? []).map((user, _, users) => (

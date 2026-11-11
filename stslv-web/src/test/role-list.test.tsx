@@ -156,7 +156,7 @@ describe('roles', () => {
   })
 
   it('with an older API that sends no decision, offers the buttons to Super Admin only', async () => {
-    roleListApi({ ...ADMIN, roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW', 'USERS:CREATE', 'USERS:EDIT'] })
+    roleListApi({ ...ADMIN, roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Service Dept' }], permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW', 'USERS:CREATE', 'USERS:EDIT'] })
     await open()
 
     expect(screen.queryByRole('button', { name: 'Add role' })).not.toBeInTheDocument()
@@ -170,7 +170,7 @@ describe('roles', () => {
 describe('roles as Admin', () => {
   const ADMINISTRATOR: SessionUser = {
     ...ADMIN,
-    roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Admin' }],
+    roles: [{ id: '6', code: 'ADMINISTRATOR', name: 'Service Dept' }],
     permissions: ['DASHBOARD:VIEW', 'SETTINGS:VIEW', 'USERS:VIEW', 'USERS:CREATE', 'USERS:EDIT'],
   }
   const BUILT_IN = 'Only Super Admin can change a built-in role or its permissions.'
@@ -180,8 +180,8 @@ describe('roles as Admin', () => {
     signIn()
     const roles: Role[] = [
       { ...role('1', 'ADMIN', 'Super Admin', 1), builtIn: true, manageable: false, manageReason: BUILT_IN },
-      { ...role('6', 'ADMINISTRATOR', 'Admin', 1), builtIn: true, manageable: false, manageReason: BUILT_IN },
-      { ...role('7', 'WORKSHOP', 'Workshop', 0), builtIn: false, manageable: canManageRoles, manageReason: canManageRoles ? null : 'Only Super Admin, and Admin with Users & Access Edit, can change roles and their permissions.' },
+      { ...role('6', 'ADMINISTRATOR', 'Service Dept', 1), builtIn: true, manageable: false, manageReason: BUILT_IN },
+      { ...role('7', 'WORKSHOP', 'Workshop', 0), builtIn: false, manageable: canManageRoles, manageReason: canManageRoles ? null : 'Only Super Admin, and Service Dept with Users & Access Edit, can change roles and their permissions.' },
       { ...role('8', 'ANALYST', 'Analyst', 0), builtIn: false, manageable: false, manageReason: BEYOND },
     ]
 
@@ -201,7 +201,7 @@ describe('roles as Admin', () => {
     expect(screen.getByRole('button', { name: 'Add role' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Edit Workshop' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Delete Workshop' })).toBeEnabled()
-    for (const name of ['Super Admin', 'Admin', 'Analyst']) {
+    for (const name of ['Super Admin', 'Service Dept', 'Analyst']) {
       expect(screen.queryByRole('button', { name: `Edit ${name}` }), name).not.toBeInTheDocument()
       expect(screen.queryByRole('button', { name: `Delete ${name}` }), name).not.toBeInTheDocument()
     }
