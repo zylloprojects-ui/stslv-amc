@@ -280,9 +280,9 @@ describe('Accounts: Service Report viewer and filtered totals', () => {
 
     await screen.findByText('AMC-0007')
     const footer = screen.getByRole('rowheader', { name: /Total Filtered \(120 services, all pages\)/ }).closest('tr') as HTMLElement
-    expect(footer).toHaveTextContent('Total Filtered Service Value (OMR)')
+    expect(footer).toHaveTextContent('Total Filtered Service Value (ex VAT)')
     expect(footer).toHaveTextContent('48,600.000')
-    expect(footer).toHaveTextContent('Total Filtered Invoice Value (OMR)')
+    expect(footer).toHaveTextContent('Total Filtered Invoice Value (ex VAT)')
     expect(footer).toHaveTextContent('300.003')
     expect(footer).toHaveTextContent('1 service has no value set')
     expect(screen.getByText('No Billing Basis or Cost per Visit on the contract')).toBeInTheDocument()

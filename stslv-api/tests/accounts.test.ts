@@ -356,7 +356,7 @@ describe("Accounts", () => {
         "Invoice No.",
         "Paid / Unpaid",
         "Zoho Invoices (Tracking)",
-        "Zoho Invoice Value (Ex VAT, OMR)",
+        "Zoho Invoice Value (ex VAT)",
         "Row Colour",
       ]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));

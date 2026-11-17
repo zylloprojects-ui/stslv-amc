@@ -109,7 +109,7 @@ describe('Service Sales: AMC Value and filtered total', () => {
     renderApp('/amc/service-sales')
 
     await screen.findByText('SV-ALPHA (V2)')
-    expect(headers()).toContain('AMC Value (OMR)')
+    expect(headers()).toContain('AMC Value (ex VAT)')
     expect(screen.getAllByText('1,200.000')).toHaveLength(2)
     expect(screen.getByText('1,500.250')).toBeInTheDocument()
     const footer = screen.getByRole('rowheader', { name: /Total AMC Value of matching contracts \(2 unique contract periods, all pages\)/ }).closest('tr') as HTMLElement
@@ -124,10 +124,10 @@ describe('Service Sales: AMC Value and filtered total', () => {
     await screen.findByText('SV-ALPHA (V2)')
     await userEvent.click(screen.getByRole('button', { name: /^Hide Columns/ }))
     const dialog = within(screen.getByRole('dialog'))
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'AMC Value (OMR)' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'AMC Value (ex VAT)' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
-    await waitFor(() => expect(headers()).not.toContain('AMC Value (OMR)'))
+    await waitFor(() => expect(headers()).not.toContain('AMC Value (ex VAT)'))
     expect(screen.queryByText(/Total AMC Value of matching contracts/)).not.toBeInTheDocument()
   })
 
@@ -137,9 +137,9 @@ describe('Service Sales: AMC Value and filtered total', () => {
     renderApp('/amc/service-sales')
 
     await screen.findByText('SV-ALPHA (V2)')
-    expect(headers()).not.toContain('AMC Value (OMR)')
+    expect(headers()).not.toContain('AMC Value (ex VAT)')
     expect(screen.queryByText(/Total AMC Value/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^Hide Columns/ }))
-    expect(within(screen.getByRole('dialog')).queryByRole('checkbox', { name: 'AMC Value (OMR)' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('dialog')).queryByRole('checkbox', { name: 'AMC Value (ex VAT)' })).not.toBeInTheDocument()
   })
 })

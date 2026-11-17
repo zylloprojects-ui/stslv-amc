@@ -622,13 +622,13 @@ function FilteredTotals({ kpis, visible }: { kpis: AccountsKpis; visible: readon
       {visible.slice(firstMoney).map((id) =>
         id === 'visitValue' ? (
           <td key={id} className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>
-            <span className="block text-xs font-medium text-slate-500">Total Filtered Service Value (OMR)</span>
+            <span className="block text-xs font-medium text-slate-500">Total Filtered Service Value (ex VAT)</span>
             {formatMoney(kpis.totalValue)}
             {kpis.paidValue !== undefined && <span className="block text-xs font-medium text-slate-500">Paid (Invoice No.): {formatMoney(kpis.paidValue)}</span>}
           </td>
         ) : id === 'invoiceValue' ? (
           <td key={id} className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>
-            <span className="block text-xs font-medium text-slate-500">Total Filtered Invoice Value (OMR)</span>
+            <span className="block text-xs font-medium text-slate-500">Total Filtered Invoice Value (ex VAT)</span>
             {formatMoney(kpis.invoiceValue ?? '0.000')}
           </td>
         ) : (

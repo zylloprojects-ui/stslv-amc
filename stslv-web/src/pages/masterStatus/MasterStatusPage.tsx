@@ -617,7 +617,7 @@ export function MasterStatusPage() {
                         Total Filtered ({data.kpis.total} {data.kpis.total === 1 ? 'service' : 'services'}, all pages)
                       </th>
                       <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>
-                        <span className="block text-xs font-medium text-slate-500">Service Value (OMR)</span>
+                        <span className="block text-xs font-medium text-slate-500">Service Value (ex VAT)</span>
                         {formatMoney(data.kpis.totalValue)}
                         {data.kpis.paidValue !== undefined && <span className="block text-xs font-medium text-slate-500">Paid (Invoice No.): {formatMoney(data.kpis.paidValue)}</span>}
                         {data.kpis.invoiceValue !== undefined && <span className="block text-xs font-medium text-slate-500">Zoho Invoice Value: {formatMoney(data.kpis.invoiceValue)}</span>}

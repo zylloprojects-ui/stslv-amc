@@ -9,7 +9,7 @@ import { api } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { fetchClients, queryString } from './amcApi'
 import { currentMonth, formatDate, monthLabel, monthRange, shiftMonth, todayIso } from './amcFormat'
-import { BILLING_STATUSES, BILLING_STATUS_LABELS, type CalendarFilters, type CalendarOptions } from './calendar/calendarTypes'
+import { type CalendarFilters, type CalendarOptions } from './calendar/calendarTypes'
 import { ContractMonthView } from './calendar/ContractMonthView'
 import { RenewalWarnings } from './calendar/RenewalWarnings'
 import { YearView } from './calendar/YearView'
@@ -124,7 +124,9 @@ export function AmcCalendarPage() {
   const [system, setSystem] = useState('')
   const [frequency, setFrequency] = useState('')
   const [status, setStatus] = useState('')
-  const [billingStatus, setBillingStatus] = useState('')
+  // Client meeting 2026-11-16: the Zoho invoiced / not-yet-invoiced filter is no longer offered here (Paid / Unpaid
+  // replaces it). The API filter stays, so it is always sent empty.
+  const billingStatus = ''
   const [paymentStatus, setPaymentStatus] = useState('')
   const [selectedDay, setSelectedDay] = useState<string | null>(null)
   const [dialog, setDialog] = useState<Dialog>({ kind: 'none' })
@@ -157,7 +159,7 @@ export function AmcCalendarPage() {
     billingStatus,
     paymentStatus,
   }
-  const filtered = Boolean(search || clientId || salesEngineerId || system || frequency || status || billingStatus || paymentStatus)
+  const filtered = Boolean(search || clientId || salesEngineerId || system || frequency || status || paymentStatus)
 
   const range = monthRange(month)
   const visits = useQuery({
@@ -405,18 +407,6 @@ export function AmcCalendarPage() {
                 <option value="">All</option>
                 <option value="PAID">Paid</option>
                 <option value="UNPAID">Unpaid</option>
-              </select>
-            )}
-          </Filter>
-          <Filter label="Billing status (Zoho)">
-            {(id, className) => (
-              <select id={id} value={billingStatus} onChange={(event) => setBillingStatus(event.target.value)} className={className}>
-                <option value="">All</option>
-                {BILLING_STATUSES.map((value) => (
-                  <option key={value} value={value}>
-                    {BILLING_STATUS_LABELS[value]}
-                  </option>
-                ))}
               </select>
             )}
           </Filter>

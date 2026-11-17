@@ -632,7 +632,7 @@ const OPERATIONS: HelpTopic[] = [
       },
       {
         heading: 'Filters',
-        text: ['Search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid, and Billing status (Zoho): Invoiced, Not yet invoiced, No invoice required, Not completed, Cancelled.'],
+        text: ['Search, Client, Sales engineer, System, Frequency, Visit status and Paid / Unpaid.'],
       },
       {
         heading: 'Renewal warnings',

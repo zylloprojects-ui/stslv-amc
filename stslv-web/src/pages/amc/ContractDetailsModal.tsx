@@ -81,6 +81,9 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               <DetailRow label="Status">
                 <ContractStatusPill status={contract.status} />
               </DetailRow>
+              <DetailRow label="Sales Engineer">
+                <OrDash value={contract.salesEngineer?.name ?? null} />
+              </DetailRow>
               <DetailRow label="Responsible engineer">
                 <OrDash value={contract.responsibleEngineer} />
               </DetailRow>
@@ -96,9 +99,9 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               </DetailRow>
             </dl>
             <dl>
-              <DetailRow label="AMC Value / Year">{formatMoney(contract.contractValue)}</DetailRow>
+              <DetailRow label="AMC Value / Year (ex VAT)">{formatMoney(contract.contractValue)}</DetailRow>
               <DetailRow label="Default visit amount">{formatMoney(contract.defaultVisitAmount)}</DetailRow>
-              <DetailRow label="Final credit">{formatMoney(contract.finalCredit)}</DetailRow>
+              <DetailRow label="Final Credit (ex VAT)">{formatMoney(contract.finalCredit)}</DetailRow>
               <DetailRow label="Billing basis">{contract.billingBasis ? `${BILLING_BASIS_LABELS[contract.billingBasis]} · ${formatMoney(contract.selectedBillingAmount ?? null)}` : 'Not set'}</DetailRow>
               <DetailRow label="Visits">
                 {contract.schedule.visitCount} ({contract.schedule.completedCount} completed, {contract.schedule.openCount} open
