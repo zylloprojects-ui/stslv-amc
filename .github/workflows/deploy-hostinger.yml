@@ -103,7 +103,9 @@ jobs:
   deploy:
     name: Deploy to Hostinger VPS
     needs: test-and-build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.HOSTINGER_DEPLOY_ENABLED == 'true'
+    # HOSTINGER_DEPLOY_ENABLED must be a REPOSITORY variable: job conditions are evaluated before the job enters the
+    # "hostinger" environment, so environment variables are not visible here. "Run workflow" on main also deploys.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.HOSTINGER_DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment:
