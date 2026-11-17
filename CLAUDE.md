@@ -1,4 +1,8 @@
-# STSLV AMC — Project Development Instructions
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## STSLV AMC — Project Development Instructions
 
 ## 1. Project Identity
 
@@ -555,59 +559,67 @@ Imports should eventually support validation/preview before permanent insertion.
 
 ## 8. Current Technical State
 
-Baseline recorded on 2026-10-01, after inspecting the repository.
+Updated 2026-11-17. The application is built and released. These documents go into more detail: `docs/technical/TECHNICAL_HANDOVER.md` (architecture, environment variable names, hosting, troubleshooting), `docs/technical/API_REFERENCE.md`, `docs/technical/ROLE_PERMISSION_MATRIX.md` and the index `docs/README.md`. Inspect the code before relying on any count or list below.
 
-**Outdated (noted 2026-11-09):** the baseline below describes the starter projects. The application has since been built and released (production at `c6d8d19`, 49 migrations up to 0107). The current architecture, modules, environment variable names and hosting are in `docs/technical/TECHNICAL_HANDOVER.md`; the document index is `docs/README.md`.
+### Repository layout
 
-Before relying on this section in future sessions, inspect the repository because implementation may have progressed.
+A single Git repository (public remote; see `GIT_WORKFLOW.md`). It holds two independent npm projects, each with its own `node_modules` and lockfile. There is no workspace tooling and no root `package.json`.
 
-Project root:
-D:\Projects\STSLV-AMC
+- `stslv-api`: Node.js 24, Express 5, TypeScript (CommonJS, NodeNext), `pg`, Zod, JWT, bcryptjs, ExcelJS, pdfmake, S3 SDK
+- `stslv-web`: React 19, Vite 8, TypeScript 6, Tailwind CSS 4, React Router 7 (data router), TanStack Query, React Hook Form with Zod, oxlint
+- `deploy/` (Hostinger VPS templates, not applied anywhere) and `render.yaml` (current hosting: Cloudflare Pages, Render, Neon, Supabase Storage)
+- `docs/`: business rules per module, handover, integration and UAT records
 
-Root contents:
+### Commands
 
-- CLAUDE.md (this file)
-- stslv-web
-- stslv-api
-- docs (exists, currently empty)
+```
+# API (stslv-api) — needs .env pointing at a local PostgreSQL 17 database
+npm run dev                 # tsx watch on :3001
+npm run typecheck && npm test && npm run build
+npm run migrate             # apply pending migrations; migrate:status = dry run
+npx vitest run tests/amc-renewals.test.ts          # one test file
+npx vitest run tests/amc-renewals.test.ts -t "name" # one test
 
-The project root is NOT a Git repository. There is no root .gitignore, no root package.json and no workspace/monorepo tooling. stslv-web and stslv-api are independent npm projects, each with its own node_modules and package-lock.json.
+# Web (stslv-web) — Vite proxies /api to VITE_API_PROXY_TARGET or http://localhost:3001
+npm run dev                 # :5173
+npm run typecheck && npm test && npm run lint && npm run build
+npx vitest run src/test/services-sales.test.tsx    # one test file
+```
 
-### Frontend — stslv-web
+The full pre-PR check is in `GIT_WORKFLOW.md`. Other API scripts: `admin:create` (creates a Super Admin), `storage:check`, `legacy-import:*`, `export:sample`, `contracts:expire`, `ops` (backup tooling in `src/ops`).
 
-- React + TypeScript + Vite has been created (React 19, Vite 8, TypeScript 6).
-- It is still the unmodified Vite starter template (src/App.tsx, src/main.tsx, App.css, index.css, starter assets, template README.md). No application code exists yet.
-- None of the planned supporting libraries (Tailwind CSS, shadcn/ui, TanStack Query, TanStack Table, React Hook Form, Zod) are installed.
-- No router, API client or test framework is installed.
-- Linting uses oxlint (.oxlintrc.json).
-- A template .gitignore exists (ignores node_modules, dist, *.local). It does not explicitly ignore .env.
-- Scripts: `npm run dev` (Vite), `npm run build` (`tsc -b && vite build`), `npm run lint` (oxlint), `npm run preview`.
-- The development server has been reported as running successfully on localhost:5173.
+### Testing notes
 
-### Backend — stslv-api
+- API tests (`stslv-api/tests/*.test.ts`) use a **real PostgreSQL** database: the one named in `.env`. Global setup drops schema `stslv_test` and rebuilds it from every migration, so each run also proves the migrations apply from scratch. Test files run one at a time (`fileParallelism: false`). Never point `.env` at a production database when running tests.
+- Web tests live in `stslv-web/src/test` (jsdom with Testing Library). A help test compares the in-app help (`src/help`) against `docs/user-guide/USER_GUIDE.md`, so a change to one usually needs the same change in the other.
 
-- Node.js + Express + TypeScript has been created (Express 5, TypeScript 7, CommonJS package type, tsconfig module NodeNext, strict mode).
-- src/server.ts is the only source file. It loads dotenv, enables CORS and JSON body parsing, defines GET /api/health and listens on `process.env.PORT` or 3001.
-- GET /api/health has been reported as tested successfully on localhost:3001/api/health.
-- Dependencies: express, cors, dotenv, pg.
-- Dev dependencies: typescript, tsx, @types/node, @types/express, @types/cors, @types/pg.
-- Scripts: `npm run dev` (`tsx watch src/server.ts`), `npm run build` (`tsc`), `npm run start` (`node dist/server.js`), `npm run typecheck` (`tsc --noEmit`).
-- No .env or .env.example file exists yet.
-- No .gitignore exists in stslv-api. One must be added (covering at least node_modules, dist and .env) before any Git repository is initialised.
-- No modular structure (routes/controllers/services/data), validation library, authentication, migration tooling or test framework exists yet.
-- CORS is currently open to all origins; this must be restricted before production.
+### API architecture
 
-### PostgreSQL
+- `src/app.ts` builds the Express app (`server.ts` only listens). Configuration is in `src/config` (`env.ts`, `database.ts`, `storage-config.ts`).
+- Each feature is in `src/modules/<module>/` and splits into `*.routes.ts`, `*.service.ts`, `*.schemas.ts` (Zod) and `*.export.ts` (Excel/PDF). Routes check permissions with `middleware/authorize.ts` (`authorize(module, action)`), and the permission catalogue is in `shared/permission-catalog.ts`. `require-schema.ts` returns `FEATURE_UNAVAILABLE` when a migration that a feature needs has not been applied.
+- Shared rules that must be reused rather than reimplemented:
+  - `shared/money.ts`: integer thousandths of OMR, never floats
+  - `shared/business-date.ts`: every "today", due date, expiry and month is computed in Asia/Muscat; the web mirror is `src/lib/businessDate.ts`
+  - `shared/activity-log.ts`: every change is logged; `activity_logs` is append-only (migration 0109)
+  - `shared/errors.ts` and `shared/validation.ts`
+- AMC is the core module (`modules/amc`). Billing Basis and amount calculation are in `amc.billing.ts`, and visit generation is in `amc.schedule.ts`. The other files cover contracts, renewals, service status, master status, the manual invoice number and service reports. Their rules are in `docs/FINANCE_WORKFLOW.md`, `SERVICE_REPORT_COMPLETION_LOCK.md`, `AMC_RENEWAL.md`, `AMC_REFERENCE_NUMBER.md` and `RECYCLE_BIN.md`.
+- Nothing is hard-deleted. Records are deactivated, cancelled or moved to the Recycle Bin. Tables such as `amc_contracts_all` and `amc_visits_all` hold every row, while the views `amc_contracts` and `amc_visits` exclude Recycle Bin rows.
+- **Retired modules:** `projects`, `procurement`, `expenses` and `historical-data` still exist in the API for existing data and Invoice Tracking allocations, but they have no web pages (`docs/OBSOLETE_MODULES_REMOVAL.md`). Sections 3, 4.6–4.8 and 10 above describe the original plan, not what the UI currently offers.
+- Documents are stored in exactly one store: Supabase S3, R2 or a local folder (`ATTACHMENTS_DIR`). Metadata and a SHA-256 hash are kept in `attachments`. Every download goes through the API.
 
-- PostgreSQL 17.11 is installed locally and the Windows service postgresql-x64-17 is running.
-- Database stslv_amc_dev has been reported as created (not re-verified during the baseline inspection, because no credentials are stored in the project).
-- Database connection from the API has NOT yet been completed: pg is installed but is not imported or used anywhere in the code.
-- No tables, schema or migrations exist in the project.
+### Migrations
 
-### Documentation and client data
+- Ordered SQL files are in `stslv-api/migrations` (`NNNN_name.sql`; latest at time of writing is `0118`). The runner (`src/db/migrate.ts`) records a checksum for each file and refuses to run if an applied file was edited, a file is missing, versions are duplicated or a new file is numbered below the last applied one.
+- To change the schema, always add a new, higher-numbered file. If two branches pick the same number, the later one renumbers before merging.
 
-- docs/ is empty.
-- The three client spreadsheets described in Section 2 are NOT stored in this project folder. Section 2 is based on earlier analysis; the spreadsheets must be supplied again before any migration mapping or data-dependent design decision.
+### Frontend architecture
+
+- Routes are defined in `src/appRoutes.tsx`. Pages are in `src/pages/<area>`, the shell is in `src/layout`, and auth and session handling are in `src/auth`.
+- `src/lib/api.ts` is the single API client. `src/lib/permissionRules.ts` mirrors the backend permissions for display only, because the backend is authoritative. `src/lib/money.ts` and `src/lib/format.ts` handle money and formatting.
+
+### Client data
+
+The original client spreadsheets and `docs/CLIENT_EXCEL_MAPPING.md` are confidential and git-ignored (`*.xlsx`, `*.csv` and similar). Never commit them, and never copy real client names or values into tracked files.
 
 ---
 
@@ -824,15 +836,7 @@ unless explicitly instructed.
 
 Development should remain local until the user explicitly approves repository/deployment actions.
 
-When Git is introduced, maintain a controlled workflow such as:
-
-feature work
-→ develop/integration
-→ verification/UAT
-→ main/release
-→ production
-
-The exact branch workflow should be established before repository operations begin.
+The branch workflow (`feature/*` → `develop` → `main`, pull requests only, no force-push, no direct commits to `main`/`develop`) is defined in `GIT_WORKFLOW.md`. The remote repository is public.
 
 ---
 

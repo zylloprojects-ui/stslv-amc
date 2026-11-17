@@ -23,7 +23,7 @@ REST API (Node.js 24 + Express 5, stslv-api) ──► PostgreSQL 17 (Neon in th
 |---|---|---|
 | Web | React 19, TypeScript 6, Vite 8, Tailwind CSS 4, TanStack Query, React Router 7 (data router), React Hook Form + Zod | Static build (`dist/`). No server rendering. Calls the API at `VITE_API_BASE_URL` (or the same origin `/api` when empty) |
 | API | Node.js 24, Express 5, TypeScript, `pg`, Zod, bcrypt, JWT | Modular: `src/modules/<module>/{routes,service,schemas}`; shared code in `src/shared`; config in `src/config` |
-| Database | PostgreSQL 17 | 49 ordered SQL migrations in `stslv-api/migrations`; money in `numeric` |
+| Database | PostgreSQL 17 | 60 ordered SQL migrations in `stslv-api/migrations` (49 in production); money in `numeric` |
 | Files | Private S3-compatible bucket (Supabase in production), or a local folder in development | Metadata and SHA-256 in table `attachments`; the browser never talks to the bucket |
 | Tests | Vitest (web: jsdom + Testing Library; API: real PostgreSQL in a separate schema) | |
 
@@ -50,7 +50,7 @@ Business rules worth knowing before changing code: `docs/FINANCE_WORKFLOW.md` (B
 
 ## 3. Database and migrations
 
-- **51 migrations**, `0001_access_control.sql` … `0109_activity_logs_append_only.sql` (49 up to 0107 are in production; **0108_user_sessions** and **0109_activity_logs_append_only** are new in the integrated branch, verified on disposable databases only, see `docs/integration/MIGRATION_READINESS.md`). Never edit an applied file; add a higher-numbered migration.
+- **60 migrations**, `0001_access_control.sql` … `0118_amc_contract_customer_po_value.sql` (updated 2026-11-17). The 49 up to 0107 are in production. **0108–0118** (11 files) are not yet in production and have been verified on disposable, test and preview databases only: 0108 `user_sessions` and 0109 `activity_logs_append_only` (see `docs/integration/MIGRATION_READINESS.md`); 0110–0116 from the alpha integration (`docs/FINAL_ALPHA_INTEGRATION_AUDIT.md`); 0117–0118 from the client UAT changes (`docs/CLIENT_UAT_COMPLETION_REPORT_20261117.md`). Never edit an applied file; add a higher-numbered migration.
 - **Runner** (`src/db/migrate.ts`, `migrate-cli.ts`): table `schema_migrations` (version, name, checksum, applied_at); SHA-256 checksum of each file (CRLF normalised); refuses an edited or missing applied file, duplicate versions, or a pending migration numbered below the last applied one; `pg_advisory_lock` prevents concurrent runs (hence Neon's **direct** host, not the pooler); each migration in its own transaction.
 - **Commands:** `npm run migrate` (apply), `npm run migrate:status` (dry run). In production the start command applies pending migrations before the server starts; a failure keeps the previous release running.
 - Security Center → *Database updates* shows "All N database updates applied" and the latest migration.
