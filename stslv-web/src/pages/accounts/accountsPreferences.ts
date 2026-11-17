@@ -34,7 +34,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceStatus: 'Service Status',
   serviceReportNo: 'Service Report No.',
   invoiceNo: 'Invoice No.',
-  invoiceValue: 'Zoho Invoice Value (Ex VAT, OMR)',
+  invoiceValue: 'Zoho Invoice Value (ex VAT)',
   salesEngineer: 'Sales Engineer',
   serviceEngineer: 'Service Engineer',
   amcValue: 'AMC Value (ex VAT)',

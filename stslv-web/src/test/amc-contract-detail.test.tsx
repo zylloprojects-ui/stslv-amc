@@ -104,6 +104,22 @@ const openTab = async (page: ReturnType<typeof within>, name: string) => {
 }
 
 describe('contract page', () => {
+  it('shows the Sales Engineer chosen on the contract, apart from the responsible engineer (client meeting 2026-11-16)', async () => {
+    amcApi(ADMIN, { contracts: [makeContract({ salesEngineer: { id: '7', name: 'Ravi Sales' } })] })
+    const page = await openPage()
+
+    const chip = (label: string) => page.getByText(label, { selector: 'dt' }).parentElement as HTMLElement
+    expect(chip('Sales Engineer')).toHaveTextContent('Ravi Sales')
+    expect(chip('Responsible engineer')).toHaveTextContent('Test Engineer')
+  })
+
+  it('shows a dash for the Sales Engineer of a contract without one', async () => {
+    amcApi(ADMIN, { contracts: [makeContract({ salesEngineer: null })] })
+    const page = await openPage()
+
+    expect(page.getByText('Sales Engineer', { selector: 'dt' }).parentElement).toHaveTextContent('—')
+  })
+
   it('shows the profile, the figures and the details from the stored contract', async () => {
     amcApi(ADMIN, { contracts: [makeContract({ finalCredit: '1500.000', notes: 'Keys at reception' })] })
     const page = await openPage()
@@ -119,9 +135,9 @@ describe('contract page', () => {
     // The commercial figures.
     const figures = within(page.getByRole('region', { name: 'Contract figures' }))
     const row = (label: string) => figures.getByText(label).parentElement as HTMLElement
-    expect(row('AMC Value / Year')).toHaveTextContent('1,620.000')
+    expect(row('AMC Value / Year (ex VAT)')).toHaveTextContent('1,620.000')
     expect(row('Default visit amount')).toHaveTextContent('405.000')
-    expect(row('Final credit')).toHaveTextContent('1,500.000')
+    expect(row('Final Credit (ex VAT)')).toHaveTextContent('1,500.000')
 
     // What is left is on the Details tab.
     const details = await openTab(page, 'Details')

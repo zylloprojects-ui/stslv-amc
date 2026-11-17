@@ -46,7 +46,7 @@ async function fillRequired(dialog: HTMLElement) {
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-15')
   await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-01-14')
   await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '4000')
-  await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0')
+  await userEvent.type(within(dialog).getByLabelText(/Final Credit/), '0')
   await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, contractPdf())
 }
 

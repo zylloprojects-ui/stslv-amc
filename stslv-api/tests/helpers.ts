@@ -1,4 +1,6 @@
+import { createServer, type RequestListener, type Server } from "node:http";
 import request from "supertest";
+import { afterAll, beforeAll } from "vitest";
 import { createApp } from "../src/app";
 import { pool } from "../src/config/database";
 import { loadMigrationFiles } from "../src/db/migrate";
@@ -9,7 +11,67 @@ import { BUILT_IN_ROLE_NAMES, LEGACY_ROLE_NAMES } from "../src/shared/role-names
 import { restoreSeededFrequencies } from "./frequency-fixtures";
 
 export const app = createApp();
-export const api = () => request(app);
+
+// Test servers listen on 127.0.0.1 explicitly, and supertest is handed the running server. Left to itself, supertest
+// listens on a random port on every address ("::") and connects to 127.0.0.1; on macOS a port another program holds
+// on 127.0.0.1 alone can still be taken that way, and the request reaches that program instead (a stray 404 or 400
+// with an empty body, or a hang). That failed a few random tests on every full run. tests/setup-loopback.ts refuses
+// the old pattern, so a new test cannot bring it back.
+const servers = new Set<Server>();
+
+function listenOnLoopback(handler: RequestListener): Promise<Server> {
+  const server = createServer(handler);
+
+  servers.add(server);
+
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve(server));
+  });
+}
+
+afterAll(async () => {
+  await Promise.all(
+    [...servers].map(
+      (server) =>
+        new Promise<void>((resolve) => {
+          server.closeAllConnections();
+          server.close(() => resolve());
+        })
+    )
+  );
+  servers.clear();
+});
+
+/** For an app a test builds itself: `const call = await serve(app); await call().get("/x")`. */
+export async function serve(handler: RequestListener): Promise<() => ReturnType<typeof request>> {
+  const server = await listenOnLoopback(handler);
+
+  return () => request(server);
+}
+
+/**
+ * For an app built once per test file (at the top of the file): one server, started before the file's tests.
+ * Returns a request factory like api().
+ */
+export function loopbackApi(handler: RequestListener): () => ReturnType<typeof request> {
+  let server: Server | null = null;
+
+  beforeAll(async () => {
+    server = await listenOnLoopback(handler);
+  });
+
+  return () => {
+    if (!server) {
+      throw new Error("The test server has not started yet; send requests inside a test or hook.");
+    }
+
+    return request(server);
+  };
+}
+
+/** The application under test. */
+export const api = loopbackApi(app);
 
 export const PASSWORD = "Correct-Horse-42";
 

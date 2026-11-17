@@ -183,7 +183,7 @@ describe('Accounts page', () => {
       'Service Engineer',
       'Service Value (ex VAT)',
       'Invoice No.',
-      'Zoho Invoice Value (Ex VAT, OMR)',
+      'Zoho Invoice Value (ex VAT)',
     ])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'BLUE')

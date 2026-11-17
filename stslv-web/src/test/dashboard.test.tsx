@@ -598,7 +598,7 @@ describe('charts and widgets', () => {
       ['February 2027', '1', '0', '1'],
       ['March 2027', '2', '0', '2'],
     ])
-    expect(within(panel).getByRole('link', { name: 'Schedule →' })).toHaveAttribute('href', '/amc/schedule')
+    expect(within(panel).getByRole('link', { name: 'Service Status →' })).toHaveAttribute('href', '/amc/service-status')
   })
 
   it('draws the payment trend from the API and says Paid is a reference status', async () => {

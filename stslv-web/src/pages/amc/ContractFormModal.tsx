@@ -806,7 +806,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
           )}
 
           <div className="grid gap-4 sm:grid-cols-3">
-            <TextField label="AMC Value / Year" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.contractValue?.message} {...contractValueField} />
+            <TextField label="AMC Value / Year (ex VAT)" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.contractValue?.message} {...contractValueField} />
             <TextField
               label="Default visit amount"
               inputMode="decimal"
@@ -815,7 +815,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               {...register('defaultVisitAmount')}
             />
             <TextField
-              label="Final credit"
+              label="Final Credit (ex VAT)"
               required={finalCreditRequired}
               inputMode="decimal"
               hint={

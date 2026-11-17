@@ -197,7 +197,7 @@ describe('Monthly Calendar, Year view', () => {
     await monthsOf(YEAR)
     await userEvent.selectOptions(await screen.findByLabelText('Sales engineer'), '7')
     await userEvent.selectOptions(screen.getByLabelText('Frequency'), 'QUARTERLY')
-    await userEvent.selectOptions(screen.getByLabelText('Billing status (Zoho)'), 'NOT_YET_INVOICED')
+    await userEvent.selectOptions(screen.getByLabelText('Paid / Unpaid'), 'UNPAID')
     await userEvent.selectOptions(screen.getByLabelText('Visit status'), 'COMPLETED')
     await userEvent.selectOptions(await screen.findByLabelText('Client'), '10')
 
@@ -209,7 +209,7 @@ describe('Monthly Calendar, Year view', () => {
         salesEngineerId: '7',
         frequency: 'QUARTERLY',
         status: 'COMPLETED',
-        billingStatus: 'NOT_YET_INVOICED',
+        paymentStatus: 'UNPAID',
       })
     })
 
@@ -217,19 +217,20 @@ describe('Monthly Calendar, Year view', () => {
     await waitFor(() => {
       const query = api.find('GET', '/amc/visits').at(-1)?.query
       expect(query?.get('salesEngineerId')).toBe('7')
-      expect(query?.get('billingStatus')).toBe('NOT_YET_INVOICED')
+      expect(query?.get('paymentStatus')).toBe('UNPAID')
       expect(query?.get('from')).toBe(`${YEAR}-03-01`)
     })
-    expect(screen.getByLabelText('Billing status (Zoho)')).toHaveValue('NOT_YET_INVOICED')
+    expect(screen.getByLabelText('Paid / Unpaid')).toHaveValue('UNPAID')
   })
 
-  it('offers every billing status, and none called paid', async () => {
+  it('offers Paid / Unpaid and no Zoho billing status filter (client meeting 2026-11-16)', async () => {
     calendarApi()
     renderApp(`/amc/calendar?month=${YEAR}-03`)
 
     await monthsOf(YEAR)
-    const options = within(screen.getByLabelText('Billing status (Zoho)')).getAllByRole('option').map((option) => option.textContent)
-    expect(options).toEqual(['All', 'Invoiced', 'Not yet invoiced', 'No invoice required', 'Not completed', 'Cancelled'])
+    const options = within(screen.getByLabelText('Paid / Unpaid')).getAllByRole('option').map((option) => option.textContent)
+    expect(options).toEqual(['All', 'Paid', 'Unpaid'])
+    expect(screen.queryByLabelText(/Billing status/i)).not.toBeInTheDocument()
   })
 
   it('downloads one month, with the page’s filters, as Excel or PDF', async () => {
@@ -242,7 +243,7 @@ describe('Monthly Calendar, Year view', () => {
     renderApp(`/amc/calendar?month=${YEAR}-03`)
 
     await monthsOf(YEAR)
-    await userEvent.selectOptions(screen.getByLabelText('Billing status (Zoho)'), 'INVOICED')
+    await userEvent.selectOptions(screen.getByLabelText('Paid / Unpaid'), 'PAID')
     await userEvent.click(screen.getByRole('button', { name: `Export March ${YEAR} visits to Excel` }))
 
     await waitFor(() => expect(saved).toEqual([`monthly-calendar-${YEAR}-03.xlsx`]))
@@ -250,7 +251,7 @@ describe('Monthly Calendar, Year view', () => {
       format: 'xlsx',
       ...monthRange(`${YEAR}-03`),
       status: OPERATIONAL,
-      billingStatus: 'INVOICED',
+      paymentStatus: 'PAID',
     })
 
     await userEvent.click(screen.getByRole('button', { name: `Export March ${YEAR} visits to PDF` }))

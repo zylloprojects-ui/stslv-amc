@@ -194,7 +194,8 @@ export function DashboardPage() {
               eyebrow="Maintenance"
               title="Upcoming Service Workload"
               description="Visits planned per month from this month. Cancelled visits and cancelled contracts are not counted."
-              link={canSchedule ? { to: '/amc/schedule', label: 'Schedule' } : null}
+              // Client meeting 2026-11-16: AMC Schedule is no longer used; Service Status is the working list.
+              link={canView('SERVICE_STATUS') ? { to: '/amc/service-status', label: 'Service Status' } : null}
             >
               <WorkloadChart months={data.workload.months} />
             </Panel>

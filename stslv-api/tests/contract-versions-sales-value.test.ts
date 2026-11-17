@@ -230,7 +230,7 @@ describe("Service Sales: AMC Value and filtered total", () => {
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(file.body as unknown as ExcelJS.Buffer);
     const text = JSON.stringify(book.worksheets[0]?.getSheetValues());
-    expect(text).toContain("AMC Value / Year (OMR)");
+    expect(text).toContain("AMC Value (ex VAT)");
     expect(text).toContain("Total AMC Value of matching contracts: 4,700.750 OMR excluding VAT, over 3 unique contract periods");
 
     const hidden = await api().get("/api/services-sales/export").query({ clientId: salesClient, format: "xlsx", hidden: "amcValue" }).responseType("blob").set(admin.headers);

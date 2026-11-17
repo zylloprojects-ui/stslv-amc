@@ -97,7 +97,7 @@ describe('editing a contract added before the requirements', () => {
     expect(system).toHaveDisplayValue('Typed old system (current, not in the list)')
     expect(within(dialog).getByText(/not linked to the System Types list/)).toBeInTheDocument()
     // Final Credit is not required on it, and "Not linked" stays possible for its engineer.
-    expect(within(dialog).getByLabelText(/Final credit/)).not.toHaveAttribute('aria-required')
+    expect(within(dialog).getByLabelText(/Final Credit/)).not.toHaveAttribute('aria-required')
     expect(within(within(dialog).getByLabelText(/^Sales Engineer/)).getByRole('option', { name: 'Not linked' })).toBeInTheDocument()
     // No upload is asked for; the user is told where documents are kept.
     expect(dialog.querySelector('input[type="file"]')).toBeNull()
@@ -205,12 +205,12 @@ describe('editing a contract saved with the requirements', () => {
     expect(engineer).toHaveValue('5')
     expect(within(engineer).queryByRole('option', { name: 'Not linked' })).not.toBeInTheDocument()
 
-    await userEvent.clear(within(dialog).getByLabelText(/Final credit/))
+    await userEvent.clear(within(dialog).getByLabelText(/Final Credit/))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
     expect(await within(dialog).findByText('Final credit is required. Enter 0 when there is none.')).toBeInTheDocument()
     expect(api.find('PATCH', '/amc/contracts/100')).toHaveLength(0)
 
-    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0')
+    await userEvent.type(within(dialog).getByLabelText(/Final Credit/), '0')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
     await waitFor(() => expect(api.find('PATCH', '/amc/contracts/100')).toHaveLength(1))
     const body = api.find('PATCH', '/amc/contracts/100')[0]?.body as Record<string, unknown>

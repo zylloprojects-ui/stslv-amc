@@ -1,5 +1,4 @@
 import express from "express";
-import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { pool } from "../src/config/database";
 import { env, resolveMailTransport } from "../src/config/env";
@@ -7,7 +6,7 @@ import { rateLimit } from "../src/middleware/rate-limit";
 import { generateTemporaryPassword } from "../src/modules/auth/temporary-password";
 import { errorHandler } from "../src/shared/errors";
 import { createMailer } from "../src/shared/mailer";
-import { api, bearer, closePool, insertUser, loginToken, PASSWORD, resetData, signedIn } from "./helpers";
+import { api, bearer, closePool, insertUser, loginToken, PASSWORD, resetData, serve, signedIn } from "./helpers";
 
 const NEW_PASSWORD = "A-Brand-New-Password-7";
 const TEMPORARY_FORMAT = /^[A-HJ-NP-RT-Za-km-np-rt-z2346789]{4}(-[A-HJ-NP-RT-Za-km-np-rt-z2346789]{4}){3}$/;
@@ -455,14 +454,15 @@ describe("public route rate limit", () => {
       res.json({ success: true });
     });
     limited.use(errorHandler);
+    const call = await serve(limited);
 
     const statuses: number[] = [];
 
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      statuses.push((await request(limited).post("/limited")).status);
+      statuses.push((await call().post("/limited")).status);
     }
 
-    const blocked = await request(limited).post("/limited");
+    const blocked = await call().post("/limited");
 
     expect(statuses).toEqual([200, 200, 200, 429, 429]);
     expect(blocked.body).toEqual({
@@ -478,10 +478,11 @@ describe("public route rate limit", () => {
       res.json({ success: true });
     });
     limited.use(errorHandler);
+    const call = await serve(limited);
 
-    expect((await request(limited).post("/limited")).status).toBe(200);
-    expect((await request(limited).post("/limited")).status).toBe(429);
+    expect((await call().post("/limited")).status).toBe(200);
+    expect((await call().post("/limited")).status).toBe(429);
     await new Promise((resolve) => setTimeout(resolve, 200));
-    expect((await request(limited).post("/limited")).status).toBe(200);
+    expect((await call().post("/limited")).status).toBe(200);
   });
 });

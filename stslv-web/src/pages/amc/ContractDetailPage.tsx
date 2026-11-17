@@ -448,6 +448,10 @@ export function ContractDetailPage() {
               <ContactChip icon="badge" label="System">
                 {contract.systemDescription}
               </ContactChip>
+              {/* Client meeting 2026-11-16: the Sales Engineer chosen when the contract was added. */}
+              <ContactChip icon="user" label="Sales Engineer">
+                <OrDash value={contract.salesEngineer?.name ?? null} />
+              </ContactChip>
               <ContactChip icon="user" label="Responsible engineer">
                 <OrDash value={contract.responsibleEngineer} />
               </ContactChip>
@@ -467,9 +471,9 @@ export function ContractDetailPage() {
           <Card className="rounded-2xl">
             <dl className="grid grid-cols-2 divide-x divide-y divide-slate-200 lg:grid-cols-3 xl:grid-cols-5">
               {[
-                { label: 'AMC Value / Year', value: formatMoney(contract.contractValue) },
+                { label: 'AMC Value / Year (ex VAT)', value: formatMoney(contract.contractValue) },
                 { label: 'Default visit amount', value: formatMoney(contract.defaultVisitAmount) },
-                { label: 'Final credit', value: formatMoney(contract.finalCredit) },
+                { label: 'Final Credit (ex VAT)', value: formatMoney(contract.finalCredit) },
                 // Client UAT CR-013: as entered; nothing is calculated from it.
                 { label: 'Customer PO Value (ex VAT)', value: contract.customerPoValue ? formatMoney(contract.customerPoValue) : 'Not entered' },
                 { label: 'Billing basis', value: contract.billingBasis ? BILLING_BASIS_LABELS[contract.billingBasis] : 'Not set' },

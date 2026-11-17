@@ -1,6 +1,5 @@
 import ExcelJS from "exceljs";
 import express from "express";
-import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { loadMigrationFiles } from "../src/db/migrate";
@@ -8,7 +7,7 @@ import { maintenanceFrequenciesRouter } from "../src/modules/masters/maintenance
 import { HEADER_ROW } from "../src/shared/export/excel";
 import { errorHandler, notFoundHandler } from "../src/shared/errors";
 import { activeContract, createClient, createContract, logsFor, visitsOf } from "./amc-helpers";
-import { closePool, signedIn } from "./helpers";
+import { closePool, loopbackApi, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
 // The Maintenance Frequencies module (migration 0076): list, form, rule lock,
@@ -35,7 +34,7 @@ let execution: Session;
 let procurement: Session;
 
 const PATH = "/api/masters/maintenance-frequencies";
-const call = () => request(app);
+const call = loopbackApi(app);
 const create = (body: Record<string, unknown>, session: Session = admin) => call().post(PATH).set(session.headers).send(body);
 const edit = (id: string, body: Record<string, unknown>, session: Session = admin) => call().patch(`${PATH}/${id}`).set(session.headers).send(body);
 const setStatus = (id: string, body: Record<string, unknown>, session: Session = admin) => call().post(`${PATH}/${id}/status`).set(session.headers).send(body);

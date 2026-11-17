@@ -171,7 +171,7 @@ A service is completed on **Service Status** (§11) after its Service Report is 
 | What is entered | Only the invoice number | Number, date, amount ex VAT, VAT, allocations to visits/projects |
 | Effect | Entered = **Paid**; cleared = **Unpaid** | Work becomes **Invoiced**; does **not** make a service Paid |
 | When allowed | Only on a **Completed** service (clearing is always allowed) | Only on completed work with an amount above 0 |
-| Used by | Accounts colours, Master AMC Status, Calendar squares, Dashboard payment figures, AMC Management invoice KPIs, Reports Paid/Unpaid | Ready for Invoice / Invoiced, Pending Billing, Calendar "Billing status (Zoho)", Client 360 invoice figures |
+| Used by | Accounts colours, Master AMC Status, Calendar squares, Dashboard payment figures, AMC Management invoice KPIs, Reports Paid/Unpaid | Ready for Invoice / Invoiced, Pending Billing, Client 360 invoice figures |
 
 > **Paid means a manual Invoice No. is entered on the service. It is a reference status and does not verify that money was received.**
 > STS-ELV AMC holds no bank or receipt records. Confirming that a client actually paid is done in Zoho / the bank statement.
@@ -434,7 +434,7 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 - **Year view:** Services in year, Scheduled value, Paid, Unpaid (blue, as in Month view); a card per month with, in order, **Scheduled value**, **No. of services completed**, **No. of services not completed**, **Paid** and **Unpaid** (Invoice No. entered or not: the reference status of §2, with the services' values), then completed / open / overdue / cancelled counts; per-month **Excel / PDF**. Services count in the month of their scheduled date. The Zoho invoiced figures are no longer on the cards (client UAT, 2026-11-16). No By service / By contract switch here.
 - **Month view — By service / By contract:** *By service* (default) is the calendar grid below. *By contract* lists the same services, with the same filters, as one entry per AMC contract: reference (opens the contract), client, system, engineer, state (Open, Partly completed, All completed, Overdue, Cancelled), each service with its date and status, and Services / Paid / Unpaid counts. The choice is kept in the address (`group=contract`).
 - **Month view (By service):** card colour = status (Scheduled sky, In progress amber, Postponed violet, Completed green, Cancelled grey struck through, Historical grey); square = Paid (green) / Unpaid (blue); red dot = overdue. Click a visit for details (Edit with *AMC Schedule: Edit*).
-- **Filters:** search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid, Billing status (Zoho).
+- **Filters:** search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid. (The Zoho billing status filter was removed on 17 Nov 2026 at the client's request; Paid / Unpaid replaces it.)
 - **Renewal warnings:** contracts ending within 45 days, or past validity and still Active.
 
 ---
