@@ -87,8 +87,10 @@ describe("empty database", () => {
       withoutInvoiceNo: 0,
       withoutInvoiceNoValue: "0.000",
       withoutInvoiceNoAmountMissing: 0,
+      completedWithoutInvoiceNo: 0,
+      completedWithoutInvoiceNoValue: "0.000",
     });
-    expect(data.kpis.payments).toMatchObject({ paidAmountMissing: 0, unpaidAmountMissing: 0 });
+    expect(data.kpis.payments).toMatchObject({ paidAmountMissing: 0, unpaidAmountMissing: 0, unpaidCompleted: 0, unpaidCompletedValue: "0.000" });
     expect(data.portfolio.total).toBe(0);
     expect(data.portfolio.statuses.map((s: { status: string }) => s.status)).toEqual(["DRAFT", "ACTIVE", "EXPIRED", "CANCELLED"]);
     expect(data.portfolio.statuses.every((s: { count: number; percent: string | null }) => s.count === 0 && s.percent === null)).toBe(true);
@@ -523,6 +525,10 @@ describe("12-card dashboard: current month and overall figures", () => {
       with_missing: number;
       without_no: number;
       without_missing: number;
+      m_done: number;
+      m_done_v: string;
+      done: number;
+      done_v: string;
     }>(
       `SELECT count(*) FILTER (WHERE ${THIS_MONTH} AND v.manual_invoice_no IS NOT NULL)::int AS m_with,
               COALESCE(sum(v.visit_amount) FILTER (WHERE ${THIS_MONTH} AND v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS m_with_v,
@@ -533,7 +539,11 @@ describe("12-card dashboard: current month and overall figures", () => {
               count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS with_no,
               count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL AND v.visit_amount IS NULL)::int AS with_missing,
               count(*) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS without_no,
-              count(*) FILTER (WHERE v.manual_invoice_no IS NULL AND v.visit_amount IS NULL)::int AS without_missing
+              count(*) FILTER (WHERE v.manual_invoice_no IS NULL AND v.visit_amount IS NULL)::int AS without_missing,
+              count(*) FILTER (WHERE ${THIS_MONTH} AND v.manual_invoice_no IS NULL AND v.status = 'COMPLETED')::int AS m_done,
+              COALESCE(sum(v.visit_amount) FILTER (WHERE ${THIS_MONTH} AND v.manual_invoice_no IS NULL AND v.status = 'COMPLETED'), 0)::numeric(16,3)::text AS m_done_v,
+              count(*) FILTER (WHERE v.manual_invoice_no IS NULL AND v.status = 'COMPLETED')::int AS done,
+              COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL AND v.status = 'COMPLETED'), 0)::numeric(16,3)::text AS done_v
        FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
        WHERE ${ACCOUNTS_SCOPE}`
     );
@@ -546,7 +556,12 @@ describe("12-card dashboard: current month and overall figures", () => {
       withoutInvoiceNo: expected.m_without,
       withoutInvoiceNoValue: expected.m_without_v,
       withoutInvoiceNoAmountMissing: expected.m_without_missing,
+      // Of those without an Invoice No., the services already Completed: waiting to be invoiced.
+      completedWithoutInvoiceNo: expected.m_done,
+      completedWithoutInvoiceNoValue: expected.m_done_v,
     });
+    expect(payments.unpaidCompleted).toBe(expected.done);
+    expect(payments.unpaidCompletedValue).toBe(expected.done_v);
     expect(payments.paidAmountMissing).toBe(expected.with_missing);
     expect(payments.unpaidAmountMissing).toBe(expected.without_missing);
     // Exactly the one service scheduled this month with a number; the old one counts overall only.

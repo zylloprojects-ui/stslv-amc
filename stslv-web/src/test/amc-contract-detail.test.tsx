@@ -113,6 +113,14 @@ describe('contract page', () => {
     expect(chip('Responsible engineer')).toHaveTextContent('Test Engineer')
   })
 
+  it('does not repeat the Sales Engineer as a Responsible engineer', async () => {
+    amcApi(ADMIN, { contracts: [makeContract({ salesEngineer: { id: '7', name: 'Ravi Sales' }, responsibleEngineer: 'Ravi Sales' })] })
+    const page = await openPage()
+
+    expect(page.getByText('Sales Engineer', { selector: 'dt' }).parentElement).toHaveTextContent('Ravi Sales')
+    expect(page.queryByText('Responsible engineer', { selector: 'dt' })).not.toBeInTheDocument()
+  })
+
   it('shows a dash for the Sales Engineer of a contract without one', async () => {
     amcApi(ADMIN, { contracts: [makeContract({ salesEngineer: null })] })
     const page = await openPage()

@@ -387,6 +387,14 @@ export function ServicesSalesPage() {
         </div>
       )}
 
+      {data?.ownRecordsOnly && (
+        <div className="mb-4">
+          <Alert tone="info">
+            Showing the services of your own contracts only: the contracts whose Sales Engineer is linked to your user. Ask an administrator if a contract is missing.
+          </Alert>
+        </div>
+      )}
+
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" role="group" aria-label="Service Sales figures">
         {layout.order.map((id, index) => (
           <StatTile

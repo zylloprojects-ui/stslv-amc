@@ -46,6 +46,9 @@ export interface PaymentFigures {
   unpaidValue: string;
   /** Of unpaid, the services with no recorded value. */
   unpaidAmountMissing: number;
+  /** Of unpaid, the services already Completed: done, waiting for an Invoice No. (client meeting 2026-11-16). */
+  unpaidCompleted: number;
+  unpaidCompletedValue: string;
   /** Services whose Invoice No. was entered this calendar month, and their value. */
   paidThisMonth: number;
   paidThisMonthValue: string;
@@ -62,6 +65,12 @@ export interface PaymentFigures {
     withInvoiceNoAmountMissing: number;
     withoutInvoiceNo: number;
     withoutInvoiceNoValue: string;
+    /**
+     * Of withoutInvoiceNo, the services already Completed: the work is done but no Invoice No. is entered, so they are
+     * waiting to be invoiced (client meeting 2026-11-16, missed invoicing). A subset; withoutInvoiceNo keeps its meaning.
+     */
+    completedWithoutInvoiceNo: number;
+    completedWithoutInvoiceNoValue: string;
     /** Of withoutInvoiceNo, the services with no recorded value. */
     withoutInvoiceNoAmountMissing: number;
   };
@@ -394,6 +403,8 @@ export async function periodServiceFigures(
     without_no: number;
     without_value: string;
     without_missing: number;
+    awaiting: number;
+    awaiting_value: string;
   }>(
     `WITH t AS (SELECT COALESCE($1::date, ${BUSINESS_TODAY_SQL}) AS d)
      SELECT ${period === "yearToDate" ? "date_trunc('year', t.d)::date::text" : "NULL::text"} AS "from", t.d::text AS "to",
@@ -405,7 +416,9 @@ export async function periodServiceFigures(
             count(v.id) FILTER (WHERE v.manual_invoice_no IS NOT NULL AND ${missing})::int AS with_missing,
             count(v.id) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS without_no,
             COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS without_value,
-            count(v.id) FILTER (WHERE v.manual_invoice_no IS NULL AND ${missing})::int AS without_missing
+            count(v.id) FILTER (WHERE v.manual_invoice_no IS NULL AND ${missing})::int AS without_missing,
+            count(v.id) FILTER (WHERE v.manual_invoice_no IS NULL AND v.status = 'COMPLETED')::int AS awaiting,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL AND v.status = 'COMPLETED'), 0)::numeric(16,3)::text AS awaiting_value
      FROM t
      LEFT JOIN amc_visits v ON v.scheduled_date <= t.d ${startCondition} AND ${COUNTED_VISIT}
      GROUP BY t.d`,
@@ -429,6 +442,8 @@ export async function periodServiceFigures(
       withoutInvoiceNo: row?.without_no ?? 0,
       withoutInvoiceNoValue: row?.without_value ?? "0.000",
       withoutInvoiceNoAmountMissing: row?.without_missing ?? 0,
+      completedWithoutInvoiceNo: row?.awaiting ?? 0,
+      completedWithoutInvoiceNoValue: row?.awaiting_value ?? "0.000",
     },
   };
 }
@@ -473,6 +488,10 @@ export async function paymentFigures(): Promise<PaymentFigures> {
     sched_without: number;
     sched_without_value: string;
     sched_without_missing: number;
+    unpaid_done: number;
+    unpaid_done_value: string;
+    sched_done: number;
+    sched_done_value: string;
   }>(
     `SELECT count(*) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS paid,
             COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS paid_value,
@@ -487,7 +506,11 @@ export async function paymentFigures(): Promise<PaymentFigures> {
             count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NOT NULL AND ${missing})::int AS sched_with_missing,
             count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL)::int AS sched_without,
             COALESCE(sum(v.visit_amount) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS sched_without_value,
-            count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL AND ${missing})::int AS sched_without_missing
+            count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL AND ${missing})::int AS sched_without_missing,
+            count(*) FILTER (WHERE v.manual_invoice_no IS NULL AND v.status = 'COMPLETED')::int AS unpaid_done,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL AND v.status = 'COMPLETED'), 0)::numeric(16,3)::text AS unpaid_done_value,
+            count(*) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL AND v.status = 'COMPLETED')::int AS sched_done,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE ${scheduledThisMonth} AND v.manual_invoice_no IS NULL AND v.status = 'COMPLETED'), 0)::numeric(16,3)::text AS sched_done_value
      FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
      WHERE ${IN_SCOPE}`
   );
@@ -500,6 +523,8 @@ export async function paymentFigures(): Promise<PaymentFigures> {
     unpaid: row?.unpaid ?? 0,
     unpaidValue: row?.unpaid_value ?? "0.000",
     unpaidAmountMissing: row?.unpaid_missing ?? 0,
+    unpaidCompleted: row?.unpaid_done ?? 0,
+    unpaidCompletedValue: row?.unpaid_done_value ?? "0.000",
     paidThisMonth: row?.month_count ?? 0,
     paidThisMonthValue: row?.month_value ?? "0.000",
     scheduledThisMonth: {
@@ -509,6 +534,8 @@ export async function paymentFigures(): Promise<PaymentFigures> {
       withoutInvoiceNo: row?.sched_without ?? 0,
       withoutInvoiceNoValue: row?.sched_without_value ?? "0.000",
       withoutInvoiceNoAmountMissing: row?.sched_without_missing ?? 0,
+      completedWithoutInvoiceNo: row?.sched_done ?? 0,
+      completedWithoutInvoiceNoValue: row?.sched_done_value ?? "0.000",
     },
   };
 }

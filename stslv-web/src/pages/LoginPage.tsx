@@ -26,7 +26,7 @@ const HEADINGS = {
   signin: {
     eyebrow: 'Secure sign in',
     title: 'Welcome back',
-    text: 'Sign in to STS-ELV AMC to manage contracts, projects and invoices.',
+    text: 'Sign in to STS-ELV AMC to manage AMC contracts, services and invoices.',
   },
   signup: {
     eyebrow: 'New to STS-ELV AMC',
@@ -60,9 +60,10 @@ function modeOf(pathname: string): AuthMode {
 }
 
 const WORKFLOW = [
+  // The retired Projects, Procurement and Expenses modules are no longer offered (docs/OBSOLETE_MODULES_REMOVAL.md).
   { title: 'AMC contracts & schedules', text: 'Every visit generated from contract frequency and validity.' },
-  { title: 'Projects & procurement', text: 'Job numbers, LPOs, suppliers and quotations in one place.' },
-  { title: 'Expenses & invoice tracking', text: 'Every cost and invoice traced to its job or visit.' },
+  { title: 'Service execution & reports', text: 'Completion, service reports and engineers recorded per visit.' },
+  { title: 'Invoices & acknowledgements', text: 'Every Zoho invoice number and acknowledgement traced to its service.' },
 ]
 
 const ORBS = [
@@ -179,11 +180,11 @@ export function AuthLayout() {
             <h2 className="login-rise text-3xl font-semibold leading-tight tracking-tight text-white [animation-delay:0.35s] xl:text-4xl">
               One connected workflow
               <span className="login-gradient mt-1 block bg-gradient-to-r from-[#4DB8FF] via-[#2DD4D4] to-[#7ED36B] bg-clip-text text-transparent">
-                for every contract and job.
+                for every AMC contract.
               </span>
             </h2>
             <p className="login-rise mt-3 max-w-lg text-sm text-sky-100/75 [animation-delay:0.5s] xl:text-base [@media(max-height:620px)]:hidden">
-              Enter information once. Keep AMC visits, projects, procurement, expenses and invoices traceable from start to finish.
+              Enter information once. Keep AMC contracts, services, invoices and renewals traceable from start to finish.
             </p>
 
             <ul className="mt-6 space-y-3 [@media(max-height:800px)]:hidden">

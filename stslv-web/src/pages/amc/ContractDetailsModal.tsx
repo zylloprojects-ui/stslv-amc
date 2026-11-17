@@ -4,7 +4,7 @@ import { Alert, Button, Modal, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
-import { formatDate, formatMoney, isZeroMoney } from './amcFormat'
+import { formatDate, formatMoney, hasSeparateResponsibleEngineer, isZeroMoney } from './amcFormat'
 import { ContractStatusPill, DetailRow, EligibilityPill, OrDash, PlannedDate, VisitStatusPill } from './components'
 import { frequencyLabel, visitNumberLabel, type Contract, type ContractStatus, type VisitList } from './types'
 
@@ -84,9 +84,11 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               <DetailRow label="Sales Engineer">
                 <OrDash value={contract.salesEngineer?.name ?? null} />
               </DetailRow>
-              <DetailRow label="Responsible engineer">
-                <OrDash value={contract.responsibleEngineer} />
-              </DetailRow>
+              {hasSeparateResponsibleEngineer(contract) && (
+                <DetailRow label="Responsible engineer">
+                  <OrDash value={contract.responsibleEngineer} />
+                </DetailRow>
+              )}
               <DetailRow label="Validity">
                 {formatDate(contract.validFrom)} to {formatDate(contract.validTo)}
               </DetailRow>

@@ -146,6 +146,7 @@ Nothing is deployed on a VPS yet. Configuration templates for every item below n
 | Database | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `PGSSLMODE`; `DB_SCHEMA` (tests only) |
 | Sign-in | `JWT_SECRET`, `JWT_EXPIRES_IN`, `BCRYPT_ROUNDS`, `SESSION_IDLE_TIMEOUT_MINUTES` (default 30, 5–1440) |
 | Business-rule switches (approved, **off** until release) | `SERVICE_REPORT_NO_LOCK_ENABLED` (API); `AMC_CONTRACT_EXPIRY_ENABLED` (scheduled expiry job only, never the web server) |
+| Business-rule switch (provisional, awaiting client confirmation, **off**) | `SERVICE_SALES_OWN_RECORDS_ENABLED` (API): Service Sales users without AMC Contracts: View see only their own contracts (`docs/CLIENT_OPEN_POINTS_20261117.md`) |
 | Web access | `CORS_ORIGIN`, `APP_URL`, `TRUST_PROXY` |
 | Mail | `MAIL_TRANSPORT` (`none` in production) |
 | Rate limits | `LOGIN_RATE_LIMIT`, `LOGIN_FAILURE_LIMIT`, `PUBLIC_AUTH_RATE_LIMIT`, `TEMPORARY_PASSWORD_RATE_LIMIT` |

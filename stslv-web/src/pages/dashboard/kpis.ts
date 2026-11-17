@@ -76,6 +76,17 @@ export function invoiceAmountText(count: number, value: string, missing: number 
   return without > 0 ? `${amount} · ${formatCount(without)} without amount` : amount
 }
 
+/**
+ * " · 2 completed, awaiting invoice (OMR 1,200.000)": of the services without an Invoice No., those already Completed,
+ * so missed invoicing stands out (client meeting 2026-11-16). The card's own figure is unchanged. Nothing from an older
+ * API that does not send the count.
+ */
+export function awaitingInvoiceText(count: number | undefined, value: string | undefined): string {
+  if (count === undefined) return ''
+
+  return count > 0 ? ` · ${formatCount(count)} completed, awaiting invoice (OMR ${formatMoney(value ?? '0.000')})` : ' · none completed awaiting invoice'
+}
+
 /** "November 2026" for "2026-11-03", read as a calendar date (no time-zone shift). */
 export function monthName(asOf: string): string {
   const [year, month] = asOf.split('-').map(Number)
@@ -211,7 +222,7 @@ export const KPIS: KpiDefinition[] = [
     read: ({ kpis: { payments } }) =>
       payments && {
         value: formatCount(payments.scheduledThisMonth.withoutInvoiceNo),
-        detail: `${invoiceAmountText(payments.scheduledThisMonth.withoutInvoiceNo, payments.scheduledThisMonth.withoutInvoiceNoValue, payments.scheduledThisMonth.withoutInvoiceNoAmountMissing)} · no Invoice No.`,
+        detail: `${invoiceAmountText(payments.scheduledThisMonth.withoutInvoiceNo, payments.scheduledThisMonth.withoutInvoiceNoValue, payments.scheduledThisMonth.withoutInvoiceNoAmountMissing)} · no Invoice No.${awaitingInvoiceText(payments.scheduledThisMonth.completedWithoutInvoiceNo, payments.scheduledThisMonth.completedWithoutInvoiceNoValue)}`,
         hint: INVOICE_HINT,
       },
   },
@@ -264,7 +275,7 @@ export const KPIS: KpiDefinition[] = [
     read: ({ kpis: { payments } }) =>
       payments && {
         value: formatCount(payments.unpaid),
-        detail: `${invoiceAmountText(payments.unpaid, payments.unpaidValue, payments.unpaidAmountMissing)} · no Invoice No.`,
+        detail: `${invoiceAmountText(payments.unpaid, payments.unpaidValue, payments.unpaidAmountMissing)} · no Invoice No.${awaitingInvoiceText(payments.unpaidCompleted, payments.unpaidCompletedValue)}`,
         hint: INVOICE_HINT,
       },
   },
@@ -343,7 +354,7 @@ function periodCards(row: 'ytd' | 'tillDate', source: 'yearToDate' | 'tillDate',
         return figures
           ? {
               value: formatCount(figures.withoutInvoiceNo),
-              detail: `${invoiceAmountText(figures.withoutInvoiceNo, figures.withoutInvoiceNoValue, figures.withoutInvoiceNoAmountMissing)} · no Invoice No.`,
+              detail: `${invoiceAmountText(figures.withoutInvoiceNo, figures.withoutInvoiceNoValue, figures.withoutInvoiceNoAmountMissing)} · no Invoice No.${awaitingInvoiceText(figures.completedWithoutInvoiceNo, figures.completedWithoutInvoiceNoValue)}`,
               hint: INVOICE_HINT,
             }
           : null
