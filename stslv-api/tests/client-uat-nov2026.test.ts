@@ -409,6 +409,28 @@ describe("Client UAT 2026-11-16", () => {
       expect((await overallServiceCounts()).overall).toBe(7);
     });
 
+    it("picks out the completed services still without an Invoice No., without changing Invoices Not Generated", async () => {
+      const clientId = await createClient(admin, "Awaiting Client");
+      const id = await quarterly(clientId, "2026-01-01", "2026-12-31");
+      const [first, second, third] = await visitsOf(id);
+      // Q1 (Jan) completed and Paid; Q2 (Apr) completed, no Invoice No. (waiting to be invoiced); Q3 (Jul) and Q4 (Oct) not done.
+      for (const visit of [first!, second!]) await withServiceReport(visit.id);
+      await pool.query("UPDATE amc_visits SET status = 'COMPLETED', completed_date = scheduled_date WHERE id = ANY($1::bigint[])", [[first!.id, second!.id]]);
+      await pool.query("UPDATE amc_visits SET manual_invoice_no = 'INV-1', manual_invoice_at = now(), manual_invoice_by = $2 WHERE id = $1", [first!.id, admin.id]);
+      expect(third).toBeDefined();
+
+      const till = await periodServiceFigures("tillDate", "2026-11-17");
+      // Unchanged meaning: every service up to today without an Invoice No. (Q2, Q3 and Q4).
+      expect(till.invoices).toMatchObject({ withInvoiceNo: 1, withoutInvoiceNo: 3, withoutInvoiceNoValue: "900.000" });
+      // New: of those, only Q2 is done and waiting for its invoice.
+      expect(till.invoices).toMatchObject({ completedWithoutInvoiceNo: 1, completedWithoutInvoiceNoValue: "300.000" });
+      expect((await periodServiceFigures("yearToDate", "2026-11-17")).invoices.completedWithoutInvoiceNo).toBe(1);
+
+      const dashboard = await api().get("/api/dashboard/operations").set(admin.headers);
+      expect(dashboard.status).toBe(200);
+      expect(dashboard.body.data.kpis.payments).toMatchObject({ unpaid: 3, unpaidCompleted: 1, unpaidCompletedValue: "300.000" });
+    });
+
     it("returns the new rows on the Dashboard only to users who may see them", async () => {
       const clientId = await createClient(admin, "Shape Client");
       await quarterly(clientId, "2026-01-01", "2026-12-31");

@@ -178,16 +178,50 @@ export interface ServicesSalesItem {
   updatedAt: string;
 }
 
-/** What the signed-in user may see beyond the page itself: contract values need AMC Contracts: View. */
+/**
+ * What the signed-in user may see beyond the page itself: contract values need AMC Contracts: View.
+ * ownerUserId: when set, only the services of contracts whose Sales Engineer is linked to that user (see below).
+ */
 export interface ServicesSalesAccess {
   amcValue: boolean;
+  ownerUserId: string | null;
 }
 
-const NO_EXTRA_ACCESS: ServicesSalesAccess = { amcValue: false };
+const NO_EXTRA_ACCESS: ServicesSalesAccess = { amcValue: false, ownerUserId: null };
 
-export function servicesSalesAccess(auth: Pick<AuthContext, "permissions">): ServicesSalesAccess {
+/**
+ * Own records only (client meeting 2026-11-16, CR-017; PROVISIONAL until the client confirms the rule). With
+ * SERVICE_SALES_OWN_RECORDS_ENABLED=true, a Service Sales user who may not view AMC Contracts (the sales team) sees
+ * only the services of contracts whose Sales Engineer is linked to their user account (Master Data > Sales Engineers >
+ * linked user). A user with AMC Contracts: View (managers, accounts, administrators) still sees every service. A sales
+ * user with no linked Sales Engineer sees none. Off by default, so current behaviour is kept until the switch is set;
+ * read on every request, so the switch needs no code change.
+ */
+export function ownRecordsOnlyEnabled(source: NodeJS.ProcessEnv = process.env): boolean {
+  return source.SERVICE_SALES_OWN_RECORDS_ENABLED?.trim().toLowerCase() === "true";
+}
+
+export function servicesSalesAccess(auth: Pick<AuthContext, "permissions"> & { user?: { id: string } }): ServicesSalesAccess {
   // No permission set (an internal caller): nothing extra is shown.
-  return { amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false };
+  const amcValue = auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false;
+
+  return { amcValue, ownerUserId: ownRecordsOnlyEnabled() && !amcValue && auth.user ? auth.user.id : null };
+}
+
+/** Keeps only the services of contracts whose Sales Engineer is linked to the user in `placeholder`. */
+const OWN_CONTRACT_SQL = (placeholder: string) =>
+  `EXISTS (SELECT 1 FROM sales_engineers own_se WHERE own_se.id = c.sales_engineer_id AND own_se.user_id = ${placeholder})`;
+
+/** A restricted user may open, download or change only a visit of their own contracts; anything else is "not found". */
+async function assertOwnVisit(access: ServicesSalesAccess, visitId: string, db: { query: typeof pool.query } = pool): Promise<void> {
+  if (access.ownerUserId === null) return;
+
+  const own = await db.query(`SELECT 1 FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id WHERE v.id = $1 AND ${OWN_CONTRACT_SQL("$2")}`, [
+    visitId,
+    access.ownerUserId,
+  ]);
+
+  if (own.rowCount === 0) throw notFound("AMC visit not found.");
 }
 
 function toItem(row: SalesRow, access: ServicesSalesAccess = NO_EXTRA_ACCESS): ServicesSalesItem {
@@ -231,13 +265,16 @@ function toItem(row: SalesRow, access: ServicesSalesAccess = NO_EXTRA_ACCESS): S
 export type ServicesSalesFilters = Omit<ListServicesSalesQuery, "page" | "pageSize">;
 
 /** One WHERE clause for the rows, the cards and the export, so the three always agree. */
-function filterSql(query: ServicesSalesFilters, storedReference: boolean) {
+function filterSql(query: ServicesSalesFilters, storedReference: boolean, access: ServicesSalesAccess = NO_EXTRA_ACCESS) {
   const conditions: string[] = [IN_SCOPE];
   const params: unknown[] = [];
   const add = (value: unknown) => {
     params.push(value);
     return `$${params.length}`;
   };
+
+  // Own records only (CR-017): rows, cards, totals and the export all share this clause, so they always agree.
+  if (access.ownerUserId !== null) conditions.push(OWN_CONTRACT_SQL(add(access.ownerUserId)));
 
   if (query.clientId) conditions.push(`c.client_id = ${add(query.clientId)}`);
   if (query.salesEngineerId) conditions.push(`c.sales_engineer_id = ${add(query.salesEngineerId)}`);
@@ -329,7 +366,7 @@ async function kpis(where: string, params: unknown[]): Promise<ServicesSalesKpis
 
 export async function listServicesSales(query: ListServicesSalesQuery, access: ServicesSalesAccess = NO_EXTRA_ACCESS) {
   const [storedReference, reports, serviceEngineer] = await Promise.all([hasStoredReference(), serviceReportsAvailable(), hasServiceEngineer()]);
-  const { where, params } = filterSql(query, storedReference);
+  const { where, params } = filterSql(query, storedReference, access);
   const figures = await kpis(where, params);
   // Never computed, so never sent, for a user who may not see contract values.
   const amcValue = access.amcValue ? await amcValueTotal(where, params) : null;
@@ -348,6 +385,8 @@ export async function listServicesSales(query: ListServicesSalesQuery, access: S
     serviceReportsAvailable: reports,
     amcValueVisible: access.amcValue,
     amcValueTotal: amcValue,
+    // True when the list holds only the user's own contracts (CR-017), so the page can say so.
+    ownRecordsOnly: access.ownerUserId !== null,
   };
 }
 
@@ -358,7 +397,7 @@ export async function listServicesSales(query: ListServicesSalesQuery, access: S
  */
 export async function listAllServicesSales(filters: ServicesSalesFilters, checkSize: (count: number) => void, access: ServicesSalesAccess = NO_EXTRA_ACCESS) {
   const storedReference = await hasStoredReference();
-  const { where, params } = filterSql(filters, storedReference);
+  const { where, params } = filterSql(filters, storedReference, access);
   const figures = await kpis(where, params);
 
   checkSize(figures.total);
@@ -418,6 +457,7 @@ async function findSalesRow(db: Queryable, id: string): Promise<SalesRow> {
 export async function saveQuotation(auth: AuthContext, id: string, input: SaveQuotationInput): Promise<ServicesSalesItem> {
   return withTransaction(async (client) => {
     await client.query("SELECT id FROM amc_visits WHERE id = $1 FOR UPDATE", [id]);
+    await assertOwnVisit(servicesSalesAccess(auth), id, client);
     const row = await findSalesRow(client, id);
 
     if (row.status === "HISTORICAL" || row.status === "CANCELLED") {
@@ -471,7 +511,7 @@ export async function saveQuotation(auth: AuthContext, id: string, input: SaveQu
  * recycled work is not), and the report is looked up by that visit's id alone, so a report of another service or
  * contract is never served. The file is checked against the checksum recorded at upload.
  */
-export async function readServicesSalesReport(visitId: string) {
+export async function readServicesSalesReport(visitId: string, access: ServicesSalesAccess = NO_EXTRA_ACCESS) {
   if (!(await serviceReportsAvailable())) {
     throw new AppError(503, "FEATURE_UNAVAILABLE", "Service reports are not available until the database is updated (migration 0104).");
   }
@@ -479,6 +519,7 @@ export async function readServicesSalesReport(visitId: string) {
   const visit = await pool.query(`SELECT 1 FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id WHERE v.id = $1 AND ${IN_SCOPE}`, [visitId]);
 
   if (visit.rowCount === 0) throw notFound("AMC visit not found.");
+  await assertOwnVisit(access, visitId);
 
   const result = await pool.query<{ original_name: string; mime_type: string; sha256: string; storage_key: string }>(
     `SELECT a.original_name, a.mime_type, a.sha256, a.storage_key FROM attachments a WHERE ${REPORT_WHERE} AND a.entity_id = $1`,

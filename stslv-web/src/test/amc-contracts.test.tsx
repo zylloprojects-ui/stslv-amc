@@ -259,7 +259,8 @@ describe('add contract', () => {
     await typeReference(dialog, '  STSLV-AMC-2026-015 ')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '11')
     await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '22')
-    await userEvent.type(within(dialog).getByLabelText('Responsible engineer'), 'Second Engineer')
+    // One engineer on a new contract (client meeting 2026-11-16): no Responsible engineer field.
+    expect(within(dialog).queryByLabelText(/Responsible engineer/)).not.toBeInTheDocument()
     await userEvent.selectOptions(within(dialog).getByLabelText(/^Sales Engineer/), '5')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'HALF_YEARLY')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-03-01')
@@ -281,7 +282,8 @@ describe('add contract', () => {
       systemTypeId: '22',
       systemDescription: 'Automation',
       salesEngineerId: '5',
-      responsibleEngineer: 'Second Engineer',
+      // Filled from the chosen Sales Engineer, as before, so older exports and fallbacks keep a name.
+      responsibleEngineer: 'Test Sales Engineer',
       validFrom: '2027-03-01',
       validTo: '2028-02-29',
       maintenanceFrequency: 'HALF_YEARLY',

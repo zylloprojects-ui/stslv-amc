@@ -351,6 +351,25 @@ describe('Services Sales page', () => {
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
     expect(await screen.findByText('No services found')).toBeInTheDocument()
   })
+
+  it('says when only the user\'s own contracts are listed (CR-017), and says nothing otherwise', async () => {
+    salesApi(EDITOR, [], (request) =>
+      request.method === 'GET' && request.path === '/services-sales'
+        ? ok({ items: [], total: 0, page: 1, pageSize: 50, kpis: { total: 0, notCompleted: 0, quotePending: 0, quoted: 0, quotationBeforeCompletion: 0 }, ownRecordsOnly: true })
+        : undefined,
+    )
+    renderPage()
+
+    expect(await screen.findByText(/Showing the services of your own contracts only/)).toBeInTheDocument()
+  })
+
+  it('shows no own-contracts notice when the whole list is shown', async () => {
+    salesApi(EDITOR, [])
+    renderPage()
+
+    expect(await screen.findByText('No services found')).toBeInTheDocument()
+    expect(screen.queryByText(/your own contracts only/)).not.toBeInTheDocument()
+  })
 })
 
 describe('Service Report No. and the Quote filter', () => {

@@ -76,3 +76,15 @@ export function contractEndDate(validFrom: string, years: number): string {
 
   return end.toISOString().slice(0, 10)
 }
+
+/**
+ * Whether a contract holds a typed "Responsible engineer" that is not simply its Sales Engineer's name (client meeting
+ * 2026-11-16: one engineer, the Sales Engineer). Only such older values are still shown, so they can be read or cleared.
+ */
+export function hasSeparateResponsibleEngineer(
+  contract: { responsibleEngineer: string | null; salesEngineer?: { name: string } | null } | null
+): boolean {
+  const typed = contract?.responsibleEngineer?.trim() ?? ''
+
+  return typed !== '' && typed.toLowerCase() !== (contract?.salesEngineer?.name ?? '').trim().toLowerCase()
+}

@@ -15,7 +15,7 @@ import type { PagedInvoices } from '../../lib/invoiceTypes'
 import { InvoiceDialogs, type InvoiceDialog } from '../invoices/InvoiceDialogs'
 import { InvoicesTable } from '../invoices/InvoicesTable'
 import { queryString } from './amcApi'
-import { currentMonth, formatDate, formatMoney, isZeroMoney, todayIso } from './amcFormat'
+import { currentMonth, formatDate, formatMoney, hasSeparateResponsibleEngineer, isZeroMoney, todayIso } from './amcFormat'
 import { ContractStatusPill, EligibilityPill, OrDash, Pager, Pill, PlannedDate, VisitStatusPill } from './components'
 import { ContractFormModal } from './ContractFormModal'
 import { ContractMastersPanel } from './ContractMastersPanel'
@@ -375,11 +375,11 @@ export function ContractDetailPage() {
             Monthly Calendar
           </Link>
         )}
-        {canViewSchedule && (
-          <Link to={`/amc/schedule?contractId=${contract.id}`} className={TOOLBAR_LINK}>
-            All Schedules
-          </Link>
-        )}
+        {/* Client meeting 2026-11-16: the AMC Schedule page is no longer used, so this opens the contract's own
+            Service schedule tab (every service of this contract) instead. */}
+        <button type="button" onClick={() => openTab('schedule')} className={TOOLBAR_LINK}>
+          Service Schedule
+        </button>
       </nav>
 
       <PageHeader
@@ -452,9 +452,11 @@ export function ContractDetailPage() {
               <ContactChip icon="user" label="Sales Engineer">
                 <OrDash value={contract.salesEngineer?.name ?? null} />
               </ContactChip>
-              <ContactChip icon="user" label="Responsible engineer">
-                <OrDash value={contract.responsibleEngineer} />
-              </ContactChip>
+              {hasSeparateResponsibleEngineer(contract) && (
+                <ContactChip icon="user" label="Responsible engineer">
+                  <OrDash value={contract.responsibleEngineer} />
+                </ContactChip>
+              )}
               <ContactChip icon="clock" label="Validity">
                 {formatDate(contract.validFrom)} – {formatDate(contract.validTo)}
               </ContactChip>

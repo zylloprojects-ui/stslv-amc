@@ -240,7 +240,8 @@ describe('sales engineers', () => {
     // Required on a new contract (2026-11-03), so its label carries the asterisk.
     const picker = await within(dialog).findByLabelText(/^Sales Engineer/)
     await userEvent.selectOptions(picker, '5')
-    expect(within(dialog).getByLabelText('Responsible engineer')).toHaveValue('Test Engineer')
+    // The field is not shown on a new contract (client meeting 2026-11-16); its value is still filled from the pick.
+    expect(within(dialog).queryByLabelText(/Responsible engineer/)).not.toBeInTheDocument()
 
     await userEvent.type(within(dialog).getByLabelText(/AMC Reference Number/), 'AMC-2027-005')
     await userEvent.selectOptions(within(dialog).getByLabelText(/^Client/), '10')

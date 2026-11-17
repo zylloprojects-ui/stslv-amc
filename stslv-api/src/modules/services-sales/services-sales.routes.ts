@@ -33,7 +33,7 @@ servicesSalesRouter.get("/export", authorize("SERVICES_SALES", "VIEW"), authoriz
 // The Service Report uploaded on Service Status for ONE visit (the visit id), for View and Download. Read only:
 // this page never uploads, replaces or removes a report. Viewing it needs only this page's VIEW permission.
 servicesSalesRouter.get("/:id/report", authorize("SERVICES_SALES", "VIEW"), quotationReady, async (req, res) => {
-  const file = await readServicesSalesReport(parseIdParam(req.params.id));
+  const file = await readServicesSalesReport(parseIdParam(req.params.id), servicesSalesAccess(requireAuth(req)));
   // The stored name is already cleaned at upload; the ASCII fallback keeps only safe characters.
   const ascii = file.fileName.replace(/[^A-Za-z0-9._ -]/g, "_");
 

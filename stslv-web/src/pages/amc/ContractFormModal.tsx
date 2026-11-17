@@ -8,7 +8,7 @@ import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../c
 import { api, ApiError, errorMessage, isForbidden } from '../../lib/api'
 import type { SystemType } from '../masters/masterTypes'
 import { queryString } from './amcApi'
-import { contractEndDate, formatDate, MONEY_PATTERN } from './amcFormat'
+import { contractEndDate, formatDate, hasSeparateResponsibleEngineer, MONEY_PATTERN } from './amcFormat'
 import { SelectField } from './components'
 import { CONTRACT_DOCUMENT_ACCEPT, contractDocumentProblem, DEFAULT_MAX_MB, formatFileSize, readAsBase64 } from './contractDocument'
 import { MONTH_NAMES, useFrequencyOptions } from './frequencyOptions'
@@ -123,6 +123,10 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const start = contract ?? renewalOf ?? null
   // Add AMC Contract (2026-11-03): a new contract that is not a renewal needs Final Credit and a contract document.
   const isNew = contract === null && !renewalOf
+  // Client meeting 2026-11-16: one engineer, the Sales Engineer. "Responsible engineer" is shown only for an older
+  // contract that holds a different typed name, so that value can still be read, corrected or cleared. Choosing a
+  // Sales Engineer still fills it when empty (chooseEngineer), so data and exports stay as before.
+  const showResponsibleEngineer = hasSeparateResponsibleEngineer(contract ?? renewalOf ?? null)
   // Start Renewal (2026-11-09) also needs its own updated renewal contract document; the renewed contract's is never reused.
   const needsDocument = isNew || Boolean(renewalOf)
   const queryClient = useQueryClient()
@@ -679,7 +683,9 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <TextField label="Responsible engineer" error={errors.responsibleEngineer?.message} {...register('responsibleEngineer')} />
+            {showResponsibleEngineer && (
+              <TextField label="Responsible engineer" hint="Recorded on an older contract. New contracts use the Sales Engineer only." error={errors.responsibleEngineer?.message} {...register('responsibleEngineer')} />
+            )}
             {engineerListUnavailable && (
               <Alert>
                 {isForbidden(engineers.error) || isForbidden(currentLinks.error)
