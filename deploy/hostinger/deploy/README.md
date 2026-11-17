@@ -54,9 +54,9 @@ pushed commit cannot change what runs as root.
 - Deployment branches: `main` only. Secret `HOSTINGER_SSH_KEY` (the deploy key's private half; never the personal key).
 - Environment variables: `HOSTINGER_HOST`, `HOSTINGER_USER` (`stselvdeploy`), `HOSTINGER_KNOWN_HOSTS` (the server's
   pinned ED25519 host key line), `HOSTINGER_URL`.
-- **Repository** variable (Settings → Secrets and variables → Actions → Variables → *Repository variables*):
-  `HOSTINGER_DEPLOY_ENABLED` = `true` to switch deployment on (any other value = tests and builds only). It must be a
-  repository variable: the deploy job's condition is evaluated before the job enters the environment.
+- `HOSTINGER_DEPLOY_ENABLED` = `true` to switch deployment on (repository or `hostinger` environment variable; any
+  other value = tests and builds only). The deploy job checks it in its first step and stops without touching the VPS
+  when it is not `true`.
 - Redeploy without a new commit: Actions → *Hostinger deploy* → *Run workflow* on `main`.
 
 ## Approving a migration

@@ -103,21 +103,36 @@ jobs:
   deploy:
     name: Deploy to Hostinger VPS
     needs: test-and-build
-    # HOSTINGER_DEPLOY_ENABLED must be a REPOSITORY variable: job conditions are evaluated before the job enters the
-    # "hostinger" environment, so environment variables are not visible here. "Run workflow" on main also deploys.
-    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && vars.HOSTINGER_DEPLOY_ENABLED == 'true'
+    # Runs for pushes to main and "Run workflow" on main. The on/off switch HOSTINGER_DEPLOY_ENABLED is checked in the
+    # first step, inside the "hostinger" environment, so it may be a repository OR an environment variable.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     environment:
       name: hostinger
       url: ${{ vars.HOSTINGER_URL }}
     steps:
+      - name: Deployment switch
+        id: gate
+        env:
+          ENABLED: ${{ vars.HOSTINGER_DEPLOY_ENABLED }}
+        run: |
+          if [ "$ENABLED" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::HOSTINGER_DEPLOY_ENABLED is not 'true': tests and build passed, nothing was deployed."
+            echo "### Deployment switched off (HOSTINGER_DEPLOY_ENABLED is not 'true'); nothing was deployed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - uses: actions/download-artifact@v5
+        if: steps.gate.outputs.enabled == 'true'
         with:
           name: hostinger-release-${{ github.sha }}
           path: ${{ runner.temp }}/release
 
       - name: Prepare SSH (deploy key, pinned host key)
+        if: steps.gate.outputs.enabled == 'true'
         env:
           SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
           KNOWN_HOSTS: ${{ vars.HOSTINGER_KNOWN_HOSTS }}
@@ -130,6 +145,7 @@ jobs:
 
       - name: Upload and install the release (server verifies, migrates only if approved, health-checks, rolls back)
         id: deploy
+        if: steps.gate.outputs.enabled == 'true'
         env:
           HOST: ${{ vars.HOSTINGER_HOST }}
           USER: ${{ vars.HOSTINGER_USER }}
@@ -140,6 +156,7 @@ jobs:
               "$USER@$HOST" "deploy ${GITHUB_SHA}" < "$RUNNER_TEMP/release/release.tar.gz" | tee "$RUNNER_TEMP/deploy.log"
 
       - name: Public check
+        if: steps.gate.outputs.enabled == 'true'
         env:
           URL: ${{ vars.HOSTINGER_URL }}
         run: |
