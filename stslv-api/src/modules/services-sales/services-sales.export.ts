@@ -33,9 +33,11 @@ const COLUMNS: (ReportColumn & { hideable?: ServicesSalesColumn })[] = [
   { key: "serviceStatus", header: "Service status", kind: "text", width: 15, hideable: "serviceStatus" },
   { key: "completedDate", header: "Completed date", kind: "date", width: 13, excelOnly: true, hideable: "serviceStatus" },
   { key: "serviceReportNo", header: "Service Report No.", kind: "identifier", width: 16, hideable: "serviceReportNo" },
+  // Client UAT CR-016: the engineer who performed the service (Service Status input), never the contract's Sales Engineer.
+  { key: "serviceEngineer", header: "Service Engineer", kind: "text", width: 20, wrap: true, hideable: "serviceEngineer" },
   { key: "quotationNo", header: "Quote No.", kind: "identifier", width: 16, hideable: "quotation" },
   { key: "salesStatus", header: "Sales status", kind: "text", width: 24 },
-  { key: "salesEngineer", header: "Service Engineer", kind: "text", width: 20, wrap: true, hideable: "salesEngineer" },
+  { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 20, wrap: true, hideable: "salesEngineer" },
   // The contract period's AMC Value / Year, repeated on each of its services, so never totalled as a column: the
   // unique-contract total is in the notes. Only for a user with AMC Contracts: View.
   { key: "amcValue", header: "AMC Value / Year (OMR)", kind: "money", width: 16, hideable: "amcValue" },
@@ -67,6 +69,7 @@ function toRow(item: ServicesSalesItem, index: number): ReportRow {
     serviceStatus: SERVICE_STATUS_LABELS[item.serviceStatus],
     completedDate: item.completedDate,
     serviceReportNo: item.serviceReportNo,
+    serviceEngineer: item.serviceEngineer,
     quotationNo: item.quotationNo,
     salesStatus: item.quotationBeforeCompletion ? `${SALES_STATUS_LABELS[item.salesStatus]} (quote recorded before completion)` : SALES_STATUS_LABELS[item.salesStatus],
     salesEngineer: item.salesEngineer?.name ?? null,
@@ -82,7 +85,7 @@ async function describeFilters(query: ExportServicesSalesQuery): Promise<ReportD
     (await pool.query<{ name: string }>(`SELECT name FROM ${table} WHERE id = $1`, [id])).rows[0]?.name ?? unknown;
 
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
-  if (query.salesEngineerId) filters.push({ label: "Service Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown service engineer") });
+  if (query.salesEngineerId) filters.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
   if (query.systemTypeId) filters.push({ label: "System", value: await nameOf("system_types", query.systemTypeId, "Unknown system type") });
   if (query.frequency) {
     const frequency = await pool.query<{ label: string }>("SELECT label FROM maintenance_frequencies WHERE code = $1", [query.frequency]);

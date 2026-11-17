@@ -335,7 +335,8 @@ describe("Accounts", () => {
       await invoice(fx.alphaId, [[alpha[0]!.id, "405.000"]], "INV-9");
       await setManualNo(alpha[0]!.id, "MAN-9");
 
-      const response = await exportFile({ format: "xlsx", clientId: fx.alphaId, hidden: "system,salesEngineer" });
+      // The client UAT columns (Service Engineer, AMC Value) are hidden here too; tests/client-uat-nov2026.test.ts covers them.
+      const response = await exportFile({ format: "xlsx", clientId: fx.alphaId, hidden: "system,salesEngineer,serviceEngineer,amcValue" });
       expect(response.status).toBe(200);
       expect(response.headers["content-disposition"]).toMatch(/accounts/);
       const workbook = new ExcelJS.Workbook();
@@ -351,7 +352,7 @@ describe("Accounts", () => {
         "Scheduled Month",
         "Service Status",
         "Service Report No.",
-        "Value (Ex VAT, OMR)",
+        "Service Value (ex VAT)",
         "Invoice No.",
         "Paid / Unpaid",
         "Zoho Invoices (Tracking)",
@@ -372,7 +373,7 @@ describe("Accounts", () => {
       expect(rows[1]?.[13]).toBe("Red · Service not completed");
 
       const audit = await pool.query<{ metadata: { rowCount: number; hidden: string[] } }>("SELECT metadata FROM activity_logs WHERE action = 'accounts.exported' ORDER BY id DESC LIMIT 1");
-      expect(audit.rows[0]?.metadata).toMatchObject({ rowCount: 4, hidden: ["system", "salesEngineer"] });
+      expect(audit.rows[0]?.metadata).toMatchObject({ rowCount: 4, hidden: ["system", "salesEngineer", "serviceEngineer", "amcValue"] });
     });
 
     it("produces a PDF for the same filters and refuses an unknown format or column", async () => {

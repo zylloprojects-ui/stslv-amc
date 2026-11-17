@@ -17,12 +17,15 @@ const COLUMNS: ReportColumn[] = [
   { key: "client", header: "Client", kind: "text", width: 28, wrap: true },
   { key: "system", header: "System", kind: "text", width: 20, wrap: true },
   { key: "frequency", header: "Frequency", kind: "text", width: 18, wrap: true },
-  { key: "engineer", header: "Responsible Engineer", kind: "text", width: 20, wrap: true, excelOnly: true },
+  // Client UAT 2026-11-16: CR-006 Sales Engineer; CR-019/CR-020 headers as on the page (amounts unchanged, excluding VAT).
+  { key: "engineer", header: "Sales Engineer", kind: "text", width: 20, wrap: true, excelOnly: true },
   { key: "validFrom", header: "Valid From", kind: "date", width: 12 },
   { key: "validTo", header: "Valid To", kind: "date", width: 12 },
   { key: "status", header: "Status", kind: "text", width: 13 },
-  { key: "contractValue", header: "AMC Value / Year", kind: "money", width: 14 },
-  { key: "finalCredit", header: "Final Credit", kind: "money", width: 14 },
+  { key: "contractValue", header: "Contract Value (ex VAT)", kind: "money", width: 14 },
+  { key: "finalCredit", header: "Final Credit (ex VAT)", kind: "money", width: 14 },
+  // CR-013 (0118): as entered, blank when none; never totalled (a PO may cover one year or several).
+  { key: "customerPoValue", header: "Customer PO Value (ex VAT)", kind: "money", width: 15, excelOnly: true },
   { key: "billingBasis", header: "Billing Basis", kind: "text", width: 14 },
   { key: "billingAmount", header: "Billing Amount", kind: "money", width: 14, excelOnly: true },
   { key: "visitValue", header: "Cost per Visit", kind: "money", width: 14 },
@@ -57,12 +60,14 @@ function toRow(contract: Contract, index: number, labels: Map<string, string>): 
     client: contract.client.name,
     system: contract.systemDescription,
     frequency: labels.get(contract.maintenanceFrequency) ?? contract.maintenanceFrequency,
-    engineer: contract.responsibleEngineer,
+    // CR-006: the linked Sales Engineer, else the name typed on the contract, as the page shows.
+    engineer: contract.salesEngineer?.name ?? contract.responsibleEngineer,
     validFrom: contract.validFrom,
     validTo: contract.validTo,
     status: STATUS_LABELS[contract.status],
     contractValue: contract.contractValue,
     finalCredit: contract.finalCredit,
+    customerPoValue: contract.customerPoValue,
     billingBasis: contract.billingBasis === "FINAL_CREDIT" ? "Final Credit" : contract.billingBasis === "CONTRACT_VALUE" ? "AMC Value / Year" : contract.billingBasis === "CUSTOM" ? "Custom" : null,
     billingAmount: contract.selectedBillingAmount,
     visitValue: contract.defaultVisitAmount,
@@ -81,7 +86,7 @@ async function describeFilters(query: ExportContractsQuery): Promise<ReportDefin
   if (query.validity === "due") filters.push({ label: "Validity", value: "Due: active, ending within 45 days" });
   if (query.validity === "expired") filters.push({ label: "Validity", value: "Expired: status Expired, or validity ended" });
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
-  if (query.salesEngineerId) filters.push({ label: "Service Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown service engineer") });
+  if (query.salesEngineerId) filters.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
   if (query.system) filters.push({ label: "System", value: query.system });
   if (query.frequency) filters.push({ label: "Frequency", value: query.frequency });
   if (query.year) filters.push({ label: "Year", value: String(query.year) });
@@ -127,7 +132,10 @@ export async function buildContractsExport(auth: AuthContext, query: ExportContr
               },
             }
           : {}),
-        notes: ["Amounts are as entered on each contract. Cost per Visit is the amount given to each new visit; whether it includes VAT is not confirmed."],
+        notes: [
+          "Amounts are as entered on each contract. Cost per Visit is the amount given to each new visit; whether it includes VAT is not confirmed.",
+          "Customer PO Value (Excel only) is the customer's purchase order amount excluding VAT, as entered; blank when none is entered. It is not totalled.",
+        ],
       },
     ],
   };

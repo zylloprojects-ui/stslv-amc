@@ -51,6 +51,10 @@ export interface NavSection {
  * Schedule (AMC Execution), Invoice Tracking (Accounts), Security Center and Backup & Restore (Settings), My
  * Suggestions (account menu). AMC Management is not in the approved sidebar (owner decision, 2026-11-10): it is its
  * own page again (AMC Contracts: View), opened from its address, the expiry alerts and its Help topic.
+ *
+ * AMC Schedule is hidden from the sidebar and the page search (client UAT 2026-11-16, CR-029): the client prints the
+ * schedule from Service Status instead. Hidden only: its page, route, permission, data and exports are unchanged and it
+ * still opens from its address (/amc/schedule) and its Help topic. Whether to retire it is open question Q-08.
  */
 export const NAVIGATION: NavSection[] = [
   {
@@ -66,7 +70,6 @@ export const NAVIGATION: NavSection[] = [
     items: [
       { label: 'Service Status', path: '/amc/service-status', module: 'SERVICE_STATUS' },
       { label: 'Monthly Calendar', path: '/amc/calendar', module: 'MONTHLY_CALENDAR' },
-      { label: 'AMC Schedule', path: '/amc/schedule', module: 'AMC_SCHEDULE' },
     ],
   },
   {

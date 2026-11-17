@@ -46,7 +46,10 @@ export interface MasterStatusItem {
   /** Every active Zoho invoice in Invoice Tracking covering the visit; empty when none. */
   invoiceNumbers: string[]
   quotationNo: string | null
+  /** The contract's Sales Engineer: the person who brought the AMC. */
   salesEngineer: { id: string; name: string } | null
+  /** The engineer who performed this service, as entered on Service Status (client UAT CR-008). Absent from an older API. */
+  serviceEngineer?: string | null
   colour: RowColour
   /** Zoho invoice amounts allocated to the visit in Invoice Tracking (OMR, ex VAT); null when none. Absent from an older API. */
   invoiceValue?: string | null

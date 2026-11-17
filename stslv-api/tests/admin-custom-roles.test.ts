@@ -96,13 +96,15 @@ describe("Admin manages custom roles", () => {
 });
 
 describe("Admin is kept within its authority", () => {
-  it("cannot change any built-in role, its permissions, or its status", async () => {
+  it("cannot rename, deactivate or delete any built-in role, nor change the permissions of Super Admin, Admin or a legacy role", async () => {
     for (const code of ["ADMIN", "ADMINISTRATOR", "FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER", "ACCOUNTANT"]) {
       const id = await roleId(code);
       const before = await grantsOf(code);
       const name = (await pool.query<{ name: string }>("SELECT name FROM roles WHERE id = $1", [id])).rows[0]?.name;
 
-      expect((await setPermissions(admin, id, [])).status, code).toBe(403);
+      // Client UAT CR-031 (2026-11-17): Admin configures the permissions of the four operational roles (tested below);
+      // Super Admin, Admin and the legacy roles stay with Super Admin.
+      if (["ADMIN", "ADMINISTRATOR", "ACCOUNTANT"].includes(code)) expect((await setPermissions(admin, id, [])).status, code).toBe(403);
       const renamed = await updateRole(admin, id, { name: `Renamed ${code}` });
       expect(renamed.status, code).toBe(403);
       if (code !== "ADMIN") expect(renamed.body.error.message, code).toBe(BUILT_IN);
@@ -114,9 +116,43 @@ describe("Admin is kept within its authority", () => {
     }
 
     const roles = (await listed(admin)).roles;
-    for (const role of roles.filter((item) => ["ADMIN", "ADMINISTRATOR", "VIEWER"].includes(item.code))) {
+    for (const role of roles.filter((item) => ["ADMIN", "ADMINISTRATOR"].includes(item.code))) {
       expect(role, role.code).toMatchObject({ manageable: false, permissionsEditable: false });
     }
+    // An operational role: its permissions are Admin's to configure; the role itself (name, status) is not.
+    expect(roles.find((item) => item.code === "VIEWER")).toMatchObject({ manageable: false, permissionsEditable: true });
+  });
+
+  it("configures the permissions of the operational roles within its own access (CR-031)", async () => {
+    const finance = await roleId("FINANCE_EXECUTIVE");
+    const before = await grantsOf("FINANCE_EXECUTIVE");
+    // Grant AMC Contracts View to Accounts, then take it back: both audited, both effective at once.
+    const granted = await setPermissions(admin, finance, [...before, { module: "AMC_CONTRACTS", action: "VIEW" }]);
+    expect(granted.status).toBe(200);
+    expect(keys(await grantsOf("FINANCE_EXECUTIVE"))).toContain("AMC_CONTRACTS:VIEW");
+    const log = await pool.query("SELECT 1 FROM activity_logs WHERE action = 'role.permissions_changed' AND entity_id = $1 AND user_id = $2", [finance, admin.id]);
+    expect(log.rowCount).toBeGreaterThan(0);
+    expect((await setPermissions(admin, finance, before)).status).toBe(200);
+    expect(keys(await grantsOf("FINANCE_EXECUTIVE"))).toEqual(keys(before));
+
+    // Never Users & Access, never beyond Admin's own access, never Super Admin's or its own role.
+    const users = await setPermissions(admin, finance, [...before, { module: "USERS", action: "VIEW" }]);
+    expect(users.status).toBe(403);
+    const reports = await setPermissions(admin, finance, [...before, { module: "DASHBOARD", action: "VIEW" }, { module: "REPORTS", action: "VIEW" }]);
+    expect(reports.status).toBe(403);
+    expect(reports.body.error.message).toMatch(/REPORTS:VIEW because you do not hold it yourself/);
+    expect(keys(await grantsOf("FINANCE_EXECUTIVE"))).toEqual(keys(before));
+  });
+
+  it("cannot touch an operational role that Super Admin gave a permission Admin lacks", async () => {
+    const viewer = await roleId("VIEWER");
+    const before = await grantsOf("VIEWER");
+    // Super Admin gives Viewer Reports, which Admin does not hold: the whole role is out of Admin's reach.
+    expect((await setPermissions(superAdmin, viewer, [...before, { module: "REPORTS", action: "VIEW" }])).status).toBe(200);
+    const refused = await setPermissions(admin, viewer, before);
+    expect(refused.status).toBe(403);
+    expect(refused.body.error.message).toBe(BEYOND);
+    expect((await setPermissions(superAdmin, viewer, before)).status).toBe(200);
   });
 
   it("cannot grant or revoke a permission it does not hold", async () => {

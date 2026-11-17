@@ -25,7 +25,7 @@ async function openAddForm() {
   const dialog = await screen.findByRole('dialog', { name: 'Add AMC Contract' })
   await within(dialog).findByLabelText(/Client/)
   await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
-  await within(dialog).findByLabelText(/Service engineer \(master list\)/)
+  await within(dialog).findByLabelText(/^Sales Engineer/)
   return dialog
 }
 
@@ -33,7 +33,7 @@ async function fillOthers(dialog: HTMLElement) {
   await typeReference(dialog)
   await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '10')
   await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '21')
-  await userEvent.selectOptions(within(dialog).getByLabelText(/Service engineer \(master list\)/), '5')
+  await userEvent.selectOptions(within(dialog).getByLabelText(/^Sales Engineer/), '5')
   await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'QUARTERLY')
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
   await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
@@ -163,13 +163,14 @@ describe('A4 — AMC Contracts sorting', () => {
 
     // No sort until one is chosen: the usual order.
     expect(lastQuery(api).sort).toBeUndefined()
-    await userEvent.click(screen.getByRole('button', { name: 'Contract value: sort ascending' }))
+    // Client UAT CR-019: the heading reads "Contract Value (ex VAT)"; sorting is unchanged.
+    await userEvent.click(screen.getByRole('button', { name: 'Contract Value (ex VAT): sort ascending' }))
     await waitFor(() => expect(lastQuery(api)).toMatchObject({ sort: 'contractValue', direction: 'asc', page: '1' }))
-    expect(screen.getByRole('columnheader', { name: /Contract value/ })).toHaveAttribute('aria-sort', 'ascending')
+    expect(screen.getByRole('columnheader', { name: /Contract Value \(ex VAT\)/ })).toHaveAttribute('aria-sort', 'ascending')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Contract value: sort descending' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Contract Value (ex VAT): sort descending' }))
     await waitFor(() => expect(lastQuery(api)).toMatchObject({ sort: 'contractValue', direction: 'desc' }))
-    expect(screen.getByRole('columnheader', { name: /Contract value/ })).toHaveAttribute('aria-sort', 'descending')
+    expect(screen.getByRole('columnheader', { name: /Contract Value \(ex VAT\)/ })).toHaveAttribute('aria-sort', 'descending')
   })
 
   it('offers every requested column, works from the keyboard, and keeps the filters', async () => {
@@ -177,7 +178,7 @@ describe('A4 — AMC Contracts sorting', () => {
     renderApp('/amc/contracts')
     await screen.findByRole('table', { name: 'AMC contracts' })
 
-    for (const label of ['AMC Reference', 'Client', 'Engineer', 'Start', 'End', 'Contract value', 'Credit', 'Status']) {
+    for (const label of ['AMC Reference', 'Client', 'Sales Engineer', 'Start', 'End', 'Contract Value (ex VAT)', 'Final Credit (ex VAT)', 'Status']) {
       expect(screen.getByRole('button', { name: `${label}: sort ascending` })).toBeInTheDocument()
     }
 

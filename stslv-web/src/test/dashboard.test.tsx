@@ -205,7 +205,8 @@ function dashboardApi(user: SessionUser, overrides: Overrides = {}) {
 
 const withPermissions = (permissions: string[]): SessionUser => ({ ...ACCOUNTANT, permissions })
 
-const ROW_TITLES = { portfolio: 'AMC Portfolio', month: 'Current Month', overall: 'Overall', ytd: 'Current Year (YTD)' } as const
+// Client UAT 2026-11-16: "Overall" is titled "Overall Contract" and the new "Overall Till Date" row comes before it.
+const ROW_TITLES = { portfolio: 'AMC Portfolio', month: 'Current Month', overall: 'Overall Contract', ytd: 'Current Year (YTD)', tillDate: 'Overall Till Date' } as const
 type RowKey = keyof typeof ROW_TITLES
 
 /** A row of key figures. Rows 2 and 3 share card names, so cards are always found within their row. */
@@ -239,7 +240,7 @@ describe('KPI cards', () => {
     expect(kpiOrder()).toEqual(TWELVE_IDS)
     // The rows say which period they cover; the month comes from the API's date.
     expect(screen.getByText('Services scheduled in October 2026')).toBeInTheDocument()
-    expect(screen.getByText(/All service records, earlier years and visits ahead/)).toBeInTheDocument()
+    expect(screen.getByText(/Every service of the contracts, start to end, including visits ahead/)).toBeInTheDocument()
   })
 
   it('shows the portfolio figures from the API, amounts in OMR with three decimals', async () => {
@@ -384,83 +385,117 @@ describe('KPI cards', () => {
   })
 })
 
-// The Current Year (YTD) row, added 2026-11-11 below Overall. The fixture above has no yearToDate (an older API), so
-// every test above still proves the twelve approved cards exactly as before.
+// The Current Year (YTD) row (2026-11-11) and the Overall Till Date row (client UAT 2026-11-16, CR-001 to CR-004). The
+// fixture above has neither (an older API), so every test above still proves the twelve approved cards as before.
 const YTD = { from: '2026-01-01', to: '2026-10-27', due: 118, completed: 101, pending: 17, overdue: 9 }
-const WITH_YTD: OperationsDashboard = { ...OPERATIONS, yearToDate: YTD }
-const YTD_IDS = ['ytd-due', 'ytd-completed', 'ytd-pending']
+const TILL_DATE = { from: null, to: '2026-10-27', due: 131, completed: 104, pending: 27, overdue: 19 }
+const PERIOD_INVOICES = {
+  yearToDate: { withInvoiceNo: 90, withInvoiceNoValue: '27000.000', withInvoiceNoAmountMissing: 0, withoutInvoiceNo: 28, withoutInvoiceNoValue: '8400.000', withoutInvoiceNoAmountMissing: 0 },
+  tillDate: { withInvoiceNo: 92, withInvoiceNoValue: '27600.000', withInvoiceNoAmountMissing: 0, withoutInvoiceNo: 39, withoutInvoiceNoValue: '11700.000', withoutInvoiceNoAmountMissing: 2 },
+}
+const WITH_PERIODS: OperationsDashboard = { ...OPERATIONS, yearToDate: YTD, tillDate: TILL_DATE, periodInvoices: PERIOD_INVOICES }
+const YTD_IDS = ['ytd-due', 'ytd-pending', 'ytd-invoiced', 'ytd-not-invoiced']
+const TILL_DATE_IDS = ['till-date-services', 'till-date-pending', 'till-date-invoiced', 'till-date-not-invoiced']
+const PERIOD_LABELS = (services: string) => [services, 'Services Pending', 'Invoices Generated', 'Invoices Not Generated']
 
-describe('Current Year (YTD) row', () => {
-  it('adds three cards in a fourth row right after Overall, keeping the twelve cards and their order', async () => {
-    dashboardApi(ADMIN, { operations: () => ok(WITH_YTD) })
+describe('Current Year (YTD) and Overall Till Date rows', () => {
+  it('shows five rows in the client’s order: Portfolio, Current Month, YTD, Overall Till Date, Overall Contract', async () => {
+    dashboardApi(ADMIN, { operations: () => ok(WITH_PERIODS) })
     renderApp('/dashboard')
 
-    expect(labelsOf(await kpiRow('ytd'))).toEqual(['Services Due', 'Services Completed', 'Services Pending'])
-    expect(kpiOrder()).toEqual([...TWELVE_IDS, ...YTD_IDS])
+    await kpiRow('tillDate')
     const rows = [...document.querySelectorAll('[data-kpi-row]')].map((row) => row.getAttribute('data-kpi-row'))
-    expect(rows).toEqual(['portfolio', 'month', 'overall', 'ytd'])
+    expect(rows).toEqual(['portfolio', 'month', 'ytd', 'tillDate', 'overall'])
+    expect(kpiOrder()).toEqual([...TWELVE_IDS.slice(0, 8), ...YTD_IDS, ...TILL_DATE_IDS, ...TWELVE_IDS.slice(8)])
+    // The same fields on every period row (CR-004): services, pending, Invoices Generated / Not Generated.
+    expect(labelsOf(await kpiRow('ytd'))).toEqual(PERIOD_LABELS('Services YTD'))
+    expect(labelsOf(await kpiRow('tillDate'))).toEqual(PERIOD_LABELS('Services Till Date'))
+    expect(labelsOf(await kpiRow('overall'))).toEqual(PERIOD_LABELS('Services Overall'))
+    expect(labelsOf(await kpiRow('month'))).toEqual(PERIOD_LABELS('Services This Month'))
     expect(screen.getByText('Services scheduled from January 1 through today.')).toBeInTheDocument()
-    // The twelve approved cards are unchanged.
-    expect(labelsOf(await kpiRow('portfolio'))).toEqual(['Active AMCs', 'Annual AMC Value (Ex VAT)', 'Final Credit (Ex VAT)', 'Expiring ≤45 Days'])
-    expect(labelsOf(await kpiRow('month'))).toEqual(['Services This Month', 'Services Pending', 'Invoices Generated', 'Invoices Not Generated'])
-    expect(labelsOf(await kpiRow('overall'))).toEqual(['Services Overall', 'Services Pending', 'Invoices Generated', 'Invoices Not Generated'])
+    expect(screen.getByText(/from each contract’s start through today, all years; visits ahead not counted/)).toBeInTheDocument()
   })
 
-  it('shows the API figures as sent, and the overdue part of pending', async () => {
-    dashboardApi(ADMIN, { operations: () => ok(WITH_YTD) })
+  it('shows the API figures as sent: completed and overdue in the detail, and the Invoice No. split', async () => {
+    dashboardApi(ADMIN, { operations: () => ok(WITH_PERIODS) })
     renderApp('/dashboard')
 
-    const figure = async (label: string) => (await kpiCard(label, 'ytd')).querySelector('p')?.textContent
+    const figure = async (label: string, row: RowKey) => (await kpiCard(label, row)).querySelector('p')?.textContent
 
-    expect(await figure('Services Due')).toBe('118')
-    expect(await figure('Services Completed')).toBe('101')
-    expect(await figure('Services Pending')).toBe('17')
-    expect(within(await kpiCard('Services Completed', 'ytd')).getByText('of 118 due this year')).toBeInTheDocument()
+    expect(await figure('Services YTD', 'ytd')).toBe('118')
+    expect(within(await kpiCard('Services YTD', 'ytd')).getByText('101 completed · scheduled this year through today')).toBeInTheDocument()
+    expect(await figure('Services Pending', 'ytd')).toBe('17')
     expect(within(await kpiCard('Services Pending', 'ytd')).getByText('Not yet completed · 9 overdue')).toBeInTheDocument()
-    expect(within(await kpiCard('Services Due', 'ytd')).getByTitle(/through today \(Oman time\).*after today are not counted/)).toBeInTheDocument()
-    // The other rows still read their own figures.
-    expect((await kpiCard('Services Pending', 'month')).querySelector('p')?.textContent).toBe('5')
-    expect((await kpiCard('Services Pending', 'overall')).querySelector('p')?.textContent).toBe('96')
-    expect((await kpiCard('Services Overall', 'overall')).querySelector('p')?.textContent).toBe('140')
+    expect(await figure('Invoices Generated', 'ytd')).toBe('90')
+    expect(await figure('Invoices Not Generated', 'ytd')).toBe('28')
+
+    expect(await figure('Services Till Date', 'tillDate')).toBe('131')
+    expect(within(await kpiCard('Services Till Date', 'tillDate')).getByText('104 completed · scheduled through today, all years')).toBeInTheDocument()
+    expect(await figure('Services Pending', 'tillDate')).toBe('27')
+    expect(within(await kpiCard('Services Pending', 'tillDate')).getByText('Not yet completed · 19 overdue')).toBeInTheDocument()
+    expect(within(await kpiCard('Invoices Not Generated', 'tillDate')).getByText(/OMR 11,700\.000 · 2 without amount · no Invoice No\./)).toBeInTheDocument()
+    expect(within(await kpiCard('Services Till Date', 'tillDate')).getByTitle(/earlier months and years is included, visits after today are not/)).toBeInTheDocument()
+    for (const row of ['ytd', 'tillDate'] as const) {
+      expect(within(await kpiCard('Invoices Generated', row)).getByTitle(/does not verify that money was received/)).toBeInTheDocument()
+    }
+
+    // Overall Contract is unchanged (CR-002): the whole contract, visits ahead included.
+    expect(await figure('Services Overall', 'overall')).toBe('140')
+    expect(await figure('Services Pending', 'overall')).toBe('96')
+    expect(await figure('Services Pending', 'month')).toBe('5')
   })
 
   it('shows zeros, not blanks, early on January 1, and no overdue note when none is overdue', async () => {
-    dashboardApi(ADMIN, { operations: () => ok({ ...OPERATIONS, yearToDate: { from: '2027-01-01', to: '2027-01-01', due: 0, completed: 0, pending: 0, overdue: 0 } }) })
+    const zero = { withInvoiceNo: 0, withInvoiceNoValue: '0.000', withoutInvoiceNo: 0, withoutInvoiceNoValue: '0.000' }
+    dashboardApi(ADMIN, {
+      operations: () => ok({ ...OPERATIONS, yearToDate: { from: '2027-01-01', to: '2027-01-01', due: 0, completed: 0, pending: 0, overdue: 0 }, periodInvoices: { yearToDate: zero, tillDate: zero } }),
+    })
     renderApp('/dashboard')
 
     const row = await kpiRow('ytd')
     expect(await within(row).findByText('Not yet completed')).toBeInTheDocument()
-    expect([...row.querySelectorAll('[data-kpi]')].map((card) => card.querySelector('p')?.textContent)).toEqual(['0', '0', '0'])
+    expect([...row.querySelectorAll('[data-kpi]')].map((card) => card.querySelector('p')?.textContent)).toEqual(['0', '0', '0', '0'])
   })
 
-  it('is shown only to roles that see the service cards, and only when the API sent it', async () => {
+  it('gives each card only to the roles that may see it, and only what the API sent', async () => {
+    // Invoice Tracking without the schedule: the Invoice No. split only.
     dashboardApi(withPermissions(['DASHBOARD:VIEW', 'INVOICES:VIEW']), {
-      operations: () => ok({ ...WITH_YTD, kpis: { ...OPERATIONS.kpis, contracts: null, services: null }, yearToDate: null, portfolio: null, expiring: null, workload: null, schedule: null }),
+      operations: () => ok({ ...WITH_PERIODS, kpis: { ...OPERATIONS.kpis, contracts: null, services: null }, yearToDate: null, tillDate: null, portfolio: null, expiring: null, workload: null, schedule: null }),
     })
-    renderApp('/dashboard')
+    const view = renderApp('/dashboard')
 
     await kpiCard('Invoices Generated', 'month')
-    expect(screen.queryByRole('list', { name: 'Current Year (YTD)' })).not.toBeInTheDocument()
-    expect(kpiOrder().some((id) => id?.startsWith('ytd-'))).toBe(false)
-  })
+    expect(kpiOrder()).toEqual(['month-invoiced', 'month-not-invoiced', 'ytd-invoiced', 'ytd-not-invoiced', 'till-date-invoiced', 'till-date-not-invoiced', 'overall-invoiced', 'overall-not-invoiced'])
+    view.unmount()
 
-  it('shows the row to a schedule viewer alongside the other service cards', async () => {
+    // The schedule without Invoice Tracking: the service counts only.
     dashboardApi(withPermissions(['DASHBOARD:VIEW', 'AMC_SCHEDULE:VIEW']), {
-      operations: () => ok({ ...WITH_YTD, kpis: { ...OPERATIONS.kpis, contracts: null, payments: null }, portfolio: null, expiring: null, paymentTrend: null }),
+      operations: () => ok({ ...WITH_PERIODS, kpis: { ...OPERATIONS.kpis, contracts: null, payments: null }, periodInvoices: null, portfolio: null, expiring: null, paymentTrend: null }),
     })
     renderApp('/dashboard')
 
-    await kpiCard('Services Due', 'ytd')
-    expect(kpiOrder()).toEqual(['month-services', 'month-pending', 'overall-services', 'overall-pending', ...YTD_IDS])
+    await kpiCard('Services YTD', 'ytd')
+    expect(kpiOrder()).toEqual(['month-services', 'month-pending', 'ytd-due', 'ytd-pending', 'till-date-services', 'till-date-pending', 'overall-services', 'overall-pending'])
+  })
+
+  it('leaves the rows out for an older API that sends no period figures', async () => {
+    dashboardApi(ADMIN)
+    renderApp('/dashboard')
+
+    await kpiCard('Active AMCs')
+    expect(screen.queryByRole('list', { name: 'Current Year (YTD)' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Overall Till Date' })).not.toBeInTheDocument()
   })
 
   it('keeps the cards plain figures: no links, buttons or arranging', async () => {
-    dashboardApi(ADMIN, { operations: () => ok(WITH_YTD) })
+    dashboardApi(ADMIN, { operations: () => ok(WITH_PERIODS) })
     renderApp('/dashboard')
 
-    for (const card of (await kpiRow('ytd')).querySelectorAll('[data-kpi]')) {
-      expect(card.querySelector('a, button, input, [role="button"]')).toBeNull()
-      expect(card.getAttribute('draggable')).toBeNull()
+    for (const row of ['ytd', 'tillDate'] as const) {
+      for (const card of (await kpiRow(row)).querySelectorAll('[data-kpi]')) {
+        expect(card.querySelector('a, button, input, [role="button"]')).toBeNull()
+        expect(card.getAttribute('draggable')).toBeNull()
+      }
     }
   })
 })

@@ -1,6 +1,6 @@
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
-import { assertExportSize, displayMonth, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
+import { assertExportSize, displayMoney, displayMonth, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
 import type { ServiceStatus } from "./amc.constants";
 import type { ExportServiceStatusQuery } from "./amc.schemas";
@@ -37,14 +37,16 @@ const COLUMNS: (ReportColumn & { hideable?: ServiceStatusColumn })[] = [
   { key: "dueDate", header: "Due date", kind: "date", width: 13, hideable: "due" },
   { key: "serviceStatus", header: "Service status", kind: "text", width: 18, hideable: "status" },
   { key: "completedDate", header: "Completed date", kind: "date", width: 14, hideable: "status" },
-  { key: "salesEngineer", header: "Service engineer", kind: "text", width: 20, wrap: true, hideable: "engineer" },
+  // Client UAT 2026-11-16: CR-009 the contract's Sales Engineer; CR-010 the Service Engineer who performed the
+  // service (amc_visits.sales_engineer_name, see service-engineer.ts); CR-021/CR-022 headings (amounts unchanged).
+  { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 20, wrap: true, hideable: "engineer" },
   { key: "reportNumber", header: "Service report no.", kind: "identifier", width: 18, hideable: "report" },
-  { key: "salesEngineerName", header: "Sales Engineer Name", kind: "text", width: 20, wrap: true, hideable: "engineerName" },
+  { key: "salesEngineerName", header: "Service Engineer", kind: "text", width: 20, wrap: true, hideable: "engineerName" },
   // The contract's AMC Value / Year on each of its services: repeated per service, so it is never totalled.
-  { key: "amcValue", header: "AMC Value / Year (OMR)", kind: "money", width: 16, hideable: "amcValue" },
+  { key: "amcValue", header: "AMC Value (ex VAT)", kind: "money", width: 16, hideable: "amcValue" },
   // 2026-11-11: this service's own value, the same visit_amount Master AMC Status shows (blank when none was
   // recorded). Same permission as AMC Value.
-  { key: "serviceValue", header: "Service Value (OMR)", kind: "money", width: 14, hideable: "serviceValue" },
+  { key: "serviceValue", header: "Service Value (ex VAT)", kind: "money", width: 14, hideable: "serviceValue" },
   { key: "acknowledgement", header: "Invoice Acknowledged", kind: "text", width: 18, wrap: true, hideable: "acknowledgement" },
 ];
 
@@ -98,7 +100,7 @@ async function describeFilters(query: ExportServiceStatusQuery): Promise<ReportD
 
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("SELECT name FROM clients WHERE id = $1", query.clientId, "Unknown client") });
   if (query.salesEngineerId) {
-    filters.push({ label: "Service engineer", value: await nameOf("SELECT name FROM sales_engineers WHERE id = $1", query.salesEngineerId, "Unknown engineer") });
+    filters.push({ label: "Sales Engineer", value: await nameOf("SELECT name FROM sales_engineers WHERE id = $1", query.salesEngineerId, "Unknown engineer") });
   }
   if (query.systemTypeId) {
     filters.push({ label: "System", value: await nameOf("SELECT name FROM system_types WHERE id = $1", query.systemTypeId, "Unknown system type") });
@@ -126,13 +128,30 @@ export async function buildServiceStatusExport(
 ): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
   const { format, hidden = [], ...filters } = query;
   const access = await serviceStatusAccess(auth);
-  const { items, total, kpis, features } = await listAllServiceStatus(filters, (count) => assertExportSize(format, count), access);
+  const { items, total, kpis, features, totals } = await listAllServiceStatus(filters, (count) => assertExportSize(format, count), access);
   const notes = [
     `Completed ${kpis.completed} · Not Completed ${kpis.notCompleted} · Waiting for Renewal ${kpis.waitingForRenewal} (of ${kpis.total} services matching the other filters).`,
     "Waiting for Renewal: not completed, and the contract has expired or ended without a renewal. Cancelled visits are not listed.",
   ];
 
   if (!features.reportNumber) notes.push("Service report numbers are not available on this database yet.");
+  // CR-028: the AMC Value total counts each contract period once (summing the column would repeat it per service).
+  if (totals && !hidden.includes("amcValue")) {
+    notes.push(`AMC Value (ex VAT) of the matching contracts, each counted once: ${displayMoney(totals.amcValue)} (${totals.contracts} ${totals.contracts === 1 ? "contract period" : "contract periods"}).`);
+  }
+  if (totals && !hidden.includes("serviceValue") && totals.serviceValueMissing > 0) {
+    notes.push(`${totals.serviceValueMissing} ${totals.serviceValueMissing === 1 ? "service has" : "services have"} no service value set; not included in the total.`);
+  }
+  const serviceValueTotal =
+    totals && !hidden.includes("serviceValue")
+      ? {
+          totals: {
+            label: `Total filtered (${totals.services} ${totals.services === 1 ? "service" : "services"})`,
+            values: { serviceValue: totals.serviceValue },
+            excelFormulas: { serviceValue: (range: (key: string) => string) => `SUM(${range("serviceValue")})` },
+          },
+        }
+      : {};
 
   const report: ReportDefinition = {
     title: "Service Status",
@@ -148,6 +167,7 @@ export async function buildServiceStatusExport(
         columns: serviceStatusColumns({ reportNumber: features.reportNumber, salesEngineerName: features.engineerName, amcValue: access.amcValue, acknowledgements: access.acknowledgements }, hidden),
         rows: items.map(toRow),
         groupBy: (row) => String(row.scheduledMonth),
+        ...serviceValueTotal,
         notes,
       },
     ],

@@ -9,7 +9,8 @@ const PREFIX = MASTER_STATUS_PREFIX
 /** The columns a user may hide, in table order. The same ids the export accepts. */
 // 'acknowledgement' (2026-11-11): Invoice Acknowledged, right after Quote No.; offered only to users who may view
 // Invoice Acknowledgements (the API says so with acknowledgementsVisible).
-export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'scheduledMonth', 'visitValue', 'serviceStatus', 'invoiceNo', 'quotationNo', 'acknowledgement', 'salesEngineer'] as const
+// 'serviceEngineer' (client UAT CR-008): the engineer who performed the service, right after Service Status.
+export const COLUMN_IDS = ['client', 'system', 'frequency', 'service', 'scheduledMonth', 'visitValue', 'serviceStatus', 'serviceEngineer', 'invoiceNo', 'quotationNo', 'acknowledgement', 'salesEngineer'] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
 
 export const COLUMN_LABELS: Record<ColumnId, string> = {
@@ -20,10 +21,11 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   scheduledMonth: 'Scheduled Month',
   visitValue: 'Value (Ex VAT)',
   serviceStatus: 'Service Status',
+  serviceEngineer: 'Service Engineer',
   invoiceNo: 'Invoice No.',
   quotationNo: 'Quote No.',
   acknowledgement: 'Invoice Acknowledged',
-  salesEngineer: 'Service Engineer',
+  salesEngineer: 'Sales Engineer',
 }
 
 function load(key: string): ReadonlySet<ColumnId> {

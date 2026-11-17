@@ -215,7 +215,7 @@ describe('Services Sales page', () => {
     await waitFor(() => expect(screen.getByRole('option', { name: 'Esha Engineer' })).toBeInTheDocument())
     await userEvent.type(screen.getByLabelText('Search'), 'alpha')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Service Engineer'), '4')
+    await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
     await userEvent.selectOptions(screen.getByLabelText('System'), '3')
     await userEvent.selectOptions(screen.getByLabelText('Maintenance Frequency'), 'HALF_YEARLY')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
@@ -242,16 +242,16 @@ describe('Services Sales page', () => {
     renderPage()
 
     await screen.findByText('AMC-0007')
-    expect(screen.getByRole('columnheader', { name: 'Service Engineer' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Sales Engineer' })).toBeInTheDocument()
 
     await userEvent.click(screen.getByRole('button', { name: 'Hide Columns' }))
     const dialog = within(screen.getByRole('dialog', { name: 'Hide columns' }))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Engineer' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Frequency' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
-    expect(screen.queryByRole('columnheader', { name: 'Service Engineer' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('columnheader', { name: 'Sales Engineer' })).not.toBeInTheDocument()
     expect(screen.queryByRole('columnheader', { name: 'Frequency' })).not.toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'AMC Reference' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Hide Columns (2)' })).toBeInTheDocument()
@@ -259,7 +259,7 @@ describe('Services Sales page', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Hide Columns (2)' }))
     await userEvent.click(within(screen.getByRole('dialog', { name: 'Hide columns' })).getByRole('button', { name: 'Show all' }))
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
-    expect(screen.getByRole('columnheader', { name: 'Service Engineer' })).toBeInTheDocument()
+    expect(screen.getByRole('columnheader', { name: 'Sales Engineer' })).toBeInTheDocument()
   })
 
   it('renames and reorders the cards without changing their figures, and resets names and order separately', async () => {
@@ -363,7 +363,9 @@ describe('Service Report No. and the Quote filter', () => {
     const headers = screen.getAllByRole('columnheader').map((header) => header.textContent)
     expect(headers.indexOf('Service Report No.')).toBe(headers.indexOf('Service Status') + 1)
     expect(headers.indexOf('Service Report')).toBe(headers.indexOf('Service Report No.') + 1)
-    expect(headers.indexOf('Quote No.')).toBe(headers.indexOf('Service Report') + 1)
+    // Client UAT CR-016: the Service Engineer who performed the service comes after the Service Report.
+    expect(headers.indexOf('Service Engineer')).toBe(headers.indexOf('Service Report') + 1)
+    expect(headers.indexOf('Quote No.')).toBe(headers.indexOf('Service Engineer') + 1)
   })
 
   it('sends the Quote filter and the hidden columns to the list and the download', async () => {
@@ -524,9 +526,9 @@ describe('Service Report column (view and download only)', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Hide Columns (1)' }))
     const dialog = within(screen.getByRole('dialog', { name: 'Hide columns' }))
-    expect(dialog.getByText('9 of 10 columns shown')).toBeInTheDocument()
+    expect(dialog.getByText('10 of 11 columns shown')).toBeInTheDocument()
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Report' }))
-    expect(dialog.getByText('8 of 10 columns shown')).toBeInTheDocument()
+    expect(dialog.getByText('9 of 11 columns shown')).toBeInTheDocument()
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
     expect(screen.queryByRole('columnheader', { name: 'Service Report' })).not.toBeInTheDocument()
     expect(screen.getByRole('columnheader', { name: 'Service Report No.' })).toBeInTheDocument()

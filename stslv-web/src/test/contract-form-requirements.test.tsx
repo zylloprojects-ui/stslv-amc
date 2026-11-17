@@ -37,7 +37,7 @@ describe('the Link master records panel', () => {
     await userEvent.click(await screen.findByRole('tab', { name: /Details/ }))
     await userEvent.click(await screen.findByRole('button', { name: 'Link master records' }))
     const dialog = await screen.findByRole('dialog', { name: 'Link master records' })
-    const engineer = within(dialog).getByLabelText('Service engineer')
+    const engineer = within(dialog).getByLabelText('Sales engineer')
     const type = within(dialog).getByLabelText('System type')
     await waitFor(() => expect(within(type).getAllByRole('option').length).toBeGreaterThan(1))
     expect(within(engineer).queryByRole('option', { name: 'Not linked' })).not.toBeInTheDocument()
@@ -98,7 +98,7 @@ describe('editing a contract added before the requirements', () => {
     expect(within(dialog).getByText(/not linked to the System Types list/)).toBeInTheDocument()
     // Final Credit is not required on it, and "Not linked" stays possible for its engineer.
     expect(within(dialog).getByLabelText(/Final credit/)).not.toHaveAttribute('aria-required')
-    expect(within(within(dialog).getByLabelText(/Service engineer \(master list\)/)).getByRole('option', { name: 'Not linked' })).toBeInTheDocument()
+    expect(within(within(dialog).getByLabelText(/^Sales Engineer/)).getByRole('option', { name: 'Not linked' })).toBeInTheDocument()
     // No upload is asked for; the user is told where documents are kept.
     expect(dialog.querySelector('input[type="file"]')).toBeNull()
     expect(await within(dialog).findByText(/No document is on file for this contract\. Saving changes here does not require one/)).toBeInTheDocument()
@@ -113,6 +113,25 @@ describe('editing a contract added before the requirements', () => {
     expect(body).not.toHaveProperty('systemTypeId')
     expect(body).not.toHaveProperty('systemDescription')
     expect(body).not.toHaveProperty('salesEngineerId')
+  })
+
+  it('offers an optional Customer PO Value (ex VAT) and sends what is typed (CR-013)', async () => {
+    const api = amcApi(ADMIN, { contracts: [OLDER] })
+    renderApp('/amc/contracts')
+    const dialog = await openEdit('Test Hotel One Typed old system')
+
+    const po = within(dialog).getByLabelText(/Customer PO Value \(ex VAT\)/)
+    expect(po).toHaveValue('')
+    expect(po).not.toHaveAttribute('aria-required')
+    await userEvent.type(po, '12.3456')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(api.find('PATCH', '/amc/contracts/100')).toHaveLength(0)
+
+    await userEvent.clear(po)
+    await userEvent.type(po, '3450.5')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(api.find('PATCH', '/amc/contracts/100')).toHaveLength(1))
+    expect(api.find('PATCH', '/amc/contracts/100')[0]?.body).toMatchObject({ customerPoValue: '3450.5' })
   })
 
   it('links it to a system type when one is chosen', async () => {
@@ -154,7 +173,7 @@ describe('renewing a contract added before the requirements', () => {
 
     // A renewal keeps the AMC Reference Number of the contract it renews (0111).
     expect(within(dialog).getByLabelText(/AMC Reference Number/)).toHaveValue('AMC-0100')
-    await userEvent.selectOptions(await within(dialog).findByLabelText(/Service engineer \(master list\)/), '5')
+    await userEvent.selectOptions(await within(dialog).findByLabelText(/^Sales Engineer/), '5')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2028-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2028-12-31')
     await attachRenewalDocument()
@@ -182,7 +201,7 @@ describe('editing a contract saved with the requirements', () => {
 
     expect(within(dialog).getByLabelText(/^System/)).toHaveValue('23')
     expect(await within(dialog).findByText(/1 document is on file/)).toBeInTheDocument()
-    const engineer = await within(dialog).findByLabelText(/Service engineer \(master list\)/)
+    const engineer = await within(dialog).findByLabelText(/^Sales Engineer/)
     expect(engineer).toHaveValue('5')
     expect(within(engineer).queryByRole('option', { name: 'Not linked' })).not.toBeInTheDocument()
 

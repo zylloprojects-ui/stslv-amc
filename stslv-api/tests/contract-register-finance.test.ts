@@ -103,8 +103,9 @@ describe("the Filtered Total of the contract register", () => {
     const heads = headers(sheet);
     const totalRow = sheet.getRow(HEADER_ROW + 3);
 
-    expect(totalRow.getCell(heads.indexOf("AMC Value / Year") + 1).value).toMatchObject({ result: 1234568 });
-    expect(totalRow.getCell(heads.indexOf("Final Credit") + 1).value).toMatchObject({ result: 0.003 });
+    // Client UAT CR-019 / CR-020 headings; the totals are unchanged.
+    expect(totalRow.getCell(heads.indexOf("Contract Value (ex VAT)") + 1).value).toMatchObject({ result: 1234568 });
+    expect(totalRow.getCell(heads.indexOf("Final Credit (ex VAT)") + 1).value).toMatchObject({ result: 0.003 });
     expect(allText(sheet)).toContain("Filtered Total (2 contracts)");
   });
 
@@ -113,8 +114,8 @@ describe("the Filtered Total of the contract register", () => {
     const heads = headers(await sheetOf(response, "AMC Contracts"));
 
     expect(heads).toContain("AMC Reference");
-    expect(heads).toContain("AMC Value / Year");
-    for (const gone of ["System", "Valid From", "Valid To", "Final Credit", "Visits", "Completed"]) expect(heads).not.toContain(gone);
+    expect(heads).toContain("Contract Value (ex VAT)");
+    for (const gone of ["System", "Valid From", "Valid To", "Final Credit (ex VAT)", "Visits", "Completed"]) expect(heads).not.toContain(gone);
     expect(allText(await sheetOf(response, "AMC Contracts"))).toContain("Filtered Total");
 
     const neither = await blob("/contracts/export", { format: "xlsx", clientId, hidden: "contractValue,finalCredit" });

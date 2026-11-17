@@ -337,14 +337,15 @@ describe("Services Sales", () => {
       await complete(alpha[0]!.id);
       await quote(alpha[0]!.id, "=QT-1");
 
-      const response = await exportFile({ format: "xlsx", clientId: fx.alphaId });
+      // Service Engineer (client UAT CR-016) is hidden here; tests/client-uat-nov2026.test.ts covers it.
+      const response = await exportFile({ format: "xlsx", clientId: fx.alphaId, hidden: "serviceEngineer" });
       expect(response.status).toBe(200);
       expect(response.headers["content-disposition"]).toMatch(/service-sales/);
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.load(response.body as unknown as ExcelJS.Buffer);
       const sheet = workbook.getWorksheet("Service Sales") as ExcelJS.Worksheet;
       const header = (sheet.getRow(6).values as unknown[]).slice(1);
-      expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Frequency", "Service", "Due date", "Service status", "Completed date", "Service Report No.", "Quote No.", "Sales status", "Service Engineer", "AMC Value / Year (OMR)", "Service Value (OMR)"]);
+      expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Frequency", "Service", "Due date", "Service status", "Completed date", "Service Report No.", "Quote No.", "Sales status", "Sales Engineer", "AMC Value / Year (OMR)", "Service Value (OMR)"]);
       const rows = [7, 8, 9, 10].map((n) => (sheet.getRow(n).values as unknown[]).slice(1));
       expect(rows.map((row) => row[2])).toEqual(["Alpha Towers", "Alpha Towers", "Alpha Towers", "Alpha Towers"]);
       // A formula-like number is written as text, never run.

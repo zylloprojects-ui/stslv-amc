@@ -45,7 +45,10 @@ export interface ServicesSalesItem {
   completedDate: string | null
   /** Entered on Service Status; read only here. */
   serviceReportNo: string | null
+  /** The contract's Sales Engineer: the person who brought the AMC. */
   salesEngineer: { id: string; name: string } | null
+  /** The engineer who performed this service, as entered on Service Status (client UAT CR-016). Absent from an older API. */
+  serviceEngineer?: string | null
   quotationNo: string | null
   quotationUpdatedAt: string | null
   quotationUpdatedBy: string | null

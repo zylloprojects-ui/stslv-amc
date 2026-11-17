@@ -37,7 +37,7 @@ export function ContractMastersPanel({ contractId, canEdit }: { contractId: stri
       {query.isError && <Alert>{errorMessage(query.error)}</Alert>}
       {query.data && (
         <dl>
-          <DetailRow label="Service engineer">
+          <DetailRow label="Sales engineer">
             {query.data.salesEngineer ? (
               <>
                 {query.data.salesEngineer.name}
@@ -108,10 +108,10 @@ function LinkMastersModal({ contractId, current, onClose }: { contractId: string
         </p>
         {save.isError && <Alert>{errorMessage(save.error)}</Alert>}
         {(engineers.isError || types.isError) && <Alert>{errorMessage(engineers.error ?? types.error)}</Alert>}
-        <SelectField label="Service engineer" value={engineerId} onChange={(event) => setEngineerId(event.target.value)}>
+        <SelectField label="Sales engineer" value={engineerId} onChange={(event) => setEngineerId(event.target.value)}>
           {current.salesEngineer ? (
             <option value="" disabled>
-              Select a service engineer…
+              Select a sales engineer…
             </option>
           ) : (
             <option value="">Not linked</option>

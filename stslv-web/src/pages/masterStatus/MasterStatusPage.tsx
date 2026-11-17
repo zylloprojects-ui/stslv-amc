@@ -298,12 +298,13 @@ function DetailsDialog({ item, canViewContract, onClose }: { item: MasterStatusI
     ['Zoho Invoice Value (Tracking)', item.invoiceValue ? formatMoney(item.invoiceValue) : '—'],
     ...(item.amcValue ? ([['AMC Value / Year (contract)', formatMoney(item.amcValue)]] as [string, ReactNode][]) : []),
     ['Service Status', SERVICE_STATUS_LABELS[item.serviceStatus]],
+    ['Service Engineer', item.serviceEngineer ?? '—'],
     ['Completed on', item.completedDate ? formatDate(item.completedDate) : '—'],
     ['Invoice No.', item.manualInvoiceNo ?? 'Not entered'],
     ['Paid / Unpaid', item.manualInvoiceNo ? 'Paid (reference status)' : 'Unpaid'],
     ['Zoho invoices', item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(', ') : 'None recorded'],
     ['Quote No.', item.quotationNo ?? 'Not recorded'],
-    ['Service Engineer', item.salesEngineer?.name ?? '—'],
+    ['Sales Engineer', item.salesEngineer?.name ?? '—'],
   ]
 
   return (
@@ -451,11 +452,11 @@ export function MasterStatusPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Service Engineer">
+            <Filter label="Sales Engineer">
               {(id, className) => (
                 <select id={id} value={draft.salesEngineerId} onChange={(event) => set('salesEngineerId')(event.target.value)} className={className}>
-                  <option value="">All service engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No service engineers linked to current AMC visits" />
+                  <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -710,6 +711,9 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
           {item.completedDate && <div className="mt-1 text-xs text-slate-500">{formatDate(item.completedDate)}</div>}
         </td>
       )}
+      {shown('serviceEngineer') && (
+        <td className={`${TABLE.td} ${TABLE.text}`}>{item.serviceEngineer ?? <Missing title="No service engineer entered" />}</td>
+      )}
       {shown('invoiceNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
           <span className="inline-flex flex-wrap items-center gap-2">
@@ -729,7 +733,7 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
           {item.acknowledgement ? <ServiceAcknowledgementIndicator acknowledgement={item.acknowledgement} /> : <Missing title="Acknowledgement not available" />}
         </td>
       )}
-      {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No service engineer" />}</td>}
+      {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
         <button
           type="button"

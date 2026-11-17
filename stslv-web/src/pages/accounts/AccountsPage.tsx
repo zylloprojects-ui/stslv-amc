@@ -233,7 +233,17 @@ const Missing = ({ title }: { title: string }) => (
 )
 
 /** Show or hide columns. AMC Reference always stays. */
-function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<ColumnId>; onSave: (hidden: ReadonlySet<ColumnId>) => void; onClose: () => void }) {
+function HideColumnsDialog({
+  columns,
+  hidden,
+  onSave,
+  onClose,
+}: {
+  columns: readonly ColumnId[]
+  hidden: ReadonlySet<ColumnId>
+  onSave: (hidden: ReadonlySet<ColumnId>) => void
+  onClose: () => void
+}) {
   const [draft, setDraft] = useState<Set<ColumnId>>(new Set(hidden))
   const toggle = (id: ColumnId) => {
     const next = new Set(draft)
@@ -264,7 +274,7 @@ function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<Co
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">
-          {COLUMN_IDS.map((id) => (
+          {columns.map((id) => (
             <li key={id}>
               <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-sky-50">
                 <input type="checkbox" checked={!draft.has(id)} onChange={() => toggle(id)} className="h-4 w-4 rounded border-slate-300 accent-[#1479BD]" />
@@ -329,8 +339,10 @@ export function AccountsPage() {
   const pendingChanges = JSON.stringify({ ...draft, search: draft.search.trim() }) !== JSON.stringify(filters)
 
   const data = accounts.data
-  const shown = (id: ColumnId) => !hidden.has(id)
-  const visible = COLUMN_IDS.filter(shown)
+  // AMC Value (CR-013) is offered when the API sends it (every user of this page; an older API does not).
+  const offered = COLUMN_IDS.filter((id) => id !== 'amcValue' || data?.amcValueVisible === true)
+  const shown = (id: ColumnId) => offered.includes(id) && !hidden.has(id)
+  const visible = offered.filter(shown)
 
   return (
     <>
@@ -403,11 +415,11 @@ export function AccountsPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Service Engineer">
+            <Filter label="Sales Engineer">
               {(id, className) => (
                 <select id={id} value={draft.salesEngineerId} onChange={(event) => set('salesEngineerId')(event.target.value)} className={className}>
-                  <option value="">All service engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No service engineers linked to current AMC visits" />
+                  <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -489,7 +501,7 @@ export function AccountsPage() {
                 {pendingChanges && <span className="text-xs text-slate-500">Filters changed. Select Apply to update the list.</span>}
               </div>
               <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
-                Hide Columns · {visible.length} of {COLUMN_IDS.length} shown
+                Hide Columns · {visible.length} of {offered.length} shown
               </Button>
               <span id="accounts-payment-note" className="basis-full text-xs text-slate-500">
                 {PAID_STATUS_NOTE}
@@ -534,7 +546,7 @@ export function AccountsPage() {
                       AMC Reference
                     </th>
                     {visible.map((id) => (
-                      <th key={id} scope="col" className={cx(TABLE.th, (id === 'visitValue' || id === 'invoiceValue') && 'text-right')}>
+                      <th key={id} scope="col" className={cx(TABLE.th, (id === 'visitValue' || id === 'invoiceValue' || id === 'amcValue') && 'text-right', id === 'amcValue' && 'min-w-[8.5rem]')}>
                         {COLUMN_LABELS[id]}
                       </th>
                     ))}
@@ -566,6 +578,7 @@ export function AccountsPage() {
 
       {columnsOpen && (
         <HideColumnsDialog
+          columns={offered}
           hidden={hidden}
           onSave={(next) => {
             setHidden(next)
@@ -694,6 +707,20 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
           {viewing && item.serviceReport && <ServiceReportViewer visitId={item.id} subject={subject} report={item.serviceReport} onClose={() => setViewing(false)} />}
         </td>
       )}
+      {/* Client UAT CR-011 to CR-013: the contract's Sales Engineer, the visit's Service Engineer, the contract's Customer PO Value. */}
+      {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
+      {shown('serviceEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.serviceEngineer ?? <Missing title="No service engineer entered" />}</td>}
+      {shown('amcValue') && (
+        <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums text-slate-900`} title="Customer PO Value of the contract, OMR excluding VAT">
+          {item.amcValue ? (
+            formatMoney(item.amcValue)
+          ) : (
+            <span className="text-xs font-medium text-slate-400" title="No Customer PO Value is entered on the contract">
+              Not entered
+            </span>
+          )}
+        </td>
+      )}
       {shown('visitValue') && (
         <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>
           {item.visitValue === null ? (
@@ -737,7 +764,6 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
           {item.invoiceValue ? formatMoney(item.invoiceValue) : <Missing title="No Zoho invoice recorded in Invoice Tracking for this service" />}
         </td>
       )}
-      {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No service engineer" />}</td>}
     </tr>
   )
 }

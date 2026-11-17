@@ -26,13 +26,15 @@ beforeEach(() => {
 })
 
 describe('AMC Contracts register', () => {
-  it('shows AMC Reference, Credit, the Filtered Total from the API and an Upload Contract link', async () => {
+  it('shows AMC Reference, Final Credit, the Filtered Total from the API and an Upload Contract link', async () => {
     amcApi(ADMIN, { contracts: [FIRE], override: listWithTotals })
     renderApp('/amc/contracts')
 
     const table = await screen.findByRole('table', { name: 'AMC contracts' })
     expect(within(table).getByRole('columnheader', { name: 'AMC Reference' })).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: 'Credit' })).toBeInTheDocument()
+    // Client UAT CR-019 / CR-020 headings.
+    expect(within(table).getByRole('columnheader', { name: 'Contract Value (ex VAT)' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Final Credit (ex VAT)' })).toBeInTheDocument()
     expect(within(table).getByRole('link', { name: 'AMC-0100' })).toHaveAttribute('href', '/amc/contracts/100')
     expect(within(table).getByRole('link', { name: 'Upload Contract for Test Hotel One FIRE' })).toHaveAttribute('href', '/amc/contracts/100?tab=documents')
 
@@ -56,10 +58,10 @@ describe('AMC Contracts register', () => {
     const table = await screen.findByRole('table', { name: 'AMC contracts' })
     await userEvent.click(screen.getByRole('button', { name: /^Columns/ }))
     await userEvent.click(screen.getByRole('checkbox', { name: 'System' }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Credit' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Final Credit (ex VAT)' }))
 
     expect(within(table).queryByRole('columnheader', { name: 'System' })).not.toBeInTheDocument()
-    expect(within(table).queryByRole('columnheader', { name: 'Credit' })).not.toBeInTheDocument()
+    expect(within(table).queryByRole('columnheader', { name: 'Final Credit (ex VAT)' })).not.toBeInTheDocument()
     const total = within(table).getByRole('rowheader', { name: /Filtered Total/ }).closest('tr') as HTMLElement
     expect(total).not.toHaveTextContent('0.003')
     const headerCount = within(table).getAllByRole('columnheader').length
@@ -69,6 +71,22 @@ describe('AMC Contracts register', () => {
     await userEvent.click(screen.getByRole('button', { name: /Excel/ }))
     await waitFor(() => expect(api.find('GET', '/amc/contracts/export').length).toBeGreaterThan(0))
     expect(api.find('GET', '/amc/contracts/export')[0]?.query.get('hidden')?.split(',').sort()).toEqual(['finalCredit', 'system'])
+  })
+
+  it('shows the linked Sales Engineer under "Sales Engineer", and the typed name only for a contract with no link (CR-006)', async () => {
+    const linked = makeContract({ id: '101', amcReference: 'AMC-0101', responsibleEngineer: 'Typed Name', salesEngineer: { id: '5', name: 'Sara Sales' } })
+    const unlinked = makeContract({ id: '102', amcReference: 'AMC-0102', responsibleEngineer: 'Older Typed', salesEngineer: null })
+    amcApi(ADMIN, {
+      override: (request) => (request.method === 'GET' && request.path === '/amc/contracts' ? ok({ items: [linked, unlinked], total: 2, page: 1, pageSize: 25 }) : undefined),
+    })
+    renderApp('/amc/contracts')
+
+    const table = await screen.findByRole('table', { name: 'AMC contracts' })
+    expect(within(table).getByRole('columnheader', { name: 'Sales Engineer' })).toBeInTheDocument()
+    expect(within(table).queryByRole('columnheader', { name: 'Engineer' })).not.toBeInTheDocument()
+    expect(within(within(table).getByRole('link', { name: 'AMC-0101' }).closest('tr') as HTMLElement).getByText('Sara Sales')).toBeInTheDocument()
+    expect(within(table).queryByText('Typed Name')).not.toBeInTheDocument()
+    expect(within(within(table).getByRole('link', { name: 'AMC-0102' }).closest('tr') as HTMLElement).getByText('Older Typed')).toBeInTheDocument()
   })
 })
 
@@ -231,7 +249,7 @@ describe('Consolidated schedule', () => {
 
     await screen.findByRole('option', { name: 'Raghu' })
     await userEvent.selectOptions(within(form).getByLabelText('Client'), '10')
-    await userEvent.selectOptions(within(form).getByLabelText('Service Engineer'), '5')
+    await userEvent.selectOptions(within(form).getByLabelText('Sales Engineer'), '5')
     await userEvent.selectOptions(within(form).getByLabelText('System'), 'FIRE')
     await waitFor(() => {
       const query = api.find('GET', '/amc/visits/monthly-consolidated').at(-1)?.query
@@ -339,7 +357,7 @@ describe('Documents', () => {
 })
 
 describe('Calendar month cards', () => {
-  it('count Paid and Unpaid per month and label the invoice figures as Zoho', async () => {
+  it('show, in the client’s order, Scheduled value, services completed and not completed, Paid and Unpaid, and no Zoho figures (CR-024 to CR-027)', async () => {
     const empty = { services: 0, scheduledValue: '0.000', amountMissing: 0, scheduled: 0, inProgress: 0, postponed: 0, completed: 0, cancelled: 0, overdue: 0, invoiced: 0, invoicedValue: '0.000', notYetInvoiced: 0, notYetInvoicedValue: '0.000', noInvoiceRequired: 0, notCompleted: 0, paid: 0, paidValue: '0.000', unpaid: 0, unpaidValue: '0.000' }
     const year = new Date().getFullYear()
     amcApi(ADMIN, {
@@ -347,17 +365,29 @@ describe('Calendar month cards', () => {
         if (request.path === '/amc/calendar/options') return ok({ clients: [], salesEngineers: [], frequencies: [], years: [year] })
         if (request.path === '/amc/reports/expiring') return ok({ asOf: `${year}-01-01`, days: 45, items: [], total: 0, pastValidity: 0 })
         if (request.path === '/amc/visits/year-summary') {
-          return ok({ year, totals: empty, months: Array.from({ length: 12 }, (_, index) => ({ ...empty, month: index + 1, ...(index === 2 ? { services: 5, paid: 2, unpaid: 3, invoiced: 7, notYetInvoiced: 8 } : {}) })) })
+          const march = { services: 5, scheduledValue: '1500.000', completed: 4, scheduled: 1, notCompleted: 1, paid: 2, paidValue: '600.000', unpaid: 3, unpaidValue: '900.000', invoiced: 7, notYetInvoiced: 8 }
+          return ok({ year, totals: empty, months: Array.from({ length: 12 }, (_, index) => ({ ...empty, month: index + 1, ...(index === 2 ? march : {}) })) })
         }
         return undefined
       },
     })
     renderApp('/amc/calendar')
 
-    const card = within(await screen.findByRole('article', { name: `March ${year}` }))
-    expect(card.getByText('Paid').nextElementSibling).toHaveTextContent('2')
-    expect(card.getByText('Unpaid').nextElementSibling).toHaveTextContent('3')
-    expect(card.getByText('Zoho invoiced').nextElementSibling).toHaveTextContent('7')
-    expect(card.getByText('Zoho not yet invoiced').nextElementSibling).toHaveTextContent('8')
+    const article = await screen.findByRole('article', { name: `March ${year}` })
+    const card = within(article)
+    // The five positions, in order: the API's own figures, nothing calculated on the page.
+    expect([...article.querySelectorAll('dl > dt')].map((term) => term.textContent)).toEqual([
+      'Scheduled value',
+      'No. of services completed',
+      'No. of services not completed',
+      'Paid',
+      'Unpaid',
+    ])
+    expect(card.getByText('No. of services completed').nextElementSibling).toHaveTextContent('4')
+    expect(card.getByText('No. of services not completed').nextElementSibling).toHaveTextContent('1')
+    expect(card.getByText('Paid').nextElementSibling).toHaveTextContent('2600.000')
+    expect(card.getByText('Unpaid').nextElementSibling).toHaveTextContent('3900.000')
+    expect(card.queryByText('Zoho invoiced')).not.toBeInTheDocument()
+    expect(card.queryByText('Zoho not yet invoiced')).not.toBeInTheDocument()
   })
 })

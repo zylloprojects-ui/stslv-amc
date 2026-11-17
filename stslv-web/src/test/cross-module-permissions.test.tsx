@@ -36,12 +36,13 @@ describe('Finance Executive and AMC Schedule', () => {
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
   })
 
-  it('opens the page and shows the sidebar item with View', async () => {
+  it('opens the page from its address with View, though it is no longer in the sidebar (client UAT CR-029)', async () => {
     session(finance([...STARTING, 'AMC_SCHEDULE:VIEW']))
     renderApp('/amc/schedule')
 
     await screen.findByRole('banner')
-    expect(await screen.findByRole('link', { name: 'AMC Schedule' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'AMC Schedule' })).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'AMC Schedule' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Access denied' })).not.toBeInTheDocument()
   })
 
@@ -59,12 +60,13 @@ describe('Finance Executive and AMC Schedule', () => {
 
     // AMC Management is not in the approved sidebar (2026-11-10). Accounts is labelled Invoices.
     expect(offered(STARTING)).toEqual(['Dashboard', 'Invoices', 'Invoice Tracking'])
-    expect(offered([...STARTING, 'AMC_SCHEDULE:VIEW'])).toEqual(['Dashboard', 'AMC Schedule', 'Invoices', 'Invoice Tracking'])
+    // AMC Schedule is hidden from the sidebar (client UAT CR-029); its page still opens with View.
+    expect(offered([...STARTING, 'AMC_SCHEDULE:VIEW'])).toEqual(['Dashboard', 'Invoices', 'Invoice Tracking'])
     expect(offered(['INVOICES:VIEW'])).toEqual(['Invoice Tracking'])
     // Master AMC Status and Accounts: only on their own permission.
     expect(offered(['MASTER_AMC_STATUS:VIEW'])).toEqual(['Master AMC Status'])
     expect(offered(['ACCOUNTS:VIEW'])).toEqual(['Invoices'])
-    expect(offered(['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'INVOICES:VIEW', 'AMC_SCHEDULE:READ'])).toEqual(['AMC Schedule', 'Invoice Tracking', 'Service Sales'])
+    expect(offered(['AMC_SCHEDULE:VIEW', 'SERVICES_SALES:VIEW', 'INVOICES:VIEW', 'AMC_SCHEDULE:READ'])).toEqual(['Invoice Tracking', 'Service Sales'])
     expect(offered(['SUGGESTIONS_REVIEW:VIEW'])).toEqual(['Suggestions Review'])
     expect(offered(['SETTINGS:VIEW'])).toEqual(['Settings'])
     expect(offered([])).toEqual([])

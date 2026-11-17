@@ -82,6 +82,8 @@ export interface Contract {
   versionRootId?: string
   client: { id: string; name: string; isActive: boolean }
   responsibleEngineer: string | null
+  /** The linked Sales Engineer master record (client UAT CR-006); null when not linked. Absent from an older API. */
+  salesEngineer?: { id: string; name: string } | null
   validFrom: string
   validTo: string
   systemDescription: string
@@ -90,6 +92,8 @@ export interface Contract {
   finalCredit: string | null
   billingBasis?: 'CONTRACT_VALUE' | 'FINAL_CREDIT' | 'CUSTOM' | null
   customBillingValue?: string | null
+  /** The customer's PO amount excluding VAT (client UAT CR-013); null when not entered. Absent from an older API. */
+  customerPoValue?: string | null
   selectedBillingAmount?: string | null
   maintenanceFrequency: MaintenanceFrequency
   /** Months (1 = January) of a contract on a custom frequency; empty or absent otherwise. */

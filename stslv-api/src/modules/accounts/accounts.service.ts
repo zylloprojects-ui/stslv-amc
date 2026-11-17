@@ -8,6 +8,8 @@ import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import { readServiceReport, SERVICE_REPORT_JSON_SQL, serviceReportsAvailable, toServiceReport, type ServiceReport } from "../amc/service-reports.service";
 import { notFound } from "../../shared/errors";
 import { schemaHas } from "../../shared/schema-features";
+import { hasServiceEngineer, serviceEngineerSql } from "../amc/service-engineer";
+import { normalizeMoney } from "../amc/amc.schemas";
 import type { AccountsColour, ListAccountsQuery } from "./accounts.schemas";
 
 // Accounts: a billing reconciliation with one row per scheduled maintenance visit
@@ -64,8 +66,12 @@ const ACKNOWLEDGEMENT_SQL = `CASE WHEN v.manual_invoice_no IS NULL THEN NULL ELS
     WHERE s.amc_visit_id = v.id AND s.invoice_number = v.manual_invoice_no), 'PENDING') END`;
 
 /** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
-const selectSql = (storedReference: boolean, reports: boolean, acknowledgements = false) => `
+const selectSql = (storedReference: boolean, reports: boolean, acknowledgements = false, serviceEngineer = false) => `
   SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
+         ${serviceEngineerSql(serviceEngineer)} AS service_engineer,
+         -- CR-013 (owner decision 2026-11-17): the contract's Customer PO Value (0118), never the annual value or a term
+         -- total; null when none was entered. Read through to_jsonb so a database without 0118 still works.
+         (to_jsonb(c) ->> 'customer_po_value') AS amc_value,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
@@ -106,6 +112,8 @@ interface AccountsRow {
   manual_invoice_at: Date | null;
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
+  service_engineer: string | null;
+  amc_value: string | null;
   invoice_numbers: string[];
   invoice_amount: string | null;
   no_amount_source: boolean;
@@ -153,7 +161,17 @@ export interface AccountsItem {
   valueSourceMissing: boolean;
   /** The Service Report document uploaded on Service Status (0104), or null when none. Metadata only. */
   serviceReport: ServiceReport | null;
+  /** The contract's Sales Engineer master link: the person who brought the AMC (client UAT CR-011). */
   salesEngineer: { id: string; name: string } | null;
+  /** The engineer who performed this service, as entered on Service Status (CR-012, see amc/service-engineer.ts). */
+  serviceEngineer: string | null;
+  /**
+   * "AMC Value (ex VAT)" (client UAT CR-013, owner decision 2026-11-17): the contract's Customer PO Value, OMR excluding
+   * VAT, as entered on the contract (migration 0118). Not the AMC Value / Year and not a term total: null ("Not
+   * entered") when no PO value is recorded. Repeated on each service of the contract, so never added up. Part of the
+   * Accounts page for everyone who may open it (the routes pass amcValue: true).
+   */
+  amcValue: string | null;
   /**
    * Read-only: whether the invoice of this service's Invoice No. is acknowledged (Invoice Acknowledgements). Null when
    * no Invoice No. is entered, or the user may not view Invoice Acknowledgements. Never affects Paid / Unpaid.
@@ -162,7 +180,17 @@ export interface AccountsItem {
   colour: AccountsColour;
 }
 
-function toItem(row: AccountsRow): AccountsItem {
+/** What the signed-in user may see on Accounts beyond the page itself. */
+export interface AccountsAccess {
+  /** The read-only acknowledgement indicator: Invoice Acknowledgements: View. */
+  acknowledgements: boolean;
+  /** The contract's AMC Value column. The Accounts routes always ask for it (client UAT CR-013). */
+  amcValue: boolean;
+}
+
+const NO_EXTRA_ACCESS: AccountsAccess = { acknowledgements: false, amcValue: false };
+
+function toItem(row: AccountsRow, access: AccountsAccess = NO_EXTRA_ACCESS): AccountsItem {
   return {
     id: row.id,
     reference: row.contract_reference,
@@ -186,6 +214,8 @@ function toItem(row: AccountsRow): AccountsItem {
     paidAt: row.manual_invoice_at?.toISOString() ?? null,
     updatedAt: row.updated_at.toISOString(),
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
+    serviceEngineer: row.service_engineer,
+    amcValue: access.amcValue && row.amc_value !== null ? normalizeMoney(row.amc_value) : null,
     acknowledgementStatus: row.acknowledgement_status,
     colour: row.colour,
   };
@@ -305,21 +335,20 @@ async function kpis(where: string, params: unknown[]): Promise<AccountsKpis> {
   };
 }
 
-/** `showAcknowledgements`: the user may view Invoice Acknowledgements (the read-only indicator is then filled in). */
-export async function listAccounts(query: ListAccountsQuery, showAcknowledgements = false) {
+/** `access`: what the user may see beyond the page (the acknowledgement indicator, the contract's AMC Value). */
+export async function listAccounts(query: ListAccountsQuery, access: AccountsAccess = NO_EXTRA_ACCESS) {
   const storedReference = await hasStoredReference();
   const { where, params } = filterSql(query, storedReference);
-  const acknowledgements = showAcknowledgements && (await schemaHas(["ack_invoices", "ack_invoice_services"]));
+  const acknowledgements = access.acknowledgements && (await schemaHas(["ack_invoices", "ack_invoice_services"]));
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable(), acknowledgements)} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
-      ...params,
-      query.pageSize,
-      (query.page - 1) * query.pageSize,
-    ]),
+    pool.query<AccountsRow>(
+      `${selectSql(storedReference, await serviceReportsAvailable(), acknowledgements, await hasServiceEngineer())} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, query.pageSize, (query.page - 1) * query.pageSize]
+    ),
   ]);
 
-  return { items: rows.rows.map(toItem), total: figures.rows, page: query.page, pageSize: query.pageSize, kpis: figures };
+  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.rows, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue };
 }
 
 /**
@@ -327,16 +356,16 @@ export async function listAccounts(query: ListAccountsQuery, showAcknowledgement
  * `checkSize` is given the number of rows before any is read and throws when
  * the export cannot hold that many.
  */
-export async function listAllAccounts(filters: AccountsFilters, checkSize: (count: number) => void) {
+export async function listAllAccounts(filters: AccountsFilters, checkSize: (count: number) => void, access: AccountsAccess = NO_EXTRA_ACCESS) {
   const storedReference = await hasStoredReference();
   const { where, params } = filterSql(filters, storedReference);
   const figures = await kpis(where, params);
 
   checkSize(figures.rows);
 
-  const rows = await pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable())} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable(), false, await hasServiceEngineer())} ${FROM} ${where} ${ORDER}`, params);
 
-  return { items: rows.rows.map(toItem), kpis: figures };
+  return { items: rows.rows.map((row) => toItem(row, { acknowledgements: false, amcValue: access.amcValue })), kpis: figures };
 }
 
 /** The filter lists are those of Master AMC Status (the same visits, so the same clients, engineers and years), plus the contracts with visits on the page. */

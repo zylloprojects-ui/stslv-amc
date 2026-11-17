@@ -61,6 +61,8 @@ const buildContractSchema = (newContract = false) =>
     finalCredit: optionalMoney,
     billingBasis: z.enum(['', 'CONTRACT_VALUE', 'FINAL_CREDIT', 'CUSTOM']),
     customBillingValue: optionalMoney,
+    // Client UAT CR-013: the customer's PO amount, excluding VAT. Optional; empty means not entered.
+    customerPoValue: optionalMoney,
     description: z.string().trim().max(2000, 'Description must be at most 2000 characters.'),
     notes: z.string().trim().max(2000, 'Notes must be at most 2000 characters.'),
     renewalNotes: z.string().trim().max(1000, 'Renewal notes must be at most 1000 characters.'),
@@ -92,6 +94,7 @@ const FIELDS = [
   'finalCredit',
   'billingBasis',
   'customBillingValue',
+  'customerPoValue',
   'description',
   'notes',
   'renewalNotes',
@@ -160,6 +163,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       // A new contract starts on AMC Value / Year (2026-11-11); an edit or renewal keeps the stored basis.
       billingBasis: start ? (start.billingBasis ?? '') : NEW_CONTRACT_BILLING_BASIS,
       customBillingValue: start?.customBillingValue ?? '',
+      // Only the contract being edited: a renewal has its own new PO, so it is never copied from the renewed contract.
+      customerPoValue: contract?.customerPoValue ?? '',
       description: start?.description ?? '',
       notes: contract?.notes ?? '',
       renewalNotes: '',
@@ -421,10 +426,10 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
     if (engineerRequired && engineerPicker && !engineerId) {
       setEngineerError(
         previousInactive
-          ? `Select an active service engineer. ${previousInactive.name}, the previous engineer, is no longer active.`
+          ? `Select an active sales engineer. ${previousInactive.name}, the previous engineer, is no longer active.`
           : renewalOf
-            ? 'Select an active service engineer for the renewal.'
-            : 'Select a service engineer.',
+            ? 'Select an active sales engineer for the renewal.'
+            : 'Select a sales engineer.',
       )
       ok = false
     }
@@ -678,22 +683,23 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             {engineerListUnavailable && (
               <Alert>
                 {isForbidden(engineers.error) || isForbidden(currentLinks.error)
-                  ? `${renewalOf ? 'A renewal' : 'A new contract'} needs a service engineer, but your role cannot read the sales engineer list. Ask an administrator to grant access.`
+                  ? `${renewalOf ? 'A renewal' : 'A new contract'} needs a sales engineer, but your role cannot read the sales engineer list. Ask an administrator to grant access.`
                   : `The sales engineer list could not be loaded, and ${renewalOf ? 'a renewal' : 'a new contract'} needs one. Close this form and try again.`}
               </Alert>
             )}
             {engineerPicker && (
               <SelectField
-                label="Service engineer (master list)"
+                // CR-005 (client UAT 2026-11-16): the person who brought the AMC; the source of every Sales Engineer column.
+                label="Sales Engineer"
                 required={engineerRequired}
                 error={engineerError ?? undefined}
                 hint={
                   previousInactive
-                    ? `Previously assigned: ${previousInactive.name} (inactive). Select an active service engineer for the renewal.`
+                    ? `Previously assigned: ${previousInactive.name} (inactive). Select an active sales engineer for the renewal.`
                     : renewalOf
                       ? renewedEngineer
-                        ? 'Kept from the contract being renewed. A renewal needs an active service engineer; you can choose another.'
-                        : 'A renewal needs an active service engineer.'
+                        ? 'Kept from the contract being renewed. A renewal needs an active sales engineer; you can choose another.'
+                        : 'A renewal needs an active sales engineer.'
                       : (engineers.data ?? []).length === 0 && engineerRequired
                         ? 'No active sales engineers. Add one in Master Data → Sales Engineers first.'
                         : contract === null
@@ -705,7 +711,7 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
               >
                 {engineerRequired ? (
                   <option value="" disabled>
-                    Select a service engineer…
+                    Select a sales engineer…
                   </option>
                 ) : (
                   <option value="">Not linked</option>
@@ -830,6 +836,14 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             <option value="CUSTOM">Custom Billing Value</option>
           </SelectField>
           {chosenBasis === 'CUSTOM' && <TextField label="Custom Billing Value" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.customBillingValue?.message} {...register('customBillingValue')} />}
+
+          <TextField
+            label="Customer PO Value (ex VAT)"
+            inputMode="decimal"
+            hint="The amount of the customer's purchase order, in OMR excluding VAT, for the whole PO. Shown to Accounts as AMC Value (ex VAT). Optional; it changes no visit amount."
+            error={errors.customerPoValue?.message}
+            {...register('customerPoValue')}
+          />
 
           {storageMissing && (
             <Alert>

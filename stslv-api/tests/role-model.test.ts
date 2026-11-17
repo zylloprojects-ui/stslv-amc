@@ -230,15 +230,25 @@ describe("only Super Admin changes built-in roles and their permissions", () => 
     expect(response.status).toBe(403);
   });
 
-  it("Admin changes no role's permissions, not even of the Executive roles or Viewer", async () => {
-    for (const code of ["ADMINISTRATOR", "FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER"]) {
+  it("Admin never changes its own role's permissions", async () => {
+    const before = await grantsOf("ADMINISTRATOR");
+    const response = await setPermissions(admin, await roleId("ADMINISTRATOR"), before.filter((key) => key !== "DASHBOARD:VIEW"));
+
+    expect(response.status).toBe(403);
+    expect(response.body.error.message).toBe("Only Super Admin can change a built-in role or its permissions.");
+    expect(await grantsOf("ADMINISTRATOR")).toEqual(before);
+  });
+
+  it("Admin configures the permissions of the Executive roles and Viewer (client UAT CR-031, 2026-11-17)", async () => {
+    for (const code of ["FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER"]) {
       const id = await roleId(code);
       const before = await grantsOf(code);
-      const response = await setPermissions(admin, id, before.filter((key) => key !== "DASHBOARD:VIEW"));
+      const revoked = await setPermissions(admin, id, before.filter((key) => key !== "SUGGESTIONS:CREATE"));
 
-      expect(response.status, code).toBe(403);
-      expect(response.body.error.message).toBe("Only Super Admin can change a built-in role or its permissions.");
-      expect(await grantsOf(code)).toEqual(before);
+      expect(revoked.status, code).toBe(200);
+      expect(await grantsOf(code), code).not.toContain("SUGGESTIONS:CREATE");
+      expect((await setPermissions(admin, id, before)).status, code).toBe(200);
+      expect(await grantsOf(code), code).toEqual(before);
     }
   });
 
@@ -305,9 +315,9 @@ describe("only Super Admin changes built-in roles and their permissions", () => 
       assignable: false,
       lockedReason: "Only Super Admin can change a built-in role or its permissions.",
     });
-    // Admin may assign the operational roles, but change none of them.
-    expect(byCode("FINANCE_EXECUTIVE")).toMatchObject({ permissionsEditable: false, manageable: false, assignable: true });
-    expect(byCode("AMC_OPERATIONS_EXECUTIVE")).toMatchObject({ permissionsEditable: false, manageable: false, assignable: true });
+    // Admin may assign the operational roles and configure their permissions (CR-031), but not rename, deactivate or delete them.
+    expect(byCode("FINANCE_EXECUTIVE")).toMatchObject({ permissionsEditable: true, manageable: false, assignable: true });
+    expect(byCode("AMC_OPERATIONS_EXECUTIVE")).toMatchObject({ permissionsEditable: true, manageable: false, assignable: true });
     expect(byCode("FINANCE_EXECUTIVE")?.scope).toContain("AMC_SCHEDULE:READ");
     expect(byCode("FINANCE_EXECUTIVE")?.permissionsVersion).toMatch(/^[0-9a-f]{16}$/);
 

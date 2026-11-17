@@ -14,10 +14,13 @@ export const COLUMN_IDS = [
   'scheduledMonth',
   'serviceStatus',
   'serviceReportNo',
+  // Client UAT 2026-11-16 (CR-011 to CR-014), provisional order pending the client's confirmation (Q-04).
+  'salesEngineer',
+  'serviceEngineer',
+  'amcValue',
   'visitValue',
   'invoiceNo',
   'invoiceValue',
-  'salesEngineer',
 ] as const
 export type ColumnId = (typeof COLUMN_IDS)[number]
 
@@ -27,12 +30,14 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   frequency: 'Frequency',
   service: 'Service',
   scheduledMonth: 'Scheduled Month',
-  visitValue: 'Value (Ex VAT, OMR)',
+  visitValue: 'Service Value (ex VAT)',
   serviceStatus: 'Service Status',
   serviceReportNo: 'Service Report No.',
   invoiceNo: 'Invoice No.',
   invoiceValue: 'Zoho Invoice Value (Ex VAT, OMR)',
-  salesEngineer: 'Service Engineer',
+  salesEngineer: 'Sales Engineer',
+  serviceEngineer: 'Service Engineer',
+  amcValue: 'AMC Value (ex VAT)',
 }
 
 function load(key: string): ReadonlySet<ColumnId> {

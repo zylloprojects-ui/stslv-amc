@@ -222,7 +222,7 @@ describe("security administration stays protected", () => {
     }
   });
 
-  it("nobody but Super Admin changes the matrix, whatever module permissions they were given", async () => {
+  it("only Super Admin, and Admin within its own access, change the matrix, whatever module permissions others were given", async () => {
     await add("FINANCE_EXECUTIVE", "SETTINGS:VIEW", "SETTINGS:EDIT");
     const sessions = {
       ADMINISTRATOR: await signedIn("admin@example.com", ["ADMINISTRATOR"]),
@@ -233,12 +233,19 @@ describe("security administration stays protected", () => {
     };
 
     for (const [code, session] of Object.entries(sessions)) {
-      // Their own role, and Finance's: refused, unchanged.
+      // Their own role, and Finance's: refused, unchanged. Client UAT CR-031 (2026-11-17): Admin configures Finance's
+      // permissions within its own access (it holds Clients View), and is put back afterwards.
       for (const target of [code, "FINANCE_EXECUTIVE"]) {
         const before = await grantsOf(target);
         const response = await save(session, target, [...before, "CLIENTS:VIEW"]);
 
-        expect(response.status, `${code} on ${target}`).toBe(403);
+        if (code === "ADMINISTRATOR" && target === "FINANCE_EXECUTIVE") {
+          expect(response.status, `${code} on ${target}`).toBe(200);
+          expect(await grantsOf(target)).toContain("CLIENTS:VIEW");
+          expect((await save(session, target, before)).status).toBe(200);
+        } else {
+          expect(response.status, `${code} on ${target}`).toBe(403);
+        }
         expect(await grantsOf(target)).toEqual(before);
       }
     }

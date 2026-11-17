@@ -28,11 +28,15 @@ export const ACCOUNTS_HIDEABLE_COLUMNS = [
   "scheduledMonth",
   "serviceStatus",
   "serviceReportNo",
+  // Client UAT 2026-11-16 (CR-011 to CR-014), provisional order pending the client's confirmation (Q-04):
+  // Service Report No. → Sales Engineer → Service Engineer → AMC Value (ex VAT) → Service Value (ex VAT).
+  "salesEngineer",
+  "serviceEngineer",
+  "amcValue",
   "visitValue",
   "invoiceNo",
   // The Zoho invoice amounts allocated to the service in Invoice Tracking (client fixes, 2026-11-09).
   "invoiceValue",
-  "salesEngineer",
 ] as const;
 export type AccountsColumn = (typeof ACCOUNTS_HIDEABLE_COLUMNS)[number];
 

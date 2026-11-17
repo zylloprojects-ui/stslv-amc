@@ -38,7 +38,7 @@ interface Features {
   reports: boolean;
   /** 0105: the stored AMC Reference Number. */
   storedReference: boolean;
-  /** 0110: the manual Sales Engineer Name of a service. */
+  /** 0110: the Service Engineer typed on a service (labelled "Sales Engineer Name" until the client UAT of 2026-11-16). */
   engineerName: boolean;
 }
 
@@ -190,8 +190,9 @@ export interface ServiceStatusItem {
   salesEngineer: { id: string; name: string } | null;
   reportNumber: string | null;
   /**
-   * The Sales Engineer Name typed on this service (0110), or null. Free text, kept apart from salesEngineer above,
-   * which is the contract's Sales Engineer master link (0070).
+   * The Service Engineer typed on this service (0110; the field was labelled "Sales Engineer Name" until the client UAT
+   * of 2026-11-16), or null. Free text, kept apart from salesEngineer above, which is the contract's Sales Engineer master
+   * link (0070). The API name stays salesEngineerName for compatibility.
    */
   salesEngineerName: string | null;
   /**
@@ -345,6 +346,47 @@ async function kpis(withoutStatus: string, params: unknown[], f: Features): Prom
   return { total: row?.total ?? 0, completed: row?.completed ?? 0, notCompleted: row?.not_completed ?? 0, waitingForRenewal: row?.waiting ?? 0 };
 }
 
+/**
+ * The totals row (client UAT 2026-11-16, CR-028), over EVERY service the filters select (status filter included), on
+ * every page. It reuses the two totals the application already has:
+ *   * Service Value: the sum of the services' own values (visit_amount), as Accounts and Master AMC Status add them up;
+ *     services without a value add nothing and are counted, so an incomplete total says so;
+ *   * AMC Value: each contract period's AMC Value / Year counted ONCE however many of its services match, as on Service
+ *     Sales (2026-11-09). Summing the column would count a contract's value once per service.
+ * Only for users who may see the values (the same rule as the columns); otherwise not computed or sent.
+ */
+export interface ServiceStatusValueTotals {
+  services: number;
+  serviceValue: string;
+  serviceValueMissing: number;
+  amcValue: string;
+  contracts: number;
+}
+
+async function valueTotals(where: string, params: unknown[], f: Features): Promise<ServiceStatusValueTotals> {
+  const [services, contracts] = await Promise.all([
+    pool.query<{ services: number; service_value: string; missing: number }>(
+      `SELECT count(*)::int AS services, COALESCE(sum(v.visit_amount), 0)::numeric(16,3)::text AS service_value,
+              count(*) FILTER (WHERE v.visit_amount IS NULL)::int AS missing
+       ${fromSql(f)} ${where}`,
+      params
+    ),
+    pool.query<{ amc_value: string; contracts: number }>(
+      `SELECT COALESCE(sum(t.contract_value), 0)::numeric(16,3)::text AS amc_value, count(*)::int AS contracts
+       FROM (SELECT DISTINCT c.id, c.contract_value ${fromSql(f)} ${where}) t`,
+      params
+    ),
+  ]);
+
+  return {
+    services: services.rows[0]?.services ?? 0,
+    serviceValue: services.rows[0]?.service_value ?? "0.000",
+    serviceValueMissing: services.rows[0]?.missing ?? 0,
+    amcValue: contracts.rows[0]?.amc_value ?? "0.000",
+    contracts: contracts.rows[0]?.contracts ?? 0,
+  };
+}
+
 function totalFor(figures: ServiceStatusKpis, status: ServiceStatus | undefined): number {
   if (status === "COMPLETED") return figures.completed;
   if (status === "NOT_COMPLETED") return figures.notCompleted;
@@ -357,6 +399,8 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
   const { where, withoutStatus, params } = filterSql(query, f);
   const statusParamCount = query.serviceStatus ? params.length - 1 : params.length;
   const figures = await kpis(withoutStatus, params.slice(0, statusParamCount), f);
+  // Never computed, so never sent, for a user who may not see the values.
+  const totals = access.amcValue ? await valueTotals(where, params, f) : null;
   const rows = await pool.query<ServiceRow>(
     `${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${ORDER}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
@@ -376,6 +420,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
     salesEngineerNameAvailable: f.engineerName,
     amcValueVisible: access.amcValue,
     acknowledgementsVisible: access.acknowledgements === true,
+    totals,
   };
 }
 
@@ -401,8 +446,9 @@ export async function listAllServiceStatus(filters: ServiceStatusFilters, checkS
   checkSize(total);
 
   const rows = await pool.query<ServiceRow>(`${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${ORDER}`, params);
+  const totals = access.amcValue ? await valueTotals(where, params, f) : null;
 
-  return { items: rows.rows.map((row) => toItem(row, access)), total, kpis: figures, features: f };
+  return { items: rows.rows.map((row) => toItem(row, access)), total, kpis: figures, features: f, totals };
 }
 
 /** The lists for the page's filters, taken from the contracts that have visits on the page. */
@@ -563,7 +609,8 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
           module: "AMC_EXECUTION",
           entityType: "amc_visits",
           entityId: id,
-          description: `Sales Engineer Name of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
+          // The action code stays (existing Audit Log entries and filters use it); the wording follows CR-010.
+          description: `Service Engineer of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
             input.salesEngineerName ? `set to ${input.salesEngineerName}` : "cleared"
           }.`,
           metadata: { changes },

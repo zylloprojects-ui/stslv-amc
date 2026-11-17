@@ -76,6 +76,15 @@ export function ColumnsMenu<K extends string>({ options, hidden, onChange }: { o
               </label>
             ))}
           </fieldset>
+          {/* Client UAT CR-030: back to the default, every column shown. Only the columns offered here, never a restricted one. */}
+          <button
+            type="button"
+            disabled={shownCount === options.length}
+            onClick={() => onChange(new Set([...hidden].filter((key) => !options.some((option) => option.key === key))))}
+            className="mt-1 w-full rounded-lg px-2 py-1.5 text-left text-sm font-medium text-[#1479BD] hover:bg-sky-50 disabled:cursor-default disabled:text-slate-400 disabled:hover:bg-transparent"
+          >
+            Show all columns
+          </button>
         </div>
       )}
     </div>

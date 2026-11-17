@@ -37,7 +37,7 @@ import './serviceStatus.css'
 
 const PAGE_SIZE = 50
 const REPORT_NUMBER_MAX = 50
-/** The API's limit for the manual Sales Engineer Name (database update 0110). */
+/** The API's limit for the Service Engineer typed on a service (database update 0110; client UAT CR-010). */
 const ENGINEER_NAME_MAX = 120
 
 // --- Status colours of the badges and the legend. Row colours are in serviceStatus.css,
@@ -115,23 +115,65 @@ const COLUMNS = [
   { key: 'frequency', label: 'Frequency' },
   { key: 'service', label: 'Service' },
   // The linked contract's AMC Value / Year: offered only to users who may see contract values (AMC Contracts: View).
-  { key: 'amcValue', label: 'AMC Value (OMR)' },
+  // Client UAT CR-021/CR-022: the amounts are stored excluding VAT; only the headings change.
+  { key: 'amcValue', label: 'AMC Value (ex VAT)' },
   // This service's own value (2026-11-11): visit_amount, the same value Master AMC Status shows (its share of the
   // billing basis, or the manual Cost per Visit), never the contract's full value. Same access as AMC Value.
-  { key: 'serviceValue', label: 'Service Value (OMR)' },
+  { key: 'serviceValue', label: 'Service Value (ex VAT)' },
   { key: 'due', label: 'Scheduled Month / Due Date' },
   { key: 'status', label: 'Service Status' },
   // Separate from the execution status (2026-11-11): Yes / No / Not Applicable for the service's invoice. Offered only
   // to users who may view Invoice Acknowledgements.
   { key: 'acknowledgement', label: 'Invoice Acknowledgement' },
-  { key: 'engineer', label: 'Service Engineer' },
+  { key: 'engineer', label: 'Sales Engineer' },
   { key: 'report', label: 'Service Report No.' },
-  // Typed by hand beside the report number (database update 0110); not the contract's Sales Engineer link.
-  { key: 'engineerName', label: 'Sales Engineer Name' },
+  // Client UAT CR-009/CR-010: 'engineer' is the contract's Sales Engineer (read only here); 'engineerName' is the
+  // Service Engineer who performed this service, typed beside the report number (database update 0110).
+  { key: 'engineerName', label: 'Service Engineer' },
   { key: 'serviceReport', label: 'Service Report' },
 ] as const
 type ColumnKey = (typeof COLUMNS)[number]['key']
 const COLUMN_KEYS = COLUMNS.map((column) => column.key)
+
+// --- Totals row (client UAT CR-028) ----------------------------------------------
+/**
+ * PostgreSQL's totals over EVERY service the filters select, on every page. Service Value is summed; AMC Value counts
+ * each contract period once, however many of its services match (summing the column would repeat it per service).
+ */
+function ValueTotals({ totals, columns }: { totals: NonNullable<ServiceStatusList['totals']>; columns: ColumnKey[] }) {
+  const first = columns.findIndex((key) => key === 'amcValue' || key === 'serviceValue')
+  const after = columns.slice(first).filter((key) => key !== 'amcValue' && key !== 'serviceValue').length
+
+  return (
+    <tfoot>
+      <tr className="border-t-2 border-slate-300 bg-slate-50 font-bold text-slate-900">
+        <th scope="row" colSpan={2 + first} className={cx(TABLE.td, 'text-right')}>
+          Total Filtered ({totals.services} {totals.services === 1 ? 'service' : 'services'}, all pages)
+          {totals.serviceValueMissing > 0 && (
+            <span className="block text-xs font-medium text-amber-700">
+              {totals.serviceValueMissing} {totals.serviceValueMissing === 1 ? 'service has' : 'services have'} no value set and {totals.serviceValueMissing === 1 ? 'is' : 'are'} not included.
+            </span>
+          )}
+        </th>
+        {columns.includes('amcValue') && (
+          <td className={cx(TABLE.td, 'whitespace-nowrap text-right tabular-nums')} data-total="amcValue">
+            {formatMoney(totals.amcValue)}
+            <span className="block text-xs font-medium text-slate-500">
+              {totals.contracts} {totals.contracts === 1 ? 'contract' : 'contracts'}, each once
+            </span>
+          </td>
+        )}
+        {columns.includes('serviceValue') && (
+          <td className={cx(TABLE.td, 'whitespace-nowrap text-right tabular-nums')} data-total="serviceValue">
+            {formatMoney(totals.serviceValue)}
+          </td>
+        )}
+        {/* The remaining columns and Actions. */}
+        <td colSpan={after + 1} className={TABLE.td} />
+      </tr>
+    </tfoot>
+  )
+}
 
 // --- One editable row ----------------------------------------------------------
 // The completion date is not asked for: the API records it on completion (today) and keeps it.
@@ -167,7 +209,7 @@ interface RowProps {
   canOverrideReportNumber: boolean
   canViewContracts: boolean
   reportNumberAvailable: boolean
-  /** Database update 0110: the manual Sales Engineer Name can be saved. */
+  /** Database update 0110: the Service Engineer can be saved. */
   engineerNameAvailable: boolean
   serviceReportsAvailable: boolean
   reportMaxMb: number
@@ -249,7 +291,7 @@ function ServiceRow({
     setSavedAt(null)
     if (statusChanged && draft.status === 'COMPLETED' && !item.serviceReport) return askForReport()
     if (draft.reportNumber.trim().length > REPORT_NUMBER_MAX) return setProblem(`The report number can have at most ${REPORT_NUMBER_MAX} characters.`)
-    if (draft.salesEngineerName.trim().length > ENGINEER_NAME_MAX) return setProblem(`The Sales Engineer Name can have at most ${ENGINEER_NAME_MAX} characters.`)
+    if (draft.salesEngineerName.trim().length > ENGINEER_NAME_MAX) return setProblem(`The Service Engineer can have at most ${ENGINEER_NAME_MAX} characters.`)
     if (needsOverrideReason && overrideReason.trim().length < OVERRIDE_REASON_MIN) {
       return setProblem(`This service is Paid, so its report number is locked. Enter the reason for the change (at least ${OVERRIDE_REASON_MIN} characters).`)
     }
@@ -422,7 +464,7 @@ function ServiceRow({
         <td className={cx(TABLE.td, 'min-w-36')}>
           {canSave && engineerNameAvailable ? (
             <input
-              aria-label={`Sales Engineer Name of ${label}`}
+              aria-label={`Service Engineer of ${label}`}
               value={draft.salesEngineerName}
               maxLength={ENGINEER_NAME_MAX}
               onChange={(event) => {
@@ -430,7 +472,7 @@ function ServiceRow({
                 setDraft({ ...draft, salesEngineerName: event.target.value })
               }}
               disabled={mutation.isPending}
-              placeholder="Engineer name"
+              placeholder="Service engineer"
               title={draft.salesEngineerName || undefined}
               className="block w-full min-w-[8rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm shadow-sm placeholder:text-slate-400"
             />
@@ -740,11 +782,11 @@ export function ServiceStatusPage() {
               )}
             </Filter>
             {opts?.salesEngineers !== null && (
-              <Filter label="Service Engineer">
+              <Filter label="Sales Engineer">
                 {(id, className) => (
                   <select id={id} value={filters.salesEngineerId} onChange={(event) => change('salesEngineerId')(event.target.value)} className={className}>
                     <option value="">All engineers</option>
-                    <OptionsNotice source={options} count={opts?.salesEngineers?.length ?? 0} empty="No service engineers linked to current AMC visits" />
+                    <OptionsNotice source={options} count={opts?.salesEngineers?.length ?? 0} empty="No sales engineers linked to current AMC visits" />
                     {(opts?.salesEngineers ?? []).map((engineer) => (
                       <option key={engineer.id} value={engineer.id}>
                         {engineer.name}
@@ -928,6 +970,7 @@ export function ServiceStatusPage() {
                     />
                   ))}
                 </tbody>
+                {data.totals && (shown('amcValue') || shown('serviceValue')) && <ValueTotals totals={data.totals} columns={COLUMNS.filter((column) => shown(column.key)).map((column) => column.key)} />}
               </table>
             </div>
             <Pager page={data.page} pageSize={data.pageSize} total={data.total} shown={data.items.length} onPage={setPage} />

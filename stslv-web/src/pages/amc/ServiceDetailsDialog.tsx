@@ -81,8 +81,12 @@ export function ServiceDetailsDialog({ visitId, onClose }: { visitId: string; on
               </span>
             </DetailRow>
             <DetailRow label="Completion date">{item.completedDate ? formatDate(item.completedDate) : <OrDash value={null} />}</DetailRow>
-            <DetailRow label="Service Engineer">
+            <DetailRow label="Sales Engineer">
               <OrDash value={item.salesEngineer?.name ?? null} />
+            </DetailRow>
+            {/* Client UAT CR-010: who performed this service, as typed on Service Status. */}
+            <DetailRow label="Service Engineer">
+              <OrDash value={item.salesEngineerName ?? null} />
             </DetailRow>
             <DetailRow label="Service Report No.">
               <OrDash value={item.reportNumber} />

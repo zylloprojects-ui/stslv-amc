@@ -105,7 +105,7 @@ function serviceItem(overrides: Partial<ServiceStatusItem> = {}): ServiceStatusI
 }
 
 describe('Service Status: AMC Value and Sales Engineer Name', () => {
-  function serviceApi(user: SessionUser, amcValueVisible: boolean) {
+  function serviceApi(user: SessionUser, amcValueVisible: boolean, totals: ServiceStatusList['totals'] = null) {
     signIn()
     let item = serviceItem({ amcValue: amcValueVisible ? '1620.000' : null })
 
@@ -126,6 +126,7 @@ describe('Service Status: AMC Value and Sales Engineer Name', () => {
           serviceReportLimits: { maxMb: 12, allowedTypes: 'PDF, DOC and DOCX' },
           salesEngineerNameAvailable: true,
           amcValueVisible,
+          totals,
         }
         return ok(list)
       }
@@ -145,8 +146,32 @@ describe('Service Status: AMC Value and Sales Engineer Name', () => {
     renderApp('/amc/service-status')
 
     await screen.findByRole('table')
-    expect(headers()).toContain('AMC Value (OMR)')
+    // Client UAT CR-021: "AMC Value (ex VAT)".
+    expect(headers()).toContain('AMC Value (ex VAT)')
     expect(screen.getByText('1,620.000')).toBeInTheDocument()
+  })
+
+  it('shows the API totals under the value columns: Service Value summed, each contract’s AMC Value once (client UAT CR-028)', async () => {
+    serviceApi(ADMIN, true, { services: 6, serviceValue: '2000.000', serviceValueMissing: 1, amcValue: '2000.000', contracts: 2 })
+    renderApp('/amc/service-status')
+
+    const footer = (await screen.findByRole('rowheader', { name: /Total Filtered \(6 services, all pages\)/ })).closest('tr') as HTMLElement
+    expect(footer.querySelector('[data-total="amcValue"]')).toHaveTextContent('2,000.0002 contracts, each once')
+    expect(footer.querySelector('[data-total="serviceValue"]')).toHaveTextContent('2,000.000')
+    expect(footer).toHaveTextContent('1 service has no value set and is not included.')
+    // The footer spans the table exactly.
+    const table = screen.getByRole('table')
+    const spanned = [...footer.children].reduce((sum, cell) => sum + (cell as HTMLTableCellElement).colSpan, 0)
+    expect(spanned).toBe(within(table).getAllByRole('columnheader').length)
+  })
+
+  it('shows no totals row to users who may not view contracts', async () => {
+    const executor: SessionUser = { ...ADMIN, id: '31', email: 'ops2@example.com', roles: [{ id: '9', code: 'CF', name: 'Ops' }], permissions: ['SERVICE_STATUS:VIEW', 'AMC_EXECUTION:VIEW'] }
+    serviceApi(executor, false)
+    renderApp('/amc/service-status')
+
+    await screen.findByRole('table')
+    expect(screen.queryByRole('rowheader', { name: /Total Filtered/ })).not.toBeInTheDocument()
   })
 
   it('does not offer the AMC Value column to users who may not view contracts', async () => {
@@ -155,21 +180,26 @@ describe('Service Status: AMC Value and Sales Engineer Name', () => {
     renderApp('/amc/service-status')
 
     await screen.findByRole('table')
-    expect(headers()).not.toContain('AMC Value (OMR)')
+    expect(headers()).not.toContain('AMC Value (ex VAT)')
     expect(screen.queryByText('1,620.000')).not.toBeInTheDocument()
   })
 
-  it('saves the typed Sales Engineer Name beside the report number and shows it after the save', async () => {
+  it('saves the typed Service Engineer beside the report number and shows it after the save (client UAT CR-010)', async () => {
     const api = serviceApi(ADMIN, true)
     renderApp('/amc/service-status')
 
-    const input = await screen.findByLabelText(/^Sales Engineer Name of AMC-0100/)
-    expect(headers().indexOf('Sales Engineer Name')).toBe(headers().indexOf('Service Report No.') + 1)
+    const input = await screen.findByLabelText(/^Service Engineer of AMC-0100/)
+    expect(headers().indexOf('Service Engineer')).toBe(headers().indexOf('Service Report No.') + 1)
+    // The contract's engineer is the Sales Engineer, shown read only; "Name" is no longer in any heading.
+    expect(headers()).toContain('Sales Engineer')
+    expect(headers().some((heading) => heading?.includes('Engineer Name'))).toBe(false)
+    expect(screen.queryByRole('textbox', { name: /^Sales Engineer/ })).not.toBeInTheDocument()
     await userEvent.type(input, '  Ahmed Al Balushi ')
     await userEvent.click(screen.getByRole('button', { name: /^Save AMC-0100/ }))
 
+    // Saved through the unchanged API field, against this one service.
     await waitFor(() => expect(api.find('PATCH', '/amc/service-status/500')[0]?.body).toMatchObject({ salesEngineerName: 'Ahmed Al Balushi' }))
-    await waitFor(() => expect((screen.getByLabelText(/^Sales Engineer Name of AMC-0100/) as HTMLInputElement).value).toBe('Ahmed Al Balushi'))
+    await waitFor(() => expect((screen.getByLabelText(/^Service Engineer of AMC-0100/) as HTMLInputElement).value).toBe('Ahmed Al Balushi'))
   })
 })
 

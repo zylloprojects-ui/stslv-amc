@@ -217,7 +217,8 @@ export interface ExistingVisit {
   status: VisitStatus;
   /**
    * True once anyone has acted on the visit: any status other than SCHEDULED,
-   * a changed date, a hand-set amount, an assignment or any note.
+   * a changed date, a hand-set amount, an assignment or any note, a Service Engineer, an attached document, or an
+   * invoice, acknowledgement or import record (contracts.service.ts visitLockedSql).
    */
   locked: boolean;
 }

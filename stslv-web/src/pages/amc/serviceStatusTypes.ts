@@ -36,7 +36,10 @@ export interface ServiceStatusItem {
   completedDate: string | null
   salesEngineer: { id: string; name: string } | null
   reportNumber: string | null
-  /** The Sales Engineer Name typed on this service (database update 0110). Not the contract's Sales Engineer link. */
+  /**
+   * The Service Engineer typed on this service (database update 0110; labelled "Sales Engineer Name" until the client
+   * UAT of 2026-11-16). Not the contract's Sales Engineer link. The API name is unchanged.
+   */
   salesEngineerName?: string | null
   /** The contract's AMC Value / Year (OMR, excluding VAT); null when this user may not see contract values. */
   amcValue?: string | null
@@ -93,10 +96,15 @@ export interface ServiceStatusList {
   serviceReportLimits: { maxMb: number; allowedTypes: string }
   /** Whether the Service Report No. lock after Paid is switched on (proposed rule, off until approved). */
   reportNumberLockEnabled?: boolean
-  /** Database update 0110: the manual Sales Engineer Name is stored. Absent from an older API. */
+  /** Database update 0110: the Service Engineer of a service is stored. Absent from an older API. */
   salesEngineerNameAvailable?: boolean
   /** The signed-in user may see contract values (AMC Contracts: View), so the AMC Value column is offered. */
   amcValueVisible?: boolean
+  /**
+   * The totals row (client UAT CR-028), over every matching service on every page: Service Value summed; AMC Value with
+   * each contract period counted once. Null for a user who may not see the values; absent from an older API.
+   */
+  totals?: { services: number; serviceValue: string; serviceValueMissing: number; amcValue: string; contracts: number } | null
   /** The Invoice Acknowledgement column is offered (Invoice Acknowledgements: View). Absent from an older API. */
   acknowledgementsVisible?: boolean
 }

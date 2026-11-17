@@ -188,7 +188,8 @@ describe('permission-based navigation', () => {
       'Administration',
     ])
     expect(await linksByGroup(nav)).toEqual({
-      'AMC Execution': ['Service Status', 'Monthly Calendar', 'AMC Schedule'],
+      // AMC Schedule is hidden from the sidebar (client UAT CR-029); its route is unchanged.
+      'AMC Execution': ['Service Status', 'Monthly Calendar'],
       Accounts: ['Invoices', 'Invoice Ack', 'Invoice Tracking'],
       'AMC Sales': ['Service Sales', 'AMC Renewals'],
       'Master Data Center': ['Clients', 'Sales Engineers', 'System Types', 'Maintenance Frequencies', 'Departments'],

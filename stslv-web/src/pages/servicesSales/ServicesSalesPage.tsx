@@ -456,11 +456,11 @@ export function ServicesSalesPage() {
                 </select>
               )}
             </Filter>
-            <Filter label="Service Engineer">
+            <Filter label="Sales Engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={(event) => change(setSalesEngineerId)(event.target.value)} className={className}>
-                  <option value="">All service engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No service engineers linked to current AMC visits" />
+                  <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers.length ?? 0} empty="No sales engineers linked to current AMC visits" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -641,6 +641,15 @@ export function ServicesSalesPage() {
                       {shown('serviceReport') && (
                         <td className={TABLE.td}>
                           <ServiceReportCell item={item} />
+                        </td>
+                      )}
+                      {shown('serviceEngineer') && (
+                        <td className={`${TABLE.td} ${TABLE.text}`}>
+                          {item.serviceEngineer ?? (
+                            <span className="text-slate-400" title="No service engineer entered on Service Status">
+                              —<span className="sr-only">No service engineer entered</span>
+                            </span>
+                          )}
                         </td>
                       )}
                       {shown('quotation') && (

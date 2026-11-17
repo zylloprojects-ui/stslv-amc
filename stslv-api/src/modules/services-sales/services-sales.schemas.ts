@@ -31,7 +31,21 @@ export const QUOTE_SUBMISSION_FILTERS = ["SUBMITTED", "NOT_SUBMITTED"] as const;
 
 /** The columns a user may hide. AMC Reference and the sales status always stay. */
 // "amcValue" (client fixes, 2026-11-09): the contract period's AMC Value, only ever present for AMC Contracts: View.
-export const SERVICES_SALES_HIDEABLE_COLUMNS = ["client", "system", "frequency", "service", "dueDate", "serviceStatus", "serviceReportNo", "quotation", "salesEngineer", "amcValue", "serviceValue"] as const;
+// "serviceEngineer" (client UAT CR-016): who performed the service, after the Service Report.
+export const SERVICES_SALES_HIDEABLE_COLUMNS = [
+  "client",
+  "system",
+  "frequency",
+  "service",
+  "dueDate",
+  "serviceStatus",
+  "serviceReportNo",
+  "serviceEngineer",
+  "quotation",
+  "salesEngineer",
+  "amcValue",
+  "serviceValue",
+] as const;
 export type ServicesSalesColumn = (typeof SERVICES_SALES_HIDEABLE_COLUMNS)[number];
 
 const page = z.coerce.number().int().min(1).default(1);

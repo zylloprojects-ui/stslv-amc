@@ -315,7 +315,8 @@ describe("Master AMC Status", () => {
       await setManualNo(alpha[0]!.id, "INV-9");
       await quote(alpha[0]!.id, "=QT-1");
 
-      const response = await exportFile({ format: "xlsx", clientId: fx.alphaId, hidden: "system,salesEngineer" });
+      // Service Engineer (client UAT CR-008) is hidden here too; tests/client-uat-nov2026.test.ts covers it.
+      const response = await exportFile({ format: "xlsx", clientId: fx.alphaId, hidden: "system,salesEngineer,serviceEngineer" });
       expect(response.status).toBe(200);
       expect(response.headers["content-disposition"]).toMatch(/master-amc-status/);
       const workbook = new ExcelJS.Workbook();
@@ -347,7 +348,7 @@ describe("Master AMC Status", () => {
       const audit = await pool.query<{ metadata: { rowCount: number; hidden: string[] } }>(
         "SELECT metadata FROM activity_logs WHERE action = 'master_amc_status.exported' ORDER BY id DESC LIMIT 1"
       );
-      expect(audit.rows[0]?.metadata).toMatchObject({ rowCount: 4, hidden: ["system", "salesEngineer"] });
+      expect(audit.rows[0]?.metadata).toMatchObject({ rowCount: 4, hidden: ["system", "salesEngineer", "serviceEngineer"] });
     });
 
     it("produces a PDF for the same filters and refuses an unknown format or column", async () => {

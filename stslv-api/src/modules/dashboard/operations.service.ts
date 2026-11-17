@@ -162,12 +162,33 @@ export interface YearToDateServices {
   overdue: number;
 }
 
+/**
+ * The Overall Till Date row (client UAT 2026-11-16, CR-001): the counted services (COUNTED_VISIT, the same scope as
+ * every other row) scheduled on or before Oman's today, across every contract year, so the backlog of earlier months
+ * and years is included and visits ahead are not. Overall (the whole contract, CR-002) is unchanged and still counts
+ * the visits ahead. Same fields as YearToDateServices; `from` is null because the period has no start date.
+ */
+export interface TillDateServices extends Omit<YearToDateServices, "from"> {
+  from: null;
+}
+
+/**
+ * The Invoice No. split of the services of a period (CR-001, CR-004), by the same reference rule as the Current Month
+ * and Overall "Invoices Generated / Not Generated" cards: an Invoice No. entered on the service (Paid) or not. With the
+ * same services as the period's counts, so withInvoiceNo + withoutInvoiceNo = the period's due.
+ */
+export type PeriodInvoiceFigures = PaymentFigures["scheduledThisMonth"];
+
 export interface OperationsDashboard {
   asOf: string;
   timeZone: string;
   kpis: OperationsKpis;
   /** Requires AMC_SCHEDULE:VIEW or AMC_EXECUTION:VIEW. */
   yearToDate: YearToDateServices | null;
+  /** Overall Till Date (CR-001). Requires AMC_SCHEDULE:VIEW or AMC_EXECUTION:VIEW. */
+  tillDate: TillDateServices | null;
+  /** The Invoice No. split of the YTD and Till Date periods (CR-001, CR-004). Requires INVOICES:VIEW. */
+  periodInvoices: { yearToDate: PeriodInvoiceFigures; tillDate: PeriodInvoiceFigures } | null;
   /** Requires AMC_CONTRACTS:VIEW. */
   portfolio: { total: number; statuses: PortfolioStatus[] } | null;
   /** Requires AMC_CONTRACTS:VIEW. */
@@ -346,30 +367,87 @@ export async function overallServiceCounts(): Promise<{ overall: number; openOve
 }
 
 /**
- * The Current Year (YTD) figures. The period is measured in Oman: January 1 of the year of `today` through `today`,
- * so it moves forward every day and starts again on January 1. `today` (YYYY-MM-DD) is only for tests; the Dashboard
- * always uses Oman's today from the database clock (BUSINESS_TODAY_SQL).
+ * The services of a dated period ending on Oman's today, and their Invoice No. split, in ONE query so the two always
+ * describe the same services (client UAT 2026-11-16):
+ *   * "yearToDate" (Current YTD, CR-004): scheduled from January 1 of the current Oman year through today;
+ *   * "tillDate" (Overall Till Date, CR-001): scheduled on or before today, whatever the year, so the backlog of
+ *     earlier months and years is included and the visits ahead are not.
+ * The services are COUNTED_VISIT (the shared scope of every Dashboard row); Completed, Pending and Overdue follow the
+ * same rules as before; the Invoice No. split follows paymentFigures(). `today` (YYYY-MM-DD) is only for tests; the
+ * Dashboard always uses Oman's today from the database clock (BUSINESS_TODAY_SQL).
  */
-export async function yearToDateServiceCounts(today?: string): Promise<YearToDateServices> {
-  const result = await pool.query<{ from: string; to: string; due: number; completed: number; overdue: number }>(
-    `WITH period AS (
-       SELECT date_trunc('year', d)::date AS first_day, d AS last_day
-       FROM (SELECT COALESCE($1::date, ${BUSINESS_TODAY_SQL}) AS d) AS t
-     )
-     SELECT p.first_day::text AS "from", p.last_day::text AS "to",
+export async function periodServiceFigures(
+  period: "yearToDate" | "tillDate",
+  today?: string
+): Promise<{ from: string | null; to: string; due: number; completed: number; pending: number; overdue: number; invoices: PeriodInvoiceFigures }> {
+  const startCondition = period === "yearToDate" ? "AND v.scheduled_date >= date_trunc('year', t.d)::date" : "";
+  const missing = "v.visit_amount IS NULL";
+  const result = await pool.query<{
+    from: string | null;
+    to: string;
+    due: number;
+    completed: number;
+    overdue: number;
+    with_no: number;
+    with_value: string;
+    with_missing: number;
+    without_no: number;
+    without_value: string;
+    without_missing: number;
+  }>(
+    `WITH t AS (SELECT COALESCE($1::date, ${BUSINESS_TODAY_SQL}) AS d)
+     SELECT ${period === "yearToDate" ? "date_trunc('year', t.d)::date::text" : "NULL::text"} AS "from", t.d::text AS "to",
             count(v.id)::int AS due,
             count(v.id) FILTER (WHERE v.status = 'COMPLETED')::int AS completed,
-            count(v.id) FILTER (WHERE v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < p.last_day)::int AS overdue
-     FROM period p
-     LEFT JOIN amc_visits v ON v.scheduled_date BETWEEN p.first_day AND p.last_day AND ${COUNTED_VISIT}
-     GROUP BY p.first_day, p.last_day`,
+            count(v.id) FILTER (WHERE v.status IN ('SCHEDULED', 'POSTPONED') AND v.scheduled_date < t.d)::int AS overdue,
+            count(v.id) FILTER (WHERE v.manual_invoice_no IS NOT NULL)::int AS with_no,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NOT NULL), 0)::numeric(16,3)::text AS with_value,
+            count(v.id) FILTER (WHERE v.manual_invoice_no IS NOT NULL AND ${missing})::int AS with_missing,
+            count(v.id) FILTER (WHERE v.manual_invoice_no IS NULL)::int AS without_no,
+            COALESCE(sum(v.visit_amount) FILTER (WHERE v.manual_invoice_no IS NULL), 0)::numeric(16,3)::text AS without_value,
+            count(v.id) FILTER (WHERE v.manual_invoice_no IS NULL AND ${missing})::int AS without_missing
+     FROM t
+     LEFT JOIN amc_visits v ON v.scheduled_date <= t.d ${startCondition} AND ${COUNTED_VISIT}
+     GROUP BY t.d`,
     [today ?? null]
   );
   const row = result.rows[0];
   const due = row?.due ?? 0;
   const completed = row?.completed ?? 0;
 
-  return { from: row?.from ?? "", to: row?.to ?? "", due, completed, pending: due - completed, overdue: row?.overdue ?? 0 };
+  return {
+    from: row?.from ?? null,
+    to: row?.to ?? "",
+    due,
+    completed,
+    pending: due - completed,
+    overdue: row?.overdue ?? 0,
+    invoices: {
+      withInvoiceNo: row?.with_no ?? 0,
+      withInvoiceNoValue: row?.with_value ?? "0.000",
+      withInvoiceNoAmountMissing: row?.with_missing ?? 0,
+      withoutInvoiceNo: row?.without_no ?? 0,
+      withoutInvoiceNoValue: row?.without_value ?? "0.000",
+      withoutInvoiceNoAmountMissing: row?.without_missing ?? 0,
+    },
+  };
+}
+
+/**
+ * The Current Year (YTD) figures. The period is measured in Oman: January 1 of the year of `today` through `today`,
+ * so it moves forward every day and starts again on January 1. `today` (YYYY-MM-DD) is only for tests.
+ */
+export async function yearToDateServiceCounts(today?: string): Promise<YearToDateServices> {
+  const { invoices: _invoices, ...counts } = await periodServiceFigures("yearToDate", today);
+
+  return { ...counts, from: counts.from ?? "" };
+}
+
+/** The Overall Till Date figures (CR-001): every counted service scheduled on or before `today` (Oman). */
+export async function tillDateServiceCounts(today?: string): Promise<TillDateServices> {
+  const { invoices: _invoices, ...counts } = await periodServiceFigures("tillDate", today);
+
+  return { ...counts, from: null };
 }
 
 export async function paymentFigures(): Promise<PaymentFigures> {
@@ -551,7 +629,7 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
   const canInvoices = auth.permissions.has("INVOICES:VIEW");
   const renewals = canContracts ? await schemaHas(["amc_contracts.renewed_from_id"]) : false;
 
-  const [clock, kpis, statusBreakdown, expiringList, workload, todayWork, trend, yearToDate] = await Promise.all([
+  const [clock, kpis, statusBreakdown, expiringList, workload, todayWork, trend, ytdFigures, tillDateFigures] = await Promise.all([
     pool.query<{ today: string; time_zone: string }>(`SELECT ${BUSINESS_TODAY_SQL}::text AS today, '${BUSINESS_TIME_ZONE}'::text AS time_zone`),
     // The cards shared with AMC Management come from the one shared calculation.
     sharedKpis({ contracts: canContracts, visits: canVisits, invoices: canInvoices }, renewals),
@@ -560,14 +638,22 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
     canVisits ? getWorkload({ months: CHART_MONTHS }) : null,
     canVisits ? schedule() : null,
     canInvoices ? paymentTrend() : null,
-    canVisits ? yearToDateServiceCounts() : null,
+    // The YTD and Till Date rows (CR-001, CR-004): counts for visit viewers, the Invoice No. split for invoice viewers.
+    canVisits || canInvoices ? periodServiceFigures("yearToDate") : null,
+    canVisits || canInvoices ? periodServiceFigures("tillDate") : null,
   ]);
+  const counts = <T extends { invoices: PeriodInvoiceFigures }>(figures: T) => {
+    const { invoices: _invoices, ...rest } = figures;
+    return rest;
+  };
 
   return {
     asOf: clock.rows[0]?.today ?? "",
     timeZone: clock.rows[0]?.time_zone ?? "",
     kpis,
-    yearToDate,
+    yearToDate: canVisits && ytdFigures ? { ...counts(ytdFigures), from: ytdFigures.from ?? "" } : null,
+    tillDate: canVisits && tillDateFigures ? { ...counts(tillDateFigures), from: null } : null,
+    periodInvoices: canInvoices && ytdFigures && tillDateFigures ? { yearToDate: ytdFigures.invoices, tillDate: tillDateFigures.invoices } : null,
     portfolio: statusBreakdown,
     expiring: expiringList,
     workload,

@@ -72,15 +72,16 @@ const FIELD_LABELS: Record<string, string> = {
   finalCredit: 'Final credit',
   billingBasis: 'Billing basis',
   customBillingValue: 'Custom billing value',
+  customerPoValue: 'Customer PO value (ex VAT)',
   maintenanceFrequency: 'Frequency',
   defaultVisitAmount: 'Default visit amount',
   notes: 'Notes',
   status: 'Status',
-  salesEngineer: 'Service engineer',
+  salesEngineer: 'Sales engineer',
   systemType: 'System type',
 }
 
-const MONEY_FIELDS = new Set(['contractValue', 'finalCredit', 'defaultVisitAmount', 'customBillingValue'])
+const MONEY_FIELDS = new Set(['contractValue', 'finalCredit', 'defaultVisitAmount', 'customBillingValue', 'customerPoValue'])
 const DATE_FIELDS = new Set(['validFrom', 'validTo'])
 
 /** "amc_contract.some_action" -> "Some action", for an action without its own label. */
@@ -469,6 +470,8 @@ export function ContractDetailPage() {
                 { label: 'AMC Value / Year', value: formatMoney(contract.contractValue) },
                 { label: 'Default visit amount', value: formatMoney(contract.defaultVisitAmount) },
                 { label: 'Final credit', value: formatMoney(contract.finalCredit) },
+                // Client UAT CR-013: as entered; nothing is calculated from it.
+                { label: 'Customer PO Value (ex VAT)', value: contract.customerPoValue ? formatMoney(contract.customerPoValue) : 'Not entered' },
                 { label: 'Billing basis', value: contract.billingBasis ? BILLING_BASIS_LABELS[contract.billingBasis] : 'Not set' },
                 { label: 'Annual billing amount', value: formatMoney(contract.selectedBillingAmount ?? null) },
                 { label: 'Total of visit amounts', value: formatMoney(schedule.scheduledTotal) },

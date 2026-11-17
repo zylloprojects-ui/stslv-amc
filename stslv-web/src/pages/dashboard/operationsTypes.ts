@@ -98,6 +98,26 @@ export interface OperationsDashboard {
   paymentTrend: { months: PaymentTrendMonth[] } | null
   /** The Current Year (YTD) row. Null without schedule or execution view; absent from an older API (the row is then not shown). */
   yearToDate?: YearToDateServices | null
+  /** The Overall Till Date row (client UAT CR-001). Same rule as yearToDate; absent from an older API. */
+  tillDate?: TillDateServices | null
+  /** The Invoice No. split of the YTD and Till Date periods (CR-001, CR-004). Null without Invoice Tracking view. */
+  periodInvoices?: { yearToDate: PeriodInvoiceFigures; tillDate: PeriodInvoiceFigures } | null
+}
+
+/** The Invoice No. split of a period's services, the same rule as the Current Month cards. */
+export type PeriodInvoiceFigures = PaymentFigures['scheduledThisMonth']
+
+/**
+ * Overall Till Date (CR-001): counted services scheduled on or before Oman's today, across every contract year (the
+ * backlog included, visits ahead not). pending = due - completed; overdue is part of pending.
+ */
+export interface TillDateServices {
+  from: null
+  to: string
+  due: number
+  completed: number
+  pending: number
+  overdue: number
 }
 
 /**
@@ -113,9 +133,11 @@ export interface YearToDateServices {
   overdue: number
 }
 
-/** What a Dashboard card reads: the shared KPI figures, and the Dashboard-only YTD figures (AMC Management has none). */
+/** What a Dashboard card reads: the shared KPI figures, and the Dashboard-only period figures (AMC Management has none). */
 export interface DashboardKpiSource extends SharedKpiSource {
   yearToDate?: YearToDateServices | null
+  tillDate?: TillDateServices | null
+  periodInvoices?: OperationsDashboard['periodInvoices']
 }
 
 export interface CalendarDay {

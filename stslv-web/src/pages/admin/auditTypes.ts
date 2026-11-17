@@ -91,7 +91,21 @@ export const moduleLabel = (code: string) => MODULE_LABELS[code] ?? sentence(cod
 // A module's current name. The stored action keeps its original code, so audit history stays valid.
 const RENAMED_ACTIONS: Record<string, string> = { services_sales: 'service_sales', deletion_log: 'recycle_bin' }
 
+/**
+ * The visit field of migration 0110 was labelled "Sales Engineer Name" until the client UAT of 2026-11-16 and is the
+ * Service Engineer since (the same column; values are never rewritten). Its stored action and field codes keep the old
+ * name, so they are shown with both names: an entry made before the rename is not presented as something it may not be.
+ */
+const FORMERLY_SALES_ENGINEER_NAME = 'Service Engineer (formerly “Sales Engineer Name”)'
+const ACTION_LABELS: Record<string, string> = { 'amc_visit.sales_engineer_name_changed': `AMC visit ${FORMERLY_SALES_ENGINEER_NAME} changed` }
+const FIELD_LABELS: Record<string, string> = {
+  salesEngineerName: FORMERLY_SALES_ENGINEER_NAME,
+  // Client UAT CR-013 (0118).
+  customerPoValue: 'Customer PO Value (ex VAT)',
+}
+
 export const actionLabel = (action: string) => {
+  if (ACTION_LABELS[action]) return ACTION_LABELS[action]
   const dot = action.indexOf('.')
   const name = RENAMED_ACTIONS[action.slice(0, dot)]
 
@@ -99,7 +113,7 @@ export const actionLabel = (action: string) => {
 }
 
 /** "amc_contracts" -> "Amc contracts"; "contractValue" -> "Contract value". */
-export const fieldLabel = (name: string) => sentence(name)
+export const fieldLabel = (name: string) => FIELD_LABELS[name] ?? sentence(name)
 
 export function changeValue(value: unknown): string {
   if (value === null || value === undefined || value === '') {

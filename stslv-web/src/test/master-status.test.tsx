@@ -140,7 +140,8 @@ describe('Master AMC Status page', () => {
     await screen.findByText('AMC-0007')
     expect(api.find('GET', '/amc/master-status')[0]?.query.has('month')).toBe(false)
 
-    expect(headers()).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Value (Ex VAT)', 'Service Status', 'Invoice No.', 'Quote No.', 'Service Engineer', 'Details'])
+    // Client UAT CR-007 / CR-008: Service Engineer right after Service Status; Sales Engineer (the contract's) stays last.
+    expect(headers()).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Value (Ex VAT)', 'Service Status', 'Service Engineer', 'Invoice No.', 'Quote No.', 'Sales Engineer', 'Details'])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'YELLOW')
     expect(rowOf('AMC-0009')).toHaveAttribute('data-colour', 'BLUE')
@@ -187,7 +188,7 @@ describe('Master AMC Status page', () => {
     const before = api.find('GET', '/amc/master-status').length
     await userEvent.type(screen.getByLabelText('Search'), 'inv-3')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Service Engineer'), '4')
+    await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Service Status'), 'COMPLETED')
@@ -223,7 +224,7 @@ describe('Master AMC Status page', () => {
     const buttons = screen.getAllByRole('button', { name: /Hide Columns/ })
     expect(buttons).toHaveLength(1)
     const filters = within(screen.getByRole('form', { name: 'Filters' }))
-    expect(filters.getByRole('button', { name: 'Hide Columns · 10 of 10 shown' })).toBe(buttons[0])
+    expect(filters.getByRole('button', { name: 'Hide Columns · 11 of 11 shown' })).toBe(buttons[0])
     expect(filters.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
     expect(filters.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
 
@@ -241,14 +242,14 @@ describe('Master AMC Status page', () => {
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Value (Ex VAT)' }))
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Engineer' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
     expect(headers()).not.toContain('Value (Ex VAT)')
-    expect(headers()).not.toContain('Service Engineer')
+    expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(within(rowOf('AMC-0010')).getByRole('button', { name: /Details of AMC-0010/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Hide Columns · 8 of 10 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 9 of 11 shown' })).toBeInTheDocument()
 
     // Remembered for this user.
     view.unmount()
@@ -260,7 +261,7 @@ describe('Master AMC Status page', () => {
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset to Default' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
     expect(headers()).toContain('Value (Ex VAT)')
-    expect(headers()).toContain('Service Engineer')
+    expect(headers()).toContain('Sales Engineer')
   })
 
   it('downloads Excel and PDF with the applied filters and the hidden columns', async () => {
@@ -530,6 +531,28 @@ describe('Invoice Acknowledged column', () => {
 
     await screen.findByText('AMC-0021')
     expect(headers()).not.toContain('Invoice Acknowledged')
-    expect(screen.getByRole('button', { name: /Hide Columns · 10 of 10 shown/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Hide Columns · 11 of 11 shown/ })).toBeInTheDocument()
+  })
+})
+
+// Client UAT 2026-11-16 (CR-007, CR-008).
+describe('Sales Engineer and Service Engineer', () => {
+  it('shows the contract’s Sales Engineer and each service’s own Service Engineer, right after Service Status', async () => {
+    statusApi(VIEWER, [
+      makeItem({ serviceEngineer: 'Vijay Service' }),
+      makeItem({ id: '2', reference: 'AMC-0008', service: { sequenceNo: 2, cycleNo: 1, serviceCode: 'Q2' }, serviceEngineer: 'Ravi Field' }),
+      makeItem({ id: '3', reference: 'AMC-0009', service: { sequenceNo: 3, cycleNo: 1, serviceCode: 'Q3' }, serviceEngineer: null }),
+    ])
+    renderPage()
+    await screen.findByText('Vijay Service')
+
+    const columns = headers()
+    expect(columns.indexOf('Service Engineer')).toBe(columns.indexOf('Service Status') + 1)
+    const cellOf = (reference: string, heading: string) => [...rowOf(reference).querySelectorAll('td')][columns.indexOf(heading)] as HTMLElement
+    // Same contract, so the same Sales Engineer; a different engineer on each service, none invented where not entered.
+    for (const reference of ['AMC-0007', 'AMC-0008', 'AMC-0009']) expect(cellOf(reference, 'Sales Engineer')).toHaveTextContent('Esha Engineer')
+    expect(cellOf('AMC-0007', 'Service Engineer')).toHaveTextContent('Vijay Service')
+    expect(cellOf('AMC-0008', 'Service Engineer')).toHaveTextContent('Ravi Field')
+    expect(cellOf('AMC-0009', 'Service Engineer')).toHaveTextContent('—')
   })
 })

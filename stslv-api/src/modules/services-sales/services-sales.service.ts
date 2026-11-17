@@ -10,6 +10,7 @@ import { readStoredFile } from "../attachments/attachments.service";
 import type { ContractStatus, VisitStatus } from "../amc/amc.constants";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import { SERVICE_IN_SCOPE } from "../amc/service-scope";
+import { hasServiceEngineer, serviceEngineerSql } from "../amc/service-engineer";
 import type { ListServicesSalesQuery, SalesStatus, SaveQuotationInput, ServiceStatus } from "./services-sales.schemas";
 
 // The Services Sales page: one row per scheduled maintenance visit (amc_visits),
@@ -66,8 +67,9 @@ const SERVICE_REPORT_SQL = `(
  * The row columns. `storedReference` is whether migration 0105 stores the AMC Reference Number; `reports` is whether
  * migration 0104 holds service reports.
  */
-const selectSql = (storedReference: boolean, reports: boolean) => `
+const selectSql = (storedReference: boolean, reports: boolean, serviceEngineer = false) => `
   SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
+         ${serviceEngineerSql(serviceEngineer)} AS service_engineer,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
@@ -108,6 +110,7 @@ interface SalesRow {
   service_report_no: string | null;
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
+  service_engineer: string | null;
   quotation_no: string | null;
   quotation_updated_at: Date | null;
   quotation_updated_by_name: string | null;
@@ -148,7 +151,13 @@ export interface ServicesSalesItem {
   completedDate: string | null;
   /** amc_visits.service_report_no as entered on Service Status. Read only on this page. */
   serviceReportNo: string | null;
+  /** The contract's Sales Engineer master link: the person who brought the AMC (client UAT CR-015). */
   salesEngineer: { id: string; name: string } | null;
+  /**
+   * The engineer who performed this service, as entered on Service Status (CR-016, see amc/service-engineer.ts), so the
+   * sales team can ask about the faults before quoting. Null when not entered.
+   */
+  serviceEngineer: string | null;
   quotationNo: string | null;
   quotationUpdatedAt: string | null;
   quotationUpdatedBy: string | null;
@@ -199,6 +208,7 @@ function toItem(row: SalesRow, access: ServicesSalesAccess = NO_EXTRA_ACCESS): S
     completedDate: row.completed_date,
     serviceReportNo: row.service_report_no,
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
+    serviceEngineer: row.service_engineer,
     quotationNo: row.quotation_no,
     quotationUpdatedAt: row.quotation_updated_at ? row.quotation_updated_at.toISOString() : null,
     quotationUpdatedBy: row.quotation_updated_by_name,
@@ -318,13 +328,13 @@ async function kpis(where: string, params: unknown[]): Promise<ServicesSalesKpis
 }
 
 export async function listServicesSales(query: ListServicesSalesQuery, access: ServicesSalesAccess = NO_EXTRA_ACCESS) {
-  const [storedReference, reports] = await Promise.all([hasStoredReference(), serviceReportsAvailable()]);
+  const [storedReference, reports, serviceEngineer] = await Promise.all([hasStoredReference(), serviceReportsAvailable(), hasServiceEngineer()]);
   const { where, params } = filterSql(query, storedReference);
   const figures = await kpis(where, params);
   // Never computed, so never sent, for a user who may not see contract values.
   const amcValue = access.amcValue ? await amcValueTotal(where, params) : null;
   const rows = await pool.query<SalesRow>(
-    `${selectSql(storedReference, reports)} ${FROM} ${where} ${ORDER}
+    `${selectSql(storedReference, reports, serviceEngineer)} ${FROM} ${where} ${ORDER}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
@@ -353,7 +363,7 @@ export async function listAllServicesSales(filters: ServicesSalesFilters, checkS
 
   checkSize(figures.total);
 
-  const rows = await pool.query<SalesRow>(`${selectSql(storedReference, await serviceReportsAvailable())} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<SalesRow>(`${selectSql(storedReference, await serviceReportsAvailable(), await hasServiceEngineer())} ${FROM} ${where} ${ORDER}`, params);
 
   const amcValue = access.amcValue ? await amcValueTotal(where, params) : null;
 
@@ -388,8 +398,8 @@ export async function getServicesSalesOptions() {
 }
 
 async function findSalesRow(db: Queryable, id: string): Promise<SalesRow> {
-  const [storedReference, reports] = await Promise.all([hasStoredReference(), serviceReportsAvailable()]);
-  const result = await db.query<SalesRow>(`${selectSql(storedReference, reports)} ${FROM} WHERE v.id = $1`, [id]);
+  const [storedReference, reports, serviceEngineer] = await Promise.all([hasStoredReference(), serviceReportsAvailable(), hasServiceEngineer()]);
+  const result = await db.query<SalesRow>(`${selectSql(storedReference, reports, serviceEngineer)} ${FROM} WHERE v.id = $1`, [id]);
   const row = result.rows[0];
 
   if (!row) throw notFound("AMC visit not found.");

@@ -5,7 +5,19 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { isGrantable } from "../../shared/permission-catalog";
 import { ADMIN_ROLE_CODE, holdsPermission, permissionKey, type Action, type Module, type PermissionKey } from "../../shared/permissions";
-import { BUILT_IN_ROLE_NAMES, dependencyProblem, hasAdminAccess, PRIVILEGED_ROLES_LABEL, isBuiltInRole, isInRoleScope, isPrivilegedRole, isSuperAdmin, roleScope, SECURITY_MODULES } from "../../shared/role-model";
+import {
+  BUILT_IN_ROLE_NAMES,
+  dependencyProblem,
+  hasAdminAccess,
+  PRIVILEGED_ROLES_LABEL,
+  isBuiltInRole,
+  isInRoleScope,
+  isPrivilegedRole,
+  isSuperAdmin,
+  OPERATIONAL_ROLE_CODES,
+  roleScope,
+  SECURITY_MODULES,
+} from "../../shared/role-model";
 import type { AuthContext } from "../auth/access";
 
 export interface Permission {
@@ -96,10 +108,22 @@ function manageReason(auth: AuthContext, row: Pick<RoleRow, "code" | "permission
   return null;
 }
 
-/** Why the signed-in user may not change this role's permissions, or null. Super Admin's own are fixed for everyone. */
+/**
+ * Why the signed-in user may not change this role's permissions, or null. Super Admin's own are fixed for everyone.
+ * Client UAT CR-031 (owner decision 2026-11-17): besides custom roles, Admin may configure the permissions of the
+ * built-in operational roles (Accounts, AMC Sales, AMC Operations Executive, Viewer), with every existing limit: not a
+ * role Admin holds, not one reaching beyond Admin's own access, nothing Admin does not hold itself, and Users & Access
+ * from Super Admin only (setRolePermissions). Super Admin, Admin and the legacy roles stay with Super Admin, and so do
+ * the name, status and existence of every built-in role (manageReason).
+ */
 function lockedReason(auth: AuthContext, row: Pick<RoleRow, "code" | "permissions">): string | null {
   if (row.code === ADMIN_ROLE_CODE) return SUPER_ADMIN_LOCKED;
-  return manageReason(auth, row);
+  if (isSuperAdmin(auth.roles)) return null;
+  if (!canManageRoles(auth)) return ROLE_ADMINISTRATORS_ONLY;
+  if (isBuiltInRole(row.code) && !OPERATIONAL_ROLE_CODES.includes(row.code)) return BUILT_IN_SUPER_ADMIN_ONLY;
+  if (auth.roles.some((role) => role.code === row.code)) return OWN_ROLE;
+  if (!row.permissions.every((permission) => holdsPermission(auth.permissions, keyOf(permission)))) return BEYOND_AUTHORITY;
+  return null;
 }
 
 /** A short fingerprint of a permission set, independent of order. */

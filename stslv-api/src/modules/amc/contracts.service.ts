@@ -39,6 +39,7 @@ import type {
   UpdateContractInput,
   BillingBasis,
 } from "./amc.schemas";
+import { normalizeMoney } from "./amc.schemas";
 import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 interface ContractRow {
@@ -50,6 +51,8 @@ interface ContractRow {
   client_name: string;
   client_is_active: boolean;
   responsible_engineer: string | null;
+  sales_engineer_id: string | null;
+  sales_engineer_link_name: string | null;
   valid_from: string;
   valid_to: string;
   system_description: string;
@@ -58,6 +61,7 @@ interface ContractRow {
   final_credit: string | null;
   billing_basis: BillingBasis | null;
   custom_billing_value: string | null;
+  customer_po_value: string | null;
   maintenance_frequency: string;
   custom_months: number[] | null;
   default_visit_amount: string | null;
@@ -96,6 +100,12 @@ export interface Contract {
   versionRootId: string;
   client: { id: string; name: string; isActive: boolean };
   responsibleEngineer: string | null;
+  /**
+   * The contract's Sales Engineer: its link to the Sales Engineer master list (migration 0070), the person who brought
+   * the AMC (client UAT 2026-11-16, CR-005/CR-006). Null when the contract is not linked or the database has no link.
+   * Read only here; it is set through salesEngineerId on create, edit or the masters panel.
+   */
+  salesEngineer: { id: string; name: string } | null;
   validFrom: string;
   validTo: string;
   systemDescription: string;
@@ -108,6 +118,11 @@ export interface Contract {
   billingBasis: BillingBasis | null;
   /** Entered by hand when the basis is CUSTOM. */
   customBillingValue: string | null;
+  /**
+   * The customer's purchase order amount, OMR excluding VAT (migration 0118, client UAT CR-013), as entered; null when
+   * none was entered (never derived from the annual value or the term). Shown as "AMC Value (ex VAT)" on Accounts.
+   */
+  customerPoValue: string | null;
   /** The stored amount the chosen basis names; null when no basis is set or the amount is empty. Nothing is calculated. */
   selectedBillingAmount: string | null;
   /** A maintenance frequency code (migration 0076: the frequency master; before it, one of the four built-in codes). */
@@ -171,15 +186,33 @@ export interface ScheduleChange {
   kept: number;
 }
 
+/** The Sales Engineer link of migration 0070. Without it the contract shows no linked engineer. */
+const hasEngineerLinks = () => schemaHas(["amc_contracts.sales_engineer_id", "sales_engineers"]);
+
+/** The linked Sales Engineer's name, or NULL. Expects the amc_contracts alias "c". */
+const linkedEngineerNameSql = (withEngineer: boolean) =>
+  withEngineer ? "(SELECT e.name FROM sales_engineers e WHERE e.id = c.sales_engineer_id)" : "NULL::text";
+
+/**
+ * The Sales Engineer the register shows (CR-006): the linked master record, else the name typed on the contract
+ * (older and imported contracts have no link). Nothing is copied or stored; this only chooses what is displayed.
+ */
+const shownEngineerSql = (withEngineer: boolean) => `COALESCE(${linkedEngineerNameSql(withEngineer)}, c.responsible_engineer)`;
+
 // The lateral join keeps the per-contract visit figures in one place for the
 // list and the detail view. The custom months come from migration 0076; on a
 // database without it they are empty.
-const contractSelect = (withMonths: boolean, storedReference: boolean) => `
+const contractSelect = (withMonths: boolean, storedReference: boolean, withEngineer: boolean) => `
   SELECT c.id, ${rawReferenceSql("c", storedReference)} AS amc_reference, ${versionSql("c")} AS contract_version,
          COALESCE(to_jsonb(c) ->> 'version_root_id', c.id::text) AS version_root_id,
          c.client_id, cl.name AS client_name, cl.is_active AS client_is_active,
-         c.responsible_engineer, c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
+         c.responsible_engineer,
+         ${withEngineer ? "c.sales_engineer_id" : "NULL::bigint"} AS sales_engineer_id,
+         ${linkedEngineerNameSql(withEngineer)} AS sales_engineer_link_name,
+         c.valid_from::text AS valid_from, c.valid_to::text AS valid_to,
          c.system_description, c.description, c.contract_value, c.final_credit, c.billing_basis, c.custom_billing_value,
+         -- 0118; read through to_jsonb so a database without it still works (null).
+         to_jsonb(c) ->> 'customer_po_value' AS customer_po_value,
          c.maintenance_frequency,
          ${withMonths ? "(SELECT array_agg(m.month::int ORDER BY m.month) FROM amc_contract_custom_months m WHERE m.amc_contract_id = c.id)" : "NULL::int[]"} AS custom_months,
          c.default_visit_amount, c.status,
@@ -210,6 +243,7 @@ const contractSelect = (withMonths: boolean, storedReference: boolean) => `
 /**
  * A visit is "locked" once anyone has acted on it. Schedule regeneration never
  * changes or removes a locked visit. Expects the amc_visits alias "v".
+ * The columns of the visit itself; visitLockedSql() adds what is recorded about it elsewhere.
  */
 export const VISIT_LOCKED_SQL = `(
   v.status <> 'SCHEDULED'
@@ -226,6 +260,37 @@ export const VISIT_LOCKED_SQL = `(
   OR v.notes IS NOT NULL
 )`;
 
+/**
+ * The full "acted on" rule, used by every schedule change that may remove a visit (a term change and Regenerate): the
+ * visit's own columns (VISIT_LOCKED_SQL) and, as this database has them (P1 after the client UAT, audit finding S-02):
+ *   * a Service Engineer typed on Service Status (0110);
+ *   * any document attached to the visit, a Service Report uploaded before completion included, current or replaced (0071/0104);
+ *   * any Zoho invoice allocation, even of a cancelled invoice (0060), and any import link (0031);
+ *   * any Invoice Acknowledgement record or acknowledgement-invoice link (0112, 0114), which outlive a cleared Invoice No.
+ * Such a visit is kept as it is; a change that would put it outside the validity is refused, as for any acted-on visit.
+ * Nothing is added or rewritten. Expects the amc_visits alias "v".
+ */
+export async function visitLockedSql(): Promise<string> {
+  const [engineer, attachments, allocations, imports, acknowledgements, ackServices] = await Promise.all([
+    schemaHas(["amc_visits.sales_engineer_name"]),
+    schemaHas(["attachments"]),
+    schemaHas(["invoice_allocations"]),
+    schemaHas(["legacy_import_rows.amc_visit_id"]),
+    schemaHas(["invoice_acknowledgements"]),
+    schemaHas(["ack_invoice_services"]),
+  ]);
+  const extra = [
+    engineer ? "v.sales_engineer_name IS NOT NULL" : null,
+    attachments ? "EXISTS (SELECT 1 FROM attachments a WHERE a.entity_type = 'amc_visits' AND a.entity_id = v.id)" : null,
+    allocations ? "EXISTS (SELECT 1 FROM invoice_allocations al WHERE al.amc_visit_id = v.id)" : null,
+    imports ? "EXISTS (SELECT 1 FROM legacy_import_rows lr WHERE lr.amc_visit_id = v.id)" : null,
+    acknowledgements ? "EXISTS (SELECT 1 FROM invoice_acknowledgements ia WHERE ia.amc_visit_id = v.id)" : null,
+    ackServices ? "EXISTS (SELECT 1 FROM ack_invoice_services s WHERE s.amc_visit_id = v.id)" : null,
+  ].filter((condition): condition is string => condition !== null);
+
+  return extra.length === 0 ? VISIT_LOCKED_SQL : `(${VISIT_LOCKED_SQL} OR ${extra.join(" OR ")})`;
+}
+
 const EDITABLE_FIELDS = [
   "clientId",
   "responsibleEngineer",
@@ -241,7 +306,16 @@ const EDITABLE_FIELDS = [
   "customMonths",
   "defaultVisitAmount",
   "notes",
+  // 0118 (CR-013): a record only, never part of the schedule or any calculation.
+  "customerPoValue",
 ] as const;
+
+/** The Customer PO Value column of migration 0118. */
+const hasCustomerPo = () => schemaHas(["amc_contracts.customer_po_value"]);
+
+async function assertCustomerPoAvailable(): Promise<void> {
+  if (!(await hasCustomerPo())) throw featureUnavailable();
+}
 
 const SCHEDULE_FIELDS = ["validFrom", "validTo", "maintenanceFrequency", "customMonths"] as const;
 
@@ -286,6 +360,7 @@ function toContract(row: ContractRow): Contract {
     versionRootId: row.version_root_id,
     client: { id: row.client_id, name: row.client_name, isActive: row.client_is_active },
     responsibleEngineer: row.responsible_engineer,
+    salesEngineer: row.sales_engineer_id && row.sales_engineer_link_name ? { id: String(row.sales_engineer_id), name: row.sales_engineer_link_name } : null,
     validFrom: row.valid_from,
     validTo: row.valid_to,
     systemDescription: row.system_description,
@@ -294,6 +369,7 @@ function toContract(row: ContractRow): Contract {
     finalCredit: row.final_credit,
     billingBasis: row.billing_basis,
     customBillingValue: row.custom_billing_value,
+    customerPoValue: row.customer_po_value === null ? null : normalizeMoney(row.customer_po_value),
     selectedBillingAmount: selectedAmount(row),
     maintenanceFrequency: row.maintenance_frequency,
     customMonths: row.custom_months ?? [],
@@ -338,6 +414,7 @@ function valuesOf(contract: Contract): ContractValues {
     customMonths: monthsKey(contract.customMonths),
     defaultVisitAmount: contract.defaultVisitAmount,
     notes: contract.notes,
+    customerPoValue: contract.customerPoValue,
   };
 }
 
@@ -388,7 +465,7 @@ async function findContract(db: Queryable, id: string, lock = false): Promise<Co
     await db.query("SELECT id FROM amc_contracts WHERE id = $1 FOR UPDATE", [id]);
   }
 
-  const result = await db.query<ContractRow>(`${contractSelect(await hasFrequencyRules(), await hasStoredReference())} WHERE c.id = $1`, [id]);
+  const result = await db.query<ContractRow>(`${contractSelect(await hasFrequencyRules(), await hasStoredReference(), await hasEngineerLinks())} WHERE c.id = $1`, [id]);
   const row = result.rows[0];
 
   if (!row) {
@@ -434,12 +511,13 @@ const DEFAULT_CONTRACT_ORDER = "lower(cl.name), c.valid_from DESC, c.id";
  * and dates as dates; text ignores case; status follows the workflow (Draft, Active, Expired, Cancelled). Empty values
  * (no engineer, no Final Credit) come last in either direction.
  */
-function contractOrderSql(sort: ListContractsQuery["sort"], direction: "asc" | "desc", storedReference: boolean): string {
+function contractOrderSql(sort: ListContractsQuery["sort"], direction: "asc" | "desc", storedReference: boolean, withEngineer: boolean): string {
   if (!sort) return `ORDER BY ${DEFAULT_CONTRACT_ORDER}`;
   const expressions: Record<NonNullable<ListContractsQuery["sort"]>, string> = {
     reference: `lower(${referenceSql("c", storedReference)})`,
     client: "lower(cl.name)",
-    engineer: "lower(NULLIF(btrim(c.responsible_engineer), ''))",
+    // The Sales Engineer the column shows (CR-006).
+    engineer: `lower(NULLIF(btrim(${shownEngineerSql(withEngineer)}), ''))`,
     validFrom: "c.valid_from",
     validTo: "c.valid_to",
     contractValue: "c.contract_value",
@@ -485,11 +563,13 @@ export async function listContracts(query: ListContractsQuery) {
     conditions.push(`c.valid_from <= make_date(${p}, 12, 31) AND c.valid_to >= make_date(${p}, 1, 1)`);
   }
   const storedReference = await hasStoredReference();
+  const withEngineer = await hasEngineerLinks();
   if (query.search) {
     params.push(`%${escapeLike(query.search)}%`);
     const p = `$${params.length}`;
     conditions.push(
-      `(${referenceSql("c", storedReference)} ILIKE ${p} OR cl.name ILIKE ${p} OR c.system_description ILIKE ${p} OR c.description ILIKE ${p} OR c.responsible_engineer ILIKE ${p})`
+      `(${referenceSql("c", storedReference)} ILIKE ${p} OR cl.name ILIKE ${p} OR c.system_description ILIKE ${p} OR c.description ILIKE ${p} OR c.responsible_engineer ILIKE ${p}` +
+        `${withEngineer ? ` OR ${linkedEngineerNameSql(true)} ILIKE ${p}` : ""})`
     );
   }
 
@@ -503,8 +583,8 @@ export async function listContracts(query: ListContractsQuery) {
     params
   );
   const rows = await pool.query<ContractRow>(
-    `${contractSelect(await hasFrequencyRules(), storedReference)} ${where}
-     ${contractOrderSql(query.sort, query.direction, storedReference)}
+    `${contractSelect(await hasFrequencyRules(), storedReference, withEngineer)} ${where}
+     ${contractOrderSql(query.sort, query.direction, storedReference, withEngineer)}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
@@ -633,7 +713,7 @@ interface ExistingVisitRow {
 async function loadExistingVisits(db: Queryable, contractId: string, lock: boolean): Promise<ExistingVisit[]> {
   const result = await db.query<ExistingVisitRow>(
     `SELECT v.id, v.sequence_no, v.period_start::text AS period_start, v.period_end::text AS period_end,
-            v.scheduled_date::text AS scheduled_date, v.status, ${VISIT_LOCKED_SQL} AS locked
+            v.scheduled_date::text AS scheduled_date, v.status, ${await visitLockedSql()} AS locked
      FROM amc_visits v
      WHERE v.amc_contract_id = $1
      ORDER BY v.period_start${lock ? " FOR UPDATE" : ""}`,
@@ -678,11 +758,11 @@ function planForTerms(current: Terms, proposed: Terms, existing: ExistingVisit[]
     // Every period is counted from the start date. Moving it would shift all
     // periods under visits that have already been worked on.
     blockedReason =
-      `Valid from cannot be changed: ${acted.length} visit(s) have already been worked on, edited or rescheduled. ` +
+      `Valid from cannot be changed: ${acted.length} visit(s) have already been worked on, edited or rescheduled, or have a Service Engineer, a document or an invoice record. ` +
       "Record a new contract for different terms.";
   } else if (plan.blocking.length > 0) {
     blockedReason =
-      `${plan.blocking.length} visit(s) that have been worked on, edited or rescheduled fall outside the new validity period ` +
+      `${plan.blocking.length} visit(s) that have been worked on, edited or rescheduled, or that have a Service Engineer, a document or an invoice record, fall outside the new validity period ` +
       `(${plan.blocking.map((visit) => visit.periodStart).join(", ")}). Cancel those visits first, or keep them inside the validity period.`;
   }
 
@@ -729,7 +809,7 @@ async function applyPlan(
     // untouched at this moment is ever deleted.
     const removed = await db.query(
       `DELETE FROM amc_visits v
-       WHERE v.amc_contract_id = $1 AND v.id = ANY($2::bigint[]) AND NOT ${VISIT_LOCKED_SQL}`,
+       WHERE v.amc_contract_id = $1 AND v.id = ANY($2::bigint[]) AND NOT ${await visitLockedSql()}`,
       [contract.id, plan.toRemove.map((visit) => visit.id)]
     );
 
@@ -1106,10 +1186,10 @@ async function assertRenewalEngineerChosen(db: Queryable, sourceId: string): Pro
   const previous = result.rows[0];
   const message =
     previous && !previous.is_active
-      ? `${previous.name}, the service engineer of the contract being renewed, is no longer active. Select an active service engineer.`
-      : "Select an active service engineer for the renewal.";
+      ? `${previous.name}, the sales engineer of the contract being renewed, is no longer active. Select an active sales engineer.`
+      : "Select an active sales engineer for the renewal.";
 
-  throw validationError("Select an active service engineer for the renewal.", [{ field: "salesEngineerId", message }]);
+  throw validationError("Select an active sales engineer for the renewal.", [{ field: "salesEngineerId", message }]);
 }
 
 async function linkRenewal(db: Queryable, auth: AuthContext, source: Contract, renewal: Contract, notes: string | null): Promise<void> {
@@ -1328,6 +1408,12 @@ function insertContract(
     );
     const id = (inserted.rows[0] as { id: string }).id;
 
+    // The Customer PO Value (0118, CR-013), only when one is entered: nothing is set for a contract without one.
+    if (input.customerPoValue) {
+      await assertCustomerPoAvailable();
+      await client.query("UPDATE amc_contracts SET customer_po_value = $1 WHERE id = $2", [input.customerPoValue, id]);
+    }
+
     await writeCustomMonths(client, auth, id, months);
 
     const created = await findContract(client, id, true);
@@ -1338,8 +1424,13 @@ function insertContract(
       module: "AMC_CONTRACTS",
       entityType: "amc_contracts",
       entityId: id,
-      description: `AMC contract ${created.amcReference}${created.contractVersion > 1 ? ` version ${created.contractVersion}` : ""} for "${created.client.name}" (${created.systemDescription}) created as ${created.status}.`,
-      metadata: { amcReference: created.amcReference, ...(created.contractVersion > 1 ? { contractVersion: created.contractVersion, versionRootId: created.versionRootId } : {}) },
+      // The Customer PO Value is named in the description too, so the Audit Log page shows it (CR-013).
+      description: `AMC contract ${created.amcReference}${created.contractVersion > 1 ? ` version ${created.contractVersion}` : ""} for "${created.client.name}" (${created.systemDescription}) created as ${created.status}.${created.customerPoValue !== null ? ` Customer PO Value (ex VAT) ${created.customerPoValue}.` : ""}`,
+      metadata: {
+        amcReference: created.amcReference,
+        ...(created.contractVersion > 1 ? { contractVersion: created.contractVersion, versionRootId: created.versionRootId } : {}),
+        ...(created.customerPoValue !== null ? { customerPoValue: created.customerPoValue } : {}),
+      },
     });
 
     if (source) {
@@ -1508,6 +1599,11 @@ function updateContractFields(
     if ("customMonths" in changes) {
       await client.query("DELETE FROM amc_contract_custom_months WHERE amc_contract_id = $1", [id]);
       await writeCustomMonths(client, auth, id, monthsOf(afterValues.customMonths));
+    }
+    // CR-013: recorded in this update's changes (and so in the Audit Log) like every other field.
+    if ("customerPoValue" in changes) {
+      await assertCustomerPoAvailable();
+      await client.query("UPDATE amc_contracts SET customer_po_value = $1 WHERE id = $2", [afterValues.customerPoValue, id]);
     }
 
     const updated = await findContract(client, id);

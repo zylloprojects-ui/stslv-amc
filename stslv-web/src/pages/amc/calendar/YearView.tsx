@@ -157,20 +157,29 @@ function MonthCard({ month, figures, isCurrent, onOpen, download }: MonthCardPro
           <span className="text-3xl font-extrabold tabular-nums text-[#0b3b66]">{figures.services}</span> {figures.services === 1 ? 'service' : 'services'}
         </p>
 
+        {/* Client UAT 2026-11-16 (CR-024 to CR-027): Scheduled value; services completed and not completed (counts of
+            the month's services by scheduled date); then Paid and Unpaid, the reference status from the manual
+            Invoice No. (counts, with the services' values). The Zoho invoiced figures are no longer shown here. */}
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
           <dt className="text-slate-500">Scheduled value</dt>
           <dd className="text-right font-semibold tabular-nums text-slate-900">
             {formatMoney(figures.scheduledValue)}
             {figures.amountMissing > 0 && <span className="block text-xs font-medium text-amber-800">{figures.amountMissing} without amount</span>}
           </dd>
+          <dt className="text-slate-500">No. of services completed</dt>
+          <dd className="text-right font-semibold tabular-nums text-emerald-800">{figures.completed}</dd>
+          <dt className="text-slate-500">No. of services not completed</dt>
+          <dd className={cx('text-right tabular-nums', figures.notCompleted > 0 ? 'font-semibold text-amber-800' : 'text-slate-700')}>{figures.notCompleted}</dd>
           <dt className="text-slate-500">Paid</dt>
-          <dd className="text-right font-semibold tabular-nums text-emerald-800">{figures.paid}</dd>
+          <dd className="text-right font-semibold tabular-nums text-emerald-800" title="Invoice No. entered: a reference status, not verified payment">
+            {figures.paid}
+            {figures.paid > 0 && <span className="block text-xs font-medium text-slate-500">{formatMoney(figures.paidValue)}</span>}
+          </dd>
           <dt className="text-slate-500">Unpaid</dt>
-          <dd className={cx('text-right tabular-nums', figures.unpaid > 0 ? 'font-semibold text-[#1479BD]' : 'text-slate-700')}>{figures.unpaid}</dd>
-          <dt className="text-slate-500">Zoho invoiced</dt>
-          <dd className="text-right tabular-nums text-emerald-800">{figures.invoiced}</dd>
-          <dt className="text-slate-500">Zoho not yet invoiced</dt>
-          <dd className={cx('text-right tabular-nums', figures.notYetInvoiced > 0 ? 'font-semibold text-amber-800' : 'text-slate-700')}>{figures.notYetInvoiced}</dd>
+          <dd className={cx('text-right tabular-nums', figures.unpaid > 0 ? 'font-semibold text-[#1479BD]' : 'text-slate-700')} title="No Invoice No. entered">
+            {figures.unpaid}
+            {figures.unpaid > 0 && <span className="block text-xs font-medium text-slate-500">{formatMoney(figures.unpaidValue)}</span>}
+          </dd>
         </dl>
 
         <ul aria-label={`Visit status in ${monthLabel(month)}`} className="mt-3 flex flex-wrap gap-1">

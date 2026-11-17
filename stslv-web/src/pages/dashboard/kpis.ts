@@ -31,7 +31,7 @@ export interface DashboardReading {
   hint?: string
 }
 
-export type KpiRowId = 'portfolio' | 'month' | 'overall' | 'ytd'
+export type KpiRowId = 'portfolio' | 'month' | 'overall' | 'ytd' | 'tillDate'
 
 export interface KpiDefinition {
   /** Unique across all twelve cards: rows 2 and 3 share labels, never ids. */
@@ -58,6 +58,9 @@ const INVOICE_HINT =
 const YTD_HINT =
   'Services scheduled from January 1 of the current year through today (Oman time), completed or not. Visits after today are not counted. Cancelled visits, contracts in the Recycle Bin and the open unpaid visits of cancelled contracts are not counted, as on Current Month and Overall.'
 
+const TILL_DATE_HINT =
+  'Services scheduled from the start of each contract through today (Oman time), in every year, completed or not: the pending work of earlier months and years is included, visits after today are not. Overall Contract also counts the visits still ahead. Cancelled visits, contracts in the Recycle Bin and the open unpaid visits of cancelled contracts are not counted, as on every other row.'
+
 const plural = (count: number, one: string, many: string) => `${formatCount(count)} ${count === 1 ? one : many}`
 
 /**
@@ -81,11 +84,15 @@ export function monthName(asOf: string): string {
   return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 }
 
+// The order the client set at UAT on 2026-11-16 (CR-001 to CR-004): the existing first row (AMC Portfolio) stays first,
+// then Current Month, Current Year (YTD), the new Overall Till Date, and Overall Contract (the former "Overall", whose
+// calculation is unchanged) last.
 export const KPI_ROWS: KpiRow[] = [
   { id: 'portfolio', title: 'AMC Portfolio', subtitle: () => 'Active contracts' },
   { id: 'month', title: 'Current Month', subtitle: (data) => (data ? `Services scheduled in ${monthName(data.asOf)}` : 'Services scheduled this month') },
-  { id: 'overall', title: 'Overall', subtitle: () => 'All service records, earlier years and visits ahead' },
   { id: 'ytd', title: 'Current Year (YTD)', subtitle: () => 'Services scheduled from January 1 through today.' },
+  { id: 'tillDate', title: 'Overall Till Date', subtitle: () => 'Services from each contract’s start through today, all years; visits ahead not counted.' },
+  { id: 'overall', title: 'Overall Contract', subtitle: () => 'Every service of the contracts, start to end, including visits ahead.' },
 ]
 
 const contractsVisible = (canView: (module: Module) => boolean) => canView('AMC_CONTRACTS')
@@ -262,53 +269,88 @@ export const KPIS: KpiDefinition[] = [
       },
   },
 
-  // Row 4 — Current Year (YTD): services scheduled from January 1 through today (Oman). Dashboard only.
-  {
-    id: 'ytd-due',
-    row: 'ytd',
-    label: 'Services Due',
-    icon: 'calendar',
-    visible: servicesVisible,
-    read: ({ yearToDate }) =>
-      yearToDate
-        ? {
-            value: formatCount(yearToDate.due),
-            detail: 'Scheduled this year through today',
-            hint: YTD_HINT,
-          }
-        : null,
-  },
-  {
-    id: 'ytd-completed',
-    row: 'ytd',
-    label: 'Services Completed',
-    icon: 'shield',
-    visible: servicesVisible,
-    read: ({ yearToDate }) =>
-      yearToDate
-        ? {
-            value: formatCount(yearToDate.completed),
-            detail: `of ${formatCount(yearToDate.due)} due this year`,
-            hint: YTD_HINT,
-          }
-        : null,
-  },
-  {
-    id: 'ytd-pending',
-    row: 'ytd',
-    label: 'Services Pending',
-    icon: 'execution',
-    visible: servicesVisible,
-    read: ({ yearToDate }) =>
-      yearToDate
-        ? {
-            value: formatCount(yearToDate.pending),
-            detail: yearToDate.overdue > 0 ? `Not yet completed · ${formatCount(yearToDate.overdue)} overdue` : 'Not yet completed',
-            hint: `${YTD_HINT} Pending = Due − Completed: Scheduled, In Progress or Postponed. Overdue: Scheduled or Postponed before today.`,
-          }
-        : null,
-  },
+  // Rows 3 and 4 — Current Year (YTD) and Overall Till Date (client UAT CR-004, CR-001): the same fields as the
+  // other rows (services, pending, Invoices Generated / Not Generated). Dashboard only.
+  ...periodCards('ytd', 'yearToDate', { services: 'Services YTD', servicesDetail: 'scheduled this year through today', hint: YTD_HINT }),
+  ...periodCards('tillDate', 'tillDate', { services: 'Services Till Date', servicesDetail: 'scheduled through today, all years', hint: TILL_DATE_HINT }),
 ]
+
+/**
+ * The four cards of a dated period row (YTD, Overall Till Date), in the columns of the other rows: services (with how
+ * many are completed), pending (with how many are overdue), Invoices Generated and Not Generated. The API counts every
+ * figure over the same services, so Generated + Not Generated = the services figure.
+ */
+function periodCards(row: 'ytd' | 'tillDate', source: 'yearToDate' | 'tillDate', text: { services: string; servicesDetail: string; hint: string }): KpiDefinition[] {
+  const counts = (data: DashboardKpiSource) => (source === 'yearToDate' ? data.yearToDate : data.tillDate)
+  const invoices = (data: DashboardKpiSource) => data.periodInvoices?.[source]
+  // The ids of the YTD row are kept from its first version (2026-11-11).
+  const prefix = row === 'ytd' ? 'ytd' : 'till-date'
+
+  return [
+    {
+      id: row === 'ytd' ? 'ytd-due' : 'till-date-services',
+      row,
+      label: text.services,
+      icon: 'calendar',
+      visible: servicesVisible,
+      read: (data) => {
+        const figures = counts(data)
+        return figures ? { value: formatCount(figures.due), detail: `${formatCount(figures.completed)} completed · ${text.servicesDetail}`, hint: text.hint } : null
+      },
+    },
+    {
+      id: `${prefix}-pending`,
+      row,
+      label: 'Services Pending',
+      icon: 'execution',
+      visible: servicesVisible,
+      read: (data) => {
+        const figures = counts(data)
+        return figures
+          ? {
+              value: formatCount(figures.pending),
+              detail: figures.overdue > 0 ? `Not yet completed · ${formatCount(figures.overdue)} overdue` : 'Not yet completed',
+              hint: `${text.hint} Pending = services − completed: Scheduled, In Progress or Postponed. Overdue: Scheduled or Postponed before today.`,
+            }
+          : null
+      },
+    },
+    {
+      id: `${prefix}-invoiced`,
+      row,
+      label: 'Invoices Generated',
+      icon: 'invoice',
+      visible: invoicesVisible,
+      read: (data) => {
+        const figures = invoices(data)
+        return figures
+          ? {
+              value: formatCount(figures.withInvoiceNo),
+              detail: `${invoiceAmountText(figures.withInvoiceNo, figures.withInvoiceNoValue, figures.withInvoiceNoAmountMissing)} · Invoice No. entered`,
+              hint: INVOICE_HINT,
+            }
+          : null
+      },
+    },
+    {
+      id: `${prefix}-not-invoiced`,
+      row,
+      label: 'Invoices Not Generated',
+      icon: 'pulse',
+      visible: invoicesVisible,
+      read: (data) => {
+        const figures = invoices(data)
+        return figures
+          ? {
+              value: formatCount(figures.withoutInvoiceNo),
+              detail: `${invoiceAmountText(figures.withoutInvoiceNo, figures.withoutInvoiceNoValue, figures.withoutInvoiceNoAmountMissing)} · no Invoice No.`,
+              hint: INVOICE_HINT,
+            }
+          : null
+      },
+    },
+  ]
+}
 
 /** A Dashboard card by id. */
 export function kpiById(id: string): KpiDefinition {

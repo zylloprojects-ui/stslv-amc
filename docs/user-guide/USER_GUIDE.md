@@ -199,12 +199,17 @@ Where a Zoho record exists it is shown beneath the Invoice No. as "Zoho: INV-…
 | | Services Pending | Scheduled, In progress or Postponed |
 | | Invoices Generated | Services with a manual Invoice No. (count and OMR: the service values; *Amount not recorded* when they have none) |
 | | Invoices Not Generated | Services without one |
-| Overall | Same four service/invoice figures across all records, including earlier years and visits ahead | |
-| Current Year (YTD) | Services Due | Services scheduled from January 1 of this year through today (Oman time), completed or not; visits after today are not counted |
-| | Services Completed | Of those, the completed ones |
-| | Services Pending | Due − Completed (Scheduled, In progress or Postponed); notes how many are overdue |
+| Current Year (YTD) | Services YTD | Services scheduled from January 1 of this year through today (Oman time), completed or not, with the number completed; visits after today are not counted |
+| | Services Pending | Not yet completed (Scheduled, In progress or Postponed); notes how many are overdue |
+| | Invoices Generated / Not Generated | The same split as Current Month, over these services |
+| Overall Till Date | Services Till Date | Services scheduled from the start of each contract through today, in every year (the pending work of earlier months and years included; visits after today not counted), with the number completed |
+| | Services Pending | Not yet completed; notes how many are overdue |
+| | Invoices Generated / Not Generated | The same split, over these services |
+| Overall Contract | Same four service/invoice figures across every service of the contracts, start to end, including visits ahead | |
 
-"Invoices Generated" is the Paid reference status (§2), not verified payment.
+Row order (client UAT, 2026-11-16): AMC Portfolio, Current Month, Current Year (YTD), Overall Till Date, Overall Contract.
+Example: a quarterly contract starting in December, viewed in December, counts 1 under Overall Till Date and 4 under
+Overall Contract. "Invoices Generated" is the Paid reference status (§2), not verified payment.
 
 ### Panels
 - **AMC Maintenance Calendar** — *Today* and *Next 7 days*; click a service for its details (needs *AMC Schedule: View*; Zoho invoices need *Invoice Tracking: View*). Payment status reads "Paid · Invoice No. X (reference status, not verified payment)" or "Unpaid".
@@ -248,7 +253,7 @@ Where a Zoho record exists it is shown beneath the Invoice No. as "Zoho: INV-…
 | User account | Optional link to a sign-in account |
 | Status | Active / Disabled |
 
-Filters: search, Status, Department, Sort. Disable/Enable needs *Sales Engineers: Edit* and warns about assignments. **Engineer 360** shows assigned and active contracts, active value, upcoming and overdue visits. Every new contract and renewal needs an **active** service engineer.
+Filters: search, Status, Department, Sort. Disable/Enable needs *Sales Engineers: Edit* and warns about assignments. **Engineer 360** shows assigned and active contracts, active value, upcoming and overdue visits. Every new contract and renewal needs an **active** sales engineer.
 
 ### System Types (`/master-data/system-types`)
 Code * (e.g. FA, CCTV), Name *, Sort order, Description. *Linked AMC contracts* opens the contracts that use the type. Delete only for an unused type, by Super Admin holding *System Types: Delete*.
@@ -300,14 +305,14 @@ same name, figure, wording, icon and colour, from the same calculation.
 **Page:** AMC Contracts (`/amc/contracts`). **Permissions:** View; Create to add; Edit to edit, change status, generate; Delete (+Edit) to cancel; Export.
 
 ### Columns
-#, AMC Reference (opens Contract 360), Client, System, Engineer, Validity (progress bar and days remaining), Frequency, Contract value (and the value of one service: *per service* from the Billing basis, or *per visit* from the Default visit amount when there is no basis), Credit, Visits (% completed), Contract (Upload Contract link, Edit only), Status, Actions. Footer: **Filtered Total**. An amber **Validity ended** pill marks an Active contract past its end date.
+#, AMC Reference (opens Contract 360), Client, System, Sales Engineer (the contract's linked Sales Engineer; a contract with no link shows the engineer name typed on it), Validity (progress bar and days remaining), Frequency, Contract Value (ex VAT) (and the value of one service: *per service* from the Billing basis, or *per visit* from the Default visit amount when there is no basis), Final Credit (ex VAT), Visits (% completed), Contract (Upload Contract link, Edit only), Status, Actions. Footer: **Filtered Total**. An amber **Validity ended** pill marks an Active contract past its end date. The amounts are stored excluding VAT; the headings changed at the client UAT (2026-11-16), the amounts did not.
 
-**Sorting (2026-11-11):** click AMC Reference, Client, Engineer, Validity *Start* or *End*, Contract value, Credit or Status to sort ascending; click again for descending (▲ / ▼; keyboard: Tab to the heading, Enter). The whole filtered list is sorted before it is split into pages, together with search and filters; the download uses the same order. Amounts sort as numbers, dates as dates, Status as Draft → Active → Expired → Cancelled; an empty Engineer or Credit comes last.
+**Sorting (2026-11-11):** click AMC Reference, Client, Sales Engineer, Validity *Start* or *End*, Contract Value, Final Credit or Status to sort ascending; click again for descending (▲ / ▼; keyboard: Tab to the heading, Enter). The whole filtered list is sorted before it is split into pages, together with search and filters; the download uses the same order. Amounts sort as numbers, dates as dates, Status as Draft → Active → Expired → Cancelled; an empty Sales Engineer or Final Credit comes last.
 
 KPI tiles: All AMC Contracts, Total AMC Value, Total Final Credit, Expired.
 
 ### Filters
-Search (reference, client, system, engineer), Client, System, Year (validity covers any day of it), Service engineer, Frequency, Contract status; **Reset filters**; **Columns**.
+Search (reference, client, system, engineer), Client, System, Year (validity covers any day of it), Sales engineer, Frequency, Contract status; **Reset filters**; **Columns**.
 
 ### Contract form
 
@@ -316,7 +321,7 @@ Search (reference, client, system, engineer), Client, System, Year (validity cov
 | AMC Reference Number | Yes | Typed by you, ≤50, unique ignoring case, never reused — "AMC Reference Number already exists…", "…was used before by another contract and cannot be reused." |
 | Client | Yes | Active clients only |
 | System | Yes | Active system types only |
-| Service engineer | Yes (new and renewal) | Active engineers; fills *Responsible engineer* |
+| Sales engineer | Yes (new and renewal) | Active engineers; fills *Responsible engineer* |
 | Responsible engineer | No | Free text |
 | Maintenance frequency | Yes | Active frequencies; custom frequencies also need **Service months** (≤11) |
 | Valid from / Valid to | Yes | Valid to ≥ Valid from; at most 10 years. *Contract duration* (1–6 years) fills Valid to |
@@ -324,6 +329,7 @@ Search (reference, client, system, engineer), Client, System, Year (validity cov
 | Final credit | Yes (new) | Filled with the AMC Value / Year as you type it, until you change it yourself (2026-11-11); enter 0 when none; cannot be cleared once recorded. Editing a saved contract never changes it |
 | Default visit amount | No | Ignored while a Billing basis is selected |
 | Billing basis / Custom Billing Value | No | §2. A new contract starts on **AMC Value / Year** (2026-11-11); choose another basis or *Not set* if needed. Renewals and saved contracts keep their own |
+| Customer PO Value (ex VAT) | No | Client UAT (2026-11-17): the customer's purchase order amount, OMR excluding VAT, ≥0, 3 decimals, as on the PO (one year or several). Shown on Accounts as *AMC Value (ex VAT)* and on the contract page; in the AMC Contracts Excel export. Calculates nothing: visit amounts still come from the billing basis. Empty = "Not entered"; existing contracts were not filled in. A renewal starts empty. Changes are in the Audit Log |
 | Contract document | Yes (new) | PDF/DOC/DOCX, ≤12 MB — "Attach the contract document." |
 | Description, Notes | No | ≤2000 |
 
@@ -394,7 +400,11 @@ Errors: "A schedule is generated only for an active contract. Activate the contr
 
 ## AMC Schedule
 
-**Page:** AMC Execution → AMC Schedule (`/amc/schedule`). **Permissions:** *AMC Schedule: View*; Edit to edit visits and colours; *AMC Execution: Edit* for Visit actions; *Invoice Tracking: Edit* for Invoice No.; Export.
+> **Not in the sidebar (client UAT, 2026-11-16).** The client prints the schedule from Service Status → Export PDF (hide
+> the value columns there first). AMC Schedule is hidden from the sidebar and the page search only: it still opens from
+> its address, with the same permissions, data and downloads. Whether to retire it is still open.
+
+**Page:** `/amc/schedule` (not in the sidebar). **Permissions:** *AMC Schedule: View*; Edit to edit visits and colours; *AMC Execution: Edit* for Visit actions; *Invoice Tracking: Edit* for Invoice No.; Export.
 
 ### Views
 - **All Visits** — tiles Due this month, Overdue, Completed this month, Ready for invoice ("Raise these in Zoho"); tiles ignore filters.
@@ -421,15 +431,25 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 
 **Page:** AMC Execution → Monthly Calendar (`/amc/calendar`). **Permissions:** *Monthly Calendar: View*; Export for month downloads.
 
-- **Year view:** Services in year, Scheduled value, Paid, Unpaid (blue, as in Month view); a card per month with values, Zoho invoiced / not yet invoiced and completed / open / overdue / cancelled counts; per-month **Excel / PDF**. No By service / By contract switch here.
+- **Year view:** Services in year, Scheduled value, Paid, Unpaid (blue, as in Month view); a card per month with, in order, **Scheduled value**, **No. of services completed**, **No. of services not completed**, **Paid** and **Unpaid** (Invoice No. entered or not: the reference status of §2, with the services' values), then completed / open / overdue / cancelled counts; per-month **Excel / PDF**. Services count in the month of their scheduled date. The Zoho invoiced figures are no longer on the cards (client UAT, 2026-11-16). No By service / By contract switch here.
 - **Month view — By service / By contract:** *By service* (default) is the calendar grid below. *By contract* lists the same services, with the same filters, as one entry per AMC contract: reference (opens the contract), client, system, engineer, state (Open, Partly completed, All completed, Overdue, Cancelled), each service with its date and status, and Services / Paid / Unpaid counts. The choice is kept in the address (`group=contract`).
 - **Month view (By service):** card colour = status (Scheduled sky, In progress amber, Postponed violet, Completed green, Cancelled grey struck through, Historical grey); square = Paid (green) / Unpaid (blue); red dot = overdue. Click a visit for details (Edit with *AMC Schedule: Edit*).
-- **Filters:** search, Client, Service engineer, System, Frequency, Visit status, Paid / Unpaid, Billing status (Zoho).
+- **Filters:** search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid, Billing status (Zoho).
 - **Renewal warnings:** contracts ending within 45 days, or past validity and still Active.
 
 ---
 
 ## Service Status
+
+> **Sales Engineer and Service Engineer (client UAT, 2026-11-16).** *Sales Engineer* is the person who brought the AMC,
+> from the contract (chosen in Add AMC Contract); it is read only here. *Service Engineer* is the engineer who performed
+> the service: typed beside the Service Report No. and saved with the row (the field earlier labelled *Sales Engineer
+> Name*; values already entered are kept as they are). It is shown on Master AMC Status, Invoices (Accounts) and Service
+> Sales. A service where nobody entered it shows "—"; it is never filled in from the Sales Engineer. The value headings
+> read *AMC Value (ex VAT)* and *Service Value (ex VAT)*; the grid is more compact (headings on at most two lines).
+> A **Total Filtered** row (for users who may see the values) adds up the Service Value of every matching service on
+> every page, and shows the AMC Value of the matching contracts with **each contract counted once** (adding the column
+> would repeat a contract's value once per service). The download carries the same totals.
 
 > **Service Value and Invoice Acknowledgement (2026-11-11).** *AMC Value (OMR)* (the contract's AMC Value / Year) is
 > unchanged and is now followed by *Service Value (OMR)*: the value of that one service, the same value Master AMC
@@ -443,7 +463,7 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 > **AMC Value and Sales Engineer Name (2026-11-09).** *AMC Value (OMR)* shows the contract's AMC Value / Year on each
 > service, only to users who may view AMC Contracts; it is not added up. *Sales Engineer Name* is typed beside the
 > Service Report No. and saved with the row (up to 120 characters, recorded in the Audit Log). It is separate from the
-> Service Engineer column, which comes from the contract.
+> Sales Engineer column, which comes from the contract.
 
 **Page:** AMC Execution → Service Status (`/amc/service-status`). **Permissions:** *Service Status: View*; *AMC Execution: Edit* to save, upload and use Actions; *Service Status: Export*.
 
@@ -460,7 +480,7 @@ One row per scheduled service (Scheduled, In progress, Postponed, Completed; ope
 KPI cards: Total Services, Completed, Not Completed, Waiting for Renewal (Customize to rename/reorder).
 
 ### Filters / columns
-Search, Client, Service Engineer, System, Maintenance Frequency, Scheduled month and year (default: current), Service Status; Reset Filters; Hide Columns. Columns: #, AMC Reference, Client, System, Frequency, Service, Scheduled Month / Due Date (red "overdue"), Service Status, Service Engineer, Service Report No., Service Report, Actions.
+Search, Client, Sales Engineer, System, Maintenance Frequency, Scheduled month and year (default: current), Service Status; Reset Filters; Hide Columns. Columns: #, AMC Reference, Client, System, Frequency, Service, AMC Value (ex VAT), Service Value (ex VAT), Scheduled Month / Due Date (red "overdue"), Service Status, Invoice Acknowledgement, Sales Engineer, Service Report No., Service Engineer, Service Report, Actions.
 
 ### Workflow — complete a service
 1. **Upload Report** — PDF, DOC or DOCX, within the size limit (12 MB by default).
@@ -496,9 +516,11 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 - **Purpose:** track completed services and record quotation numbers for follow-up sales.
 - **KPIs:** Total Services, Not Completed, Completed / Quote Pending, Quoted.
 - **Colours:** Not Completed (rose), Completed / Quote Pending (light blue), Completed with Quote No. (green).
-- **Filters:** search, Client, Service Engineer, System, Frequency, Scheduled month and year, Service Status, Quote Submitted / Not Submitted.
+- **Filters:** search, Client, Sales Engineer, System, Frequency, Scheduled month and year, Service Status, Quote Submitted / Not Submitted.
 - **Quote No.:** only on completed services; ≤50 characters, no line breaks; empty when there is none ("N/A is not a quotation number…"); **Save** shows who saved it and when. "Complete the service before recording a quotation number."
 - Service Report: view/download only.
+- **Sales Engineer / Service Engineer (client UAT, 2026-11-16):** *Sales Engineer* is the contract's (who brought the AMC); *Service Engineer*, after the Service Report, is who performed the service (as entered on Service Status), so the sales team can ask about the faults before quoting.
+- **Values:** AMC Value and Service Value are sent only to users who may view AMC Contracts. A Service Sales role without that permission never receives them — not on the page, in its totals or in the downloads.
 
 ---
 
@@ -510,13 +532,21 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 > Invoice Value (OMR) — the Zoho amounts allocated in Invoice Tracking (cancelled invoices excluded). A service with no
 > value whose contract has no Billing Basis or Cost per Visit says so; no value is invented.
 
+> **Engineers and values (client UAT, 2026-11-16).** After the Service Report No.: *Sales Engineer* (the contract's),
+> *Service Engineer* (who performed the service, as entered on Service Status), *AMC Value (ex VAT)* (since 2026-11-17
+> the contract's **Customer PO Value**, as entered on the contract — "Not entered" when none; never the AMC Value / Year
+> or a term total; repeated on each of its services and never added up; shown to everyone who may open Accounts, without
+> giving access to the contracts themselves) and
+> *Service Value (ex VAT)* (this service's own value, the one the Total Filtered row adds up). This column order is
+> provisional until the client confirms it.
+
 **Page:** Accounts → Invoices (`/finance/accounts`; the page is titled Accounts). **Permissions:** *Accounts: View / Export*; *Invoice Tracking: Edit* to change the Invoice No.
 
 - **Purpose:** billing reconciliation of every scheduled service; enter the Invoice No. to mark a service Paid.
 - **Row colours:** Red = service not completed · Blue = completed, Unpaid · Green = completed, Paid. A Zoho record does not make a row green.
 - **KPIs:** Rows, Completed, Not Completed, Invoice No. Filled ("Paid: reference status, not verified payment"), Total Value (Ex VAT).
-- **Filters (press Apply):** search, Client, Service Engineer, AMC Contract, Scheduled month and year, Paid / Unpaid, Service Status; Hide Columns.
-- **Columns:** AMC Reference, Client, System, Frequency, Service, Scheduled Month, Value (Ex VAT), Service Status, Service Report No., Invoice No. (with "Zoho: …"), Service Engineer.
+- **Filters (press Apply):** search, Client, Sales Engineer, AMC Contract, Scheduled month and year, Paid / Unpaid, Service Status; Hide Columns.
+- **Columns:** AMC Reference, Client, System, Frequency, Service, Scheduled Month, Value (Ex VAT), Service Status, Service Report No., Invoice No. (with "Zoho: …"), Sales Engineer.
 
 ### Workflow — enter an invoice number
 1. Raise the invoice in Zoho.
@@ -596,6 +626,10 @@ Requires a reason; the record is kept but excluded from totals, the work becomes
 
 ## Master AMC Status
 
+> **Sales Engineer and Service Engineer (client UAT, 2026-11-16).** *Service Engineer*, right after *Service Status*,
+> shows who performed each service (as entered on Service Status; "—" when nobody entered it). *Sales Engineer* is the
+> contract's, the person who brought the AMC. Services of one contract can have different Service Engineers.
+
 > **Invoice Acknowledged (2026-11-11).** For users who may view Invoice Acknowledgements, a column after *Quote No.*
 > shows **Yes** / **No** / **Not Applicable** for each service's invoice (same rule as Service Status), with a private
 > *Download document*. Each row is one service, so a contract with several invoices shows each separately. It does not
@@ -613,7 +647,7 @@ Requires a reason; the record is kept but excluded from totals, the work becomes
 | Blue | Paid, quote pending |
 | Green | Paid and quoted |
 
-KPIs: Total Services, Green/Blue/Yellow/Red Rows, Total Value (Ex VAT). Filters (Apply/Reset): search, Client, Service Engineer, Scheduled month and year, Service Status, Paid / Unpaid, Quotation Status, Row Colour. Details opens every field ("Paid / Unpaid: Paid (reference status)", Zoho invoices, Quote No.).
+KPIs: Total Services, Green/Blue/Yellow/Red Rows, Total Value (Ex VAT). Filters (Apply/Reset): search, Client, Sales Engineer, Scheduled month and year, Service Status, Paid / Unpaid, Quotation Status, Row Colour. Details opens every field ("Paid / Unpaid: Paid (reference status)", Zoho invoices, Quote No.).
 
 **Export (Excel / PDF):** the shown columns, plus after Invoice No. two Invoice Tracking columns: **Zoho Invoices (Tracking)** — the Zoho invoice numbers covering the service — and **Zoho References (Tracking)** — each of those invoices' Zoho reference in the same order, "—" for an invoice recorded without one. Hiding Invoice No. hides both. They never decide Paid or Unpaid.
 
@@ -634,13 +668,13 @@ Due / Expired (amber) · Under Client Approval (light blue, draft renewal) · Re
 
 ### Workflow — renew
 1. **Renewal Queue** lists Active/Expired contracts ending within 45 days or already ended.
-2. **Start Renewal** (*AMC Renewal: Create*) → "Renew AMC Contract": a **new** AMC Reference Number, dates, values, an **active** service engineer, renewal notes → **Create renewal**. Saved as a Draft, Under Client Approval, no schedule yet.
+2. **Start Renewal** (*AMC Renewal: Create*) → "Renew AMC Contract": a **new** AMC Reference Number, dates, values, an **active** sales engineer, renewal notes → **Create renewal**. Saved as a Draft, Under Client Approval, no schedule yet.
 3. After client approval: **Approve** (*AMC Contracts: Edit*) → Active, services generated.
 4. Or **Cancel** (*AMC Contracts: Edit + Delete*, reason required); **Restart Renewal** later if needed.
 
 **Renewal History:** Source AMC, Client / System, Source Expiry, Renewed AMC, New Validity, Status, Created. Export needs *AMC Renewal: Export*.
 
-Errors: "A renewal needs an active service engineer." · "This contract already has a renewal. Open it above, or cancel it to renew again."
+Errors: "A renewal needs an active sales engineer." · "This contract already has a renewal. Open it above, or cancel it to renew again."
 
 **Contract expiry (approved 2026-11-09; switched on at release):** an Active contract becomes **Expired on the day after its Valid To date**, by Oman time (Asia/Muscat). Its services keep their status and values; an open renewal does not stop the old contract from expiring, and the renewal itself is not changed. It runs as a scheduled job, once per day, and each change is in the Audit Log. Until the approved release the job only runs as a dry run (`AMC_CONTRACT_EXPIRY_ENABLED` off), so contracts past validity stay Active and show as "past validity".
 
@@ -650,13 +684,13 @@ Errors: "A renewal needs an active service engineer." · "This contract already 
 
 ## Reports
 
-> **Monthly invoice values (2026-11-09).** Monthly Maintenance and the client and service engineer summaries show Value,
+> **Monthly invoice values (2026-11-09).** Monthly Maintenance and the client and sales engineer summaries show Value,
 > Unpaid Value, Paid Value (Invoice No. entered, a reference status), Zoho Invoice Value and Services Without Value per
 > month, over the same services as Accounts, so the totals match Accounts for the same filters.
 
-**Page:** `/reports`. **Permissions:** *Reports: View / Export* (no built-in role starts with Reports; Super Admin grants it), **plus the source page of each report**: opening a report also needs *View* of its source, exporting also needs *Export* of its source. Sources: **AMC Contracts** — AMC Contract Summary, Contract Value Review; **AMC Renewal** — AMC Renewal, Expiry & Renewal Due, Renewal History; **Accounts** — Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise and Service Engineer-wise Summary. The list shows only the reports you may open; "No reports available" when there is none. The server refuses the rest.
+**Page:** `/reports`. **Permissions:** *Reports: View / Export* (no built-in role starts with Reports; Super Admin grants it), **plus the source page of each report**: opening a report also needs *View* of its source, exporting also needs *Export* of its source. Sources: **AMC Contracts** — AMC Contract Summary, Contract Value Review; **AMC Renewal** — AMC Renewal, Expiry & Renewal Due, Renewal History; **Accounts** — Billing Schedule, Completed Services, Pending Services, Monthly Maintenance, Accounts / Paid and Unpaid Summary, Client-wise and Sales Engineer-wise Summary. The list shows only the reports you may open; "No reports available" when there is none. The server refuses the rest.
 
-Choose a report; only its filters are shown (From, To, Client, Service Engineer, System, Status…). "The From date is after the To date." Exports carry the filters and a "Total (N rows)" line. Today, this month, due and expiring follow Oman time (Asia/Muscat), as everywhere in the application.
+Choose a report; only its filters are shown (From, To, Client, Sales Engineer, System, Status…). "The From date is after the To date." Exports carry the filters and a "Total (N rows)" line. Today, this month, due and expiring follow Oman time (Asia/Muscat), as everywhere in the application.
 
 | Report | Notes |
 |---|---|
@@ -669,7 +703,7 @@ Choose a report; only its filters are shown (From, To, Client, Service Engineer,
 | Expiry & Renewal Due | Active contracts ending within 90 days or past validity |
 | Renewal History | As AMC Renewal history |
 | Accounts / Paid and Unpaid Summary | Same split as Accounts |
-| Client-wise Summary / Service Engineer-wise Summary | Grouped |
+| Client-wise Summary / Sales Engineer-wise Summary | Grouped |
 | Contract Value Review | Multi-year contracts whose value *May be whole-term*, *Looks annual* or *Unclear*. Changes nothing |
 
 ---
@@ -699,7 +733,8 @@ Anyone with *Users: View* can see roles. Who may change them (approved 2026-11-0
 | Rename, deactivate, reactivate, delete a custom role | Yes | Only a role whose every permission Service Dept holds | No |
 | Change a custom role's permissions | Yes | Only within Service Dept's own permissions | No |
 | Give a role *Users & Access* permissions | Yes | No (may remove them) | No |
-| Change a built-in role or its permissions | Yes (never Super Admin's) | No | No |
+| Change the permissions of Accounts, AMC Sales, AMC Operations Executive or Viewer (client UAT, 2026-11-17) | Yes | Only within Service Dept's own permissions; never Users & Access | No |
+| Change Super Admin or Service Dept, or rename, deactivate or delete a built-in role | Yes (never Super Admin's permissions) | No | No |
 | Assign a custom role to a user | Yes | Only if Service Dept holds all its permissions | No |
 | Assign Super Admin or Service Dept | Yes | No | No |
 

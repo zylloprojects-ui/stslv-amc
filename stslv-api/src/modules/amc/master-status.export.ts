@@ -38,6 +38,8 @@ const COLUMNS: (ReportColumn & { hideable?: MasterStatusColumn })[] = [
   { key: "scheduledMonth", header: "Scheduled Month", kind: "text", width: 15, hideable: "scheduledMonth" },
   { key: "visitValue", header: "Value (Ex VAT)", kind: "money", width: 14, hideable: "visitValue" },
   { key: "serviceStatus", header: "Service Status", kind: "text", width: 18, hideable: "serviceStatus" },
+  // CR-008: who performed the service (Service Status input), never the contract's Sales Engineer.
+  { key: "serviceEngineer", header: "Service Engineer", kind: "text", width: 18, wrap: true, hideable: "serviceEngineer" },
   { key: "invoiceNo", header: "Invoice No.", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   // The Zoho invoice numbers recorded in Invoice Tracking for the visit, as on Accounts. Shown and hidden with Invoice No.
   { key: "zohoInvoices", header: "Zoho Invoices (Tracking)", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
@@ -46,7 +48,7 @@ const COLUMNS: (ReportColumn & { hideable?: MasterStatusColumn })[] = [
   { key: "quotationNo", header: "Quote No.", kind: "identifier", width: 15, hideable: "quotationNo" },
   // 2026-11-11: Yes / No / Not Applicable for this service's invoice; only for Invoice Acknowledgements: View.
   { key: "acknowledgement", header: "Invoice Acknowledged", kind: "text", width: 18, wrap: true, hideable: "acknowledgement" },
-  { key: "salesEngineer", header: "Service Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
+  { key: "salesEngineer", header: "Sales Engineer", kind: "text", width: 18, wrap: true, hideable: "salesEngineer" },
   { key: "colour", header: "Row Colour", kind: "text", width: 24 },
 ];
 
@@ -83,6 +85,7 @@ function toRow(item: MasterStatusItem, index: number): ReportRow {
     scheduledDate: item.scheduledDate,
     visitValue: item.visitValue,
     serviceStatus: SERVICE_STATUS_LABELS[item.serviceStatus],
+    serviceEngineer: item.serviceEngineer,
     invoiceNo: item.manualInvoiceNo,
     zohoInvoices: item.invoiceNumbers.length > 0 ? item.invoiceNumbers.join(", ") : null,
     zohoReferences: zohoReferencesCell(item.invoiceReferences),
@@ -100,7 +103,7 @@ async function describeFilters(query: ExportMasterStatusQuery): Promise<ReportDe
     (await pool.query<{ name: string }>(`SELECT name FROM ${table} WHERE id = $1`, [id])).rows[0]?.name ?? unknown;
 
   if (query.clientId) filters.push({ label: "Client", value: await nameOf("clients", query.clientId, "Unknown client") });
-  if (query.salesEngineerId) filters.push({ label: "Service Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown service engineer") });
+  if (query.salesEngineerId) filters.push({ label: "Sales Engineer", value: await nameOf("sales_engineers", query.salesEngineerId, "Unknown sales engineer") });
   if (query.month) filters.push({ label: "Month", value: MONTH_NAMES[query.month - 1] ?? String(query.month) });
   if (query.year) filters.push({ label: "Year", value: String(query.year) });
   if (query.serviceStatus) filters.push({ label: "Service status", value: SERVICE_STATUS_LABELS[query.serviceStatus] });

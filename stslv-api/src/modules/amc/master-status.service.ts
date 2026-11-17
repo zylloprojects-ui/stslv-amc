@@ -9,6 +9,7 @@ import { NO_AMOUNT_SOURCE_SQL } from "./value-source";
 import { hasStoredReference, referenceSql } from "./contract-reference";
 import { SERVICE_IN_SCOPE } from "./service-scope";
 import { SERVICE_ACKNOWLEDGEMENT_SQL, serviceAcknowledgementsVisible, toServiceAcknowledgement, type ServiceAcknowledgement } from "../invoice-acknowledgements/service-acknowledgement";
+import { hasServiceEngineer, serviceEngineerSql } from "./service-engineer";
 
 // Master AMC Status: a read-only overview with one row per scheduled
 // maintenance visit (amc_visits), never one per contract. It reads the same
@@ -54,8 +55,9 @@ const FROM = `
   ) inv ON true`;
 
 /** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
-const selectSql = (storedReference: boolean, acknowledgements = false) => `
+const selectSql = (storedReference: boolean, acknowledgements = false, serviceEngineer = false) => `
   SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
+         ${serviceEngineerSql(serviceEngineer)} AS service_engineer,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
@@ -92,6 +94,7 @@ interface MasterRow {
   manual_invoice_no: string | null;
   sales_engineer_id: string | null;
   sales_engineer_name: string | null;
+  service_engineer: string | null;
   invoice_numbers: string[];
   invoice_references: (string | null)[];
   quotation_no: string | null;
@@ -127,7 +130,10 @@ export interface MasterStatusItem {
   /** The Zoho reference (Invoice Tracking "Zoho reference") of each of invoiceNumbers, same order; null where none. */
   invoiceReferences: (string | null)[];
   quotationNo: string | null;
+  /** The contract's Sales Engineer master link: the person who brought the AMC (CR-007). */
   salesEngineer: { id: string; name: string } | null;
+  /** The engineer who performed this service, as entered on Service Status (CR-008, see service-engineer.ts); null when not entered. */
+  serviceEngineer: string | null;
   colour: RowColour;
   /** The Zoho invoice amounts allocated to the visit in Invoice Tracking, OMR excluding VAT; null when none. */
   invoiceValue: string | null;
@@ -179,6 +185,7 @@ function toItem(row: MasterRow, access: MasterStatusAccess = NO_EXTRA_ACCESS): M
     invoiceReferences: row.invoice_references,
     quotationNo: row.quotation_no,
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
+    serviceEngineer: row.service_engineer,
     colour: row.colour,
     invoiceValue: row.invoice_amount,
     valueSourceMissing: row.visit_amount === null && row.no_amount_source,
@@ -296,10 +303,11 @@ async function kpis(where: string, params: unknown[]): Promise<MasterStatusKpis>
 
 export async function listMasterStatus(query: ListMasterStatusQuery, access: MasterStatusAccess = NO_EXTRA_ACCESS) {
   const storedReference = await hasStoredReference();
+  const serviceEngineer = await hasServiceEngineer();
   const { where, params } = filterSql(query, storedReference);
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements)} ${FROM} ${where} ORDER BY ${sortSql(query.sort, storedReference)} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements, serviceEngineer)} ${FROM} ${where} ORDER BY ${sortSql(query.sort, storedReference)} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,
@@ -321,7 +329,7 @@ export async function listAllMasterStatus(filters: MasterStatusFilters, checkSiz
 
   checkSize(figures.total);
 
-  const rows = await pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements)} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements, await hasServiceEngineer())} ${FROM} ${where} ${ORDER}`, params);
 
   return { items: rows.rows.map((row) => toItem(row, access)), kpis: figures };
 }

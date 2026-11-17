@@ -177,10 +177,13 @@ describe('Accounts page', () => {
       'Scheduled Month',
       'Service Status',
       'Service Report No.',
-      'Value (Ex VAT, OMR)',
+      // Client UAT CR-011 to CR-014 (provisional order). AMC Value is offered only when the API says the user may see
+      // contract values; this mock does not.
+      'Sales Engineer',
+      'Service Engineer',
+      'Service Value (ex VAT)',
       'Invoice No.',
       'Zoho Invoice Value (Ex VAT, OMR)',
-      'Service Engineer',
     ])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'BLUE')
@@ -230,7 +233,7 @@ describe('Accounts page', () => {
     const before = api.find('GET', '/accounts').length
     await userEvent.type(screen.getByLabelText('Search'), 'sr-14')
     await userEvent.selectOptions(screen.getByLabelText('Client'), '10')
-    await userEvent.selectOptions(screen.getByLabelText('Service Engineer'), '4')
+    await userEvent.selectOptions(screen.getByLabelText('Sales Engineer'), '4')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled month'), '10')
     await userEvent.selectOptions(screen.getByLabelText('Scheduled year'), '2026')
     await userEvent.selectOptions(screen.getByLabelText('Paid / Unpaid'), 'NOT_RECORDED')
@@ -297,7 +300,7 @@ describe('Accounts page', () => {
     const buttons = screen.getAllByRole('button', { name: /Hide Columns/ })
     expect(buttons).toHaveLength(1)
     const filters = within(screen.getByRole('form', { name: 'Filters' }))
-    expect(filters.getByRole('button', { name: 'Hide Columns · 11 of 11 shown' })).toBe(buttons[0])
+    expect(filters.getByRole('button', { name: 'Hide Columns · 12 of 12 shown' })).toBe(buttons[0])
     expect(filters.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
     expect(filters.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
     // Excel and PDF stay in the header, outside the filters.
@@ -307,7 +310,7 @@ describe('Accounts page', () => {
     // Opening the column chooser does not submit the filters, and Actions is not a choice.
     await userEvent.click(buttons[0])
     const dialog = within(screen.getByRole('dialog'))
-    expect(dialog.getAllByRole('checkbox')).toHaveLength(11)
+    expect(dialog.getAllByRole('checkbox')).toHaveLength(12)
     expect(dialog.queryByRole('checkbox', { name: 'Actions' })).not.toBeInTheDocument()
   })
 
@@ -320,14 +323,14 @@ describe('Accounts page', () => {
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Invoice No.' }))
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Engineer' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
     expect(headers()).not.toContain('Invoice No.')
-    expect(headers()).not.toContain('Service Engineer')
+    expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(headers()).not.toContain('Actions')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 9 of 11 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 10 of 12 shown' })).toBeInTheDocument()
 
     view.unmount()
     renderPage()
@@ -520,5 +523,70 @@ describe('Accounts acknowledgement indicator (read only)', () => {
     expect(within(rowOf('AMC-0007')).queryByText(/^Ack:/)).not.toBeInTheDocument()
     // Paid / Unpaid colours are untouched by the indicator.
     expect(rowOf('AMC-0021')).toHaveAttribute('data-colour', 'GREEN')
+  })
+})
+
+// Client UAT 2026-11-16 (CR-011 to CR-014): Sales Engineer, Service Engineer, AMC Value and Service Value.
+describe('Accounts engineers and values', () => {
+  const ROW = makeItem({ serviceReportNo: 'SR-9', serviceEngineer: 'Vijay Service', amcValue: '1200.000', visitValue: '300.000' })
+  const withAmcValue = (items: AccountsItem[], visible: boolean) => (request: MockRequest) =>
+    request.method === 'GET' && request.path === '/accounts'
+      ? ok({ items, total: items.length, page: 1, pageSize: 50, kpis: { rows: items.length, completed: 0, notCompleted: items.length, invoiceFilled: 0, totalValue: '300.000', valueMissing: 0, red: items.length, blue: 0, green: 0 }, amcValueVisible: visible })
+      : undefined
+
+  it('shows Sales Engineer, Service Engineer, AMC Value and Service Value after the Service Report No., each from its own source', async () => {
+    accountsApi(VIEWER, [], withAmcValue([ROW], true))
+    renderPage()
+    await screen.findByText('Vijay Service')
+
+    const columns = headers()
+    const at = (heading: string) => columns.indexOf(heading)
+    expect([at('Sales Engineer'), at('Service Engineer'), at('AMC Value (ex VAT)'), at('Service Value (ex VAT)')]).toEqual([
+      at('Service Report No.') + 1,
+      at('Service Report No.') + 2,
+      at('Service Report No.') + 3,
+      at('Service Report No.') + 4,
+    ])
+    const row = rowOf('AMC-0007')
+    const cells = [...row.querySelectorAll('td')].map((cell) => cell.textContent)
+    expect(cells[at('Sales Engineer')]).toBe('Esha Engineer')
+    expect(cells[at('Service Engineer')]).toBe('Vijay Service')
+    expect(cells[at('AMC Value (ex VAT)')]).toBe('1,200.000')
+    expect(cells[at('Service Value (ex VAT)')]).toBe('300.000')
+    // The total adds service values only; the repeated AMC Value is never totalled.
+    const total = within(screen.getByRole('table')).getByRole('rowheader', { name: /Total Filtered/ }).closest('tr') as HTMLElement
+    expect(total).not.toHaveTextContent('1,200.000')
+  })
+
+  it('shows "Not entered" in AMC Value when the contract has no Customer PO Value (CR-013)', async () => {
+    accountsApi(VIEWER, [], withAmcValue([makeItem({ amcValue: null, visitValue: '300.000' })], true))
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    const cells = [...rowOf('AMC-0007').querySelectorAll('td')]
+    expect(cells[headers().indexOf('AMC Value (ex VAT)')]).toHaveTextContent('Not entered')
+    expect(cells[headers().indexOf('Service Value (ex VAT)')]).toHaveTextContent('300.000')
+  })
+
+  it('shows "—" for a service whose Service Engineer was never entered, never the Sales Engineer', async () => {
+    accountsApi(VIEWER, [], withAmcValue([makeItem({ serviceEngineer: null })], true))
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    const cells = [...rowOf('AMC-0007').querySelectorAll('td')]
+    const cell = cells[headers().indexOf('Service Engineer')] as HTMLElement
+    expect(cell).toHaveTextContent('—')
+    expect(cell).not.toHaveTextContent('Esha Engineer')
+  })
+
+  it('offers no AMC Value column when the API says the user may not see contract values', async () => {
+    accountsApi(VIEWER, [], withAmcValue([makeItem({ amcValue: null })], false))
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    expect(headers()).not.toContain('AMC Value (ex VAT)')
+    expect(headers()).toContain('Service Value (ex VAT)')
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    expect(within(screen.getByRole('dialog')).queryByRole('checkbox', { name: 'AMC Value (ex VAT)' })).not.toBeInTheDocument()
   })
 })

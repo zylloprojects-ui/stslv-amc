@@ -24,6 +24,8 @@ export const MASTER_STATUS_HIDEABLE_COLUMNS = [
   "scheduledMonth",
   "visitValue",
   "serviceStatus",
+  // Client UAT 2026-11-16 (CR-008): the engineer who performed the service, right after Service Status.
+  "serviceEngineer",
   "invoiceNo",
   "quotationNo",
   // 2026-11-11: Invoice Acknowledged (Yes / No / Not Applicable), after Quote No.

@@ -219,14 +219,14 @@ describe("A3 — service-period values from the billing basis", () => {
     }
   });
 
-  it("the Service Status download keeps AMC Value / Year and adds Service Value (OMR) after it, each hidden on its own", async () => {
+  it("the Service Status download keeps AMC Value and adds Service Value after it, each hidden on its own", async () => {
     const id = await withDefaultBasis({ systemDescription: "EXPORT VALUE", contractValue: "1200.000", maintenanceFrequency: "QUARTERLY" });
     const reference = (await contract(id)).amcReference;
     const headers = serviceStatusColumns({ reportNumber: true, amcValue: true }).map((column) => column.header);
 
-    // Owner decision 2026-11-11: both columns, the contract column unchanged.
-    expect(headers.indexOf("Service Value (OMR)")).toBe(headers.indexOf("AMC Value / Year (OMR)") + 1);
-    expect(serviceStatusColumns({ reportNumber: true, amcValue: false }).map((column) => column.header)).not.toContain("Service Value (OMR)");
+    // Owner decision 2026-11-11: both columns, the contract column unchanged. Client UAT CR-021/CR-022: "(ex VAT)" headings.
+    expect(headers.indexOf("Service Value (ex VAT)")).toBe(headers.indexOf("AMC Value (ex VAT)") + 1);
+    expect(serviceStatusColumns({ reportNumber: true, amcValue: false }).map((column) => column.header)).not.toContain("Service Value (ex VAT)");
 
     const sheet = async (query: Record<string, string>) => {
       const file = await api().get("/api/amc/service-status/export").query({ search: reference, format: "xlsx", ...query }).responseType("blob").set(admin.headers);
@@ -236,15 +236,15 @@ describe("A3 — service-period values from the billing basis", () => {
       return JSON.stringify(book.worksheets[0]?.getSheetValues());
     };
     const shown = await sheet({});
-    expect(shown).toContain("Service Value (OMR)");
-    expect(shown).toContain("AMC Value / Year (OMR)");
+    expect(shown).toContain("Service Value (ex VAT)");
+    expect(shown).toContain("AMC Value (ex VAT)");
     expect(shown).toContain("300");
     const withoutService = await sheet({ hidden: "serviceValue" });
-    expect(withoutService).not.toContain("Service Value (OMR)");
-    expect(withoutService).toContain("AMC Value / Year (OMR)");
+    expect(withoutService).not.toContain("Service Value (ex VAT)");
+    expect(withoutService).toContain("AMC Value (ex VAT)");
     const withoutContract = await sheet({ hidden: "amcValue" });
-    expect(withoutContract).toContain("Service Value (OMR)");
-    expect(withoutContract).not.toContain("AMC Value / Year (OMR)");
+    expect(withoutContract).toContain("Service Value (ex VAT)");
+    expect(withoutContract).not.toContain("AMC Value (ex VAT)");
   });
 
   it("shows service values only to users who may see contract values", async () => {
@@ -273,6 +273,9 @@ describe("A4 — AMC Contracts sorting on the server", () => {
     for (const [amcReference, contractValue, finalCredit, validFrom, validTo, responsibleEngineer] of rows) {
       await activeContract(admin, sortClient.id, { amcReference, systemDescription: amcReference, contractValue, finalCredit: finalCredit ?? "0.000", validFrom, validTo, responsibleEngineer: responsibleEngineer ?? undefined });
       if (finalCredit === null) await pool.query("UPDATE amc_contracts_all SET final_credit = NULL WHERE amc_reference = $1", [amcReference]);
+      // Client UAT CR-006: the Sales Engineer column shows (and sorts by) the linked engineer, else the typed name. The
+      // helper links every contract to the same engineer, so these are unlinked to sort by their typed names.
+      await pool.query("UPDATE amc_contracts_all SET sales_engineer_id = NULL WHERE amc_reference = $1", [amcReference]);
     }
     // A draft, for the status order.
     await pool.query("UPDATE amc_contracts_all SET status = 'DRAFT' WHERE amc_reference = 'SORT-C'");
@@ -476,7 +479,7 @@ describe("B — invoice acknowledgement of each service", () => {
     const headers = masterStatusColumns([], { acknowledgements: true }).map((column) => column.header);
     expect(headers.indexOf("Invoice Acknowledged")).toBe(headers.indexOf("Quote No.") + 1);
     expect(serviceStatusColumns({ reportNumber: true, amcValue: true, acknowledgements: true }).map((column) => column.header)).toEqual(
-      expect.arrayContaining(["Service Value (OMR)", "Invoice Acknowledged"])
+      expect.arrayContaining(["Service Value (ex VAT)", "Invoice Acknowledged"])
     );
     expect(serviceStatusColumns({ reportNumber: true }).map((column) => column.header)).not.toContain("Invoice Acknowledged");
 

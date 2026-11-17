@@ -87,7 +87,9 @@ describe("Service Sales", () => {
     const full = await sheetOf("/services-sales/export", { quoteSubmission: "SUBMITTED" });
     const status = full.header.indexOf("Service status");
     expect(full.header.indexOf("Service Report No.")).toBeGreaterThan(status);
-    expect(full.header.indexOf("Quote No.")).toBe(full.header.indexOf("Service Report No.") + 1);
+    // Client UAT CR-016: Service Engineer sits between the Service Report No. and Quote No.
+    expect(full.header.indexOf("Service Engineer")).toBe(full.header.indexOf("Service Report No.") + 1);
+    expect(full.header.indexOf("Quote No.")).toBe(full.header.indexOf("Service Report No.") + 2);
     expect(full.text).toContain("Quote Submitted");
     expect(full.text).toContain("SR-GAP-1");
 

@@ -38,8 +38,11 @@ export const hasAdminAccess = (roles: readonly { code: string }[]) => roles.some
 /** Modules that administer accounts and access: never held by the roles below. */
 export const SECURITY_MODULES: readonly Module[] = ["USERS"];
 
-/** Built-in operational roles: any supported permission, except security administration. */
-const OPERATIONAL_ROLE_CODES: readonly string[] = ["FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER"];
+/**
+ * Built-in operational roles: any supported permission, except security administration. Since the client UAT
+ * (CR-031, owner decision 2026-11-17) Admin may also configure their permissions, within Admin's own access.
+ */
+export const OPERATIONAL_ROLE_CODES: readonly string[] = ["FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER"];
 
 /** Whether a role of this code may hold the permission. Only grantable permissions are ever in scope. */
 export function isInRoleScope(roleCode: string, module: Module, action: Action): boolean {

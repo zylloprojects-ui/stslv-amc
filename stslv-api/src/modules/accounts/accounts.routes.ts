@@ -19,10 +19,13 @@ accountsRouter.use(authenticate);
 const accountsView = [authorize("ACCOUNTS", "VIEW"), requireSchema(["amc_visits.service_report_no"])];
 
 accountsRouter.get("/", ...accountsView, async (req, res) => {
-  // The read-only acknowledgement indicator only for users who may view Invoice Acknowledgements.
-  const showAcknowledgements = requireAuth(req).permissions.has("INVOICE_ACKNOWLEDGEMENTS:VIEW");
+  const { permissions } = requireAuth(req);
+  // The read-only acknowledgement indicator only for users who may view Invoice Acknowledgements. The contract's AMC
+  // Value (client UAT CR-013) is part of this page for everyone who may open it (Accounts: View): the client asked for
+  // it so Accounts can invoice. Only that one figure per service; no other contract data, and no AMC Contracts access.
+  const access = { acknowledgements: permissions.has("INVOICE_ACKNOWLEDGEMENTS:VIEW"), amcValue: true };
 
-  res.json({ success: true, data: await listAccounts(listAccountsSchema.parse(req.query), showAcknowledgements) });
+  res.json({ success: true, data: await listAccounts(listAccountsSchema.parse(req.query), access) });
 });
 
 accountsRouter.get("/options", ...accountsView, async (_req, res) => {

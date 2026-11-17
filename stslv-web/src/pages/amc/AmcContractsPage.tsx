@@ -52,11 +52,12 @@ const isValidityFilter = (value: string | null): value is ValidityFilter => VALI
 const COLUMN_OPTIONS: ColumnOption<ColumnKey>[] = [
   { key: 'reference', label: 'AMC Reference' },
   { key: 'system', label: 'System' },
-  { key: 'engineer', label: 'Engineer' },
+  // Client UAT 2026-11-16: CR-006 (Sales Engineer), CR-019 and CR-020 (amounts are stored excluding VAT; unchanged).
+  { key: 'engineer', label: 'Sales Engineer' },
   { key: 'validity', label: 'Validity' },
   { key: 'frequency', label: 'Frequency' },
-  { key: 'contractValue', label: 'Contract value' },
-  { key: 'finalCredit', label: 'Credit' },
+  { key: 'contractValue', label: 'Contract Value (ex VAT)' },
+  { key: 'finalCredit', label: 'Final Credit (ex VAT)' },
   { key: 'visits', label: 'Visits' },
   { key: 'contract', label: 'Contract' },
   { key: 'status', label: 'Status' },
@@ -517,11 +518,11 @@ export function AmcContractsPage() {
             )}
           </Filter>
           {options.data?.salesEngineers !== null && (
-            <Filter label="Service engineer">
+            <Filter label="Sales engineer">
               {(id, className) => (
                 <select id={id} value={salesEngineerId} onChange={choose(setSalesEngineerId)} className={className}>
-                  <option value="">All service engineers</option>
-                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No service engineers linked to AMC contracts" />
+                  <option value="">All sales engineers</option>
+                  <OptionsNotice source={options} count={options.data?.salesEngineers?.length ?? 0} empty="No sales engineers linked to AMC contracts" />
                   {(options.data?.salesEngineers ?? []).map((engineer) => (
                     <option key={engineer.id} value={engineer.id}>
                       {engineer.name}
@@ -648,7 +649,7 @@ export function AmcContractsPage() {
                     )}
                     {show('engineer') && (
                       <SortHeader columns={['engineer']} sort={sort}>
-                        <SortButton label="Engineer" column="engineer" sort={sort} onSort={chooseSort} />
+                        <SortButton label="Sales Engineer" column="engineer" sort={sort} onSort={chooseSort} />
                       </SortHeader>
                     )}
                     {show('validity') && (
@@ -667,12 +668,12 @@ export function AmcContractsPage() {
                     )}
                     {show('contractValue') && (
                       <SortHeader columns={['contractValue']} sort={sort} right>
-                        <SortButton label="Contract value" column="contractValue" sort={sort} onSort={chooseSort} />
+                        <SortButton label="Contract Value (ex VAT)" column="contractValue" sort={sort} onSort={chooseSort} />
                       </SortHeader>
                     )}
                     {show('finalCredit') && (
                       <SortHeader columns={['finalCredit']} sort={sort} right>
-                        <SortButton label="Credit" column="finalCredit" sort={sort} onSort={chooseSort} />
+                        <SortButton label="Final Credit (ex VAT)" column="finalCredit" sort={sort} onSort={chooseSort} />
                       </SortHeader>
                     )}
                     {show('visits') && (
@@ -720,8 +721,9 @@ export function AmcContractsPage() {
                         </span>
                       </td>}
                       {show('engineer') && <td className={TABLE.td}>
-                        {contract.responsibleEngineer ? (
-                          <span>{contract.responsibleEngineer}</span>
+                        {/* CR-006: the linked Sales Engineer; a contract with no link shows the name typed on it. */}
+                        {contract.salesEngineer?.name || contract.responsibleEngineer ? (
+                          <span>{contract.salesEngineer?.name ?? contract.responsibleEngineer}</span>
                         ) : (
                           <span className="text-slate-400">—</span>
                         )}
