@@ -234,7 +234,7 @@ describe('KPI cards', () => {
     dashboardApi(ADMIN)
     renderApp('/dashboard')
 
-    expect(labelsOf(await kpiRow('portfolio'))).toEqual(['Active AMCs', 'Annual AMC Value (Ex VAT)', 'Final Credit (Ex VAT)', 'Expiring ≤45 Days'])
+    expect(labelsOf(await kpiRow('portfolio'))).toEqual(['Active AMCs', 'Annual AMC Value (ex VAT)', 'Final Credit (ex VAT)', 'Expiring ≤45 Days'])
     expect(labelsOf(await kpiRow('month'))).toEqual(['Services This Month', 'Services Pending', 'Invoices Generated', 'Invoices Not Generated'])
     expect(labelsOf(await kpiRow('overall'))).toEqual(['Services Overall', 'Services Pending', 'Invoices Generated', 'Invoices Not Generated'])
     expect(kpiOrder()).toEqual(TWELVE_IDS)
@@ -251,12 +251,12 @@ describe('KPI cards', () => {
     expect(await within(active).findByText('12')).toBeInTheDocument()
     expect(within(active).getByText(/2 past validity/)).toBeInTheDocument()
 
-    const value = await kpiCard('Annual AMC Value (Ex VAT)')
+    const value = await kpiCard('Annual AMC Value (ex VAT)')
     expect(within(value).getByText('8,010.500')).toBeInTheDocument()
     expect(within(value).getByText('OMR')).toBeInTheDocument()
     expect(within(value).getByTitle(/may be whole-term amounts/)).toBeInTheDocument()
 
-    const credit = await kpiCard('Final Credit (Ex VAT)')
+    const credit = await kpiCard('Final Credit (ex VAT)')
     expect(within(credit).getByText('300.501')).toBeInTheDocument()
     expect(within(credit).getByText('Entered on 2 of 12 active contracts')).toBeInTheDocument()
 

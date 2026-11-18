@@ -70,7 +70,7 @@ export const SCHEDULE_COLUMNS: ReportColumn[] = [
   // The PDF says "Scheduled (overdue)"; the workbook keeps the status clean and has its own Overdue column to filter on.
   { key: "status", header: "Status", kind: "text", width: 17, pdfKey: "statusWithOverdue" },
   { key: "overdue", header: "Overdue", kind: "text", width: 10, excelOnly: true },
-  { key: "visitAmount", header: "Value (Ex VAT)", kind: "money", width: 14 },
+  { key: "visitAmount", header: "Value (ex VAT)", kind: "money", width: 14 },
   { key: "manualInvoiceNo", header: "Invoice No.", kind: "identifier", width: 16 },
   { key: "paidStatus", header: "Paid / Unpaid", kind: "text", width: 11 },
   { key: "invoicing", header: "Invoicing (Zoho)", kind: "text", width: 19 },

@@ -82,7 +82,7 @@ const visitColumns = (ctx: SqlContext) => `${ctx.reference("c")} AS reference, c
 const VISIT_REPORT_COLUMNS = [
   IDENT("reference", "AMC Reference"), TEXT("client", "Client", 26), TEXT("system", "System", 16), TEXT("frequency", "Frequency", 15),
   IDENT("service", "Service"), DATE("scheduled_date", "Scheduled Date"), TEXT("status", "Status", 13), IDENT("report_no", "Service Report No."),
-  IDENT("invoice_no", "Invoice No."), TEXT("payment", "Paid / Unpaid", 9), IDENT("zoho_invoices", "Zoho Invoices"), TEXT("engineer", "Sales Engineer", 16), MONEY("value", "Value (Ex VAT)"),
+  IDENT("invoice_no", "Invoice No."), TEXT("payment", "Paid / Unpaid", 9), IDENT("zoho_invoices", "Zoho Invoices"), TEXT("engineer", "Sales Engineer", 16), MONEY("value", "Value (ex VAT)"),
   MONEY("zoho_invoice_value", "Zoho Invoice Value"),
 ];
 
@@ -163,7 +163,7 @@ const groupedVisits = (keyColumns: string, group: string) => (where: string) => 
   ${VISITS} WHERE ${where} GROUP BY ${group}`;
 const GROUP_COLUMNS = [
   COUNT("contracts", "Contracts"), COUNT("services", "Services"), COUNT("completed", "Completed"), COUNT("pending", "Pending"),
-  COUNT("paid", "Paid"), COUNT("unpaid", "Unpaid"), MONEY("value", "Value (Ex VAT)"), MONEY("unpaid_value", "Unpaid Value"),
+  COUNT("paid", "Paid"), COUNT("unpaid", "Unpaid"), MONEY("value", "Value (ex VAT)"), MONEY("unpaid_value", "Unpaid Value"),
   MONEY("paid_value", "Paid Value (Invoice No. Entered)"), MONEY("zoho_invoice_value", "Zoho Invoice Value (Tracking)"), COUNT("no_value", "Services Without Value"),
 ];
 /**
@@ -346,7 +346,7 @@ export const REPORTS = {
     description: "Services by whether they are completed and Paid (a manual Invoice No. is entered), over the same rows as Accounts.",
     filters: STANDARD_FILTERS,
     statuses: VISIT_REPORT_STATUSES,
-    columns: [TEXT("service_state", "Service", 16), TEXT("invoice_state", "Paid / Unpaid", 18), COUNT("services", "Services"), MONEY("value", "Value (Ex VAT)")],
+    columns: [TEXT("service_state", "Service", 16), TEXT("invoice_state", "Paid / Unpaid", 18), COUNT("services", "Services"), MONEY("value", "Value (ex VAT)")],
     sql: (where) => `
       SELECT CASE WHEN v.status = 'COMPLETED' THEN 'Completed' ELSE 'Not Completed' END AS service_state,
              CASE WHEN v.manual_invoice_no IS NULL THEN 'Unpaid' ELSE 'Paid' END AS invoice_state,

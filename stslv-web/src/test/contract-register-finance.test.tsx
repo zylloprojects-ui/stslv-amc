@@ -151,13 +151,13 @@ describe('Contract 360', () => {
     expect(await screen.findByRole('tab', { name: /^Documents/ })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('adds Color, Paid date, a schedule link per row and exports for this contract', async () => {
+  it('adds Color, Paid Date, a schedule link per row and exports for this contract', async () => {
     const api = contractApi()
     renderApp('/amc/contracts/100')
 
     const table = await screen.findByRole('table', { name: 'Visits of this contract' })
     expect(within(table).getByRole('columnheader', { name: 'Color' })).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: 'Paid date' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Paid Date' })).toBeInTheDocument()
     expect(within(table).getByText('First Service')).toBeInTheDocument()
     expect(within(table).getByRole('link', { name: /in AMC Schedule$/ })).toHaveAttribute('href', '/amc/schedule?contractId=100')
 

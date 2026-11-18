@@ -711,8 +711,10 @@ select:not([multiple]) {
 .table-scroll td:last-child {
   padding-right: 1rem;
 }
+/* Column headings always stay on one line, in every table, so all tables share one look. A long heading is
+   shortened in the page instead of wrapping; a table wider than its card scrolls sideways (see .table-scroll). */
 .table-scroll th {
-  white-space: normal;
+  white-space: nowrap;
   font-size: 0.6875rem;
   line-height: 1rem;
   letter-spacing: 0.04em;

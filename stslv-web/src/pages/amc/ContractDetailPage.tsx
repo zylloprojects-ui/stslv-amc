@@ -610,10 +610,10 @@ export function ContractDetailPage() {
                                   Completed
                                 </th>
                                 <th scope="col" className={`${TABLE.th} text-right`}>
-                                  Amount
+                                  Service Value (ex VAT)
                                 </th>
                                 <th scope="col" className={TABLE.th}>
-                                  Quotation No.
+                                  Quote No.
                                 </th>
                                 <th scope="col" className={TABLE.th}>
                                   Invoice No.
@@ -624,7 +624,7 @@ export function ContractDetailPage() {
                                   </th>
                                 )}
                                 <th scope="col" className={TABLE.th}>
-                                  Paid date
+                                  Paid Date
                                 </th>
                                 <th scope="col" className={TABLE.th}>
                                   Invoicing (Zoho)

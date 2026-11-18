@@ -223,11 +223,11 @@ describe("schedule exports", () => {
     expect((await setInvoice(paidVisit, "MAN-777")).status).toBe(200);
   });
 
-  it("list Invoice No. and Paid / Unpaid under Value (Ex VAT), with the reference-status note", async () => {
+  it("list Invoice No. and Paid / Unpaid under Value (ex VAT), with the reference-status note", async () => {
     const sheet = await sheetOf(await blob("/visits/export", { format: "xlsx", contractId: second }), "AMC Schedule");
     const heads = headers(sheet);
 
-    expect(heads).toEqual(expect.arrayContaining(["Value (Ex VAT)", "Invoice No.", "Paid / Unpaid", "Invoicing (Zoho)"]));
+    expect(heads).toEqual(expect.arrayContaining(["Value (ex VAT)", "Invoice No.", "Paid / Unpaid", "Invoicing (Zoho)"]));
     expect(heads).not.toContain("Amount");
     const row = sheet.getRow(HEADER_ROW + 1);
     expect(row.getCell(heads.indexOf("Invoice No.") + 1).value).toBe("MAN-777");
@@ -249,7 +249,7 @@ describe("schedule exports", () => {
     const heads = headers(sheet);
     const text = allText(sheet);
 
-    expect(heads).toEqual(expect.arrayContaining(["Invoice No.", "Paid / Unpaid", "Zoho Invoice", "Value (Ex VAT)"]));
+    expect(heads).toEqual(expect.arrayContaining(["Invoice No.", "Paid / Unpaid", "Zoho Invoice", "Value (ex VAT)"]));
     expect(heads).not.toContain("Visit Value");
     expect(text).toContain("MAN-777");
     expect(text).toContain("1 Paid, 0 Unpaid");

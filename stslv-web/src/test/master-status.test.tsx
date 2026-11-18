@@ -141,7 +141,7 @@ describe('Master AMC Status page', () => {
     expect(api.find('GET', '/amc/master-status')[0]?.query.has('month')).toBe(false)
 
     // Client UAT CR-007 / CR-008: Service Engineer right after Service Status; Sales Engineer (the contract's) stays last.
-    expect(headers()).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Value (Ex VAT)', 'Service Status', 'Service Engineer', 'Invoice No.', 'Quote No.', 'Sales Engineer', 'Details'])
+    expect(headers()).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Service Value (ex VAT)', 'Service Status', 'Service Engineer', 'Invoice No.', 'Quote No.', 'Sales Engineer', 'Details'])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'YELLOW')
     expect(rowOf('AMC-0009')).toHaveAttribute('data-colour', 'BLUE')
@@ -159,8 +159,8 @@ describe('Master AMC Status page', () => {
       expect(card('Red Rows')).toHaveTextContent('2')
     })
     // 405 + 405 + 1234.5 + 405; the row without a value adds nothing and is reported.
-    expect(card('Total Value (Ex VAT)')).toHaveTextContent('2,449.500')
-    expect(card('Total Value (Ex VAT)')).toHaveTextContent('1 service has no value set')
+    expect(card('Total Value (ex VAT)')).toHaveTextContent('2,449.500')
+    expect(card('Total Value (ex VAT)')).toHaveTextContent('1 service has no value set')
   })
 
   it('shows every invoice of a visit, and a dash for a missing invoice, quotation or value', async () => {
@@ -208,7 +208,7 @@ describe('Master AMC Status page', () => {
       expect(card('Red Rows')).toHaveTextContent(/^Red Rows0/)
       // The counts animate for 800 ms; a busy full run needs more than the default wait.
     }, { timeout: 5000 })
-    expect(card('Total Value (Ex VAT)')).toHaveTextContent('1,234.500')
+    expect(card('Total Value (ex VAT)')).toHaveTextContent('1,234.500')
 
     await userEvent.click(screen.getByRole('button', { name: 'Reset' }))
     await waitFor(() => expect(Object.fromEntries(api.find('GET', '/amc/master-status').at(-1)?.query ?? [])).toEqual({ page: '1', pageSize: '50' }))
@@ -241,11 +241,11 @@ describe('Master AMC Status page', () => {
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
     const dialog = within(screen.getByRole('dialog'))
     expect(dialog.queryByRole('checkbox', { name: 'AMC Reference' })).not.toBeInTheDocument()
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'Value (Ex VAT)' }))
+    await userEvent.click(dialog.getByRole('checkbox', { name: 'Service Value (ex VAT)' }))
     await userEvent.click(dialog.getByRole('checkbox', { name: 'Sales Engineer' }))
     await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
 
-    expect(headers()).not.toContain('Value (Ex VAT)')
+    expect(headers()).not.toContain('Service Value (ex VAT)')
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(within(rowOf('AMC-0010')).getByRole('button', { name: /Details of AMC-0010/ })).toBeInTheDocument()
@@ -255,12 +255,12 @@ describe('Master AMC Status page', () => {
     view.unmount()
     renderPage()
     await screen.findByText('AMC-0010')
-    expect(headers()).not.toContain('Value (Ex VAT)')
+    expect(headers()).not.toContain('Service Value (ex VAT)')
 
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset to Default' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
-    expect(headers()).toContain('Value (Ex VAT)')
+    expect(headers()).toContain('Service Value (ex VAT)')
     expect(headers()).toContain('Sales Engineer')
   })
 
@@ -461,7 +461,7 @@ describe('Master AMC Status KPI cards', () => {
     expect(within(renamed).getByText('All Work')).toBeInTheDocument()
     expect(renamed).toHaveAttribute('title', 'Standard name: Total Services')
 
-    await userEvent.click(screen.getByRole('button', { name: 'Move Total Value (Ex VAT) earlier' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Move Total Value (ex VAT) earlier' }))
     expect(order()).toEqual(['total', 'GREEN', 'BLUE', 'YELLOW', 'value', 'RED'])
 
     await userEvent.click(screen.getByRole('button', { name: 'Reset KPI Names' }))
@@ -513,7 +513,7 @@ describe('Invoice Acknowledged column', () => {
     await screen.findByText('AMC-0021')
     const columns = headers()
     expect(columns.indexOf('Invoice Acknowledged')).toBe(columns.indexOf('Quote No.') + 1)
-    for (const kept of ['Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Value (Ex VAT)', 'Service Status', 'Invoice No.', 'Quote No.', 'Service Engineer', 'Details']) {
+    for (const kept of ['Client', 'System', 'Frequency', 'Service', 'Scheduled Month', 'Service Value (ex VAT)', 'Service Status', 'Invoice No.', 'Quote No.', 'Service Engineer', 'Details']) {
       expect(columns.some((header) => header?.includes(kept))).toBe(true)
     }
     expect(rowOf('AMC-0021').querySelector('[data-acknowledged]')?.getAttribute('data-acknowledged')).toBe('YES')

@@ -61,7 +61,7 @@ const COLOUR_CARDS: { colour: RowColour; label: string; figure: (kpis: MasterSta
 const KPI_LABELS: Record<string, string> = {
   total: 'Total Services',
   ...Object.fromEntries(COLOUR_CARDS.map((card) => [card.colour, card.label])),
-  value: 'Total Value (Ex VAT)',
+  value: 'Total Value (ex VAT)',
 }
 const KPI_DEFAULTS = Object.keys(KPI_LABELS)
 
@@ -294,7 +294,7 @@ function DetailsDialog({ item, canViewContract, onClose }: { item: MasterStatusI
     ['Frequency', item.frequency.label],
     ['Service', serviceCodeLabel(item.service)],
     ['Due date', formatDate(item.scheduledDate)],
-    ['Value (Ex VAT)', item.visitValue === null ? (item.valueSourceMissing ? '— (no Billing Basis or Cost per Visit on the contract)' : '—') : formatMoney(item.visitValue)],
+    ['Service Value (ex VAT)', item.visitValue === null ? (item.valueSourceMissing ? '— (no Billing Basis or Cost per Visit on the contract)' : '—') : formatMoney(item.visitValue)],
     ['Zoho Invoice Value (Tracking)', item.invoiceValue ? formatMoney(item.invoiceValue) : '—'],
     ...(item.amcValue ? ([['AMC Value / Year (contract)', formatMoney(item.amcValue)]] as [string, ReactNode][]) : []),
     ['Service Status', SERVICE_STATUS_LABELS[item.serviceStatus]],
@@ -599,7 +599,7 @@ export function MasterStatusPage() {
                         </th>
                       ),
                     )}
-                    <th scope="col" className={TABLE.th}>
+                    <th scope="col" className={cx(TABLE.th, 'text-right')}>
                       Details
                     </th>
                   </tr>

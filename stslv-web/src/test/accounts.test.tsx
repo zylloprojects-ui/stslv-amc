@@ -203,11 +203,11 @@ describe('Accounts page', () => {
       expect(card('invoiceFilled')).toHaveTextContent(/Invoice No. Filled1/)
     }, COUNT_UP)
     // 405 + 1234.5 + 405; the row without a value adds nothing and is reported.
-    expect(card('totalValue')).toHaveTextContent('Total Value (Ex VAT)')
+    expect(card('totalValue')).toHaveTextContent('Total Value (ex VAT)')
     expect(card('totalValue')).toHaveTextContent('2,044.500')
     expect(card('totalValue')).toHaveTextContent('1 service has no value set')
     // Approved: amounts are OMR excluding VAT, and the card says so.
-    expect(card('totalValue')).toHaveTextContent('Ex VAT')
+    expect(card('totalValue')).toHaveTextContent('ex VAT')
   })
 
   it('shows report and invoice numbers, never a payment status, and a dash for anything missing', async () => {
@@ -274,7 +274,7 @@ describe('Accounts page', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Customize KPI cards' }))
     await userEvent.type(screen.getByLabelText('Display name for Rows'), 'Services')
-    await userEvent.click(screen.getByRole('button', { name: 'Move Total Value (Ex VAT) earlier' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Move Total Value (ex VAT) earlier' }))
     expect(cardOrder()).toEqual(['rows', 'completed', 'notCompleted', 'totalValue', 'invoiceFilled'])
     await userEvent.click(screen.getByRole('button', { name: 'Customize KPI cards', pressed: true }))
     await waitFor(() => expect(card('rows')).toHaveTextContent(/^Services2/), COUNT_UP)

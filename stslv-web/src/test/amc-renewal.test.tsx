@@ -121,7 +121,7 @@ describe('AMC Renewal page', () => {
 
     const table = await queueTable()
     const headers = within(table).getAllByRole('columnheader').map((header) => header.textContent)
-    expect(headers).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Contract Expiry Date', 'Contract Status', 'Contract Amount', 'Remarks', 'Renewal Status', 'Actions'])
+    expect(headers).toEqual(['#', 'AMC Reference', 'Client', 'System', 'Frequency', 'Service', 'Expiry Date', 'Contract Status', 'Contract Value (ex VAT)', 'Remarks', 'Renewal Status', 'Actions'])
 
     const due = await rowOf('AMC-0041')
     expect(due).toHaveTextContent('Harbour Hotel')

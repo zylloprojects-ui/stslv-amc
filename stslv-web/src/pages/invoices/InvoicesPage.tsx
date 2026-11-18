@@ -204,13 +204,13 @@ export function InvoicesPage() {
                       System
                     </th>
                     <th scope="col" className={TABLE.th}>
-                      Visit
+                      Service
                     </th>
                     <th scope="col" className={TABLE.th}>
                       Completed
                     </th>
                     <th scope="col" className={`${TABLE.th} text-right`}>
-                      Visit amount
+                      Service Amount
                     </th>
                     <th scope="col" className={`${TABLE.th} text-right`}>
                       Actions

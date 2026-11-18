@@ -134,7 +134,7 @@ const COLUMNS: ReportColumn[] = [
   { key: "invoices", header: "Invoice No.", kind: "identifier", width: 18, wrap: true },
   { key: "paid", header: "Paid / Unpaid", kind: "text", width: 14, wrap: true },
   { key: "zoho", header: "Zoho Invoice", kind: "identifier", width: 16, wrap: true },
-  { key: "value", header: "Value (Ex VAT)", kind: "money", width: 14 },
+  { key: "value", header: "Value (ex VAT)", kind: "money", width: 14 },
 ];
 
 /** The chosen filters in words. Names are read from the database, never taken from the request. */

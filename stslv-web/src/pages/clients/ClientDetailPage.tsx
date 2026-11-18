@@ -102,7 +102,7 @@ function UpcomingVisits({ clientId, from }: { clientId: string; from: string }) 
                 System
               </th>
               <th scope="col" className={TABLE.th}>
-                Visit
+                Service
               </th>
               <th scope="col" className={TABLE.th}>
                 Assigned to

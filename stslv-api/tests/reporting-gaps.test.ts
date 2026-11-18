@@ -134,8 +134,8 @@ describe("Accounts contract filter", () => {
 });
 
 describe("Exports honour hidden columns", () => {
-  it("Master AMC Status heads the value Value (Ex VAT)", async () => {
-    expect((await sheetOf("/amc/master-status/export", {})).header).toContain("Value (Ex VAT)");
+  it("Master AMC Status heads the value Value (ex VAT)", async () => {
+    expect((await sheetOf("/amc/master-status/export", {})).header).toContain("Value (ex VAT)");
   });
 
   it("Service Status leaves out what the page hides, keeping the reference", async () => {
