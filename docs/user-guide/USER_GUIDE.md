@@ -299,13 +299,14 @@ same name, figure, wording, icon and colour, from the same calculation.
 
 > **Validity filter and Contract column (2026-11-09).** *Validity → Expired* lists contracts with status Expired or an
 > Active contract whose Valid To has passed (the same rule as the Expired figure). *Validity → Due* lists Active contracts
-> ending today or within 45 days. The Status filter still uses the stored status. Hide Columns can hide the Contract
-> (Upload Contract) column.
+> ending today or within 45 days. The Status filter still uses the stored status. Since 2026-11-18 the register has no
+> Contract (Upload Contract) column: upload contract documents on Contract 360 (Documents tab). The Columns list opens
+> above its button.
 
 **Page:** AMC Contracts (`/amc/contracts`). **Permissions:** View; Create to add; Edit to edit, change status, generate; Delete (+Edit) to cancel; Export.
 
 ### Columns
-#, AMC Reference (opens Contract 360), Client, System, Sales Engineer (the contract's linked Sales Engineer; a contract with no link shows the engineer name typed on it), Validity (progress bar and days remaining), Frequency, Contract Value (ex VAT) (and the value of one service: *per service* from the Billing basis, or *per visit* from the Default visit amount when there is no basis), Final Credit (ex VAT), Visits (% completed), Contract (Upload Contract link, Edit only), Status, Actions. Footer: **Filtered Total**. An amber **Validity ended** pill marks an Active contract past its end date. The amounts are stored excluding VAT; the headings changed at the client UAT (2026-11-16), the amounts did not.
+#, AMC Reference (opens Contract 360), Client, System, Sales Engineer (the contract's linked Sales Engineer; a contract with no link shows the engineer name typed on it), Validity (progress bar and days remaining), Frequency, Contract Value (ex VAT) (and the value of one service: *per service* from the Billing basis, or *per visit* from the Default visit amount when there is no basis), Final Credit (ex VAT), Visits (% completed), Status, Actions. Footer: **Filtered Total**. An amber **Validity ended** pill marks an Active contract past its end date. The amounts are stored excluding VAT; the headings changed at the client UAT (2026-11-16), the amounts did not.
 
 **Sorting (2026-11-11):** click AMC Reference, Client, Sales Engineer, Validity *Start* or *End*, Contract Value, Final Credit or Status to sort ascending; click again for descending (▲ / ▼; keyboard: Tab to the heading, Enter). The whole filtered list is sorted before it is split into pages, together with search and filters; the download uses the same order. Amounts sort as numbers, dates as dates, Status as Draft → Active → Expired → Cancelled; an empty Sales Engineer or Final Credit comes last.
 
@@ -507,9 +508,11 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 
 ## Service Sales
 
-> **AMC Value and total (2026-11-09).** For users who may view AMC Contracts, *AMC Value (ex VAT)* shows the AMC Value /
-> Year of each service's contract period, and *Total AMC Value of matching contracts* adds up the matching contract
-> periods on every page, each counted once. It is not an invoice value or a payment.
+> **Value columns hidden from the table and PDF (2026-11-18).** *AMC Value (ex VAT)* and *Service Value (ex VAT)* are
+> hidden from the Service Sales table and from its PDF export. The related *Total AMC Value of matching contracts* is
+> also left out of the table and the PDF. The Excel export still includes these values and the total for users who may
+> view AMC Contracts. Database values, calculations and other modules are unchanged; the values still appear on
+> Service Status, Accounts and Master AMC Status.
 
 **Page:** AMC Sales → Service Sales (`/amc/service-sales`; old `/amc/quotations` links redirect). **Permissions:** *Service Sales: View / Edit / Export*.
 
@@ -520,19 +523,21 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 - **Quote No.:** only on completed services; ≤50 characters, no line breaks; empty when there is none ("N/A is not a quotation number…"); **Save** shows who saved it and when. "Complete the service before recording a quotation number."
 - Service Report: view/download only.
 - **Sales Engineer / Service Engineer (client UAT, 2026-11-16):** *Sales Engineer* is the contract's (who brought the AMC); *Service Engineer*, after the Service Report, is who performed the service (as entered on Service Status), so the sales team can ask about the faults before quoting.
-- **Values:** AMC Value and Service Value are sent only to users who may view AMC Contracts. A Service Sales role without that permission never receives them — not on the page, in its totals or in the downloads.
+- **Values:** the table and the PDF export show no AMC Value, Service Value or Total AMC Value (2026-11-18). The Excel export still includes them, only for users who may view AMC Contracts; a Service Sales role without that permission never receives them.
 
 ---
 
 ## Accounts
 
 > **Service Report viewer and filtered totals (2026-11-09).** *View Service Report* opens the uploaded report in a
-> read-only viewer with Download inside it (Word documents: Download only). The *Total Filtered* row adds up every
+> read-only viewer with Download inside it (Word documents: Download only). Since 2026-11-18 the report has its own
+> *Service Report* column after the Service Report No., laid out as on Service Sales: an eye icon (view), a download icon
+> (download) and "Not uploaded" when there is no report. The Service Report No. column shows the number only. The *Total Filtered* row adds up every
 > matching service on every page: Total Filtered Service Value (ex VAT), its Paid (Invoice No.) part, and Total Filtered
 > Invoice Value (ex VAT) — the Zoho amounts allocated in Invoice Tracking (cancelled invoices excluded). A service with no
 > value whose contract has no Billing Basis or Cost per Visit says so; no value is invented.
 
-> **Engineers and values (client UAT, 2026-11-16).** After the Service Report No.: *Sales Engineer* (the contract's),
+> **Engineers and values (client UAT, 2026-11-16).** After the Service Report: *Sales Engineer* (the contract's),
 > *Service Engineer* (who performed the service, as entered on Service Status), *AMC Value (ex VAT)* (since 2026-11-17
 > the contract's **Customer PO Value**, as entered on the contract — "Not entered" when none; never the AMC Value / Year
 > or a term total; repeated on each of its services and never added up; shown to everyone who may open Accounts, without
@@ -546,7 +551,7 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 - **Row colours:** Red = service not completed · Blue = completed, Unpaid · Green = completed, Paid. A Zoho record does not make a row green.
 - **KPIs:** Rows, Completed, Not Completed, Invoice No. Filled ("Paid: reference status, not verified payment"), Total Value (ex VAT).
 - **Filters (press Apply):** search, Client, Sales Engineer, AMC Contract, Scheduled month and year, Paid / Unpaid, Service Status; Hide Columns.
-- **Columns:** AMC Reference, Client, System, Frequency, Service, Scheduled Month, Value (ex VAT), Service Status, Service Report No., Invoice No. (with "Zoho: …"), Sales Engineer.
+- **Columns:** AMC Reference, Client, System, Frequency, Service, Scheduled Month, Value (ex VAT), Service Status, Service Report No., Service Report (view / download), Invoice No. (with "Zoho: …"), Sales Engineer.
 
 ### Workflow — enter an invoice number
 1. Raise the invoice in Zoho.

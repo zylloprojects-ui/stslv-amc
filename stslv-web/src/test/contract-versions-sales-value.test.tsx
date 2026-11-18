@@ -76,7 +76,7 @@ function salesItem(overrides: Partial<ServicesSalesItem>): ServicesSalesItem {
   }
 }
 
-describe('Service Sales: AMC Value and filtered total', () => {
+describe('Service Sales: value columns not shown in the table', () => {
   function salesApi(user: SessionUser, visible: boolean) {
     const items = [
       salesItem({ id: '1', amcValue: visible ? '1200.000' : null }),
@@ -104,31 +104,37 @@ describe('Service Sales: AMC Value and filtered total', () => {
   }
   const headers = () => within(screen.getByRole('table')).getAllByRole('columnheader').map((cell) => cell.textContent?.trim())
 
-  it('shows each visit’s contract-period value and the total over unique contract periods, on every page', async () => {
+  // Owner request 2026-11-18: the value columns and the Total AMC Value footer are left out of the Service Sales table,
+  // even when the API sends the values; every other column stays.
+  it('shows no AMC Value or Service Value column and no Total AMC Value footer, even when the API sends them', async () => {
     salesApi(ADMIN, true)
     renderApp('/amc/service-sales')
 
     await screen.findByText('SV-ALPHA (V2)')
-    expect(headers()).toContain('AMC Value (ex VAT)')
-    expect(screen.getAllByText('1,200.000')).toHaveLength(2)
-    expect(screen.getByText('1,500.250')).toBeInTheDocument()
-    const footer = screen.getByRole('rowheader', { name: /Total AMC Value of matching contracts \(2 unique contract periods, all pages\)/ }).closest('tr') as HTMLElement
-    expect(footer).toHaveTextContent('2,700.250')
-    expect(footer).toHaveTextContent('Not an invoice value or a payment')
-  })
-
-  it('can hide and show the AMC Value column like any other', async () => {
-    salesApi(ADMIN, true)
-    renderApp('/amc/service-sales')
-
-    await screen.findByText('SV-ALPHA (V2)')
+    expect(headers()).toEqual([
+      '#',
+      'AMC Reference',
+      'Client',
+      'System',
+      'Frequency',
+      'Service',
+      'Scheduled Month / Due Date',
+      'Service Status',
+      'Service Report No.',
+      'Service Report',
+      'Service Engineer',
+      'Quote No.',
+      'Sales Engineer',
+    ])
+    expect(screen.queryByText('1,200.000')).not.toBeInTheDocument()
+    expect(screen.queryByText('1,500.250')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Total AMC Value/)).not.toBeInTheDocument()
+    expect(screen.queryByText('2,700.250')).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: /^Hide Columns/ }))
     const dialog = within(screen.getByRole('dialog'))
-    await userEvent.click(dialog.getByRole('checkbox', { name: 'AMC Value (ex VAT)' }))
-    await userEvent.click(dialog.getByRole('button', { name: 'Apply' }))
-
-    await waitFor(() => expect(headers()).not.toContain('AMC Value (ex VAT)'))
-    expect(screen.queryByText(/Total AMC Value of matching contracts/)).not.toBeInTheDocument()
+    expect(dialog.queryByRole('checkbox', { name: 'AMC Value (ex VAT)' })).not.toBeInTheDocument()
+    expect(dialog.queryByRole('checkbox', { name: 'Service Value (ex VAT)' })).not.toBeInTheDocument()
+    expect(dialog.getByRole('checkbox', { name: 'Sales Engineer' })).toBeInTheDocument()
   })
 
   it('offers no AMC Value column or total to a user without AMC Contracts: View', async () => {

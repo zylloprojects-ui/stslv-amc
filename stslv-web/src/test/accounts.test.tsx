@@ -177,6 +177,7 @@ describe('Accounts page', () => {
       'Scheduled Month',
       'Service Status',
       'Service Report No.',
+      'Service Report',
       // Client UAT CR-011 to CR-014 (provisional order). AMC Value is offered only when the API says the user may see
       // contract values; this mock does not.
       'Sales Engineer',
@@ -300,7 +301,7 @@ describe('Accounts page', () => {
     const buttons = screen.getAllByRole('button', { name: /Hide Columns/ })
     expect(buttons).toHaveLength(1)
     const filters = within(screen.getByRole('form', { name: 'Filters' }))
-    expect(filters.getByRole('button', { name: 'Hide Columns · 11 of 12 shown' })).toBe(buttons[0])
+    expect(filters.getByRole('button', { name: 'Hide Columns · 12 of 13 shown' })).toBe(buttons[0])
     expect(filters.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
     expect(filters.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
     // Excel and PDF stay in the header, outside the filters.
@@ -310,7 +311,7 @@ describe('Accounts page', () => {
     // Opening the column chooser does not submit the filters, and Actions is not a choice.
     await userEvent.click(buttons[0])
     const dialog = within(screen.getByRole('dialog'))
-    expect(dialog.getAllByRole('checkbox')).toHaveLength(12)
+    expect(dialog.getAllByRole('checkbox')).toHaveLength(13)
     expect(dialog.queryByRole('checkbox', { name: 'Actions' })).not.toBeInTheDocument()
   })
 
@@ -330,7 +331,7 @@ describe('Accounts page', () => {
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(headers()).not.toContain('Actions')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 9 of 12 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 10 of 13 shown' })).toBeInTheDocument()
 
     view.unmount()
     renderPage()
@@ -360,7 +361,7 @@ describe('Accounts page', () => {
     await userEvent.click(zoho)
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
     expect(headers()).toContain('Zoho Invoice Value (ex VAT)')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 12 of 12 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 13 of 13 shown' })).toBeInTheDocument()
 
     // Showing every column is remembered, not replaced by the default on the next visit.
     view.unmount()
@@ -383,7 +384,10 @@ describe('Accounts page', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }))
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'System' }))
+    // Service Report is a page-only column: hiding it never reaches the export.
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Service Report' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
+    expect(headers()).not.toContain('Service Report')
 
     await userEvent.click(screen.getByRole('button', { name: 'Export Accounts to Excel' }))
     await waitFor(() => expect(saved).toEqual(['accounts.xlsx']))
@@ -560,7 +564,7 @@ describe('Accounts engineers and values', () => {
       ? ok({ items, total: items.length, page: 1, pageSize: 50, kpis: { rows: items.length, completed: 0, notCompleted: items.length, invoiceFilled: 0, totalValue: '300.000', valueMissing: 0, red: items.length, blue: 0, green: 0 }, amcValueVisible: visible })
       : undefined
 
-  it('shows Sales Engineer, Service Engineer, AMC Value and Service Value after the Service Report No., each from its own source', async () => {
+  it('shows Sales Engineer, Service Engineer, AMC Value and Service Value after the Service Report, each from its own source', async () => {
     accountsApi(VIEWER, [], withAmcValue([ROW], true))
     renderPage()
     await screen.findByText('Vijay Service')
@@ -568,10 +572,10 @@ describe('Accounts engineers and values', () => {
     const columns = headers()
     const at = (heading: string) => columns.indexOf(heading)
     expect([at('Sales Engineer'), at('Service Engineer'), at('AMC Value (ex VAT)'), at('Service Value (ex VAT)')]).toEqual([
-      at('Service Report No.') + 1,
       at('Service Report No.') + 2,
       at('Service Report No.') + 3,
       at('Service Report No.') + 4,
+      at('Service Report No.') + 5,
     ])
     const row = rowOf('AMC-0007')
     const cells = [...row.querySelectorAll('td')].map((cell) => cell.textContent)
@@ -614,5 +618,40 @@ describe('Accounts engineers and values', () => {
     expect(headers()).toContain('Service Value (ex VAT)')
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
     expect(within(screen.getByRole('dialog')).queryByRole('checkbox', { name: 'AMC Value (ex VAT)' })).not.toBeInTheDocument()
+  })
+
+  it('shows the contract AMC Value / Year below the service value, as on Master AMC Status, without changing the PO column or the total', async () => {
+    accountsApi(VIEWER, [], withAmcValue([makeItem({ amcValue: '3450.000', annualAmcValue: '1000.000', visitValue: '250.000' })], true))
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    const cells = [...rowOf('AMC-0007').querySelectorAll('td')]
+    const value = cells[headers().indexOf('Service Value (ex VAT)')] as HTMLElement
+    expect(value).toHaveTextContent('250.000AMC Value / Year: 1,000.000')
+    expect(value).toHaveClass('text-right', 'font-semibold', 'tabular-nums', 'text-slate-900')
+    const secondary = within(value).getByText('AMC Value / Year: 1,000.000')
+    expect(secondary).toHaveClass('text-xs', 'font-normal', 'text-slate-500')
+    // The separate Customer PO Value column is unchanged; the total adds service values only.
+    expect(cells[headers().indexOf('AMC Value (ex VAT)')]).toHaveTextContent('3,450.000')
+    const total = within(screen.getByRole('table')).getByRole('rowheader', { name: /Total Filtered/ }).closest('tr') as HTMLElement
+    expect(total).not.toHaveTextContent('1,000.000')
+  })
+
+  it('shows only the service value when no AMC Value / Year is sent, and keeps the missing-value notice', async () => {
+    accountsApi(
+      VIEWER,
+      [],
+      withAmcValue([makeItem({ id: '1', annualAmcValue: null, visitValue: '300.000' }), makeItem({ id: '2', reference: 'AMC-0008', annualAmcValue: '1000.000', visitValue: null, valueSourceMissing: true })], true)
+    )
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    const at = headers().indexOf('Service Value (ex VAT)')
+    const plain = [...rowOf('AMC-0007').querySelectorAll('td')][at] as HTMLElement
+    expect(plain).toHaveTextContent(/^300\.000$/)
+    expect(plain).not.toHaveTextContent('AMC Value / Year')
+    const missing = [...rowOf('AMC-0008').querySelectorAll('td')][at] as HTMLElement
+    expect(missing).toHaveTextContent('No Billing Basis or Cost per Visit on the contract')
+    expect(missing).toHaveTextContent('AMC Value / Year: 1,000.000')
   })
 })

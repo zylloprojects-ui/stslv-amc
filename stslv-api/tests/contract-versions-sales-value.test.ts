@@ -1,6 +1,10 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
+import type { AuthContext } from "../src/modules/auth/access";
+import { buildServicesSalesExport } from "../src/modules/services-sales/services-sales.export";
+import type { ExportServicesSalesQuery } from "../src/modules/services-sales/services-sales.schemas";
+import { pdfDefinition } from "../src/shared/export/pdf";
 import { activeContract, contractBody, createClient, grant, renewalEngineer, visitsOf, withRenewalDocument, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn } from "./helpers";
 import { invoiceBody, newInvoice } from "./invoices-helpers";
@@ -237,5 +241,48 @@ describe("Service Sales: AMC Value and filtered total", () => {
     const hiddenBook = new ExcelJS.Workbook();
     await hiddenBook.xlsx.load(hidden.body as unknown as ExcelJS.Buffer);
     expect(JSON.stringify(hiddenBook.worksheets[0]?.getSheetValues())).not.toContain("AMC Value");
+  });
+
+  // Owner request 2026-11-18: the PDF carries neither value column nor the value total, even for a permitted user.
+  // The Excel export (above) is unchanged.
+  it("leaves AMC Value, Service Value and the value total out of the PDF, keeping every other column", async () => {
+    const auth: AuthContext = {
+      user: { id: admin.id, email: "admin@example.com", fullName: "Admin" },
+      roles: [],
+      permissions: new Set(["AMC_CONTRACTS:VIEW", "SERVICES_SALES:VIEW", "SERVICES_SALES:EXPORT"]) as AuthContext["permissions"],
+      mustChangePassword: false,
+    };
+    const { report } = await buildServicesSalesExport(auth, { clientId: salesClient, format: "pdf", hidden: [] } as ExportServicesSalesQuery);
+    const table = report.tables[0]!;
+    const pdfColumns = table.columns.filter((column) => !column.excelOnly).map((column) => column.header);
+
+    expect(pdfColumns).toEqual([
+      "#",
+      "AMC Reference",
+      "Client",
+      "System",
+      "Frequency",
+      "Service",
+      "Due date",
+      "Service status",
+      "Service Report No.",
+      "Service Engineer",
+      "Quote No.",
+      "Sales status",
+      "Sales Engineer",
+    ]);
+    const content = JSON.stringify(pdfDefinition(report).content);
+    for (const absent of ["AMC Value", "Service Value", "Total AMC Value", "4,700.750", "1,200.000", "2,000.500", "1,500.250", "300.000", "500.125", "375.063"]) {
+      expect(content).not.toContain(absent);
+    }
+    // The other notes and figures are still there.
+    expect(content).toContain("Total services 12");
+    expect(content).toContain("SV-ALPHA");
+
+    // The same request through the API still produces a PDF.
+    const file = await api().get("/api/services-sales/export").query({ clientId: salesClient, format: "pdf" }).responseType("blob").set(admin.headers);
+    expect(file.status).toBe(200);
+    expect(file.headers["content-type"]).toBe("application/pdf");
+    expect((file.body as Buffer).subarray(0, 4).toString()).toBe("%PDF");
   });
 });

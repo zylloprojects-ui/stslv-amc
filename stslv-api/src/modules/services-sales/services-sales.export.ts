@@ -45,9 +45,17 @@ const COLUMNS: (ReportColumn & { hideable?: ServicesSalesColumn })[] = [
   { key: "serviceValue", header: "Service Value (ex VAT)", kind: "money", width: 14, hideable: "serviceValue" },
 ];
 
-/** The report's columns: everything the page shows. AMC Reference and the sales status are always included. */
-export function servicesSalesColumns(hidden: readonly ServicesSalesColumn[], amcValue = false): ReportColumn[] {
-  return COLUMNS.filter((column) => ((column.key !== "amcValue" && column.key !== "serviceValue") || amcValue) && (!column.hideable || !hidden.includes(column.hideable))).map(
+/** The value columns, which the PDF leaves out (owner request 2026-11-18). The Excel export still carries them. */
+const VALUE_COLUMNS: ReadonlySet<string> = new Set(["amcValue", "serviceValue"]);
+
+/**
+ * The report's columns: everything the page shows. AMC Reference and the sales status are always included. The value
+ * columns are only for a user with AMC Contracts: View, and only in Excel. The PDF columns share the page width in
+ * proportion to their declared widths, so the remaining columns widen to fill the space.
+ */
+export function servicesSalesColumns(hidden: readonly ServicesSalesColumn[], amcValue = false, format: "xlsx" | "pdf" = "xlsx"): ReportColumn[] {
+  const values = amcValue && format === "xlsx";
+  return COLUMNS.filter((column) => (!VALUE_COLUMNS.has(column.key) || values) && (!column.hideable || !hidden.includes(column.hideable))).map(
     ({ hideable: _hideable, ...column }) => column
   );
 }
@@ -120,7 +128,8 @@ export async function buildServicesSalesExport(
       } not completed; counted as Not Completed.`
     );
   }
-  if (amcValueTotal && !hidden.includes("amcValue")) {
+  // Excel only: the PDF has no value columns, so it has no value total either (2026-11-18).
+  if (format === "xlsx" && amcValueTotal && !hidden.includes("amcValue")) {
     notes.push(
       `Total AMC Value of matching contracts: ${displayMoney(amcValueTotal.total)} OMR excluding VAT, over ${amcValueTotal.contracts} unique contract ${
         amcValueTotal.contracts === 1 ? "period" : "periods"
@@ -139,7 +148,7 @@ export async function buildServicesSalesExport(
     tables: [
       {
         name: "Service Sales",
-        columns: servicesSalesColumns(hidden, access.amcValue),
+        columns: servicesSalesColumns(hidden, access.amcValue, format),
         rows: items.map(toRow),
         groupBy: (row) => displayMonth(String(row.scheduledDate)),
         notes,

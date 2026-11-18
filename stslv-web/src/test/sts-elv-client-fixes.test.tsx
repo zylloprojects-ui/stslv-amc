@@ -57,23 +57,35 @@ describe('AMC Contracts: validity filter and Contract column', () => {
     expect((screen.getByLabelText('Validity') as HTMLSelectElement).value).toBe('due')
   })
 
-  it('hides and shows the Contract column, remembering the choice, without touching other columns', async () => {
+  it('hides and shows a column, remembering the choice, without touching other columns', async () => {
     contractsApi()
     renderApp('/amc/contracts')
     const headers = () => within(screen.getByRole('table')).getAllByRole('columnheader').map((cell) => cell.textContent?.trim())
 
     await screen.findByText('AMC-0100')
     const before = headers()
-    expect(before).toContain('Contract')
+    // 2026-11-18: the register has no Contract (Upload Contract) column; Contract Value (ex VAT) stays.
+    expect(before.some((header) => header?.replace(/[↕↑↓]/g, '').trim() === 'Contract')).toBe(false)
+    expect(before.some((header) => header?.startsWith('Contract Value (ex VAT)'))).toBe(true)
 
     await userEvent.click(screen.getByRole('button', { name: /Columns/ }))
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Contract' }))
-    await waitFor(() => expect(headers()).not.toContain('Contract'))
-    expect(headers()).toEqual(before.filter((header) => header !== 'Contract'))
-    expect(localStorage.getItem('stslev.amc-contracts.hidden-columns')).toBe('["contract"]')
+    expect(screen.queryByRole('checkbox', { name: 'Contract' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Visits' }))
+    await waitFor(() => expect(headers()).not.toContain('Visits'))
+    expect(headers()).toEqual(before.filter((header) => header !== 'Visits'))
+    expect(localStorage.getItem('stslev.amc-contracts.hidden-columns')).toBe('["visits"]')
 
-    await userEvent.click(screen.getByRole('checkbox', { name: 'Contract' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Visits' }))
     await waitFor(() => expect(headers()).toEqual(before))
+  })
+
+  it('ignores a remembered choice for the retired Contract column', async () => {
+    localStorage.setItem('stslev.amc-contracts.hidden-columns', '["contract"]')
+    contractsApi()
+    renderApp('/amc/contracts')
+
+    await screen.findByText('AMC-0100')
+    expect(screen.getByRole('button', { name: /Columns/ })).toHaveTextContent('9/9')
   })
 })
 
@@ -254,7 +266,36 @@ describe('Accounts: Service Report viewer and filtered totals', () => {
     })
   }
 
-  it('opens the report in a read-only viewer with Download inside it, and has no separate row Download', async () => {
+  it('shows View and Download in a Service Report column after the Service Report No., and "Not uploaded" without a report', async () => {
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:report'), revokeObjectURL: vi.fn() }))
+    const saved: string[] = []
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push(this.download)
+    })
+    const api = accountsApi()
+    renderApp('/finance/accounts')
+
+    await screen.findByText('AMC-0007')
+    const headers = within(screen.getByRole('table')).getAllByRole('columnheader').map((cell) => cell.textContent?.trim())
+    const reportAt = headers.indexOf('Service Report')
+    expect(reportAt).toBe(headers.indexOf('Service Report No.') + 1)
+
+    const cellsOf = (reference: string) => [...(screen.getByText(reference).closest('tr') as HTMLElement).querySelectorAll('td')]
+    // The report number stands alone, with no icon beneath it.
+    const numberCell = cellsOf('AMC-0007')[headers.indexOf('Service Report No.')] as HTMLElement
+    expect(within(numberCell).queryByRole('button')).not.toBeInTheDocument()
+
+    const reportCell = within(cellsOf('AMC-0007')[reportAt] as HTMLElement)
+    expect(reportCell.getByRole('button', { name: /^View Service Report for AMC-0007/ })).toBeInTheDocument()
+    expect(cellsOf('AMC-0008')[reportAt]).toHaveTextContent('Not uploaded')
+    expect(within(cellsOf('AMC-0008')[reportAt] as HTMLElement).queryByRole('button')).not.toBeInTheDocument()
+
+    await userEvent.click(reportCell.getByRole('button', { name: /^Download Service Report for AMC-0007/ }))
+    await waitFor(() => expect(saved).toEqual(['q1-report.pdf']))
+    expect(api.find('GET', '/accounts/1/report')).toHaveLength(1)
+  })
+
+  it('opens the report in a read-only viewer with Download inside it', async () => {
     const created = vi.fn(() => 'blob:report')
     vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: created, revokeObjectURL: vi.fn() }))
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
@@ -262,9 +303,6 @@ describe('Accounts: Service Report viewer and filtered totals', () => {
     renderApp('/finance/accounts')
 
     await screen.findByText('AMC-0007')
-    expect(screen.queryByRole('button', { name: /^Download/ })).not.toBeInTheDocument()
-    expect(screen.getByText('No report uploaded')).toBeInTheDocument()
-
     await userEvent.click(screen.getByRole('button', { name: /^View Service Report for AMC-0007/ }))
     const dialog = await screen.findByRole('dialog', { name: /Service Report · AMC-0007/ })
     await waitFor(() => expect(within(dialog).getByTitle(/Service report for AMC-0007/)).toHaveAttribute('src', 'blob:report'))
