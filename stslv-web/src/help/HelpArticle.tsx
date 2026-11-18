@@ -2,6 +2,8 @@ import { Link } from 'react-router-dom'
 import { cx } from '../lib/format'
 import type { HelpTopic } from './helpModel'
 import { HELP_TOPICS } from './helpTopics'
+import { HelpVisual } from './HelpVisual'
+import { HELP_VISUALS } from './helpVisuals'
 
 const HEADING = 'text-sm font-bold uppercase tracking-wide text-[#0b3b66]'
 
@@ -20,6 +22,7 @@ export function HelpArticle({
   compact?: boolean
 }) {
   const related = (topic.related ?? []).filter((id) => visibleIds.has(id))
+  const visual = HELP_VISUALS[topic.id]
 
   return (
     <article aria-labelledby={`help-${topic.id}-title`} className="space-y-5 text-sm leading-relaxed text-slate-700">
@@ -30,6 +33,13 @@ export function HelpArticle({
         </h2>
         <p className="mt-1.5 text-slate-600">{topic.summary}</p>
       </header>
+
+      {visual && (
+        <section className="space-y-2">
+          <h3 className={HEADING}>On the screen</h3>
+          <HelpVisual visual={visual} compact={compact} />
+        </section>
+      )}
 
       {topic.sections.map((section) => (
         <section key={section.heading} className="space-y-2">

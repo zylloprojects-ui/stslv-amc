@@ -167,9 +167,9 @@ describe('AMC Management page', () => {
 
     await waitFor(() => expect(within(card('Contract KPIs', 'Active AMCs')).getByText('12')).toBeInTheDocument())
     expect(within(card('Contract KPIs', 'Active AMCs')).getByText(/2 past validity not counted/)).toBeInTheDocument()
-    expect(within(card('Contract KPIs', 'Annual AMC Value (Ex VAT)')).getByText('8,010.500')).toBeInTheDocument()
-    expect(within(card('Contract KPIs', 'Final Credit (Ex VAT)')).getByText('300.501')).toBeInTheDocument()
-    expect(within(card('Contract KPIs', 'Final Credit (Ex VAT)')).getByText(/Entered on 2 of 12 active contracts/)).toBeInTheDocument()
+    expect(within(card('Contract KPIs', 'Annual AMC Value (ex VAT)')).getByText('8,010.500')).toBeInTheDocument()
+    expect(within(card('Contract KPIs', 'Final Credit (ex VAT)')).getByText('300.501')).toBeInTheDocument()
+    expect(within(card('Contract KPIs', 'Final Credit (ex VAT)')).getByText(/Entered on 2 of 12 active contracts/)).toBeInTheDocument()
     expect(within(card('Contract KPIs', 'Expiring ≤45 Days')).getByText('3')).toBeInTheDocument()
     expect(within(card('Contract KPIs', 'Expiring ≤45 Days')).getByText(/1 with a renewal/)).toBeInTheDocument()
 
@@ -365,7 +365,7 @@ describe('KPI customization', () => {
     await userEvent.click(within(schedule).getByRole('button', { name: 'Move Services This Month later' }))
 
     expect(cardOrder('Schedule KPIs')).toEqual(['Schedule Pending Billing', 'Services This Month', 'Current Scheduled Value', 'Schedule Engine Status'])
-    expect(cardOrder('Contract KPIs')).toEqual(['Active AMCs', 'Annual AMC Value (Ex VAT)', 'Final Credit (Ex VAT)', 'Expiring ≤45 Days'])
+    expect(cardOrder('Contract KPIs')).toEqual(['Active AMCs', 'Annual AMC Value (ex VAT)', 'Final Credit (ex VAT)', 'Expiring ≤45 Days'])
     expect(JSON.parse(localStorage.getItem('stslev.amc-management.schedule.kpi-order.1') ?? '[]')).toEqual(['pendingBilling', 'services', 'scheduledValue', 'engine'])
 
     await userEvent.click(within(schedule).getByRole('button', { name: 'Reset KPI Order of Schedule KPIs' }))

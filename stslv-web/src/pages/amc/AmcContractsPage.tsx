@@ -654,9 +654,11 @@ export function AmcContractsPage() {
                     )}
                     {show('validity') && (
                       <SortHeader columns={['validFrom', 'validTo']} sort={sort}>
-                        <span className="block">Validity</span>
-                        <span className="mt-0.5 flex gap-3 text-[11px]">
+                        {/* One line, like every other heading: "Validity: Start · End", each part sortable. */}
+                        <span className="inline-flex items-center gap-2">
+                          <span>Validity:</span>
                           <SortButton label="Start" column="validFrom" sort={sort} onSort={chooseSort} />
+                          <span aria-hidden="true" className="text-slate-400">·</span>
                           <SortButton label="End" column="validTo" sort={sort} onSort={chooseSort} />
                         </span>
                       </SortHeader>

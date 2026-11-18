@@ -187,8 +187,8 @@ export function ConsolidatedSchedule() {
               <caption className="sr-only">Consolidated monthly schedule</caption>
               <thead>
                 <tr>
-                  {['AMC Reference', 'Client', 'System', 'Frequency', 'Sales Engineer', 'Services', 'Value (Ex VAT)'].map((heading) => (
-                    <th key={heading} scope="col" className={cx(TABLE.th, heading === 'Value (Ex VAT)' && 'text-right')}>
+                  {['AMC Reference', 'Client', 'System', 'Frequency', 'Sales Engineer', 'Services', 'Value (ex VAT)'].map((heading) => (
+                    <th key={heading} scope="col" className={cx(TABLE.th, heading === 'Value (ex VAT)' && 'text-right')}>
                       {heading}
                     </th>
                   ))}

@@ -7,25 +7,19 @@
  */
 
 /*
- * Compact grid (client UAT 2026-11-16, CR-023): headings may wrap to two balanced lines instead of one long line, and
- * cells use less padding, so a row fits on one line on a 24"–27" screen (1920–2560 px). Text sizes are unchanged; the
- * table still scrolls sideways when the window is narrower than its columns. Only this table is affected.
+ * Compact grid (client UAT 2026-11-16, CR-023): cells use less padding, so a row fits on one line on a 24"–27" screen
+ * (1920–2560 px). Text sizes are unchanged; the table scrolls sideways when the window is narrower than its columns.
+ * Headings (2026-11-18): on one line, like every other table in the application, for one consistent look. This
+ * replaces CR-023's two-line headings; the tighter cells stay.
  */
 .service-status-table.table-scroll thead th {
-  white-space: normal;
-  text-wrap: balance;
-  min-width: 5.5rem;
-  max-width: 10rem;
+  white-space: nowrap;
   line-height: 1.3;
   padding: 0.625rem 0.625rem;
-  vertical-align: bottom;
+  vertical-align: middle;
 }
 .service-status-table.table-scroll tbody td {
   padding: 0.5rem 0.625rem;
-}
-/* The amount columns are narrower than their "(ex VAT)" headings: enough room for two lines. */
-.service-status-table.table-scroll thead th.text-right {
-  min-width: 7.5rem;
 }
 
 /* Left indicator on the first cell, for every status. */

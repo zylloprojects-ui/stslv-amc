@@ -50,7 +50,7 @@ function UpcomingSchedule({ upcoming }: { upcoming: NonNullable<EngineerSummary[
           <caption className="sr-only">Upcoming work schedule</caption>
           <thead>
             <tr>
-              {['Scheduled date', 'Client', 'System', 'Visit', 'Assigned to', 'Status'].map((label) => (
+              {['Scheduled Date', 'Client', 'System', 'Service', 'Assigned To', 'Status'].map((label) => (
                 <th key={label} scope="col" className={TABLE.th}>
                   {label}
                 </th>

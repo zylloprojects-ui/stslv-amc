@@ -132,7 +132,7 @@ export const KPIS: KpiDefinition[] = [
   {
     id: 'value',
     row: 'portfolio',
-    label: 'Annual AMC Value (Ex VAT)',
+    label: 'Annual AMC Value (ex VAT)',
     icon: 'wallet',
     visible: contractsVisible,
     // AMC Value / Year as entered, summed. Values entered before that rule are not reinterpreted: see the Contract Value Review report.
@@ -147,7 +147,7 @@ export const KPIS: KpiDefinition[] = [
   {
     id: 'credit',
     row: 'portfolio',
-    label: 'Final Credit (Ex VAT)',
+    label: 'Final Credit (ex VAT)',
     icon: 'chart',
     visible: contractsVisible,
     // Final Credit Value, an annual Billing Basis option, summed as entered.

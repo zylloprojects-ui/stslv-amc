@@ -36,15 +36,15 @@ async function scheduleTable() {
 const headers = (table: HTMLElement) => within(table).getAllByRole('columnheader').map((cell) => cell.textContent?.trim())
 
 describe('Contract 360 Service Schedule quotation number', () => {
-  it('adds a Quotation No. column immediately before Invoice No.', async () => {
+  it('adds a Quote No. column immediately before Invoice No.', async () => {
     const names = headers(await scheduleTable())
-    expect(names).toContain('Quotation No.')
-    expect(names.indexOf('Invoice No.')).toBe(names.indexOf('Quotation No.') + 1)
+    expect(names).toContain('Quote No.')
+    expect(names.indexOf('Invoice No.')).toBe(names.indexOf('Quote No.') + 1)
   })
 
   it("shows each service's own quotation, and — where none is saved", async () => {
     const table = await scheduleTable()
-    const column = headers(table).indexOf('Quotation No.')
+    const column = headers(table).indexOf('Quote No.')
     const rows = within(table).getAllByRole('row').slice(1) as HTMLTableRowElement[]
 
     const cells = rows.map((row) => [row.cells[0]?.textContent?.trim(), row.cells[column]?.textContent?.trim()])

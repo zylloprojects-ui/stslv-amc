@@ -253,7 +253,7 @@ describe("exports", () => {
     await workbook.xlsx.load(response.body as unknown as ExcelJS.Buffer);
     const sheet = workbook.getWorksheet("Renewal Queue") as ExcelJS.Worksheet;
     const header = (sheet.getRow(6).values as unknown[]).slice(1);
-    expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Service", "Contract Expiry Date", "Contract Status", "Contract Amount", "Renewal Status", "Renewal AMC"]);
+    expect(header).toEqual(["#", "AMC Reference", "Client", "System", "Service", "Expiry Date", "Contract Status", "Contract Value (ex VAT)", "Renewal Status", "Renewal AMC"]);
     const due = (await queue({ renewalStatus: "DUE" })).body.data.total as number;
     const states = Array.from({ length: due }, (_, index) => (sheet.getRow(7 + index).values as unknown[])[9]);
     expect(states.every((state) => state === "Due / Expired")).toBe(true);

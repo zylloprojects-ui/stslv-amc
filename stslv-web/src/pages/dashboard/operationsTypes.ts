@@ -6,7 +6,7 @@ import type { ContractStatus, VisitStatus } from '../amc/types'
 /** Reference status from the manual Invoice No. of each service; it does not verify that money was received. */
 export interface PaymentFigures {
   paid: number
-  /** Sum of the service values (Ex VAT) of the services with an Invoice No.; services without a value add nothing. */
+  /** Sum of the service values (ex VAT) of the services with an Invoice No.; services without a value add nothing. */
   paidValue: string
   /** Of paid, the services with no recorded value. Absent from an older API. */
   paidAmountMissing?: number

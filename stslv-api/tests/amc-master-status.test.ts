@@ -325,7 +325,7 @@ describe("Master AMC Status", () => {
       const header = (sheet.getRow(6).values as unknown[]).slice(1);
       // Zoho Invoices (Tracking) and their Zoho References follow Invoice No. (P2, 2026-11-09) and are hidden with it.
       expect(header).toEqual([
-        "#", "AMC Reference", "Client", "Frequency", "Service", "Scheduled Month", "Value (Ex VAT)", "Service Status",
+        "#", "AMC Reference", "Client", "Frequency", "Service", "Scheduled Month", "Value (ex VAT)", "Service Status",
         // Invoice Acknowledged (2026-11-11) follows Quote No. for a user who may view Invoice Acknowledgements (this admin).
         "Invoice No.", "Zoho Invoices (Tracking)", "Zoho References (Tracking)", "Quote No.", "Invoice Acknowledged", "Row Colour",
       ]);
