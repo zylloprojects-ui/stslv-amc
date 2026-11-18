@@ -91,6 +91,8 @@ export interface ServicesSalesList {
   serviceReportsAvailable?: boolean
   /** The user may see contract values (AMC Contracts: View): the AMC Value column and total are offered. */
   amcValueVisible?: boolean
+  /** Only the services of the user's own contracts are listed (CR-017, when switched on). Absent from an older API. */
+  ownRecordsOnly?: boolean
   /**
    * AMC Value / Year of every UNIQUE contract period with a visit matching the filters, on every page (a period with
    * several visits counts once; a renewal is its own period). Null for a user who may not see contract values.

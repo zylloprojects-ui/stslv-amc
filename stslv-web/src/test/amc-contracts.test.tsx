@@ -52,7 +52,7 @@ async function fillRequired(dialog: HTMLElement, system = '21') {
   await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
   await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')
   await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '100')
-  await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0')
+  await userEvent.type(within(dialog).getByLabelText(/Final Credit/), '0')
   await userEvent.upload(documentInput(dialog), contractPdf())
 }
 
@@ -211,7 +211,7 @@ describe('add contract', () => {
     const dialog = await openAddForm()
 
     await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '1620.1234')
-    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '-5')
+    await userEvent.type(within(dialog).getByLabelText(/Final Credit/), '-5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     expect(await within(dialog).findByText('Select a client.')).toBeInTheDocument()
@@ -259,7 +259,8 @@ describe('add contract', () => {
     await typeReference(dialog, '  STSLV-AMC-2026-015 ')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Client/), '11')
     await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '22')
-    await userEvent.type(within(dialog).getByLabelText('Responsible engineer'), 'Second Engineer')
+    // One engineer on a new contract (client meeting 2026-11-16): no Responsible engineer field.
+    expect(within(dialog).queryByLabelText(/Responsible engineer/)).not.toBeInTheDocument()
     await userEvent.selectOptions(within(dialog).getByLabelText(/^Sales Engineer/), '5')
     await userEvent.selectOptions(within(dialog).getByLabelText(/Maintenance frequency/), 'HALF_YEARLY')
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-03-01')
@@ -267,8 +268,8 @@ describe('add contract', () => {
     await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '9000')
     await userEvent.type(within(dialog).getByLabelText('Default visit amount'), '4500.000')
     // Final credit was filled from AMC Value (2026-11-11); a different amount typed over it is kept.
-    await userEvent.clear(within(dialog).getByLabelText(/Final credit/))
-    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '8000.5')
+    await userEvent.clear(within(dialog).getByLabelText(/Final Credit/))
+    await userEvent.type(within(dialog).getByLabelText(/Final Credit/), '8000.5')
     await userEvent.upload(documentInput(dialog), new File(['%PDF-1.4'], 'signed.pdf', { type: 'application/pdf' }))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
@@ -281,7 +282,8 @@ describe('add contract', () => {
       systemTypeId: '22',
       systemDescription: 'Automation',
       salesEngineerId: '5',
-      responsibleEngineer: 'Second Engineer',
+      // Filled from the chosen Sales Engineer, as before, so older exports and fallbacks keep a name.
+      responsibleEngineer: 'Test Sales Engineer',
       validFrom: '2027-03-01',
       validTo: '2028-02-29',
       maintenanceFrequency: 'HALF_YEARLY',
@@ -395,13 +397,13 @@ describe('add contract', () => {
     const dialog = await openAddForm()
 
     await fillRequired(dialog)
-    await userEvent.clear(within(dialog).getByLabelText(/Final credit/))
+    await userEvent.clear(within(dialog).getByLabelText(/Final Credit/))
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     expect(await within(dialog).findByText('Final credit is required.')).toBeInTheDocument()
     expect(api.find('POST', '/amc/contracts')).toHaveLength(0)
 
-    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0.000')
+    await userEvent.type(within(dialog).getByLabelText(/Final Credit/), '0.000')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Add contract' }))
 
     await waitFor(() => expect(api.find('POST', '/amc/contracts')).toHaveLength(1))

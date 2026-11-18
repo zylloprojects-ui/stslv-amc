@@ -123,7 +123,9 @@ describe('Contract 360', () => {
 
     const toolbar = screen.getByRole('navigation', { name: 'Contract links' })
     expect(within(toolbar).getByRole('link', { name: 'Monthly Calendar' })).toHaveAttribute('href', '/amc/calendar')
-    expect(within(toolbar).getByRole('link', { name: 'All Schedules' })).toHaveAttribute('href', '/amc/schedule?contractId=100')
+    // The retired AMC Schedule page is not linked; the button opens this contract's own Service schedule tab.
+    expect(within(toolbar).queryByRole('link', { name: 'All Schedules' })).not.toBeInTheDocument()
+    expect(within(toolbar).getByRole('button', { name: 'Service Schedule' })).toBeInTheDocument()
     expect(await within(toolbar).findByRole('button', { name: 'Start Renewal' })).toBeInTheDocument()
 
     const linked = screen.getByRole('region', { name: 'Linked Modules' })
@@ -149,13 +151,13 @@ describe('Contract 360', () => {
     expect(await screen.findByRole('tab', { name: /^Documents/ })).toHaveAttribute('aria-selected', 'true')
   })
 
-  it('adds Color, Paid date, a schedule link per row and exports for this contract', async () => {
+  it('adds Color, Paid Date, a schedule link per row and exports for this contract', async () => {
     const api = contractApi()
     renderApp('/amc/contracts/100')
 
     const table = await screen.findByRole('table', { name: 'Visits of this contract' })
     expect(within(table).getByRole('columnheader', { name: 'Color' })).toBeInTheDocument()
-    expect(within(table).getByRole('columnheader', { name: 'Paid date' })).toBeInTheDocument()
+    expect(within(table).getByRole('columnheader', { name: 'Paid Date' })).toBeInTheDocument()
     expect(within(table).getByText('First Service')).toBeInTheDocument()
     expect(within(table).getByRole('link', { name: /in AMC Schedule$/ })).toHaveAttribute('href', '/amc/schedule?contractId=100')
 
@@ -178,13 +180,13 @@ describe('Contract 360', () => {
     expect(screen.getByText('Updated by').nextElementSibling).toHaveTextContent('Bala Editor')
   })
 
-  it('hides Calendar, All Schedules and Renew from a role without them', async () => {
+  it('hides Calendar and Renew from a role without them, and keeps the contract\'s own Service Schedule', async () => {
     contractApi({ ...EXECUTION, permissions: ['AMC_CONTRACTS:VIEW'] })
     renderApp('/amc/contracts/100')
 
     const toolbar = await screen.findByRole('navigation', { name: 'Contract links' })
     expect(within(toolbar).queryByRole('link', { name: 'Monthly Calendar' })).not.toBeInTheDocument()
-    expect(within(toolbar).queryByRole('link', { name: 'All Schedules' })).not.toBeInTheDocument()
+    expect(within(toolbar).getByRole('button', { name: 'Service Schedule' })).toBeInTheDocument()
     expect(within(toolbar).queryByRole('button', { name: 'Start Renewal' })).not.toBeInTheDocument()
   })
 })

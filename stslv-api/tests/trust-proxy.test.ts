@@ -1,9 +1,8 @@
 import express from "express";
-import request from "supertest";
 import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
-import { closePool } from "./helpers";
+import { closePool, serve } from "./helpers";
 
 const original = env.trustProxyHops;
 
@@ -22,7 +21,7 @@ async function addressSeen(hops: number, forwardedFor: string): Promise<string> 
     res.json({ ip: req.ip });
   });
 
-  const response = await request(probe).get("/whoami").set("X-Forwarded-For", forwardedFor);
+  const response = await (await serve(probe))().get("/whoami").set("X-Forwarded-For", forwardedFor);
 
   return response.body.ip;
 }

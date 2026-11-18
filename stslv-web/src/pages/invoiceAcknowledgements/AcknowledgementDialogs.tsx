@@ -422,7 +422,7 @@ export function LinkedServicesDialog({ item, canViewContract, onClose }: { item:
                 <th scope="col" className={TABLE.th}>Service</th>
                 <th scope="col" className={TABLE.th}>Completed</th>
                 <th scope="col" className={TABLE.th}>Service Report No.</th>
-                {item.amountsVisible && <th scope="col" className={`${TABLE.th} text-right`}>Value (Ex VAT, OMR)</th>}
+                {item.amountsVisible && <th scope="col" className={`${TABLE.th} text-right`}>Service Value (ex VAT)</th>}
                 <th scope="col" className={TABLE.th}>Linked by</th>
               </tr>
             </thead>

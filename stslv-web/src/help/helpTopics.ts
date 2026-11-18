@@ -38,6 +38,7 @@ const GENERAL: HelpTopic[] = [
           'The search box in the header finds the pages you may open (use each page’s own search for records).',
           'The bell shows alerts for your work: overdue services, contracts past validity and work waiting for an invoice.',
           'The open-book button at the top right (Help & User Guide) opens help for the page you are on; search it, or follow the related topics. Help & User Guide in your account menu opens the whole guide.',
+          'The main pages’ topics open with an annotated picture (On the screen): numbered markers and arrows point at the controls, explained in the numbered list below it. Point at a line of the list to highlight its control.',
           'Dates follow Oman time (Asia/Muscat) everywhere: "today", due and overdue services, contract expiry and "this month" change at midnight in Oman, wherever you are. A contract is valid through its Valid To date and shows as expired from the next day.',
           'The light-bulb button (if your role allows suggestions) sends an idea or a problem report to the administrators.',
         ],
@@ -181,7 +182,7 @@ const MASTER_DATA: HelpTopic[] = [
       {
         heading: 'Key figures (four rows)',
         terms: [
-          { term: 'AMC Portfolio', meaning: 'Active AMCs, Annual AMC Value (Ex VAT), Final Credit (Ex VAT) and Expiring ≤45 Days, over Active contracts.' },
+          { term: 'AMC Portfolio', meaning: 'Active AMCs, Annual AMC Value (ex VAT), Final Credit (ex VAT) and Expiring ≤45 Days, over Active contracts.' },
           { term: 'Current Month', meaning: 'Services This Month, Services Pending, Invoices Generated and Invoices Not Generated for services scheduled this month.' },
           { term: 'Overall', meaning: 'The same service and invoice figures across all service records, earlier years and visits ahead.' },
           { term: 'Current Year (YTD)', meaning: 'Services Due, Services Completed and Services Pending for services scheduled from January 1 through today (Oman time). Visits after today are not counted; Pending = Due − Completed.' },
@@ -391,7 +392,7 @@ const CONTRACTS: HelpTopic[] = [
       {
         heading: 'KPI groups',
         terms: [
-          { term: 'Contract KPIs', meaning: 'Active AMCs, Annual AMC Value (Ex VAT), Final Credit (Ex VAT), Expiring ≤45 Days: the same cards as the Dashboard’s AMC Portfolio row.' },
+          { term: 'Contract KPIs', meaning: 'Active AMCs, Annual AMC Value (ex VAT), Final Credit (ex VAT), Expiring ≤45 Days: the same cards as the Dashboard’s AMC Portfolio row.' },
           { term: 'Schedule KPIs', meaning: 'Services This Month (the same card as on the Dashboard), Schedule Pending Billing (completed, amount above 0, no Zoho invoice), Current Scheduled Value, Schedule Engine Status.' },
           { term: 'Invoice KPIs', meaning: 'Invoices Generated and Invoices Not Generated (the Dashboard’s Overall cards, from the manual Invoice No.), Paid Invoice Total, Invoice Module Status.' },
         ],
@@ -632,7 +633,7 @@ const OPERATIONS: HelpTopic[] = [
       },
       {
         heading: 'Filters',
-        text: ['Search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid, and Billing status (Zoho): Invoiced, Not yet invoiced, No invoice required, Not completed, Cancelled.'],
+        text: ['Search, Client, Sales engineer, System, Frequency, Visit status and Paid / Unpaid.'],
       },
       {
         heading: 'Renewal warnings',
@@ -842,7 +843,7 @@ const FINANCE: HelpTopic[] = [
         heading: 'Filters and figures',
         bullets: [
           'Search, Client, Sales Engineer, AMC Contract, Scheduled month and year, Paid / Unpaid and Service Status. Press Apply.',
-          'Figures: Rows, Completed, Not Completed, Invoice No. Filled, Total Value (Ex VAT).',
+          'Figures: Rows, Completed, Not Completed, Invoice No. Filled, Total Value (ex VAT).',
           'Entering a number needs Edit on Invoice Tracking; export needs Export on Accounts.',
         ],
       },
@@ -868,8 +869,8 @@ const FINANCE: HelpTopic[] = [
         heading: 'Filtered totals and invoice values',
         bullets: [
           'The Total Filtered row adds up every service that matches the filters, on every page, not only the rows shown.',
-          'Total Filtered Service Value (OMR): the scheduled service amounts, excluding VAT. Paid (Invoice No.) is the part with an Invoice No. entered: a reference status, not proof of payment.',
-          'Total Filtered Invoice Value (OMR): the Zoho invoice amounts allocated to those services in Invoice Tracking. Cancelled invoices are left out. It is not the contract value.',
+          'Total Filtered Service Value (ex VAT): the scheduled service amounts, excluding VAT. Paid (Invoice No.) is the part with an Invoice No. entered: a reference status, not proof of payment.',
+          'Total Filtered Invoice Value (ex VAT): the Zoho invoice amounts allocated to those services in Invoice Tracking. Cancelled invoices are left out. It is not the contract value.',
           'An empty Value with "No Billing Basis or Cost per Visit on the contract" means the contract gives no amount; no value is invented. Set a Billing Basis or Cost per Visit on the contract and Regenerate.',
         ],
       },
@@ -1011,7 +1012,7 @@ const FINANCE: HelpTopic[] = [
       {
         heading: 'Totals',
         bullets: [
-          'AMC Value (OMR) shows the AMC Value / Year of each service’s contract period (a renewal has its own). It is shown only to users who may view AMC Contracts, and can be hidden with Hide Columns.',
+          'AMC Value (ex VAT) shows the AMC Value / Year of each service’s contract period (a renewal has its own). It is shown only to users who may view AMC Contracts, and can be hidden with Hide Columns.',
           'Total AMC Value of matching contracts adds up every contract period that has a matching service, on every page, counting each period once however many of its services match. It is not an invoice value or a payment.',
         ],
       },

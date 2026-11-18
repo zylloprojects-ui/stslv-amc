@@ -42,8 +42,8 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceEngineer: 'Service Engineer',
   quotation: 'Quote No.',
   salesEngineer: 'Sales Engineer',
-  amcValue: 'AMC Value (OMR)',
-  serviceValue: 'Service Value (OMR)',
+  amcValue: 'AMC Value (ex VAT)',
+  serviceValue: 'Service Value (ex VAT)',
 }
 
 function read(key: string): unknown {

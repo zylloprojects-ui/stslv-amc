@@ -87,7 +87,7 @@ describe('A2 — Final credit follows AMC Value until it is typed', () => {
     const dialog = await openAddForm()
 
     await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '1200.000')
-    expect(within(dialog).getByLabelText(/Final credit/)).toHaveValue('1200.000')
+    expect(within(dialog).getByLabelText(/Final Credit/)).toHaveValue('1200.000')
     expect(within(dialog).getByText(/Filled from AMC Value \/ Year until you change it/)).toBeInTheDocument()
   })
 
@@ -96,7 +96,7 @@ describe('A2 — Final credit follows AMC Value until it is typed', () => {
     renderApp('/amc/contracts')
     const dialog = await openAddForm()
     const value = within(dialog).getByLabelText(/AMC Value \/ Year/)
-    const final = within(dialog).getByLabelText(/Final credit/)
+    const final = within(dialog).getByLabelText(/Final Credit/)
 
     await userEvent.type(value, '1200')
     await userEvent.clear(final)
@@ -115,12 +115,12 @@ describe('A2 — Final credit follows AMC Value until it is typed', () => {
     amcApi(ADMIN, { contracts: [FIRE] })
     renderApp('/amc/contracts')
     let dialog = await openAddForm()
-    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '5')
+    await userEvent.type(within(dialog).getByLabelText(/Final Credit/), '5')
     await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
 
     dialog = await openAddForm()
     await userEvent.type(within(dialog).getByLabelText(/AMC Value \/ Year/), '800')
-    expect(within(dialog).getByLabelText(/Final credit/)).toHaveValue('800')
+    expect(within(dialog).getByLabelText(/Final Credit/)).toHaveValue('800')
   })
 
   it('never changes Final credit of a saved contract when its AMC Value is edited', async () => {
@@ -133,7 +133,7 @@ describe('A2 — Final credit follows AMC Value until it is typed', () => {
     await userEvent.clear(value)
     await userEvent.type(value, '1800')
 
-    expect(within(dialog).getByLabelText(/Final credit/)).toHaveValue('1500.000')
+    expect(within(dialog).getByLabelText(/Final Credit/)).toHaveValue('1500.000')
   })
 })
 

@@ -240,13 +240,14 @@ describe('sales engineers', () => {
     // Required on a new contract (2026-11-03), so its label carries the asterisk.
     const picker = await within(dialog).findByLabelText(/^Sales Engineer/)
     await userEvent.selectOptions(picker, '5')
-    expect(within(dialog).getByLabelText('Responsible engineer')).toHaveValue('Test Engineer')
+    // The field is not shown on a new contract (client meeting 2026-11-16); its value is still filled from the pick.
+    expect(within(dialog).queryByLabelText(/Responsible engineer/)).not.toBeInTheDocument()
 
     await userEvent.type(within(dialog).getByLabelText(/AMC Reference Number/), 'AMC-2027-005')
     await userEvent.selectOptions(within(dialog).getByLabelText(/^Client/), '10')
     await waitFor(() => expect(within(dialog).getByLabelText(/^System/)).toBeEnabled())
     await userEvent.selectOptions(within(dialog).getByLabelText(/^System/), '21')
-    await userEvent.type(within(dialog).getByLabelText(/Final credit/), '0')
+    await userEvent.type(within(dialog).getByLabelText(/Final Credit/), '0')
     await userEvent.upload(dialog.querySelector('input[type="file"]') as HTMLInputElement, contractPdf())
     await userEvent.type(within(dialog).getByLabelText(/Valid from/), '2027-01-01')
     await userEvent.type(within(dialog).getByLabelText(/Valid to/), '2027-12-31')

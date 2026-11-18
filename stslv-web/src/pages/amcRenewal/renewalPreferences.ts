@@ -17,9 +17,9 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   system: 'System',
   frequency: 'Frequency',
   service: 'Service',
-  expiry: 'Contract Expiry Date',
+  expiry: 'Expiry Date',
   contractStatus: 'Contract Status',
-  amount: 'Contract Amount',
+  amount: 'Contract Value (ex VAT)',
   remarks: 'Remarks',
 }
 

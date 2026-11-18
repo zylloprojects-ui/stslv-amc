@@ -6,7 +6,7 @@ import type { ContractStatus, VisitStatus } from '../amc/types'
 /** Reference status from the manual Invoice No. of each service; it does not verify that money was received. */
 export interface PaymentFigures {
   paid: number
-  /** Sum of the service values (Ex VAT) of the services with an Invoice No.; services without a value add nothing. */
+  /** Sum of the service values (ex VAT) of the services with an Invoice No.; services without a value add nothing. */
   paidValue: string
   /** Of paid, the services with no recorded value. Absent from an older API. */
   paidAmountMissing?: number
@@ -14,6 +14,9 @@ export interface PaymentFigures {
   unpaidValue: string
   /** Of unpaid, the services with no recorded value. Absent from an older API. */
   unpaidAmountMissing?: number
+  /** Of unpaid, the services already Completed (done, waiting for an Invoice No.). Absent from an older API. */
+  unpaidCompleted?: number
+  unpaidCompletedValue?: string
   paidThisMonth: number
   paidThisMonthValue: string
   /** The same split over the services scheduled in this calendar month. paid / unpaid are the overall figures. */
@@ -24,6 +27,9 @@ export interface PaymentFigures {
     withoutInvoiceNo: number
     withoutInvoiceNoValue: string
     withoutInvoiceNoAmountMissing?: number
+    /** Of withoutInvoiceNo, the services already Completed (waiting for an Invoice No.). Absent from an older API. */
+    completedWithoutInvoiceNo?: number
+    completedWithoutInvoiceNoValue?: string
   }
 }
 

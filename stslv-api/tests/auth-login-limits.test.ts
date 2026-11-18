@@ -1,12 +1,11 @@
 import express from "express";
-import request from "supertest";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createApp } from "../src/app";
 import { env } from "../src/config/env";
 import { pool } from "../src/config/database";
 import { rateLimit } from "../src/middleware/rate-limit";
 import { errorHandler } from "../src/shared/errors";
-import { closePool, insertUser, PASSWORD, resetData, withAuditLogUnlocked } from "./helpers";
+import { closePool, insertUser, loopbackApi, PASSWORD, resetData, serve, withAuditLogUnlocked } from "./helpers";
 
 const original = {
   trustProxyHops: env.trustProxyHops,
@@ -17,14 +16,14 @@ const original = {
 // One trusted proxy, so each test can sign in from its own address via X-Forwarded-For
 // and the counts kept by one test never affect another.
 env.trustProxyHops = 1;
-const app = createApp();
+const loginApi = loopbackApi(createApp());
 env.trustProxyHops = original.trustProxyHops;
 
 let addressCounter = 0;
 const newAddress = () => `203.0.113.${++addressCounter}`;
 
 const signIn = (address: string, email: string, password: string) =>
-  request(app).post("/api/auth/login").set("X-Forwarded-For", address).send({ email, password });
+  loginApi().post("/api/auth/login").set("X-Forwarded-For", address).send({ email, password });
 
 const TOO_MANY = {
   success: false,
@@ -258,8 +257,8 @@ describe("rateLimit middleware, counting only chosen responses", () => {
   }
 
   it("counts only failures and keeps separate keys apart", async () => {
-    const limited = probe({ max: 2 });
-    const send = (who: string, ok: boolean) => request(limited).post("/probe").send({ who, ok });
+    const limited = await serve(probe({ max: 2 }));
+    const send = (who: string, ok: boolean) => limited().post("/probe").send({ who, ok });
 
     expect((await send("a", true)).status).toBe(200);
     expect((await send("a", false)).status).toBe(401);
@@ -269,8 +268,8 @@ describe("rateLimit middleware, counting only chosen responses", () => {
   });
 
   it("starts again after the window", async () => {
-    const limited = probe({ max: 1, windowMs: 150 });
-    const send = (ok: boolean) => request(limited).post("/probe").send({ who: "a", ok });
+    const limited = await serve(probe({ max: 1, windowMs: 150 }));
+    const send = (ok: boolean) => limited().post("/probe").send({ who: "a", ok });
 
     expect((await send(false)).status).toBe(401);
     expect((await send(true)).status).toBe(429);
@@ -286,10 +285,11 @@ describe("rateLimit middleware, counting only chosen responses", () => {
       res.json({ success: true });
     });
     limited.use(errorHandler);
+    const call = await serve(limited);
 
-    expect((await request(limited).post("/probe")).status).toBe(200);
-    expect((await request(limited).post("/probe")).status).toBe(429);
+    expect((await call().post("/probe")).status).toBe(200);
+    expect((await call().post("/probe")).status).toBe(429);
     max = 5;
-    expect((await request(limited).post("/probe")).status).toBe(200);
+    expect((await call().post("/probe")).status).toBe(200);
   });
 });

@@ -15,7 +15,7 @@ import type { PagedInvoices } from '../../lib/invoiceTypes'
 import { InvoiceDialogs, type InvoiceDialog } from '../invoices/InvoiceDialogs'
 import { InvoicesTable } from '../invoices/InvoicesTable'
 import { queryString } from './amcApi'
-import { currentMonth, formatDate, formatMoney, isZeroMoney, todayIso } from './amcFormat'
+import { currentMonth, formatDate, formatMoney, hasSeparateResponsibleEngineer, isZeroMoney, todayIso } from './amcFormat'
 import { ContractStatusPill, EligibilityPill, OrDash, Pager, Pill, PlannedDate, VisitStatusPill } from './components'
 import { ContractFormModal } from './ContractFormModal'
 import { ContractMastersPanel } from './ContractMastersPanel'
@@ -375,11 +375,11 @@ export function ContractDetailPage() {
             Monthly Calendar
           </Link>
         )}
-        {canViewSchedule && (
-          <Link to={`/amc/schedule?contractId=${contract.id}`} className={TOOLBAR_LINK}>
-            All Schedules
-          </Link>
-        )}
+        {/* Client meeting 2026-11-16: the AMC Schedule page is no longer used, so this opens the contract's own
+            Service schedule tab (every service of this contract) instead. */}
+        <button type="button" onClick={() => openTab('schedule')} className={TOOLBAR_LINK}>
+          Service Schedule
+        </button>
       </nav>
 
       <PageHeader
@@ -448,9 +448,15 @@ export function ContractDetailPage() {
               <ContactChip icon="badge" label="System">
                 {contract.systemDescription}
               </ContactChip>
-              <ContactChip icon="user" label="Responsible engineer">
-                <OrDash value={contract.responsibleEngineer} />
+              {/* Client meeting 2026-11-16: the Sales Engineer chosen when the contract was added. */}
+              <ContactChip icon="user" label="Sales Engineer">
+                <OrDash value={contract.salesEngineer?.name ?? null} />
               </ContactChip>
+              {hasSeparateResponsibleEngineer(contract) && (
+                <ContactChip icon="user" label="Responsible engineer">
+                  <OrDash value={contract.responsibleEngineer} />
+                </ContactChip>
+              )}
               <ContactChip icon="clock" label="Validity">
                 {formatDate(contract.validFrom)} – {formatDate(contract.validTo)}
               </ContactChip>
@@ -467,9 +473,9 @@ export function ContractDetailPage() {
           <Card className="rounded-2xl">
             <dl className="grid grid-cols-2 divide-x divide-y divide-slate-200 lg:grid-cols-3 xl:grid-cols-5">
               {[
-                { label: 'AMC Value / Year', value: formatMoney(contract.contractValue) },
+                { label: 'AMC Value / Year (ex VAT)', value: formatMoney(contract.contractValue) },
                 { label: 'Default visit amount', value: formatMoney(contract.defaultVisitAmount) },
-                { label: 'Final credit', value: formatMoney(contract.finalCredit) },
+                { label: 'Final Credit (ex VAT)', value: formatMoney(contract.finalCredit) },
                 // Client UAT CR-013: as entered; nothing is calculated from it.
                 { label: 'Customer PO Value (ex VAT)', value: contract.customerPoValue ? formatMoney(contract.customerPoValue) : 'Not entered' },
                 { label: 'Billing basis', value: contract.billingBasis ? BILLING_BASIS_LABELS[contract.billingBasis] : 'Not set' },
@@ -604,10 +610,10 @@ export function ContractDetailPage() {
                                   Completed
                                 </th>
                                 <th scope="col" className={`${TABLE.th} text-right`}>
-                                  Amount
+                                  Service Value (ex VAT)
                                 </th>
                                 <th scope="col" className={TABLE.th}>
-                                  Quotation No.
+                                  Quote No.
                                 </th>
                                 <th scope="col" className={TABLE.th}>
                                   Invoice No.
@@ -618,7 +624,7 @@ export function ContractDetailPage() {
                                   </th>
                                 )}
                                 <th scope="col" className={TABLE.th}>
-                                  Paid date
+                                  Paid Date
                                 </th>
                                 <th scope="col" className={TABLE.th}>
                                   Invoicing (Zoho)

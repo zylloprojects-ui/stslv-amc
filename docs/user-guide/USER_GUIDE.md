@@ -3,7 +3,7 @@
 Version: handover draft, 2026-11-09. Describes the application at commit `c6d8d19` plus the in-app Help added on branch `feature/stslv-p3-handover`.
 Chapters listed under **Sections awaiting integration review** may change when parallel work (P0 security, P1 fixes) is merged; see §27.
 
-The same content, shortened, is available inside the application: click the **?** button in the header (help for the page you are on) or **Help & User Guide** in your account menu.
+The same content, shortened, is available inside the application: click the open-book button in the header (help for the page you are on) or **Help & User Guide** in your account menu.
 
 ## Contents
 
@@ -81,7 +81,7 @@ Master Data ─► AMC Contract ─► Generated services ─► Service complet
 | Sidebar | Pages your role may open, in the client-approved order (2026-11-10) shown under **The menu** below. On a phone, open it with the menu button (☰). On a desktop it can be minimised to icons; each icon names its page when you point at it. |
 | Header search | Finds the pages you may open (arrow keys, Enter, Esc). Records are searched on each page. |
 | Bell | Alerts for your work: overdue services, contracts past validity, work waiting for an invoice. Mark them read individually or all at once. |
-| Open book (Help & User Guide) | Help for the current page, with search, related topics and a list of all topics you may read. |
+| Open book (Help & User Guide) | Help for the current page, with search, related topics and a list of all topics you may read. The main pages' topics open with an annotated picture (On the screen): numbered markers and arrows point at the controls, explained in the numbered list below it. |
 | Light bulb | Send a suggestion or report a problem. |
 | Palette / moon | Colour palette and light/dark mode. |
 | Account menu | My Profile (change password), Help & User Guide, My Suggestions, Sign out. |
@@ -171,7 +171,7 @@ A service is completed on **Service Status** (§11) after its Service Report is 
 | What is entered | Only the invoice number | Number, date, amount ex VAT, VAT, allocations to visits/projects |
 | Effect | Entered = **Paid**; cleared = **Unpaid** | Work becomes **Invoiced**; does **not** make a service Paid |
 | When allowed | Only on a **Completed** service (clearing is always allowed) | Only on completed work with an amount above 0 |
-| Used by | Accounts colours, Master AMC Status, Calendar squares, Dashboard payment figures, AMC Management invoice KPIs, Reports Paid/Unpaid | Ready for Invoice / Invoiced, Pending Billing, Calendar "Billing status (Zoho)", Client 360 invoice figures |
+| Used by | Accounts colours, Master AMC Status, Calendar squares, Dashboard payment figures, AMC Management invoice KPIs, Reports Paid/Unpaid | Ready for Invoice / Invoiced, Pending Billing, Client 360 invoice figures |
 
 > **Paid means a manual Invoice No. is entered on the service. It is a reference status and does not verify that money was received.**
 > STS-ELV AMC holds no bank or receipt records. Confirming that a client actually paid is done in Zoho / the bank statement.
@@ -192,8 +192,8 @@ Where a Zoho record exists it is shown beneath the Invoice No. as "Zoho: INV-…
 | Row | Card | Meaning |
 |---|---|---|
 | AMC Portfolio (active contracts) | Active AMCs | Contracts with status Active; notes how many are past validity |
-| | Annual AMC Value (Ex VAT) | Sum of AMC Value / Year of active contracts |
-| | Final Credit (Ex VAT) | Sum of Final Credit; "Entered on X of Y active contracts" |
+| | Annual AMC Value (ex VAT) | Sum of AMC Value / Year of active contracts |
+| | Final Credit (ex VAT) | Sum of Final Credit; "Entered on X of Y active contracts" |
 | | Expiring ≤45 Days | Active contracts ending within 45 days; notes how many have a renewal |
 | Current Month | Services This Month | Planned services this month (cancelled excluded), with the number completed |
 | | Services Pending | Scheduled, In progress or Postponed |
@@ -286,7 +286,7 @@ Department code * (permanent, e.g. AMC, FIN), Department name *, Description. No
 AMC Management is its own page, separate from the Dashboard. The cards the two pages have in common are the same cards:
 same name, figure, wording, icon and colour, from the same calculation.
 
-- **Contract KPIs:** Active AMCs, Annual AMC Value (Ex VAT), Final Credit (Ex VAT), Expiring ≤45 Days — the Dashboard's AMC Portfolio row.
+- **Contract KPIs:** Active AMCs, Annual AMC Value (ex VAT), Final Credit (ex VAT), Expiring ≤45 Days — the Dashboard's AMC Portfolio row.
 - **Schedule KPIs:** Services This Month (as on the Dashboard), Schedule Pending Billing (completed, amount above 0, no active Zoho invoice), Current Scheduled Value (this month), Schedule Engine Status (*In sync* / *Attention*; there is no background job).
 - **Invoice KPIs:** Invoices Generated and Invoices Not Generated (the Dashboard's Overall cards, from the manual Invoice No.), Paid Invoice Total, Invoice Module Status. Amounts are the service values excluding VAT; when the services with an Invoice No. have no recorded value the card says **Amount not recorded**, not OMR 0.000.
 - **Customize / Reset KPI Names / Reset KPI Order** — saved per user in this browser. Cards shared with the Dashboard can be moved but keep their Dashboard name.
@@ -372,7 +372,7 @@ No status changes by itself.
 AMC Value / Year, Default visit amount, Final credit, Billing basis, Annual billing amount, Total of visit amounts, **Expected for the term less visits** (a difference is information, not an error; "Not compared" without a basis), First Service, Current Generation.
 
 ### Tabs
-- **Service schedule** — Calculation rule panel (basis, visit amount, frequency, validity, colour priority), **Regenerate**, Schedule history, visits table (No., Scheduled, Period, Status, Completed, Amount, Quotation No., Invoice No., Paid date, Invoicing (Zoho), Color, Schedule). Invoice No. editable with *Invoice Tracking: Edit*; colour with *AMC Schedule: Edit*; export with *AMC Schedule: Export*.
+- **Service schedule** — Calculation rule panel (basis, visit amount, frequency, validity, colour priority), **Regenerate**, Schedule history, visits table (No., Scheduled, Period, Status, Completed, Service Value (ex VAT), Quote No., Invoice No., Paid Date, Invoicing (Zoho), Color, Schedule). Invoice No. editable with *Invoice Tracking: Edit*; colour with *AMC Schedule: Edit*; export with *AMC Schedule: Export*.
 - **Invoices** — Zoho invoices for this contract (needs Invoice Tracking read).
 - **Renewals** — "Renews" / "Renewed by"; **Create renewal** (*AMC Renewal: Create*).
 - **Documents** — contract document and files; upload needs *AMC Contracts: Edit*.
@@ -434,7 +434,7 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 - **Year view:** Services in year, Scheduled value, Paid, Unpaid (blue, as in Month view); a card per month with, in order, **Scheduled value**, **No. of services completed**, **No. of services not completed**, **Paid** and **Unpaid** (Invoice No. entered or not: the reference status of §2, with the services' values), then completed / open / overdue / cancelled counts; per-month **Excel / PDF**. Services count in the month of their scheduled date. The Zoho invoiced figures are no longer on the cards (client UAT, 2026-11-16). No By service / By contract switch here.
 - **Month view — By service / By contract:** *By service* (default) is the calendar grid below. *By contract* lists the same services, with the same filters, as one entry per AMC contract: reference (opens the contract), client, system, engineer, state (Open, Partly completed, All completed, Overdue, Cancelled), each service with its date and status, and Services / Paid / Unpaid counts. The choice is kept in the address (`group=contract`).
 - **Month view (By service):** card colour = status (Scheduled sky, In progress amber, Postponed violet, Completed green, Cancelled grey struck through, Historical grey); square = Paid (green) / Unpaid (blue); red dot = overdue. Click a visit for details (Edit with *AMC Schedule: Edit*).
-- **Filters:** search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid, Billing status (Zoho).
+- **Filters:** search, Client, Sales engineer, System, Frequency, Visit status, Paid / Unpaid. (The Zoho billing status filter was removed on 17 Nov 2026 at the client's request; Paid / Unpaid replaces it.)
 - **Renewal warnings:** contracts ending within 45 days, or past validity and still Active.
 
 ---
@@ -451,8 +451,8 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 > every page, and shows the AMC Value of the matching contracts with **each contract counted once** (adding the column
 > would repeat a contract's value once per service). The download carries the same totals.
 
-> **Service Value and Invoice Acknowledgement (2026-11-11).** *AMC Value (OMR)* (the contract's AMC Value / Year) is
-> unchanged and is now followed by *Service Value (OMR)*: the value of that one service, the same value Master AMC
+> **Service Value and Invoice Acknowledgement (2026-11-11).** *AMC Value (ex VAT)* (the contract's AMC Value / Year) is
+> unchanged and is now followed by *Service Value (ex VAT)*: the value of that one service, the same value Master AMC
 > Status shows (its share of the annual billing basis, e.g. 300.000 a quarter of 1,200.000 a year, or the Cost per Visit
 > without a basis; "—" when none is recorded, with "No Billing Basis or Cost per Visit" when the contract has neither).
 > Same access as AMC Value; each can be hidden on its own, and the download carries both. *Invoice Acknowledgement* (after Service Status, for users who may view Invoice Acknowledgements) shows
@@ -460,7 +460,7 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 > awaiting confirmation) or **Not Applicable** (no invoice), with *Download document* when a file is on file. It never
 > changes the Service Status: a service can be Completed while its acknowledgement is No. Both are in the download.
 
-> **AMC Value and Sales Engineer Name (2026-11-09).** *AMC Value (OMR)* shows the contract's AMC Value / Year on each
+> **AMC Value and Sales Engineer Name (2026-11-09).** *AMC Value (ex VAT)* shows the contract's AMC Value / Year on each
 > service, only to users who may view AMC Contracts; it is not added up. *Sales Engineer Name* is typed beside the
 > Service Report No. and saved with the row (up to 120 characters, recorded in the Audit Log). It is separate from the
 > Sales Engineer column, which comes from the contract.
@@ -507,7 +507,7 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 
 ## Service Sales
 
-> **AMC Value and total (2026-11-09).** For users who may view AMC Contracts, *AMC Value (OMR)* shows the AMC Value /
+> **AMC Value and total (2026-11-09).** For users who may view AMC Contracts, *AMC Value (ex VAT)* shows the AMC Value /
 > Year of each service's contract period, and *Total AMC Value of matching contracts* adds up the matching contract
 > periods on every page, each counted once. It is not an invoice value or a payment.
 
@@ -528,8 +528,8 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 
 > **Service Report viewer and filtered totals (2026-11-09).** *View Service Report* opens the uploaded report in a
 > read-only viewer with Download inside it (Word documents: Download only). The *Total Filtered* row adds up every
-> matching service on every page: Total Filtered Service Value (OMR), its Paid (Invoice No.) part, and Total Filtered
-> Invoice Value (OMR) — the Zoho amounts allocated in Invoice Tracking (cancelled invoices excluded). A service with no
+> matching service on every page: Total Filtered Service Value (ex VAT), its Paid (Invoice No.) part, and Total Filtered
+> Invoice Value (ex VAT) — the Zoho amounts allocated in Invoice Tracking (cancelled invoices excluded). A service with no
 > value whose contract has no Billing Basis or Cost per Visit says so; no value is invented.
 
 > **Engineers and values (client UAT, 2026-11-16).** After the Service Report No.: *Sales Engineer* (the contract's),
@@ -544,9 +544,9 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 
 - **Purpose:** billing reconciliation of every scheduled service; enter the Invoice No. to mark a service Paid.
 - **Row colours:** Red = service not completed · Blue = completed, Unpaid · Green = completed, Paid. A Zoho record does not make a row green.
-- **KPIs:** Rows, Completed, Not Completed, Invoice No. Filled ("Paid: reference status, not verified payment"), Total Value (Ex VAT).
+- **KPIs:** Rows, Completed, Not Completed, Invoice No. Filled ("Paid: reference status, not verified payment"), Total Value (ex VAT).
 - **Filters (press Apply):** search, Client, Sales Engineer, AMC Contract, Scheduled month and year, Paid / Unpaid, Service Status; Hide Columns.
-- **Columns:** AMC Reference, Client, System, Frequency, Service, Scheduled Month, Value (Ex VAT), Service Status, Service Report No., Invoice No. (with "Zoho: …"), Sales Engineer.
+- **Columns:** AMC Reference, Client, System, Frequency, Service, Scheduled Month, Value (ex VAT), Service Status, Service Report No., Invoice No. (with "Zoho: …"), Sales Engineer.
 
 ### Workflow — enter an invoice number
 1. Raise the invoice in Zoho.
@@ -576,7 +576,7 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 - **Statuses:** **Pending** (amber) — no confirmed acknowledgement yet; "Document attached, awaiting OK / Confirm" when a document is waiting. **Acknowledged** (green) — the document was confirmed. Green appears only after the server confirms. **Needs reconciliation** (red note) — no new acknowledgement is taken until it is resolved.
 - **KPIs:** Invoices, Pending, Awaiting Confirmation, Acknowledged, Needs Reconciliation.
 - **Filters (press Apply):** search (invoice no., client, contract, service report no., document name), Client, AMC Contract, Invoice No., Acknowledgement (Pending / Acknowledged), Reconciliation, Date filter (*Invoice date* or *Acknowledged date*, Oman time) with From and To. Click a column heading to sort. Hide Columns as on Accounts.
-- **Columns:** Invoice No. (with the date it was entered), Client, AMC Contract / Version (e.g. *STS-AMC-001 (V2)*), Invoice Date, Invoice Value (Ex VAT, OMR), Service Value (Ex VAT, OMR), Linked Services, Acknowledgement Status, Acknowledged Date, Acknowledged By, Uploaded By, Document, Actions.
+- **Columns:** Invoice No. (with the date it was entered), Client, AMC Contract / Version (e.g. *STS-AMC-001 (V2)*), Invoice Date, Invoice Value (ex VAT), Service Value (ex VAT), Linked Services, Acknowledgement Status, Acknowledged Date, Acknowledged By, Uploaded By, Document, Actions.
 - **Invoice Date and Invoice Value** come from the invoice's Invoice Tracking record, counted **once per invoice** (cancelled records are ignored). A manual Invoice No. carries no date or amount, so the cell shows "—". Nothing is invented.
 
 ### Reconcile (Edit)
@@ -647,7 +647,7 @@ Requires a reason; the record is kept but excluded from totals, the work becomes
 | Blue | Paid, quote pending |
 | Green | Paid and quoted |
 
-KPIs: Total Services, Green/Blue/Yellow/Red Rows, Total Value (Ex VAT). Filters (Apply/Reset): search, Client, Sales Engineer, Scheduled month and year, Service Status, Paid / Unpaid, Quotation Status, Row Colour. Details opens every field ("Paid / Unpaid: Paid (reference status)", Zoho invoices, Quote No.).
+KPIs: Total Services, Green/Blue/Yellow/Red Rows, Total Value (ex VAT). Filters (Apply/Reset): search, Client, Sales Engineer, Scheduled month and year, Service Status, Paid / Unpaid, Quotation Status, Row Colour. Details opens every field ("Paid / Unpaid: Paid (reference status)", Zoho invoices, Quote No.).
 
 **Export (Excel / PDF):** the shown columns, plus after Invoice No. two Invoice Tracking columns: **Zoho Invoices (Tracking)** — the Zoho invoice numbers covering the service — and **Zoho References (Tracking)** — each of those invoices' Zoho reference in the same order, "—" for an invoice recorded without one. Hiding Invoice No. hides both. They never decide Paid or Unpaid.
 

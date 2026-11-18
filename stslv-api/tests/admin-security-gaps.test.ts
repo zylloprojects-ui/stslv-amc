@@ -1,5 +1,4 @@
 import ExcelJS from "exceljs";
-import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp } from "../src/app";
 import { pool } from "../src/config/database";
@@ -8,8 +7,9 @@ import { loadMigrationFiles } from "../src/db/migrate";
 import { cleanUserAgent } from "../src/modules/auth/auth.service";
 import { formatBackupDate, httpsCheck, modeCheck } from "../src/modules/dashboard/readiness.service";
 import { FIXED_ACCESS, PERMISSION_CATALOG } from "../src/shared/permission-catalog";
+import type request from "supertest";
 import { grant } from "./amc-helpers";
-import { api, bearer, closePool, insertUser, loginToken, PASSWORD, resetData, signedIn } from "./helpers";
+import { api, bearer, closePool, insertUser, loginToken, PASSWORD, resetData, serve, signedIn } from "./helpers";
 
 // Security events, readiness checks, Users search and export, Login History user agent,
 // Audit Log export and the sign-out event. Every record here is invented test data.
@@ -116,7 +116,7 @@ describe("Readiness", () => {
     const original = env.trustProxyHops;
     env.trustProxyHops = hops;
     try {
-      const response = await request(createApp()).get("/api/security/overview").set(admin.headers).set("X-Forwarded-Proto", proto);
+      const response = await (await serve(createApp()))().get("/api/security/overview").set(admin.headers).set("X-Forwarded-Proto", proto);
 
       return (response.body.data.checks as { id: string; state: string; detail: string }[]).find((check) => check.id === "https");
     } finally {

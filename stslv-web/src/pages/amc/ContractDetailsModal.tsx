@@ -4,7 +4,7 @@ import { Alert, Button, Modal, Spinner } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
-import { formatDate, formatMoney, isZeroMoney } from './amcFormat'
+import { formatDate, formatMoney, hasSeparateResponsibleEngineer, isZeroMoney } from './amcFormat'
 import { ContractStatusPill, DetailRow, EligibilityPill, OrDash, PlannedDate, VisitStatusPill } from './components'
 import { frequencyLabel, visitNumberLabel, type Contract, type ContractStatus, type VisitList } from './types'
 
@@ -81,9 +81,14 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               <DetailRow label="Status">
                 <ContractStatusPill status={contract.status} />
               </DetailRow>
-              <DetailRow label="Responsible engineer">
-                <OrDash value={contract.responsibleEngineer} />
+              <DetailRow label="Sales Engineer">
+                <OrDash value={contract.salesEngineer?.name ?? null} />
               </DetailRow>
+              {hasSeparateResponsibleEngineer(contract) && (
+                <DetailRow label="Responsible engineer">
+                  <OrDash value={contract.responsibleEngineer} />
+                </DetailRow>
+              )}
               <DetailRow label="Validity">
                 {formatDate(contract.validFrom)} to {formatDate(contract.validTo)}
               </DetailRow>
@@ -96,9 +101,9 @@ export function ContractDetailsModal({ contractId, canEdit, canCancel, canViewSc
               </DetailRow>
             </dl>
             <dl>
-              <DetailRow label="AMC Value / Year">{formatMoney(contract.contractValue)}</DetailRow>
+              <DetailRow label="AMC Value / Year (ex VAT)">{formatMoney(contract.contractValue)}</DetailRow>
               <DetailRow label="Default visit amount">{formatMoney(contract.defaultVisitAmount)}</DetailRow>
-              <DetailRow label="Final credit">{formatMoney(contract.finalCredit)}</DetailRow>
+              <DetailRow label="Final Credit (ex VAT)">{formatMoney(contract.finalCredit)}</DetailRow>
               <DetailRow label="Billing basis">{contract.billingBasis ? `${BILLING_BASIS_LABELS[contract.billingBasis]} · ${formatMoney(contract.selectedBillingAmount ?? null)}` : 'Not set'}</DetailRow>
               <DetailRow label="Visits">
                 {contract.schedule.visitCount} ({contract.schedule.completedCount} completed, {contract.schedule.openCount} open

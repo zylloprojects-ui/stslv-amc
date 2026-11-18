@@ -50,7 +50,7 @@ export function ScheduleRulePanel({ contract }: { contract: Contract }) {
           <dt className="text-slate-600">Visit amount</dt>
           <dd className="text-right font-medium text-slate-900">
             {contract.schedule.perServiceAmount
-              ? `Annual amount ÷ ${contract.schedule.servicesPerCycle} service(s) a year · ${formatMoney(contract.schedule.perServiceAmount)} (OMR, Ex VAT); the last service of a complete year takes any rounding remainder`
+              ? `Annual amount ÷ ${contract.schedule.servicesPerCycle} service(s) a year · ${formatMoney(contract.schedule.perServiceAmount)} (OMR, ex VAT); the last service of a complete year takes any rounding remainder`
               : `Default visit amount · ${formatMoney(contract.defaultVisitAmount)}`}
           </dd>
         </div>

@@ -582,13 +582,13 @@ describe("filters, sorting, export", () => {
 
   it("exports one row per invoice, amounts only for Accounts viewers, and logs it", async () => {
     const full = await workbook(finance, { clientId: clientA, hidden: "document", sort: "invoiceNo" });
-    expect(full.headers).toEqual(expect.arrayContaining(["Invoice No.", "AMC Contract / Version", "Invoice Value (Ex VAT, OMR)", "Linked Services", "Acknowledgement Status"]));
+    expect(full.headers).toEqual(expect.arrayContaining(["Invoice No.", "AMC Contract / Version", "Invoice Value (ex VAT)", "Linked Services", "Acknowledgement Status"]));
     expect(full.headers).not.toContain("Document");
     expect(full.sheet.getRow(HEADER_ROW + 5).values).toEqual(expect.arrayContaining(["INV-MULTI", 2]));
 
     const noAmounts = await workbook(exporterNoAmounts, {});
-    expect(noAmounts.headers).not.toContain("Invoice Value (Ex VAT, OMR)");
-    expect(noAmounts.headers).not.toContain("Service Value (Ex VAT, OMR)");
+    expect(noAmounts.headers).not.toContain("Invoice Value (ex VAT)");
+    expect(noAmounts.headers).not.toContain("Service Value (ex VAT)");
 
     const logs = await pool.query("SELECT user_id, metadata FROM activity_logs WHERE action = 'invoice_acknowledgements.exported' ORDER BY id");
     expect(logs.rows.map((row) => [row.user_id, row.metadata.amountsIncluded])).toEqual([

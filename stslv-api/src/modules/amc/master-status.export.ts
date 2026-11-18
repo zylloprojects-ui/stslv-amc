@@ -36,7 +36,7 @@ const COLUMNS: (ReportColumn & { hideable?: MasterStatusColumn })[] = [
   { key: "frequency", header: "Frequency", kind: "text", width: 13, hideable: "frequency" },
   { key: "service", header: "Service", kind: "text", width: 12, hideable: "service" },
   { key: "scheduledMonth", header: "Scheduled Month", kind: "text", width: 15, hideable: "scheduledMonth" },
-  { key: "visitValue", header: "Value (Ex VAT)", kind: "money", width: 14, hideable: "visitValue" },
+  { key: "visitValue", header: "Value (ex VAT)", kind: "money", width: 14, hideable: "visitValue" },
   { key: "serviceStatus", header: "Service Status", kind: "text", width: 18, hideable: "serviceStatus" },
   // CR-008: who performed the service (Service Status input), never the contract's Sales Engineer.
   { key: "serviceEngineer", header: "Service Engineer", kind: "text", width: 18, wrap: true, hideable: "serviceEngineer" },
@@ -126,12 +126,12 @@ export async function buildMasterStatusExport(
   const { items, kpis } = await listAllMasterStatus(filters, (count) => assertExportSize(format, count), { amcValue: false, acknowledgements });
   const columns = masterStatusColumns(hidden, { acknowledgements });
   const notes = [
-    `Total services ${kpis.total} · Green ${kpis.green} · Blue ${kpis.blue} · Yellow ${kpis.yellow} · Red ${kpis.red} · Total value (Ex VAT) ${displayMoney(kpis.totalValue)}.`,
+    `Total services ${kpis.total} · Green ${kpis.green} · Blue ${kpis.blue} · Yellow ${kpis.yellow} · Red ${kpis.red} · Total value (ex VAT) ${displayMoney(kpis.totalValue)}.`,
     "Red: not completed. Yellow: completed, no invoice recorded. Blue: completed and invoiced, no quotation number. Green: completed, invoiced and quoted.",
     PAID_STATUS_NOTE,
     "Zoho Invoices (Tracking) are the invoice numbers recorded in Invoice Tracking for each service; cancelled ones are not listed. They do not decide Paid or Unpaid.",
     "Zoho References (Tracking) are those invoices' Zoho references, in the same order; — marks an invoice recorded without one.",
-    `Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)} · Zoho Invoice Value (Invoice Tracking, Ex VAT) ${displayMoney(kpis.invoiceValue)}.`,
+    `Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)} · Zoho Invoice Value (Invoice Tracking, ex VAT) ${displayMoney(kpis.invoiceValue)}.`,
   ];
 
   if (kpis.valueMissing > 0) {
@@ -156,7 +156,7 @@ export async function buildMasterStatusExport(
           ? {}
           : {
               totals: {
-                label: `Total value, Ex VAT (${kpis.total} ${kpis.total === 1 ? "service" : "services"})`,
+                label: `Total value, ex VAT (${kpis.total} ${kpis.total === 1 ? "service" : "services"})`,
                 values: { visitValue: kpis.totalValue },
                 excelFormulas: { visitValue: (range) => `SUM(${range("visitValue")})` },
               },

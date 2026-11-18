@@ -45,7 +45,7 @@ const COLUMNS: (ReportColumn & { hideable?: AccountsColumn })[] = [
   { key: "invoiceNo", header: "Invoice No.", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
   { key: "payment", header: "Paid / Unpaid", kind: "text", width: 10, hideable: "invoiceNo" },
   { key: "zohoInvoices", header: "Zoho Invoices (Tracking)", kind: "identifier", width: 16, wrap: true, hideable: "invoiceNo" },
-  { key: "invoiceValue", header: "Zoho Invoice Value (Ex VAT, OMR)", kind: "money", width: 15, hideable: "invoiceValue" },
+  { key: "invoiceValue", header: "Zoho Invoice Value (ex VAT)", kind: "money", width: 15, hideable: "invoiceValue" },
   { key: "colour", header: "Row Colour", kind: "text", width: 30 },
 ];
 

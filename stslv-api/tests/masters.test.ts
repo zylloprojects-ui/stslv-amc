@@ -1,11 +1,10 @@
 import express from "express";
-import request from "supertest";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
 import { requireSchema } from "../src/middleware/require-schema";
 import { errorHandler } from "../src/shared/errors";
 import { createClient, legacyContract, logsFor } from "./amc-helpers";
-import { api, closePool, insertUser, signedIn } from "./helpers";
+import { api, closePool, insertUser, serve, signedIn } from "./helpers";
 import { resetProjectData } from "./projects-helpers";
 
 // Master lists (departments, sales engineers, system types) and the optional
@@ -212,10 +211,11 @@ describe("requireSchema", () => {
     app.get("/feature", requireSchema(["table_that_does_not_exist"]), (_req, res) => res.json({ success: true }));
     app.get("/ready", requireSchema(["clients"]), (_req, res) => res.json({ success: true }));
     app.use(errorHandler);
+    const call = await serve(app);
 
-    const missing = await request(app).get("/feature");
+    const missing = await call().get("/feature");
     expect(missing.status).toBe(503);
     expect(missing.body.error.code).toBe("FEATURE_UNAVAILABLE");
-    expect((await request(app).get("/ready")).status).toBe(200);
+    expect((await call().get("/ready")).status).toBe(200);
   });
 });

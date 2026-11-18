@@ -244,8 +244,8 @@ describe('one row per invoice', () => {
       'Client',
       'AMC Contract / Version',
       'Invoice Date',
-      'Invoice Value (Ex VAT, OMR)',
-      'Service Value (Ex VAT, OMR)',
+      'Invoice Value (ex VAT)',
+      'Service Value (ex VAT)',
       'Linked Services',
       'Acknowledgement Status',
       'Acknowledged Date',
@@ -289,8 +289,8 @@ describe('one row per invoice', () => {
     renderPage()
     await screen.findByText('INV-100')
 
-    expect(headers()).not.toContain('Invoice Value (Ex VAT, OMR)')
-    expect(headers()).not.toContain('Service Value (Ex VAT, OMR)')
+    expect(headers()).not.toContain('Invoice Value (ex VAT)')
+    expect(headers()).not.toContain('Service Value (ex VAT)')
     expect(screen.queryByText(/Total Filtered/)).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Attach acknowledgement/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Replace/ })).not.toBeInTheDocument()
