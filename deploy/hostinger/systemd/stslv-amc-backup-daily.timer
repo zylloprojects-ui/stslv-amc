@@ -1,0 +1,23 @@
+# STSLV AMC — DAILY backup schedule: 18:00 India Standard Time, every day EXCEPT Friday.
+# TEMPLATE: install and enable only with approval (docs/BACKUP_AUTOMATION.md "Activation").
+#   systemctl enable --now stslv-amc-backup-daily.timer
+#   systemctl list-timers 'stslv-amc-backup-*'
+#   systemd-analyze calendar --iterations=7 'Sat..Thu *-*-* 18:00:00 Asia/Kolkata'
+#
+# The time zone is part of the schedule, so it does not depend on the server's own time zone (UTC on the VPS):
+# 18:00 IST = 12:30 UTC all year (India has no daylight saving time).
+# On Fridays the Friday full backup (stslv-amc-backup-weekly.timer: weekly, or monthly on the last Friday) runs instead; it covers everything the daily
+# backup does. The job itself also refuses to run a daily backup on a Friday and never repeats a step already
+# done that day, so a catch-up after downtime cannot duplicate work.
+
+[Unit]
+Description=STSLV AMC daily backup (database + documents), 18:00 IST except Friday
+
+[Timer]
+OnCalendar=Sat..Thu *-*-* 18:00:00 Asia/Kolkata
+AccuracySec=1min
+# A run missed while the server was off starts once at the next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

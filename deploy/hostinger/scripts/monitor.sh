@@ -19,9 +19,10 @@
 #   MONITOR_API_URL               default http://127.0.0.1:3001
 #   MONITOR_PUBLIC_URL            e.g. https://<confirmed domain>  (empty = public checks skipped)
 #   MONITOR_CERT_MIN_DAYS         default 14
-#   MONITOR_UNITS                 default "nginx stslv-amc-api stslv-amc-db-backup stslv-amc-docs-backup"
+#   MONITOR_UNITS                 default "nginx stslv-amc-api stslv-amc-backup-daily stslv-amc-backup-weekly stslv-amc-db-backup stslv-amc-docs-backup"
 #   MONITOR_BACKUP_STATE_DIR      default /var/lib/stslv-amc-backup/state
-#   MONITOR_BACKUP_MAX_AGE_HOURS  default 26 (one missed daily run is reported)
+#   MONITOR_BACKUP_MAX_AGE_HOURS  default 26 (database and documents run every day at 18:00 IST: one missed run is reported)
+#   MONITOR_CONFIG_MAX_AGE_HOURS  default 194 (the configuration is copied every Friday: 8 days + 2 hours)
 #   MONITOR_REPEAT_MINUTES        default 360
 #   MONITOR_STATE_DIR             default /var/lib/stslv-amc-monitor
 
@@ -37,9 +38,10 @@ MEM_MIN="${MONITOR_MEM_MIN_AVAILABLE_PERCENT:-10}"
 API_URL="${MONITOR_API_URL:-http://127.0.0.1:3001}"
 PUBLIC_URL="${MONITOR_PUBLIC_URL:-}"
 CERT_MIN_DAYS="${MONITOR_CERT_MIN_DAYS:-14}"
-UNITS="${MONITOR_UNITS:-nginx stslv-amc-api stslv-amc-db-backup stslv-amc-docs-backup}"
+UNITS="${MONITOR_UNITS:-nginx stslv-amc-api stslv-amc-backup-daily stslv-amc-backup-weekly stslv-amc-db-backup stslv-amc-docs-backup}"
 BACKUP_STATE_DIR="${MONITOR_BACKUP_STATE_DIR:-/var/lib/stslv-amc-backup/state}"
 BACKUP_MAX_AGE_HOURS="${MONITOR_BACKUP_MAX_AGE_HOURS:-26}"
+CONFIG_MAX_AGE_HOURS="${MONITOR_CONFIG_MAX_AGE_HOURS:-194}"
 REPEAT_MINUTES="${MONITOR_REPEAT_MINUTES:-360}"
 STATE_DIR="${MONITOR_STATE_DIR:-/var/lib/stslv-amc-monitor}"
 
@@ -165,7 +167,9 @@ for unit in nginx stslv-amc-api; do
 done
 
 # -- Backup age (written by dist/ops/cli.js; contains no secrets) --------------------------------
-for job in db-backup docs-backup; do
+for job in db-backup docs-backup config-backup; do
+  limit="$BACKUP_MAX_AGE_HOURS"
+  [ "$job" = "config-backup" ] && limit="$CONFIG_MAX_AGE_HOURS"
   file="$BACKUP_STATE_DIR/$job.json"
   if [ ! -f "$file" ]; then
     record "backup_$job" fail "no successful $job recorded yet ($file missing)"
@@ -177,8 +181,8 @@ for job in db-backup docs-backup; do
     continue
   fi
   age_h=$(( (NOW - $(date -d "$last" +%s 2>/dev/null || echo 0)) / 3600 ))
-  if [ "$age_h" -ge "$BACKUP_MAX_AGE_HOURS" ]; then
-    record "backup_$job" fail "last successful $job was ${age_h} hours ago (limit ${BACKUP_MAX_AGE_HOURS}h)"
+  if [ "$age_h" -ge "$limit" ]; then
+    record "backup_$job" fail "last successful $job was ${age_h} hours ago (limit ${limit}h)"
   else
     record "backup_$job" ok "last successful $job ${age_h}h ago"
   fi

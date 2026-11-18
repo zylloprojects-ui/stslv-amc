@@ -24,7 +24,7 @@ initially. Backup and monitoring run as separate systemd timers under their own 
 | SSH hardening, non-root deploy user | `ssh/50-stslv-hardening.conf` | Ready (`__DEPLOY_USER__`; keys only, no root, no passwords) |
 | fail2ban | `fail2ban/stslv-jail.conf` | **Added at integration**: referenced by the setup guide but missing from P0. Stock `sshd` and `nginx-limit-req` filters; add administrator addresses to `ignoreip` first |
 | API service with migrations first, sandboxing, restart | `systemd/stslv-amc-api.service` | Ready |
-| Backup timers (database, documents) | `systemd/stslv-amc-db-backup.*`, `stslv-amc-docs-backup.*` | Ready, **not to be enabled without approval** |
+| Backup timers (daily 18:00 IST: database + documents; Friday 18:00 IST: + configuration, monthly on the last Friday) | `systemd/stslv-amc-backup-daily.*`, `stslv-amc-backup-weekly.*`, `scripts/config-snapshot.sh` | Ready, **not to be enabled without approval** |
 | Monitoring (disk, memory, certificate, API health, backup age) | `systemd/stslv-amc-monitor.*`, `scripts/monitor.sh` | Ready |
 | Log rotation, journald limits | `logrotate/stslv-amc`, `journald/stslv-journald.conf` | Ready |
 | Least-privilege database roles | `sql/backup-role.sql`, `sql/runtime-role.sql` | Prepared; applying them is a Neon access change (approval) |
