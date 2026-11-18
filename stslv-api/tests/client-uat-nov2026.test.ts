@@ -194,6 +194,10 @@ describe("Client UAT 2026-11-16", () => {
       expect(accountsView.status).toBe(200);
       expect(accountsView.body.data.amcValueVisible).toBe(true);
       expect(accountsView.body.data.items.every((item: { amcValue: string | null; visitValue: string }) => item.amcValue === "1150.500" && item.visitValue === "300.000")).toBe(true);
+      // The contract's AMC Value / Year under the service value follows AMC Contracts: View, as on Master AMC Status.
+      expect(full.items.every((item: { annualAmcValue: string | null }) => item.annualAmcValue === "1200.000")).toBe(true);
+      expect(accountsView.body.data.items.every((item: { annualAmcValue: unknown }) => item.annualAmcValue === null)).toBe(true);
+      expect(JSON.stringify(accountsView.body.data.items)).not.toContain("1200.000");
       const accountsSheet = await sheet("/api/accounts/export", {}, accounts, "Accounts");
       expect(accountsSheet.header).toEqual(expect.arrayContaining(["AMC Value (ex VAT)", "Service Value (ex VAT)"]));
       expect(Number(accountsSheet.column("AMC Value (ex VAT)")[0])).toBe(1150.5);
@@ -247,11 +251,14 @@ describe("Client UAT 2026-11-16", () => {
       const oneYear = await activeContract(admin, clientId, {
         systemDescription: "SINGLE", validFrom: "2027-01-01", validTo: "2027-12-31", maintenanceFrequency: "QUARTERLY", contractValue: "1200.000", billingBasis: "CONTRACT_VALUE", customerPoValue: "1100.000",
       });
-      const rowsOf = async (id: string) => (await api().get("/api/accounts").query({ contractId: id, pageSize: 100 }).set(admin.headers)).body.data.items as { amcValue: string; visitValue: string }[];
+      const rowsOf = async (id: string) =>
+        (await api().get("/api/accounts").query({ contractId: id, pageSize: 100 }).set(admin.headers)).body.data.items as { amcValue: string; annualAmcValue: string; visitValue: string }[];
 
       const multi = await rowsOf(threeYear);
       expect(multi).toHaveLength(12);
       expect(new Set(multi.map((row) => row.amcValue))).toEqual(new Set(["3450.000"]));
+      // The annual value is the AMC Value / Year, never the PO value or the term total.
+      expect(new Set(multi.map((row) => row.annualAmcValue))).toEqual(new Set(["1200.000"]));
       // Visit amounts still come from the billing basis only (1,200.000 a year ÷ 4): the PO changes no calculation.
       expect(new Set(multi.map((row) => row.visitValue))).toEqual(new Set(["300.000"]));
       const multiContract = (await api().get(`/api/amc/contracts/${threeYear}`).set(admin.headers)).body.data;

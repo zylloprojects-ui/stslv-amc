@@ -65,6 +65,11 @@ export interface AccountsItem {
    * when the API does not send it. Absent from an older API.
    */
   amcValue?: string | null
+  /**
+   * The contract's AMC Value / Year (OMR, ex VAT), the figure Master AMC Status shows under the service value. Null
+   * unless the user may view AMC Contracts. Repeated on each service, so never added up. Absent from an older API.
+   */
+  annualAmcValue?: string | null
   /** Read-only, from Invoice Acknowledgements; null when no Invoice No. or the user may not view that page. */
   acknowledgementStatus?: 'PENDING' | 'ACKNOWLEDGED' | null
   colour: AccountsColour

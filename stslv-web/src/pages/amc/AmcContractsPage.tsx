@@ -31,13 +31,10 @@ import {
 const PAGE_SIZE = 25
 
 /**
- * The columns a user may hide. # , Client and Actions always stay. "contract" (the Upload Contract link, shown to users
- * who may edit) is a page column only: the export has no such column, so it is never sent to the export.
+ * The columns a user may hide. # , Client and Actions always stay. The register has no "Contract" (Upload Contract)
+ * column (2026-11-18): contract documents are uploaded and kept on Contract 360's Documents tab, which is unchanged.
  */
-type ColumnKey = 'reference' | 'system' | 'engineer' | 'validity' | 'frequency' | 'contractValue' | 'finalCredit' | 'visits' | 'contract' | 'status'
-
-/** Page-only columns, left out of the export's hidden list (the export does not know them). */
-const PAGE_ONLY_COLUMNS: ReadonlySet<ColumnKey> = new Set(['contract'])
+type ColumnKey = 'reference' | 'system' | 'engineer' | 'validity' | 'frequency' | 'contractValue' | 'finalCredit' | 'visits' | 'status'
 
 /** The Validity filter (2026-11-09): computed from Valid To, independent of the stored contract status. */
 type ValidityFilter = 'all' | 'due' | 'expired'
@@ -59,7 +56,6 @@ const COLUMN_OPTIONS: ColumnOption<ColumnKey>[] = [
   { key: 'contractValue', label: 'Contract Value (ex VAT)' },
   { key: 'finalCredit', label: 'Final Credit (ex VAT)' },
   { key: 'visits', label: 'Visits' },
-  { key: 'contract', label: 'Contract' },
   { key: 'status', label: 'Status' },
 ]
 
@@ -405,8 +401,7 @@ export function AmcContractsPage() {
   })
   // The Filtered Total row: the label spans every column before the first amount.
   const leadingColumns = 2 + (['reference', 'system', 'engineer', 'validity', 'frequency'] as const).filter(show).length
-  const showContract = canEdit && show('contract')
-  const trailingColumns = 1 + (show('visits') ? 1 : 0) + (showContract ? 1 : 0) + (show('status') ? 1 : 0)
+  const trailingColumns = 1 + (show('visits') ? 1 : 0) + (show('status') ? 1 : 0)
 
   return (
     <>
@@ -420,7 +415,7 @@ export function AmcContractsPage() {
               <ExportButtons
                 what="AMC Contracts"
                 fileStem="amc-contracts"
-                path={(format) => `/amc/contracts/export${queryString({ search, status, validity: validity === 'all' ? '' : validity, clientId, system, year, salesEngineerId, frequency, ...sortQuery, format, hidden: [...hiddenColumns].filter((key) => !PAGE_ONLY_COLUMNS.has(key)).join(',') })}`}
+                path={(format) => `/amc/contracts/export${queryString({ search, status, validity: validity === 'all' ? '' : validity, clientId, system, year, salesEngineerId, frequency, ...sortQuery, format, hidden: [...hiddenColumns].join(',') })}`}
                 onError={setExportError}
               />
             )}
@@ -588,8 +583,10 @@ export function AmcContractsPage() {
             <Button variant="secondary" onClick={resetFilters} disabled={!filtered} className="flex-1 rounded-xl">
               Reset filters
             </Button>
+            {/* Opens upwards (2026-11-18): the register's filter row sits low on the page, where a downward list was cut off. */}
             <ColumnsMenu
-              options={canEdit ? COLUMN_OPTIONS : COLUMN_OPTIONS.filter((option) => option.key !== 'contract')}
+              placement="up"
+              options={COLUMN_OPTIONS}
               hidden={hiddenColumns}
               onChange={(next) => {
                 setHiddenColumns(next)
@@ -683,11 +680,6 @@ export function AmcContractsPage() {
                         Visits
                       </th>
                     )}
-                    {showContract && (
-                      <th scope="col" className={TABLE.th}>
-                        Contract
-                      </th>
-                    )}
                     {show('status') && (
                       <SortHeader columns={['status']} sort={sort}>
                         <SortButton label="Status" column="status" sort={sort} onSort={chooseSort} />
@@ -770,7 +762,10 @@ export function AmcContractsPage() {
                           contract.defaultVisitAmount && <span className="mt-0.5 block text-xs tabular-nums text-slate-500">{formatMoney(contract.defaultVisitAmount)} per visit</span>
                         )}
                       </td>}
-                      {show('finalCredit') && <td className={`${TABLE.td} whitespace-nowrap text-right font-semibold tabular-nums text-slate-900`}>{formatMoney(contract.finalCredit)}</td>}
+                      {/* Styled as Contract Value (2026-11-18): the same size, weight, colour and alignment. The figure is unchanged. */}
+                      {show('finalCredit') && <td className={`${TABLE.td} whitespace-nowrap text-right`}>
+                        <span className="block text-base font-extrabold tabular-nums text-[#0b3b66]">{formatMoney(contract.finalCredit)}</span>
+                      </td>}
                       {show('visits') && <td className={`${TABLE.td} whitespace-nowrap`}>
                         {contract.schedule.visitCount === 0 ? (
                           '—'
@@ -789,13 +784,6 @@ export function AmcContractsPage() {
                           </span>
                         )}
                       </td>}
-                      {showContract && (
-                        <td className={`${TABLE.td} whitespace-nowrap`}>
-                          <Link to={`/amc/contracts/${contract.id}?tab=documents`} aria-label={`Upload Contract for ${label(contract)}`} className="text-sm font-semibold text-[#1479BD] hover:underline">
-                            Upload Contract
-                          </Link>
-                        </td>
-                      )}
                       {show('status') && <td className={TABLE.td}>
                         <span className="inline-flex flex-wrap items-center gap-1">
                           <ContractStatusPill status={contract.status} />
@@ -829,8 +817,13 @@ export function AmcContractsPage() {
                       <th scope="row" colSpan={leadingColumns} className={`${TABLE.td} text-right`}>
                         Filtered Total ({data.total} {data.total === 1 ? 'contract' : 'contracts'})
                       </th>
-                      {show('contractValue') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.totals.contractValue)}</td>}
-                      {show('finalCredit') && <td className={`${TABLE.td} whitespace-nowrap text-right tabular-nums`}>{formatMoney(data.totals.finalCredit)}</td>}
+                      {/* Both totals in the same amount style as their columns. */}
+                      {show('contractValue') && <td className={`${TABLE.td} whitespace-nowrap text-right`}>
+                        <span className="block text-base font-extrabold tabular-nums text-[#0b3b66]">{formatMoney(data.totals.contractValue)}</span>
+                      </td>}
+                      {show('finalCredit') && <td className={`${TABLE.td} whitespace-nowrap text-right`}>
+                        <span className="block text-base font-extrabold tabular-nums text-[#0b3b66]">{formatMoney(data.totals.finalCredit)}</span>
+                      </td>}
                       <td colSpan={trailingColumns} className={TABLE.td} />
                     </tr>
                   </tfoot>

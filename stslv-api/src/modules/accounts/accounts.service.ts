@@ -72,6 +72,9 @@ const selectSql = (storedReference: boolean, reports: boolean, acknowledgements 
          -- CR-013 (owner decision 2026-11-17): the contract's Customer PO Value (0118), never the annual value or a term
          -- total; null when none was entered. Read through to_jsonb so a database without 0118 still works.
          (to_jsonb(c) ->> 'customer_po_value') AS amc_value,
+         -- The contract's AMC Value / Year, the same source as Master AMC Status (c.contract_value); sent only with
+         -- AMC Contracts: View. Shown under the service value, never instead of the Customer PO Value above.
+         c.contract_value::text AS annual_amc_value,
          cl.id AS client_id, cl.name AS client_name, c.system_description,
          st.id AS system_type_id, st.name AS system_type_name,
          c.maintenance_frequency, mf.label AS frequency_label,
@@ -114,6 +117,7 @@ interface AccountsRow {
   sales_engineer_name: string | null;
   service_engineer: string | null;
   amc_value: string | null;
+  annual_amc_value: string | null;
   invoice_numbers: string[];
   invoice_amount: string | null;
   no_amount_source: boolean;
@@ -173,6 +177,12 @@ export interface AccountsItem {
    */
   amcValue: string | null;
   /**
+   * The contract's AMC Value / Year (amc_contracts.contract_value), OMR excluding VAT: the figure Master AMC Status
+   * shows under the service value. Only for users with AMC Contracts: View, as on Master AMC Status; null otherwise.
+   * Display only: repeated on each service, never added up, and not the Customer PO Value (amcValue).
+   */
+  annualAmcValue: string | null;
+  /**
    * Read-only: whether the invoice of this service's Invoice No. is acknowledged (Invoice Acknowledgements). Null when
    * no Invoice No. is entered, or the user may not view Invoice Acknowledgements. Never affects Paid / Unpaid.
    */
@@ -186,9 +196,11 @@ export interface AccountsAccess {
   acknowledgements: boolean;
   /** The contract's AMC Value column. The Accounts routes always ask for it (client UAT CR-013). */
   amcValue: boolean;
+  /** The contract's AMC Value / Year under the service value: AMC Contracts: View, as on Master AMC Status. */
+  annualAmcValue?: boolean;
 }
 
-const NO_EXTRA_ACCESS: AccountsAccess = { acknowledgements: false, amcValue: false };
+const NO_EXTRA_ACCESS: AccountsAccess = { acknowledgements: false, amcValue: false, annualAmcValue: false };
 
 function toItem(row: AccountsRow, access: AccountsAccess = NO_EXTRA_ACCESS): AccountsItem {
   return {
@@ -216,6 +228,7 @@ function toItem(row: AccountsRow, access: AccountsAccess = NO_EXTRA_ACCESS): Acc
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
     serviceEngineer: row.service_engineer,
     amcValue: access.amcValue && row.amc_value !== null ? normalizeMoney(row.amc_value) : null,
+    annualAmcValue: access.annualAmcValue === true && row.annual_amc_value !== null ? normalizeMoney(row.annual_amc_value) : null,
     acknowledgementStatus: row.acknowledgement_status,
     colour: row.colour,
   };
