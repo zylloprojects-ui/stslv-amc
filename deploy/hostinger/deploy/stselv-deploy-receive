@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# STSELV AMC — the ONLY command the GitHub Actions deploy key may run on the VPS (forced command).
+# Install: /usr/local/sbin/stselv-deploy-receive  (root:root 0755)
+# authorized_keys of the deploy user:
+#   restrict,command="/usr/local/sbin/stselv-deploy-receive" ssh-ed25519 AAAA... github-actions-stselv-deploy
+#
+# Accepted requests (SSH_ORIGINAL_COMMAND), nothing else:
+#   deploy <40-hex commit>   the release archive arrives on standard input
+#   status                   prints the deployed commit
+set -euo pipefail
+
+INCOMING=/var/lib/stselv-deploy/incoming
+MAX_BYTES=$((400 * 1024 * 1024))   # 400 MB: far above a real release (~40 MB)
+
+request="${SSH_ORIGINAL_COMMAND:-}"
+
+if [[ "$request" == "status" ]]; then
+  exec sudo -n /usr/local/sbin/stselv-release status
+fi
+
+if [[ ! "$request" =~ ^deploy\ ([0-9a-f]{40})$ ]]; then
+  echo "refused: only 'deploy <commit>' or 'status' is accepted" >&2
+  exit 64
+fi
+commit="${BASH_REMATCH[1]}"
+
+umask 077
+mkdir -p "$INCOMING"
+archive="$INCOMING/$commit.tar.gz"
+rm -f "$archive"
+# Read at most MAX_BYTES + 1; a larger upload is refused.
+head -c $((MAX_BYTES + 1)) > "$archive"
+size=$(stat -c %s "$archive")
+if (( size == 0 || size > MAX_BYTES )); then
+  rm -f "$archive"
+  echo "refused: archive empty or larger than $MAX_BYTES bytes" >&2
+  exit 65
+fi
+echo "received $commit ($size bytes)"
+
+exec sudo -n /usr/local/sbin/stselv-release deploy "$commit"
