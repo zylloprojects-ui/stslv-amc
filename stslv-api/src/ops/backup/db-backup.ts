@@ -5,7 +5,8 @@ import { pgToolEnv, type BackupConfig, type DatabaseSource } from "./config";
 import { checkRecipient, encryptFile } from "./gpg";
 import { describeFailure, type Logger } from "./log";
 import { pingHeartbeat, readState, sendAlert, writeState, type Fetch } from "./notify";
-import { selectRetained } from "./retention";
+import { uploadEncryptedJson } from "./manifest-crypto";
+import { highestKind, selectByKind, type RecoveryKind } from "./retention";
 import { newestFirst, newRunId } from "./run-id";
 import { ObjectExistsError, type WritableStore } from "./store";
 import { childEnv, parseToolMajorVersion, runTool, sha256File } from "./tools";
@@ -24,6 +25,8 @@ import { childEnv, parseToolMajorVersion, runTool, sha256File } from "./tools";
 // Any failure: alert, heartbeat "fail", state file updated, exit code 1. The plain dump never outlives the run.
 
 export const DB_PREFIX = "db/";
+/** Pruning never runs while this many complete backups or fewer exist. */
+const MIN_COMPLETE_BEFORE_PRUNING = 7;
 export const MANIFEST_FORMAT = 1;
 const ID_PREFIX = "stslv-db";
 const DUMP_TIMEOUT_MS = 40 * 60 * 1000;
@@ -52,7 +55,11 @@ export interface DatabaseManifest {
 }
 
 export const dumpKey = (id: string) => `${DB_PREFIX}${id}.dump.gpg`;
-export const manifestKey = (id: string) => `${DB_PREFIX}${id}.manifest.json`;
+/** The ENCRYPTED manifest (manifest-crypto.ts); its presence marks a complete, verified backup. */
+export const manifestKey = (id: string) => `${DB_PREFIX}${id}.manifest.json.gpg`;
+/** Recovery-point type marker: "db/<id>.kind-<daily|weekly|monthly>.json" (several = promoted; the highest counts). */
+export const kindMarkerKey = (id: string, kind: RecoveryKind) => `${DB_PREFIX}${id}.kind-${kind}.json`;
+const KIND_MARKER = /^db\/(.+)\.kind-(daily|weekly|monthly)\.json$/;
 
 export function newBackupId(environment: string, now: Date): string {
   return newRunId(ID_PREFIX, environment, now);
@@ -94,6 +101,8 @@ export interface DbBackupDeps {
   log: Logger;
   now?: () => Date;
   fetchImpl?: Fetch;
+  /** The recovery-point type this backup counts as for retention (schedule.ts). Default: daily. */
+  kind?: RecoveryKind;
 }
 
 export interface DbBackupResult {
@@ -214,10 +223,10 @@ export async function runDatabaseBackup(deps: DbBackupDeps): Promise<DbBackupRes
     }
 
     const manifest: DatabaseManifest = { ...manifestBase, finishedAt: now().toISOString(), plain, encrypted };
-    const manifestFile = path.join(runDir, "manifest.json");
-
-    await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
-    await store.upload(manifestKey(id), manifestFile, "application/json");
+    // The type marker before the manifest: a complete backup always has its type.
+    const kind = deps.kind ?? "daily";
+    await uploadKindMarker(store, kindMarkerKey(id, kind), path.join(runDir, "kind.json"), { id, kind, at: now().toISOString() });
+    await uploadEncryptedJson({ store, key: manifestKey(id), value: manifest, gpg: config.gpg, recipient: config.gpg.recipient, scratchDir: runDir });
 
     log.info("db_backup.stored", { id, tables: manifest.tables.length, totalRows: manifest.totalRows, encryptedBytes: encrypted.bytes, latestMigration: manifest.latestMigration });
 
@@ -249,7 +258,7 @@ export async function runDatabaseBackup(deps: DbBackupDeps): Promise<DbBackupRes
     log.error("db_backup.failed", { id, reason });
     await writeState(config.stateDir, { ...state, lastFailureAt: now().toISOString(), lastFailure: reason, lastRunId: id }).catch(() => undefined);
     await sendAlert(config.alertWebhookUrl, `[STSLV AMC ${config.environment}] DATABASE BACKUP FAILED (${id}): ${reason}`, log, deps.fetchImpl);
-    await pingHeartbeat(config.heartbeatDbUrl, false, log, deps.fetchImpl);
+    await pingHeartbeat(config.heartbeatDbUrl, false, log, deps.fetchImpl, `DATABASE BACKUP FAILED (${id}): ${reason}`);
     throw error;
   } finally {
     // The plain dump and every temporary file are removed whatever happened.
@@ -257,41 +266,79 @@ export async function runDatabaseBackup(deps: DbBackupDeps): Promise<DbBackupRes
   }
 }
 
-/** Complete backups (those with a manifest) in the store, newest first. */
-export async function listDatabaseBackups(store: WritableStore | Pick<WritableStore, "list">): Promise<{ id: string; createdAt: Date }[]> {
-  const objects = await store.list(DB_PREFIX);
-
-  return newestFirst(
-    ID_PREFIX,
-    objects.map((object) => /^db\/(.+)\.manifest\.json$/.exec(object.key)?.[1]).filter((id): id is string => typeof id === "string")
-  );
+/** Writes a small type marker (never over an existing one: the same marker twice is not an error). */
+export async function uploadKindMarker(store: Pick<WritableStore, "upload">, key: string, scratchFile: string, body: Record<string, string>): Promise<void> {
+  await writeFile(scratchFile, `${JSON.stringify(body)}\n`, { mode: 0o600 });
+  try {
+    await store.upload(key, scratchFile, "application/json");
+  } catch (error) {
+    if (!(error instanceof ObjectExistsError)) throw error;
+  } finally {
+    await rm(scratchFile, { force: true });
+  }
 }
 
 /**
- * Removes backups outside the retention policy. Never removes the backup just made, never runs when fewer
- * complete backups exist than the daily count, and removes the manifest last (an interrupted prune leaves a
- * manifest-less dump, which is ignored and removed by the next prune).
+ * Promotes an existing backup to a higher recovery-point type (a weekly or monthly job on a day whose daily backup
+ * already ran): one more marker is added; nothing is overwritten and no second backup is made.
+ */
+export async function promoteDatabaseBackup(store: WritableStore, id: string, kind: RecoveryKind, workDir: string): Promise<void> {
+  if (!(await store.head(manifestKey(id)))) throw new Error(`Database backup ${id} is not complete in the off-site store; it cannot be promoted.`);
+  await mkdir(workDir, { recursive: true, mode: 0o700 });
+  await uploadKindMarker(store, kindMarkerKey(id, kind), path.join(workDir, `promote-${id}.json`), { id, kind, promotedAt: new Date().toISOString() });
+}
+
+/** Complete backups (those with a manifest) in the store, newest first, with their recovery-point type. */
+export async function listDatabaseBackups(store: WritableStore | Pick<WritableStore, "list">): Promise<{ id: string; createdAt: Date; kind: RecoveryKind }[]> {
+  const objects = await store.list(DB_PREFIX);
+  const kinds = new Map<string, RecoveryKind[]>();
+
+  for (const object of objects) {
+    const match = KIND_MARKER.exec(object.key);
+    if (match) kinds.set(match[1] as string, [...(kinds.get(match[1] as string) ?? []), match[2] as RecoveryKind]);
+  }
+
+  return newestFirst(
+    ID_PREFIX,
+    objects.map((object) => /^db\/(.+)\.manifest\.json\.gpg$/.exec(object.key)?.[1]).filter((id): id is string => typeof id === "string")
+  ).map((backup) => ({ ...backup, kind: highestKind(kinds.get(backup.id) ?? []) }));
+}
+
+/**
+ * Removes backups outside the retention policy: the newest N daily, weekly and monthly backups are kept
+ * (retention.ts selectByKind), counted over complete, verified backups only. Never removes the backup just made,
+ * never runs while 7 or fewer complete backups exist, and removes the manifest FIRST, then the type markers, then
+ * the dump: an interrupted prune leaves a manifest-less dump, which is never listed or restored and is removed by a
+ * later prune — never a manifest without its dump, which would count as a recovery point that cannot be restored.
  */
 export async function pruneDatabaseBackups(input: { store: WritableStore; config: Pick<BackupConfig, "retention">; log: Logger; keepId: string }): Promise<string[]> {
   const { store, config, log, keepId } = input;
   const backups = await listDatabaseBackups(store);
 
-  if (backups.length <= config.retention.daily) return [];
+  if (backups.length <= MIN_COMPLETE_BEFORE_PRUNING) return [];
 
-  const decision = selectRetained(backups, config.retention);
+  const decision = selectByKind(backups, config.retention);
   const removed: string[] = [];
 
   for (const id of decision.remove) {
     if (id === keepId) continue;
-    await store.remove(dumpKey(id));
     await store.remove(manifestKey(id));
+    for (const kind of ["daily", "weekly", "monthly"] as const) await store.remove(kindMarkerKey(id, kind));
+    await store.remove(dumpKey(id));
     removed.push(id);
   }
 
-  // Dumps whose manifest never arrived (an upload interrupted mid-way), older than two days.
+  // Dumps whose manifest never arrived (an upload interrupted mid-way), older than two days. A dump with a PLAIN
+  // manifest (db/<id>.manifest.json, written before manifests were encrypted) is an older complete backup, not an
+  // orphan: it is never removed automatically.
+  const objects = await store.list(DB_PREFIX);
   const complete = new Set(backups.map((backup) => backup.id));
+  for (const object of objects) {
+    const legacy = /^db\/(.+)\.manifest\.json$/.exec(object.key)?.[1];
+    if (legacy) complete.add(legacy);
+  }
   const cutoff = Date.now() - 2 * 86_400_000;
-  for (const object of await store.list(DB_PREFIX)) {
+  for (const object of objects) {
     const id = /^db\/(.+)\.dump\.gpg$/.exec(object.key)?.[1];
     if (id && id !== keepId && !complete.has(id) && object.lastModified && object.lastModified.getTime() < cutoff) {
       await store.remove(object.key);

@@ -1,5 +1,6 @@
-# STSLV AMC — daily encrypted database backup. TEMPLATE: NOT YET DEPLOYED, NOT SCHEDULED.
-# Started by stslv-amc-db-backup.timer. Run by hand:  systemctl start stslv-amc-db-backup
+# STSLV AMC — encrypted database backup, BY HAND ONLY (no timer). TEMPLATE: NOT YET DEPLOYED.
+# The schedule is stslv-amc-backup-daily/weekly.timer (18:00 IST). Run by hand:  systemctl start stslv-amc-db-backup
+# A run by hand waits for a scheduled backup that is still running (shared backup lock), never overlaps it.
 # Result:  journalctl -u stslv-amc-db-backup   and   /var/lib/stslv-amc-backup/state/db-backup.json
 #
 # Runs as its own user "stslv-backup", separate from the API user, so the API cannot read the backup

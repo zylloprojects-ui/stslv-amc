@@ -1,0 +1,45 @@
+# STSLV AMC — Friday FULL backup: database + documents + VPS configuration, encrypted, off-site. It is the weekly
+# backup, or the MONTHLY backup on the last Friday of the month (decided by the job from the IST date).
+# TEMPLATE: NOT YET DEPLOYED, NOT SCHEDULED. Started by stslv-amc-backup-weekly.timer (Friday 18:00 IST).
+# Run by hand:  systemctl start stslv-amc-backup-weekly
+#
+# 1. ExecStartPre (as root, the "+" prefix; "-" = a failure does NOT cancel the database and document backups,
+#    the configuration step then finds no fresh snapshot and alerts): config-snapshot.sh streams the files through GnuPG
+#    into /var/lib/stslv-amc-backup/work/config-snapshot.tar.gpg. Only the ENCRYPTED archive is written.
+# 2. ExecStart (as stslv-backup): `scheduled-backup --kind weekly` takes the backup lock and runs the steps not
+#    yet done today: database, documents, configuration (uploads the encrypted snapshot, verifies, retention).
+# See docs/BACKUP_AUTOMATION.md.
+
+[Unit]
+Description=STSLV AMC Friday full backup: weekly, or monthly on the last Friday (database + documents + configuration)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=stslv-backup
+Group=stslv-backup
+EnvironmentFile=/etc/stslv-amc/backup.env
+Environment=NODE_ENV=production
+Environment=GNUPGHOME=/var/lib/stslv-amc-backup/gnupg
+ExecStartPre=-+/usr/local/sbin/stslv-amc-config-snapshot
+ExecStart=/usr/bin/node /opt/stslv-amc/api/current/dist/ops/cli.js scheduled-backup --kind weekly
+TimeoutStartSec=4h
+Nice=10
+IOSchedulingClass=idle
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/stslv-amc-backup
+ReadOnlyPaths=-/var/lib/stslv-amc/attachments
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077

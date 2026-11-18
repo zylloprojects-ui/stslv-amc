@@ -1,16 +1,18 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Client } from "pg";
 import type { BackupConfig } from "./config";
 import { decryptFile, encryptFile, type GpgOptions } from "./gpg";
 import { describeFailure, type Logger } from "./log";
+import { readEncryptedJson, uploadEncryptedJson } from "./manifest-crypto";
 import { pingHeartbeat, readState, sendAlert, writeState, type Fetch } from "./notify";
 import { newestFirst, newRunId } from "./run-id";
 import { assertObjectKey, ObjectExistsError, type ReadableStore, type WritableStore } from "./store";
 import { sha256File } from "./tools";
 
-// Encrypted, versioned copies of the private document bucket (contract documents, service reports, quotations,
-// receipts: every row of the attachments table).
+// Encrypted, versioned copies of the private documents (contract documents, service reports, quotations,
+// receipts: every row of the attachments table), from a Supabase/R2 bucket or, on the VPS, from the local
+// ATTACHMENTS_DIR folder (local-documents.ts presents that folder in the same "attachments/<key>" layout).
 //
 // Inventory: the attachments table (what the application believes it holds, with each file's SHA-256) and a
 // listing of the bucket under "attachments/" (what is really there).
@@ -67,7 +69,7 @@ export interface DocumentsManifest {
   createdAt: string;
   finishedAt: string;
   source: string;
-  summary: Record<DocumentStatus, number> & { databaseRows: number; bucketObjects: number };
+  summary: Record<DocumentStatus, number> & { databaseRows: number; bucketObjects: number; ignoredEntries?: number };
   entries: DocumentEntry[];
 }
 
@@ -88,7 +90,8 @@ interface AttachmentRow {
 }
 
 export const encryptedDocKey = (sourceKey: string, sha256: string) => `${DOCS_PREFIX}files/${sourceKey}/${sha256}.gpg`;
-export const docsManifestKey = (id: string) => `${DOCS_PREFIX}manifests/${id}.json`;
+/** The ENCRYPTED run manifest (it names every document): manifest-crypto.ts. */
+export const docsManifestKey = (id: string) => `${DOCS_PREFIX}manifests/${id}.json.gpg`;
 
 /** Read-only inventory of the attachments table. */
 export async function readAttachmentInventory(db: Pick<Client, "query">): Promise<AttachmentRow[]> {
@@ -128,6 +131,10 @@ export async function runDocumentsBackup(deps: DocsBackupDeps): Promise<Document
   log.info("docs_backup.start", { id, source: source.label, store: store.label, verifySource: Boolean(deps.verifySource) });
 
   try {
+    await removeAbandonedRuns(config.workDir, id, log);
+    // A local folder is cheap to read: every file is re-hashed on every run, so a document altered or damaged on
+    // disk is reported the same day. A remote bucket does that only with --verify-source (a full download).
+    const verifyEvery = Boolean(deps.verifySource) || (source as { cheapReads?: boolean }).cheapReads === true;
     await mkdir(runDir, { recursive: true, mode: 0o700 });
 
     const rows = await deps.inventory();
@@ -196,7 +203,7 @@ export async function runDocumentsBackup(deps: DocsBackupDeps): Promise<Document
       }
 
       const existing = encryptedDocKey(sourceKey, row.sha256);
-      if (!deps.verifySource && (await store.head(existing))) {
+      if (!verifyEvery && (await store.head(existing))) {
         entries.push({ sourceKey, sha256: row.sha256, bytes: Number(row.size_bytes), encryptedKey: existing, status: "already-backed-up", attachment });
         continue;
       }
@@ -223,9 +230,14 @@ export async function runDocumentsBackup(deps: DocsBackupDeps): Promise<Document
       log.warn("docs_backup.not_in_database", { sourceKey: object.key });
     }
 
+    // A local folder reports what it did not offer (links, folders, other names): never read, counted here.
+    const ignored = (source as { ignored?: { name: string; reason: string }[] }).ignored ?? [];
+    if (ignored.length > 0) log.warn("docs_backup.ignored_entries", { count: ignored.length, entries: ignored.slice(0, 20) });
+
     const summary = {
       databaseRows: rows.length,
       bucketObjects: objects.length,
+      ...(ignored.length > 0 ? { ignoredEntries: ignored.length } : {}),
       copied: 0,
       "already-backed-up": 0,
       "missing-in-bucket": 0,
@@ -245,10 +257,7 @@ export async function runDocumentsBackup(deps: DocsBackupDeps): Promise<Document
       summary,
       entries,
     };
-    const manifestFile = path.join(runDir, "manifest.json");
-
-    await writeFile(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, { mode: 0o600 });
-    await store.upload(docsManifestKey(id), manifestFile, "application/json");
+    await uploadEncryptedJson({ store, key: docsManifestKey(id), value: manifest, gpg: config.gpg, recipient: config.gpg.recipient, scratchDir: runDir });
 
     const problems = summary["missing-in-bucket"] + summary["checksum-mismatch"];
 
@@ -263,12 +272,12 @@ export async function runDocumentsBackup(deps: DocsBackupDeps): Promise<Document
     if (problems > 0) {
       await sendAlert(
         config.alertWebhookUrl,
-        `[STSLV AMC ${config.environment}] DOCUMENT BACKUP PROBLEMS (${id}): ${summary["missing-in-bucket"]} file(s) missing from the bucket, ${summary["checksum-mismatch"]} checksum mismatch(es). Every other file is backed up.`,
+        `[STSLV AMC ${config.environment}] DOCUMENT BACKUP PROBLEMS (${id}): ${summary["missing-in-bucket"]} file(s) missing from document storage, ${summary["checksum-mismatch"]} checksum mismatch(es). Every other file is backed up.`,
         log,
         deps.fetchImpl
       );
     }
-    await pingHeartbeat(config.heartbeatDocsUrl, problems === 0, log, deps.fetchImpl);
+    await pingHeartbeat(config.heartbeatDocsUrl, problems === 0, log, deps.fetchImpl, `DOCUMENT BACKUP PROBLEMS (${id}): ${summary["missing-in-bucket"]} file(s) missing from document storage, ${summary["checksum-mismatch"]} checksum mismatch(es).`);
 
     return manifest;
   } catch (error) {
@@ -277,17 +286,33 @@ export async function runDocumentsBackup(deps: DocsBackupDeps): Promise<Document
     log.error("docs_backup.failed", { id, reason });
     await writeState(config.stateDir, { ...state, lastFailureAt: now().toISOString(), lastFailure: reason, lastRunId: id }).catch(() => undefined);
     await sendAlert(config.alertWebhookUrl, `[STSLV AMC ${config.environment}] DOCUMENT BACKUP FAILED (${id}): ${reason}`, log, deps.fetchImpl);
-    await pingHeartbeat(config.heartbeatDocsUrl, false, log, deps.fetchImpl);
+    await pingHeartbeat(config.heartbeatDocsUrl, false, log, deps.fetchImpl, `DOCUMENT BACKUP FAILED (${id}): ${reason}`);
     throw error;
   } finally {
     await rm(runDir, { recursive: true, force: true });
   }
 }
 
+/**
+ * Removes the work folders of earlier document runs that were interrupted (killed, power loss): they may hold a
+ * plain copy of a document. Backups never overlap (schedule.ts lock), so any other run folder is abandoned; a
+ * folder younger than 5 minutes is left alone in case a run was started without the lock.
+ */
+async function removeAbandonedRuns(workDir: string, currentId: string, log: Logger): Promise<void> {
+  const names = await readdir(workDir).catch(() => [] as string[]);
+  for (const name of names) {
+    if (!name.startsWith(`${RUN_PREFIX}-`) || name === currentId) continue;
+    const info = await stat(path.join(workDir, name)).catch(() => null);
+    if (!info?.isDirectory() || Date.now() - info.mtimeMs < 5 * 60_000) continue;
+    await rm(path.join(workDir, name), { recursive: true, force: true });
+    log.warn("docs_backup.abandoned_run_removed", { folder: name });
+  }
+}
+
 /** The newest document backup run, by the time in its identifier (see run-id.ts). */
 export async function latestDocumentsRun(store: ReadableStore): Promise<string> {
   const ids = (await store.list(`${DOCS_PREFIX}manifests/`))
-    .map((object) => /^docs\/manifests\/(.+)\.json$/.exec(object.key)?.[1])
+    .map((object) => /^docs\/manifests\/(.+)\.json\.gpg$/.exec(object.key)?.[1])
     .filter((id): id is string => typeof id === "string");
   const newest = newestFirst(RUN_PREFIX, ids)[0];
 
@@ -320,6 +345,11 @@ export async function restoreDocuments(input: {
   log: Logger;
   /** Only current versions (what the application shows), instead of every version. */
   currentOnly?: boolean;
+  /**
+   * "bucket" (default): files are written as "attachments/<key>", the layout of a Supabase/R2 bucket.
+   * "local-folder": files are written as "<key>", the layout of ATTACHMENTS_DIR on the VPS (LocalDiskStorage).
+   */
+  layout?: "bucket" | "local-folder";
 }): Promise<DocsRestoreReport> {
   const { store, destination, log } = input;
 
@@ -331,9 +361,7 @@ export async function restoreDocuments(input: {
   await mkdir(runDir, { recursive: true, mode: 0o700 });
 
   try {
-    const manifestFile = path.join(runDir, "manifest.json");
-    await store.download(docsManifestKey(runId), manifestFile);
-    const manifest = JSON.parse(await readFile(manifestFile, "utf8")) as DocumentsManifest;
+    const manifest = await readEncryptedJson<DocumentsManifest>({ store, key: docsManifestKey(runId), gpg: input.gpg, scratchDir: runDir });
 
     if (manifest.kind !== "documents" || manifest.id !== runId) throw new Error("The manifest is not a documents manifest of this run.");
 
@@ -346,7 +374,8 @@ export async function restoreDocuments(input: {
         report.unavailable += 1;
         continue;
       }
-      if (await destination.head(entry.sourceKey)) {
+      const targetKey = input.layout === "local-folder" && entry.sourceKey.startsWith(SOURCE_PREFIX) ? entry.sourceKey.slice(SOURCE_PREFIX.length) : entry.sourceKey;
+      if (await destination.head(targetKey)) {
         report.skippedExisting += 1;
         continue;
       }
@@ -358,7 +387,7 @@ export async function restoreDocuments(input: {
         await store.download(entry.encryptedKey, encrypted);
         await decryptFile(input.gpg, encrypted, plain);
         if ((await sha256File(plain)) !== entry.sha256) throw new Error("checksum does not match the manifest");
-        await destination.upload(entry.sourceKey, plain, entry.attachment?.mimeType);
+        await destination.upload(targetKey, plain, entry.attachment?.mimeType);
         report.restored += 1;
       } catch (error) {
         report.failed.push(`${entry.sourceKey}: ${describeFailure(error, log)}`);

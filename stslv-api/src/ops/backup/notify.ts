@@ -34,10 +34,21 @@ export async function sendAlert(webhookUrl: string | null, message: string, log:
   }
 }
 
-export async function pingHeartbeat(url: string | null, ok: boolean, log: Logger, fetchImpl: Fetch = defaultFetch): Promise<void> {
+/**
+ * Pings the heartbeat: `<url>` on success, `<url>/fail` on failure. With a `reason`, the failure ping is a POST whose
+ * plain-text body is that reason (secrets redacted, at most 1,000 characters): Healthchecks.io shows the body in its
+ * email notification, so the alert says WHY the backup failed (email is the only alert channel on the VPS).
+ */
+export async function pingHeartbeat(url: string | null, ok: boolean, log: Logger, fetchImpl: Fetch = defaultFetch, reason?: string): Promise<void> {
   if (!url) return;
+  const target = ok ? url : `${url.replace(/\/+$/, "")}/fail`;
+  const init: Parameters<Fetch>[1] =
+    !ok && reason
+      ? { method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: log.redact(reason).slice(0, 1_000), signal: AbortSignal.timeout(10_000) }
+      : { method: "GET", signal: AbortSignal.timeout(10_000) };
   try {
-    await fetchImpl(ok ? url : `${url.replace(/\/+$/, "")}/fail`, { method: "GET", signal: AbortSignal.timeout(10_000) });
+    const response = await fetchImpl(target, init);
+    if (!response.ok) log.warn("heartbeat.rejected", { status: response.status });
   } catch {
     log.warn("heartbeat.unreachable");
   }

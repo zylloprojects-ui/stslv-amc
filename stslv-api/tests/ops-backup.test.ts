@@ -136,6 +136,10 @@ describe("database backup and restore (disposable database)", () => {
     expect(result.manifest.latestMigration).toBe("0002_second");
     expect(await store.head(dumpKey(result.id))).not.toBeNull();
     expect(await store.head(manifestKey(result.id))).not.toBeNull();
+    // The manifest (table names and row counts) is stored encrypted too.
+    const storedManifest = await readFile(path.join(root, "offsite", ...manifestKey(result.id).split("/")));
+    expect(storedManifest[0]! & 0x80).toBe(0x80);
+    for (const table of ["clients", "invoices", "schema_migrations"]) expect(storedManifest.toString("latin1")).not.toContain(table);
 
     // The stored file is encrypted (no PostgreSQL custom-format header) and matches its manifest checksum.
     const stored = path.join(root, "offsite", ...dumpKey(result.id).split("/"));
@@ -267,7 +271,7 @@ describe("backup store and retention", () => {
     expect(Object.keys(view).sort()).toEqual(["download", "head", "label", "list"]);
   });
 
-  it("prunes complete backups outside 7 daily / 4 weekly / 12 monthly", async () => {
+  it("prunes complete backups by recovery-point type (backups without a type marker count as daily)", async () => {
     const store = new LocalDirStore(path.join(root, "prune"));
     const file = path.join(root, "blob.txt");
     await writeFile(file, "x");
@@ -285,11 +289,12 @@ describe("backup store and retention", () => {
     const removed = await pruneDatabaseBackups({ store, config: { retention: { daily: 7, weekly: 4, monthly: 12 } }, log: logger([]), keepId: ids[0] as string });
     const kept = await listDatabaseBackups(store);
 
-    // 7 days, plus weeks and months not already covered: at most 7 + 4 + 12, at least 12 distinct months.
-    expect(kept.length).toBeGreaterThanOrEqual(12);
-    expect(kept.length).toBeLessThanOrEqual(23);
+    // No type markers (made before types existed, or by hand): all count as daily, so the newest 7 are kept.
+    // Typed retention over a year of scheduled runs (14 daily / 8 weekly / 12 monthly) is in ops-schedule.test.ts.
+    expect(kept.length).toBe(7);
+    expect(kept.every((backup) => backup.kind === "daily")).toBe(true);
     expect(kept[0]?.id).toBe(ids[0]);
-    expect(new Set(kept.map((backup) => backup.createdAt.toISOString().slice(0, 7))).size).toBe(12);
+    expect(kept.map((backup) => backup.id)).toEqual(ids.slice(0, 7));
     expect(removed.length).toBe(400 - kept.length);
     // A removed backup loses both files.
     expect(await store.head(dumpKey(removed[0] as string))).toBeNull();
