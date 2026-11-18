@@ -6,6 +6,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, ApiError, download, errorMessage, saveFile } from '../../lib/api'
@@ -254,28 +255,24 @@ function ServiceReportCell({ item }: { item: ServicesSalesItem }) {
 
   return (
     <div className="min-w-36" title={report.originalName}>
-      <div className="flex items-center gap-1.5">
-        <Button
-          size="sm"
-          variant="secondary"
+      <ActionGroup>
+        <ActionButton
+          icon="view"
+          label={`View ${subject}${viewable ? '' : ' (Word document: downloads)'}`}
+          hint={viewable ? 'View report' : 'View report (Word document: downloads)'}
           onClick={() => void view()}
           loading={state.kind === 'busy' && state.action === 'view'}
           disabled={state.kind === 'busy'}
-          aria-label={`View ${subject}${viewable ? '' : ' (Word document: downloads)'}`}
-        >
-          View
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
+        />
+        <ActionButton
+          icon="download"
+          label={`Download ${subject}`}
+          hint="Download report"
           onClick={() => void save()}
           loading={state.kind === 'busy' && state.action === 'download'}
           disabled={state.kind === 'busy'}
-          aria-label={`Download ${subject}`}
-        >
-          Download
-        </Button>
-      </div>
+        />
+      </ActionGroup>
       <p aria-live="polite" className="text-xs">
         {state.kind === 'failed' && <span className="mt-1 block max-w-56 font-medium text-red-700">{state.message}</span>}
       </p>

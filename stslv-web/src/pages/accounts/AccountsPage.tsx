@@ -6,6 +6,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
+import { ActionButton } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
@@ -695,9 +696,7 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
           {item.serviceReportNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.serviceReportNo}</span> : <Missing title="No service report number recorded" />}
           <div className="mt-1">
             {item.serviceReport ? (
-              <Button size="sm" variant="secondary" onClick={() => setViewing(true)} aria-label={`View Service Report for ${subject}`}>
-                View Service Report
-              </Button>
+              <ActionButton icon="view" label={`View Service Report for ${subject}`} hint="View Service Report" onClick={() => setViewing(true)} />
             ) : (
               <span className="text-xs text-slate-400" title="No service report has been uploaded on Service Status for this service">
                 No report uploaded

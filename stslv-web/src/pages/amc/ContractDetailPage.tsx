@@ -8,6 +8,7 @@ import { PageTabs, TabPanel, useTabsLayout } from '../../components/PageTabs'
 import { ContactChip } from '../../components/ProfileParts'
 import { LoadError } from '../../components/records'
 import { TABLE } from '../../components/table'
+import { ActionLink } from '../../components/IconActions'
 import { Alert, BannerButton, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
@@ -672,9 +673,7 @@ export function ContractDetailPage() {
                                     <ServiceColor visit={visit} canEdit={canEditSchedule} />
                                   </td>
                                   <td className={`${TABLE.td} whitespace-nowrap`}>
-                                    <Link to={`/amc/schedule?contractId=${contract.id}`} aria-label={`Open ${visitNumberLabel(visit)} in AMC Schedule`} className="text-sm font-semibold text-[#1479BD] hover:underline">
-                                      Open
-                                    </Link>
+                                    <ActionLink icon="schedule" to={`/amc/schedule?contractId=${contract.id}`} label={`Open ${visitNumberLabel(visit)} in AMC Schedule`} hint="Open in AMC Schedule" />
                                   </td>
                                 </tr>
                               ))}

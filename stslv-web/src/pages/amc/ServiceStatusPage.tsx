@@ -9,6 +9,7 @@ import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
 import { ServiceAcknowledgementIndicator } from '../invoiceAcknowledgements/ServiceAcknowledgement'
+import { ActionButton } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
@@ -504,10 +505,8 @@ function ServiceRow({
         </td>
       )}
       <td className={cx(TABLE.td, 'min-w-32 whitespace-nowrap text-right')}>
-        <span className="inline-flex gap-1.5">
-          <Button variant="secondary" size="sm" aria-label={`View ${label}`} title="View this service and its report." onClick={onView}>
-            View
-          </Button>
+        <span className="inline-flex items-center gap-1.5">
+          <ActionButton icon="view" label={`View ${label}`} hint="View this service and its report" onClick={onView} />
           {canSave && (
             <Button size="sm" disabled={!dirty} loading={mutation.isPending} aria-label={`Save ${label}`} onClick={save}>
               Save

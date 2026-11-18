@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useState } from 'react'
 import { LoadError, Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, Modal, Spinner, TextField } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
@@ -258,16 +259,18 @@ export function RecycleBin() {
                         <span className="block text-slate-500">{item.deletedBy?.fullName ?? 'Unknown user'}</span>
                       </td>
                       <td className={TABLE.td}>
-                        <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant="secondary" aria-label={`Restore ${item.typeLabel} ${item.reference} ${item.name}`} onClick={() => setRestoring(item)}>
-                            Restore
-                          </Button>
+                        <ActionGroup>
+                          <ActionButton icon="restore" label={`Restore ${item.typeLabel} ${item.reference} ${item.name}`} hint="Restore" onClick={() => setRestoring(item)} />
                           {item.type !== 'AMC_CONTRACT' && (
-                            <Button size="sm" variant="danger" aria-label={`Delete permanently ${item.typeLabel} ${item.reference} ${item.name}`} onClick={() => setPurging(item)}>
-                              Delete permanently
-                            </Button>
+                            <ActionButton
+                              icon="delete"
+                              danger
+                              label={`Delete permanently ${item.typeLabel} ${item.reference} ${item.name}`}
+                              hint="Delete permanently"
+                              onClick={() => setPurging(item)}
+                            />
                           )}
-                        </div>
+                        </ActionGroup>
                       </td>
                     </tr>
                   ))}
