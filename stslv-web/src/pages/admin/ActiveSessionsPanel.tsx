@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, Spinner } from '
 import { api, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { describeDevice, type SessionSummary } from '../../lib/sessions'
+import { TABLE } from '../../components/table'
 
 interface OpenSessions {
   items: (SessionSummary & { user: { id: string; fullName: string; email: string } })[]
@@ -53,33 +54,34 @@ export function ActiveSessionsPanel() {
       {data?.enabled && data.items.length === 0 && <EmptyState title="No open sessions" />}
 
       {data?.enabled && data.items.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-600">
+        // The shared table styles, so this table looks like every other one (headings on one line, scrolls in its card).
+        <div className={TABLE.wrapper}>
+          <table className={TABLE.table}>
+            <thead>
               <tr>
-                <th scope="col" className="px-5 py-2">User</th>
-                <th scope="col" className="px-3 py-2">Device</th>
-                <th scope="col" className="px-3 py-2">Address</th>
-                <th scope="col" className="px-3 py-2">Signed in</th>
-                <th scope="col" className="px-3 py-2">Last active</th>
-                {canEnd && <th scope="col" className="px-5 py-2 text-right">Actions</th>}
+                <th scope="col" className={TABLE.th}>User</th>
+                <th scope="col" className={TABLE.th}>Device</th>
+                <th scope="col" className={TABLE.th}>Address</th>
+                <th scope="col" className={TABLE.th}>Signed In</th>
+                <th scope="col" className={TABLE.th}>Last Active</th>
+                {canEnd && <th scope="col" className={`${TABLE.th} text-right`}>Actions</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
+            <tbody className="divide-y divide-slate-100">
               {data.items.map((session) => (
-                <tr key={session.id}>
-                  <td className="px-5 py-2">
+                <tr key={session.id} className={TABLE.row}>
+                  <td className={`${TABLE.td} ${TABLE.unbroken}`}>
                     <span className="font-semibold text-slate-900">{session.user.fullName}</span>
                     <span className="block text-xs text-slate-500">{session.user.email}</span>
                   </td>
-                  <td className="px-3 py-2">
+                  <td className={TABLE.td}>
                     {describeDevice(session.userAgent)} {session.current && <Badge tone="green">You</Badge>} {session.passwordChange && <Badge tone="amber">Temporary password</Badge>}
                   </td>
-                  <td className="px-3 py-2 text-slate-700">{session.ipAddress ?? '—'}</td>
-                  <td className="px-3 py-2 text-slate-700">{formatDateTime(session.createdAt)}</td>
-                  <td className="px-3 py-2 text-slate-700">{formatDateTime(session.lastActivityAt)}</td>
+                  <td className={`${TABLE.td} whitespace-nowrap`}>{session.ipAddress ?? '—'}</td>
+                  <td className={`${TABLE.td} whitespace-nowrap`}>{formatDateTime(session.createdAt)}</td>
+                  <td className={`${TABLE.td} whitespace-nowrap`}>{formatDateTime(session.lastActivityAt)}</td>
                   {canEnd && (
-                    <td className="space-x-2 whitespace-nowrap px-5 py-2 text-right">
+                    <td className={`${TABLE.td} space-x-2 whitespace-nowrap text-right`}>
                       {!session.current && (
                         <Button size="sm" variant="secondary" loading={endOne.isPending && endOne.variables?.id === session.id} onClick={() => endOne.mutate({ userId: session.user.id, id: session.id })}>
                           Sign out
