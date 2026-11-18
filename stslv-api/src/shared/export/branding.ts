@@ -20,6 +20,8 @@ export const SYSTEM_NAME = "STS-ELV AMC";
 export const BRAND = {
   navy: "0B3B66",
   blue: "1479BD",
+  /** The green of the company artwork's swoosh and Arabic name. */
+  green: "6BAF46",
   line: "D7E5F2",
   zebra: "F4F8FC",
   group: "E6F0F8",
@@ -49,6 +51,7 @@ function loadArtwork(file: string): Artwork {
 }
 
 let header: Artwork | null = null;
+let logo: Artwork | null = null;
 let footer: Artwork | null = null;
 
 export function headerArtwork(): Artwork {
@@ -61,6 +64,16 @@ export function footerArtwork(): Artwork {
   footer ??= loadArtwork("report-footer.png");
 
   return footer;
+}
+
+/**
+ * The company logo with its Arabic and English name: the left part of the official header artwork
+ * (report-header.png), cut out without redrawing, recolouring or scaling. Printed at the top of every PDF page.
+ */
+export function logoArtwork(): Artwork {
+  logo ??= loadArtwork("report-logo.png");
+
+  return logo;
 }
 
 /** The height the artwork takes when it is drawn at the given width. */
