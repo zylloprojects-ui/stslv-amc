@@ -1,13 +1,14 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { config as loadEnvFile } from "dotenv";
-import { gdriveFolderName, openBackupStore, openDocumentSource, readBackupConfig, readDatabaseSource, type BackupConfig } from "./backup/config";
+import { gdriveFolderName, openBackupStore, openDocumentSource, readBackupConfig, readDatabaseSource, readLocalCopySettings, type BackupConfig } from "./backup/config";
 import { restoreConfigBackup, runConfigBackup } from "./backup/config-backup";
+import { localCopyAllowed, recordDocumentReferences, recordOffsiteFailure, runTypedStepWithLocalCopy, type LocalCopySettings } from "./backup/local-copy";
 import { assertNoPrivateKey, assertPrivateFile } from "./backup/preflight";
 import { promoteBackup } from "./backup/promote";
 import { RcloneStore } from "./backup/rclone-store";
 import type { WritableStore } from "./backup/store";
-import { listDatabaseBackups, pgClient, pruneDatabaseBackups, runDatabaseBackup } from "./backup/db-backup";
+import { listDatabaseBackups, pgClient, promoteDatabaseBackup, pruneDatabaseBackups, runDatabaseBackup } from "./backup/db-backup";
 import { restoreDatabaseBackup } from "./backup/db-restore";
 import { readAttachmentInventory, restoreDocuments, runDocumentsBackup } from "./backup/documents";
 import { createLogger, describeFailure } from "./backup/log";
@@ -71,36 +72,118 @@ const text = (flags: Map<string, string | true>, name: string): string | undefin
 type Vars = NodeJS.ProcessEnv;
 type Log = ReturnType<typeof createLogger>;
 
+/**
+ * The local VPS copy settings when a local copy is wanted AND possible now: null when BACKUP_LOCAL_COPY_DIR is not set
+ * (Drive only, as before) or when free disk space is below BACKUP_LOCAL_MIN_FREE_GB (then `skipped`: Drive only,
+ * logged, the step reports a warning). Production pre-flight (no private key on the server) runs before any local copy.
+ */
+async function localCopyFor(vars: Vars, log: Log): Promise<{ settings: LocalCopySettings | null; skipped: boolean }> {
+  const settings = readLocalCopySettings(vars);
+  if (!settings) return { settings: null, skipped: false };
+  if (vars.NODE_ENV === "production") await assertNoPrivateKey(readBackupConfig(vars).gpg);
+  if (!(await localCopyAllowed(settings, log))) return { settings: null, skipped: true };
+  return { settings, skipped: false };
+}
+
+/** Drive destinations per recovery-point type, verified once per run (destination()). */
+function remoteStores(vars: Vars, log: Log): (kind: BackupKind) => Promise<WritableStore> {
+  const opened = new Map<BackupKind, Promise<WritableStore>>();
+  return (kind) => {
+    if (!opened.has(kind)) {
+      const pending = destination(vars, log, kind);
+      pending.catch(() => opened.delete(kind));
+      opened.set(kind, pending);
+    }
+    return opened.get(kind) as Promise<WritableStore>;
+  };
+}
+
 async function databaseStep(config: BackupConfig, vars: Vars, log: Log, kind: BackupKind = "daily"): Promise<{ code: number; id: string }> {
+  const local = await localCopyFor(vars, log);
+  if (local.settings) {
+    const { id } = await runTypedStepWithLocalCopy({
+      step: "database",
+      kind,
+      job: "db-backup",
+      local: local.settings,
+      config,
+      log,
+      // The complete, verified backup on the VPS first; Drive retention (14/8/12) applies to Drive only.
+      makeLocal: async () => ({ id: (await runDatabaseBackup({ config: { ...config, prune: false }, source: readDatabaseSource(vars), store: local.settings!.store, log, kind })).id }),
+      openRemote: remoteStores(vars, log),
+      pruneRemote: async (remote, keepId) => (config.prune ? pruneDatabaseBackups({ store: remote, config, log, keepId }) : []),
+    });
+    return { code: 0, id };
+  }
   const store = await destination(vars, log, kind);
   const result = await runDatabaseBackup({ config, source: readDatabaseSource(vars), store, log, kind });
-  return { code: 0, id: result.id };
+  return { code: local.skipped ? 2 : 0, id: result.id };
 }
 
 async function documentsStep(config: BackupConfig, vars: Vars, log: Log, verifySource = false, kind: BackupKind = "daily"): Promise<number> {
   const source = readDatabaseSource(vars);
-  const manifest = await runDocumentsBackup({
-    config,
-    source: openDocumentSource(vars),
-    store: await destination(vars, log, kind),
-    log,
-    verifySource,
-    inventory: async () => {
-      const client = pgClient(source);
-      await client.connect();
-      try {
-        return await readAttachmentInventory(client);
-      } finally {
-        await client.end().catch(() => undefined);
-      }
-    },
-  });
-  return manifest.summary["missing-in-bucket"] + manifest.summary["checksum-mismatch"] > 0 ? 2 : 0;
+  const run = (store: WritableStore) =>
+    runDocumentsBackup({
+      config,
+      source: openDocumentSource(vars),
+      store,
+      log,
+      verifySource,
+      inventory: async () => {
+        const client = pgClient(source);
+        await client.connect();
+        try {
+          return await readAttachmentInventory(client);
+        } finally {
+          await client.end().catch(() => undefined);
+        }
+      },
+    });
+  const findings = (manifest: Awaited<ReturnType<typeof run>>) => manifest.summary["missing-in-bucket"] + manifest.summary["checksum-mismatch"] > 0;
+
+  const local = await localCopyFor(vars, log);
+  if (local.settings) {
+    // Encrypted document copies on the VPS first, then the same job for Drive. The run's list of referenced encrypted
+    // files (plain object names, local only) lets VPS retention remove document files no retained run needs.
+    const onServer = await run(local.settings.store);
+    await recordDocumentReferences(local.settings.store, config.workDir, onServer);
+    log.info("local_copy.stored", { step: "documents", id: onServer.id });
+    try {
+      const offsite = await run(await destination(vars, log, kind));
+      return findings(onServer) || findings(offsite) ? 2 : 0;
+    } catch (error) {
+      const reason = describeFailure(error, log);
+      log.error("offsite.failed", { step: "documents", id: onServer.id, reason });
+      await recordOffsiteFailure(config, "docs-backup", onServer.id, reason, new Date());
+      throw new Error(`Documents run ${onServer.id} is stored on the VPS, but the Google Drive copy failed: ${reason}`);
+    }
+  }
+  const manifest = await run(await destination(vars, log, kind));
+  return findings(manifest) || local.skipped ? 2 : 0;
 }
 
+/**
+ * The weekly/monthly configuration backup: Google Drive only (owner's design, 2026-11-18: the VPS keeps 7 days of
+ * database and document backups, no separate weekly/monthly copies). Unchanged from before the VPS copies.
+ */
 async function configurationStep(config: BackupConfig, vars: Vars, log: Log, kind: BackupKind = "weekly"): Promise<{ code: number; id: string }> {
   const result = await runConfigBackup({ config, store: await destination(vars, log, kind), log, kind });
   return { code: 0, id: result.id };
+}
+
+/**
+ * Adds the higher type's marker to the VPS copy of a promoted DATABASE backup (so a late Drive upload targets the
+ * right folder; it is still the one copy of that day, not a separate weekly/monthly copy). Configuration backups are
+ * Drive-only and have no VPS copy.
+ */
+async function promoteLocalCopy(vars: Vars, log: Log, workDir: string, step: "database" | "configuration", id: string, kind: BackupKind): Promise<void> {
+  const settings = readLocalCopySettings(vars);
+  if (!settings || step !== "database") return;
+  try {
+    if (await settings.store.head(`db/${id}.manifest.json.gpg`)) await promoteDatabaseBackup(settings.store, id, kind, workDir);
+  } catch (error) {
+    log.warn("local_copy.promote_failed", { step, id, kind, reason: describeFailure(error, log) });
+  }
 }
 
 /**
@@ -180,6 +263,7 @@ async function main(): Promise<number> {
             if (step !== "database" && step !== "configuration") return;
             await destination(vars, log, kind);
             await promoteBackup({ step, id, from, to: kind, storeFor: (k) => openBackupStore(vars, undefined, k), workDir: config.workDir });
+            await promoteLocalCopy(vars, log, config.workDir, step, id, kind);
           },
         });
         return result.exitCode;
