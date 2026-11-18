@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
-import { link, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { highestKind, kindRank } from "./retention";
 
@@ -230,6 +230,14 @@ function processIsAlive(pid: number): boolean {
 
 const LOCK_FILE = "backup.lock";
 
+/**
+ * Windows only (development): creating a file that another handle has just deleted fails with EPERM while the
+ * deletion is pending; it means "busy, try again", like EEXIST. On Linux (the VPS) EPERM is a real error.
+ */
+function isDeletePending(error: unknown): boolean {
+  return process.platform === "win32" && (error as NodeJS.ErrnoException).code === "EPERM";
+}
+
 /** Linux boot identifier: a lock written before a reboot is abandoned whatever its process id (ids are reused). */
 async function currentBootId(): Promise<string | null> {
   return (await readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => "")).trim() || null;
@@ -240,9 +248,9 @@ async function currentBootId(): Promise<string | null> {
  * it. Waits while another backup holds it; reclaims a lock whose process has gone, that was written before the last
  * reboot, or that is too old.
  *
- * Reclaiming is atomic: the abandoned lock is RENAMED to a unique name and its content compared with what was
- * judged abandoned. If two jobs reclaim at the same moment (both timers catching up at boot), the second one would
- * otherwise delete the lock the first had just taken; instead it finds a different content and puts that lock back.
+ * Reclaiming is serialized by a short exclusive "reclaim" mutex: if several jobs find the same abandoned lock at
+ * once (both timers catching up at boot), only one removes it, and only if it is still the abandoned one; a job can
+ * never delete a lock another job has just taken (review 2026-11-18).
  */
 export async function acquireBackupLock(stateDir: string, options: LockOptions = {}): Promise<() => Promise<void>> {
   const waitMs = options.waitMs ?? 2 * 60 * 60_000;
@@ -254,7 +262,8 @@ export async function acquireBackupLock(stateDir: string, options: LockOptions =
   const file = path.join(stateDir, LOCK_FILE);
   const started = now().getTime();
   const bootId = options.bootId !== undefined ? options.bootId : await currentBootId();
-  const owner = { pid: process.pid, host: hostname(), job: options.label ?? "backup", since: now().toISOString(), ...(bootId ? { boot: bootId } : {}) };
+  // `token` identifies this holder exactly (two jobs in one process share a pid and may share a millisecond).
+  const owner = { pid: process.pid, host: hostname(), job: options.label ?? "backup", since: now().toISOString(), token: randomBytes(8).toString("hex"), ...(bootId ? { boot: bootId } : {}) };
 
   await mkdir(stateDir, { recursive: true });
 
@@ -267,9 +276,13 @@ export async function acquireBackupLock(stateDir: string, options: LockOptions =
       return async () => {
         // Release only our own lock.
         const current = await readFile(file, "utf8").catch(() => "");
-        if (current.includes(`"pid":${owner.pid},`) && current.includes(`"since":"${owner.since}"`)) await rm(file, { force: true });
+        if (current.includes(`"token":"${owner.token}"`)) await rm(file, { force: true });
       };
     } catch (error) {
+      if (isDeletePending(error)) {
+        await sleep(Math.min(pollMs, 1_000));
+        continue;
+      }
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
 
@@ -287,17 +300,30 @@ export async function acquireBackupLock(stateDir: string, options: LockOptions =
     const abandoned = beforeReboot || (sameHost && typeof holder.pid === "number" && !isAlive(holder.pid)) || now().getTime() - since > staleMs;
 
     if (abandoned) {
-      const grave = `${file}.reclaim-${process.pid}-${randomBytes(4).toString("hex")}`;
+      // Only one job at a time may remove an abandoned lock: the one that creates the reclaim mutex exclusively.
+      // It re-reads the lock and removes it only if it is still exactly the abandoned one. The lock file exists
+      // throughout that check, so no other job can create a new lock in between; then everyone races for the
+      // lock again through the exclusive create above.
+      const mutex = `${file}.reclaim`;
+      let mine = false;
       try {
-        await rename(file, grave);
-      } catch {
-        continue; // someone else moved or released it
+        await (await open(mutex, "wx", 0o644)).close();
+        mine = true;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST" && !isDeletePending(error)) throw error;
+        // A reclaim mutex left by a job that crashed in the middle of reclaiming (it is held for milliseconds).
+        const age = now().getTime() - ((await stat(mutex).catch(() => null))?.mtimeMs ?? now().getTime());
+        if (age > 60_000) await rm(mutex, { force: true });
       }
-      const moved = await readFile(grave, "utf8").catch(() => null);
-      // Not the lock judged abandoned: another job took the lock meanwhile. Put it back (link fails only if a
-      // third job already holds a new lock) and wait for it like any other running backup.
-      if (moved !== raw) await link(grave, file).catch(() => undefined);
-      await rm(grave, { force: true });
+      if (mine) {
+        try {
+          if ((await readFile(file, "utf8").catch(() => null)) === raw) await rm(file, { force: true });
+        } finally {
+          await rm(mutex, { force: true });
+        }
+      } else {
+        await sleep(Math.min(pollMs, 1_000));
+      }
       continue;
     }
     if (now().getTime() - started >= waitMs) throw new BackupLockedError(`${holder.job ?? "backup"} since ${holder.since ?? "unknown"}`);

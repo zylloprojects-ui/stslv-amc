@@ -12,7 +12,7 @@ retention) and `stslv-api/tests/ops-schedule.test.ts` (schedule, no overlap, no 
 
 | Recovery point | When (18:00 IST = 12:30 UTC) | Started by | What | Kept off-site |
 |---|---|---|---|---|
-| **Daily** | Saturday–Thursday | `stslv-amc-backup-daily.timer` — `OnCalendar=Sat..Thu *-*-* 18:00:00 Asia/Kolkata` | Database + documents | newest **14** |
+| **Daily** | Saturday–Thursday | `stslv-amc-backup-daily.timer` — `OnCalendar=Mon..Thu,Sat,Sun *-*-* 18:00:00 Asia/Kolkata` | Database + documents | newest **14** |
 | **Weekly** | every Friday except the last Friday of the month | `stslv-amc-backup-weekly.timer` — `OnCalendar=Fri *-*-* 18:00:00 Asia/Kolkata` | Database + documents + VPS configuration | newest **8** |
 | **Monthly** | the last Friday of each month | the same Friday timer; the job sees it is the last Friday | Database + documents + VPS configuration | newest **12** |
 
@@ -32,8 +32,8 @@ retention) and `stslv-api/tests/ops-schedule.test.ts` (schedule, no overlap, no 
 - **No overlap.** Every backup command — scheduled or run by hand (`db-backup`, `docs-backup`, `config-backup`) —
   takes one lock (`<state dir>/backup.lock`). A second job waits for the first to finish (up to 2 hours), then
   carries on; a lock whose process has died, that was written before the last reboot (the lock records the Linux
-  boot id, because process ids are reused), or older than 4 hours, is reclaimed. Reclaiming is atomic (rename and
-  compare), so two jobs catching up at boot can never both take it. If the wait runs out, the job sends an alert and
+  boot id, because process ids are reused), or older than 4 hours, is reclaimed. Reclaiming is serialized by a short
+  exclusive mutex, so jobs catching up together at boot can never both take it. If the wait runs out, the job sends an alert and
   exits 75 (the unit shows as failed, so the monitor reports it too).
 - **One record per scheduled slot, even after downtime.** A job belongs to the most recent 18:00 IST at or before
   its start (`scheduleSlot`): a run started before 18:00 is the PREVIOUS day's backup. The steps completed per slot,
@@ -49,7 +49,7 @@ retention) and `stslv-api/tests/ops-schedule.test.ts` (schedule, no overlap, no 
   `db-backup` / `docs-backup` directly (counted as daily, under the same lock).
 - A failed step does not stop the following ones and is not recorded, so the next job that day retries it.
 - Upcoming runs: `node dist/ops/cli.js schedule`; on the server also
-  `systemd-analyze calendar --iterations=7 'Sat..Thu *-*-* 18:00:00 Asia/Kolkata'`,
+  `systemd-analyze calendar --iterations=7 'Mon..Thu,Sat,Sun *-*-* 18:00:00 Asia/Kolkata'`,
   `systemd-analyze calendar --iterations=12 'Fri *-*~07/1 18:00:00 Asia/Kolkata'` (the last Fridays, for reference)
   and `systemctl list-timers 'stslv-amc-backup-*'`.
 - **Independently restorable.** Each database backup is a full `pg_dump`; each document manifest lists every file
@@ -284,7 +284,7 @@ VPS, so there is no point-in-time recovery: the newest daily backup is the recov
    alert webhook and three heartbeat URLs (database, documents, configuration).
 7. **Units**: `config-snapshot.sh` → `/usr/local/sbin/stslv-amc-config-snapshot` (root:root 0755); the four
    `stslv-amc-backup-{daily,weekly}.{service,timer}` → `/etc/systemd/system/`; `systemctl daemon-reload`.
-   Check: `systemd-analyze calendar --iterations=7 'Sat..Thu *-*-* 18:00:00 Asia/Kolkata'`,
+   Check: `systemd-analyze calendar --iterations=7 'Mon..Thu,Sat,Sun *-*-* 18:00:00 Asia/Kolkata'`,
    `systemd-analyze calendar --iterations=5 'Fri *-*-* 18:00:00 Asia/Kolkata'`; `node …/cli.js schedule`.
    Timers stay **disabled**.
 8. **First manual encrypted upload**: `systemctl start stslv-amc-backup-daily`; check the journal, the state files,

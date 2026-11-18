@@ -413,12 +413,15 @@ describe("systemd timers and services (deploy/hostinger/systemd)", () => {
   const unit = async (name: string) => readFile(path.join(SYSTEMD, name), "utf8");
   const setting = (text: string, key: string) => text.split(/\r?\n/).filter((line) => line.startsWith(`${key}=`)).map((line) => line.slice(key.length + 1));
   const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  // The weekday part of an OnCalendar expression ("Fri", "Sat..Thu", "Mon,Wed") as weekday numbers.
+  // The weekday part of an OnCalendar expression ("Fri", "Mon..Thu,Sat,Sun", "Mon,Wed") as weekday numbers.
+  // Like systemd, a range must not wrap around the week: "Sat..Thu" is refused (systemd-analyze on the VPS,
+  // 2026-11-18: "Failed to parse calendar specification"; this helper used to accept it).
   const weekdaysOf = (calendar: string): Set<number> => {
     const days = new Set<number>();
     for (const part of (calendar.split(" ")[0] ?? "").split(",")) {
       const [from, to] = part.split("..").map((name) => WEEKDAYS.indexOf(name));
       if (from === undefined || from < 0) throw new Error(`weekday spec ${part}`);
+      if (to !== undefined && (to < 0 || to < from)) throw new Error(`systemd rejects the weekday range ${part}`);
       for (let day = from; ; day = (day + 1) % 7) {
         days.add(day);
         if (to === undefined || day === to) break;
@@ -431,7 +434,8 @@ describe("systemd timers and services (deploy/hostinger/systemd)", () => {
     const daily = setting(await unit("stslv-amc-backup-daily.timer"), "OnCalendar");
     const weekly = setting(await unit("stslv-amc-backup-weekly.timer"), "OnCalendar");
 
-    expect(daily).toEqual(["Sat..Thu *-*-* 18:00:00 Asia/Kolkata"]);
+    expect(daily).toEqual(["Mon..Thu,Sat,Sun *-*-* 18:00:00 Asia/Kolkata"]);
+    expect(() => weekdaysOf("Sat..Thu *-*-* 18:00:00 Asia/Kolkata")).toThrow(/rejects/);
     expect(weekly).toEqual(["Fri *-*-* 18:00:00 Asia/Kolkata"]);
 
     const dailyDays = weekdaysOf(daily[0]!);
@@ -745,22 +749,26 @@ describe("review fixes (2026-11-18)", () => {
   });
 
   it("two jobs reclaiming the same abandoned lock at once never run together", async () => {
-    const dir = await freshDir("lock-race");
-    await writeFile(path.join(dir, "backup.lock"), JSON.stringify({ pid: 999_999, host: hostname(), job: "crashed", since: new Date().toISOString() }));
-    let active = 0;
-    let most = 0;
-    const job = async (label: string) => {
-      const release = await acquireBackupLock(dir, { label, bootId: null, pollMs: 2, isAlive: (pid) => pid !== 999_999 });
-      active += 1;
-      most = Math.max(most, active);
-      await new Promise((resolve) => setTimeout(resolve, 25));
-      active -= 1;
-      await release();
-    };
-    await Promise.all([job("a"), job("b"), job("c")]);
-    expect(most).toBe(1);
-    expect((await readdir(dir)).filter((name) => name.startsWith("backup.lock"))).toEqual([]);
-  });
+    // Repeated, with four jobs: an earlier rename-and-put-back design passed with two jobs and failed now and then
+    // with three (a fresh lock could be created while the reclaimed one was moved aside).
+    for (let round = 0; round < 15; round += 1) {
+      const dir = await freshDir("lock-race");
+      await writeFile(path.join(dir, "backup.lock"), JSON.stringify({ pid: 999_999, host: hostname(), job: "crashed", since: new Date().toISOString() }));
+      let active = 0;
+      let most = 0;
+      const job = async (label: string) => {
+        const release = await acquireBackupLock(dir, { label, bootId: null, pollMs: 1, isAlive: (pid) => pid !== 999_999 });
+        active += 1;
+        most = Math.max(most, active);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        active -= 1;
+        await release();
+      };
+      await Promise.all([job("a"), job("b"), job("c"), job("d")]);
+      expect(most).toBe(1);
+      expect((await readdir(dir)).filter((name) => name.startsWith("backup.lock"))).toEqual([]);
+    }
+  }, 60_000);
 
   it("pruning removes the manifest first: an interrupted prune never leaves a recovery point without its dump", async () => {
     const dir = await freshDir("prune-order");
