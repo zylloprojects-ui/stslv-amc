@@ -6,10 +6,10 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
-import { ActionButton } from '../../components/IconActions'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
-import { api, errorMessage } from '../../lib/api'
+import { api, download, errorMessage, saveFile } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import { queryString } from '../amc/amcApi'
@@ -19,7 +19,7 @@ import { SERVICE_STATUS_LABELS } from '../amc/serviceStatusTypes'
 import { displayName, KPI_NAME_MAX, useKpiCustomization } from '../amcManagement/managementPreferences'
 import { serviceCodeLabel } from '../masterStatus/masterStatusTypes'
 import './accounts.css'
-import { ACCOUNTS_PREFIX, COLUMN_IDS, COLUMN_LABELS, DEFAULT_HIDDEN, useHiddenColumns, type ColumnId } from './accountsPreferences'
+import { ACCOUNTS_PREFIX, COLUMN_IDS, COLUMN_LABELS, DEFAULT_HIDDEN, PAGE_ONLY_COLUMNS, useHiddenColumns, type ColumnId } from './accountsPreferences'
 import { ServiceReportViewer } from './ServiceReportViewer'
 import {
   ACCOUNTS_COLOURS,
@@ -271,7 +271,7 @@ function HideColumnsDialog({
         </div>
       }
     >
-      <p className="mb-3 text-sm text-slate-600">AMC Reference is always shown. Downloads include only the columns shown here, plus the row colour.</p>
+      <p className="mb-3 text-sm text-slate-600">AMC Reference is always shown. Downloads include only the columns shown here, plus the row colour. Service Report files are viewed on the page and are not part of downloads.</p>
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">
@@ -356,7 +356,7 @@ export function AccountsPage() {
             <ExportButtons
               what="Accounts"
               fileStem="accounts"
-              path={(format) => `/accounts/export${queryString({ ...filters, hidden: [...hidden].join(','), format })}`}
+              path={(format) => `/accounts/export${queryString({ ...filters, hidden: [...hidden].filter((id) => !PAGE_ONLY_COLUMNS.has(id)).join(','), format })}`}
               onError={setExportError}
             />
           ) : undefined
@@ -640,10 +640,56 @@ function FilteredTotals({ kpis, visible }: { kpis: AccountsKpis; visible: readon
   )
 }
 
+/**
+ * The Service Report column: the report uploaded on Service Status for THIS visit, View and Download only, laid out as
+ * on Service Sales. Both fetch /accounts/:visitId/report with the signed-in user's token (ACCOUNTS:VIEW, checked by
+ * the API); View opens the read-only viewer, Download saves the file under its original name.
+ */
+function ServiceReportCell({ item }: { item: AccountsItem }) {
+  const report = item.serviceReport
+  const [viewing, setViewing] = useState(false)
+  const [downloading, setDownloading] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
+
+  if (!report) {
+    return (
+      <span className="whitespace-nowrap text-slate-400" title="No service report has been uploaded on Service Status for this service">
+        Not uploaded
+      </span>
+    )
+  }
+
+  const subject = `${item.reference} ${serviceCodeLabel(item.service)}`
+  const save = async () => {
+    setDownloading(true)
+    setFailure(null)
+    try {
+      const file = await download(`/accounts/${item.id}/report`)
+      // The original name as uploaded (already cleaned by the API), never the server's ASCII fallback.
+      saveFile({ blob: new Blob([file.blob], { type: report.mimeType }), filename: report.originalName }, report.originalName)
+    } catch (error) {
+      setFailure(errorMessage(error))
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div className="min-w-36" title={report.originalName}>
+      <ActionGroup>
+        <ActionButton icon="view" label={`View Service Report for ${subject}`} onClick={() => setViewing(true)} disabled={downloading} />
+        <ActionButton icon="download" label={`Download Service Report for ${subject}`} onClick={() => void save()} loading={downloading} disabled={downloading} />
+      </ActionGroup>
+      <p aria-live="polite" className="text-xs">
+        {failure && <span className="mt-1 block max-w-56 font-medium text-red-700">{failure}</span>}
+      </p>
+      {viewing && <ServiceReportViewer visitId={item.id} subject={subject} report={report} onClose={() => setViewing(false)} />}
+    </div>
+  )
+}
+
 function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProps) {
   const tone = COLOUR_TONE[item.colour]
-  const [viewing, setViewing] = useState(false)
-  const subject = `${item.reference} ${serviceCodeLabel(item.service)}`
 
   return (
     <tr className={cx(TABLE.row, 'acc-row')} data-colour={item.colour}>
@@ -694,16 +740,11 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
       {shown('serviceReportNo') && (
         <td className={`${TABLE.td} whitespace-nowrap`}>
           {item.serviceReportNo ? <span className="font-mono text-sm font-semibold text-slate-900">{item.serviceReportNo}</span> : <Missing title="No service report number recorded" />}
-          <div className="mt-1">
-            {item.serviceReport ? (
-              <ActionButton icon="view" label={`View Service Report for ${subject}`} onClick={() => setViewing(true)} />
-            ) : (
-              <span className="text-xs text-slate-400" title="No service report has been uploaded on Service Status for this service">
-                No report uploaded
-              </span>
-            )}
-          </div>
-          {viewing && item.serviceReport && <ServiceReportViewer visitId={item.id} subject={subject} report={item.serviceReport} onClose={() => setViewing(false)} />}
+        </td>
+      )}
+      {shown('serviceReport') && (
+        <td className={TABLE.td}>
+          <ServiceReportCell item={item} />
         </td>
       )}
       {/* Client UAT CR-011 to CR-013: the contract's Sales Engineer, the visit's Service Engineer, the contract's Customer PO Value. */}
@@ -730,6 +771,8 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
           ) : (
             formatMoney(item.visitValue)
           )}
+          {/* As on Master AMC Status: the contract's AMC Value / Year below the service value (AMC Contracts: View only). */}
+          {item.annualAmcValue && <div className="text-xs font-normal text-slate-500">AMC Value / Year: {formatMoney(item.annualAmcValue)}</div>}
         </td>
       )}
       {shown('invoiceNo') && (

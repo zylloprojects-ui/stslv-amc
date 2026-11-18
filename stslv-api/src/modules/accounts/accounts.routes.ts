@@ -6,6 +6,7 @@ import { sendExport } from "../../shared/export/send";
 import { buildAccountsExport } from "./accounts.export";
 import { exportAccountsSchema, listAccountsSchema } from "./accounts.schemas";
 import { parseIdParam } from "../../shared/validation";
+import { holdsPermission } from "../../shared/permissions";
 import { getAccountsOptions, listAccounts, readAccountsServiceReport } from "./accounts.service";
 
 export const accountsRouter = Router();
@@ -23,7 +24,12 @@ accountsRouter.get("/", ...accountsView, async (req, res) => {
   // The read-only acknowledgement indicator only for users who may view Invoice Acknowledgements. The contract's AMC
   // Value (client UAT CR-013) is part of this page for everyone who may open it (Accounts: View): the client asked for
   // it so Accounts can invoice. Only that one figure per service; no other contract data, and no AMC Contracts access.
-  const access = { acknowledgements: permissions.has("INVOICE_ACKNOWLEDGEMENTS:VIEW"), amcValue: true };
+  // The contract's AMC Value / Year under each service value needs AMC Contracts: View, exactly as on Master AMC Status.
+  const access = {
+    acknowledgements: permissions.has("INVOICE_ACKNOWLEDGEMENTS:VIEW"),
+    amcValue: true,
+    annualAmcValue: holdsPermission(permissions, "AMC_CONTRACTS:VIEW"),
+  };
 
   res.json({ success: true, data: await listAccounts(listAccountsSchema.parse(req.query), access) });
 });

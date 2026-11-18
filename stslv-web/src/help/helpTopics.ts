@@ -454,7 +454,7 @@ const CONTRACTS: HelpTopic[] = [
           'Validity → Due: Active contracts ending today or within 45 days (the AMC Renewal window).',
           'Validity → Expired: status Expired, or Active with its Valid To date passed. This is the same rule as the Expired figure, so the list and the figure always agree. A renewed contract still shows; its renewal never hides it.',
           'The Status filter uses the stored status only: an Active contract past its end date is listed under Validity → Expired, not under Status → Expired, until its status changes.',
-          'Hide Columns can also hide the Contract column (the Upload Contract link). Your choice is remembered in this browser.',
+          'Columns opens above its button and lists every column you can hide. Your choice is remembered in this browser. Contract documents are uploaded on Contract 360 (Documents tab).',
           'Export (Excel or PDF) covers every filtered row and leaves out hidden columns.',
           'The footer shows the Filtered Total.',
         ],
@@ -851,8 +851,8 @@ const FINANCE: HelpTopic[] = [
       {
         heading: 'View Service Report',
         bullets: [
-          'View Service Report (under the Service Report No.) opens the report uploaded on Service Status in a read-only viewer. Download is inside the viewer.',
-          'A Word report cannot be previewed in the browser: the viewer offers Download. "No report uploaded" means none is on file yet.',
+          'The Service Report column (after the Service Report No.) has two icons, as on Service Sales: the eye opens the report uploaded on Service Status in a read-only viewer, and the download icon saves it. Download is also inside the viewer.',
+          'A Word report cannot be previewed in the browser: the viewer offers Download. "Not uploaded" means none is on file yet. The report files are not part of the Excel or PDF downloads.',
           'Viewing needs only View on Accounts. The file is fetched with your sign-in; there is no public link.',
           'Users who may also view Invoice Acknowledgements see "Ack: Acknowledged" or "Ack: Pending" under the Invoice No. It is read only, opens Invoice Acknowledgements, and never changes Paid / Unpaid.',
         ],
@@ -1012,8 +1012,7 @@ const FINANCE: HelpTopic[] = [
       {
         heading: 'Totals',
         bullets: [
-          'AMC Value (ex VAT) shows the AMC Value / Year of each service’s contract period (a renewal has its own). It is shown only to users who may view AMC Contracts, and can be hidden with Hide Columns.',
-          'Total AMC Value of matching contracts adds up every contract period that has a matching service, on every page, counting each period once however many of its services match. It is not an invoice value or a payment.',
+          'The Service Sales table shows no AMC Value or Service Value column and no Total AMC Value row (2026-11-18). The values are unchanged and are shown on Service Status, Accounts and Master AMC Status.',
         ],
       },
     ],

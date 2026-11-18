@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Attachment } from '../components/AttachmentsPanel'
 import { ADMIN, ok, renderApp, type MockRequest } from './helpers'
 import { amcApi, EXECUTION, makeContract, makeVisit, attachRenewalDocument } from './amc-helpers'
@@ -26,7 +26,7 @@ beforeEach(() => {
 })
 
 describe('AMC Contracts register', () => {
-  it('shows AMC Reference, Final Credit, the Filtered Total from the API and an Upload Contract link', async () => {
+  it('shows AMC Reference, Final Credit and the Filtered Total from the API, with no Contract column', async () => {
     amcApi(ADMIN, { contracts: [FIRE], override: listWithTotals })
     renderApp('/amc/contracts')
 
@@ -36,14 +36,65 @@ describe('AMC Contracts register', () => {
     expect(within(table).getByRole('columnheader', { name: 'Contract Value (ex VAT)' })).toBeInTheDocument()
     expect(within(table).getByRole('columnheader', { name: 'Final Credit (ex VAT)' })).toBeInTheDocument()
     expect(within(table).getByRole('link', { name: 'AMC-0100' })).toHaveAttribute('href', '/amc/contracts/100')
-    expect(within(table).getByRole('link', { name: 'Upload Contract for Test Hotel One FIRE' })).toHaveAttribute('href', '/amc/contracts/100?tab=documents')
+    // 2026-11-18: the Contract (Upload Contract) column is gone from the register; Contract Value (ex VAT) stays.
+    expect(within(table).queryByRole('columnheader', { name: 'Contract' })).not.toBeInTheDocument()
+    expect(within(table).queryByText('Upload Contract')).not.toBeInTheDocument()
 
     const total = within(table).getByRole('rowheader', { name: 'Filtered Total (3 contracts)' }).closest('tr') as HTMLElement
     expect(total).toHaveTextContent('1,234,568.000')
     expect(total).toHaveTextContent('0.003')
   })
 
-  it('offers no Upload Contract link to someone who cannot upload', async () => {
+  it('styles Final Credit amounts and its total exactly like Contract Value', async () => {
+    amcApi(ADMIN, { contracts: [FIRE], override: listWithTotals })
+    renderApp('/amc/contracts')
+
+    const table = await screen.findByRole('table', { name: 'AMC contracts' })
+    const row = within(table).getByRole('link', { name: 'AMC-0100' }).closest('tr') as HTMLElement
+    const value = within(row).getByText('1,620.000')
+    const credit = within(row).getByText('0.001')
+    expect(credit.className).toBe(value.className)
+    expect(credit.closest('td')?.className).toBe(value.closest('td')?.className)
+
+    const total = within(table).getByRole('rowheader', { name: /Filtered Total/ }).closest('tr') as HTMLElement
+    expect(within(total).getByText('0.003').className).toBe(within(total).getByText('1,234,568.000').className)
+  })
+
+  it('lists every column option in the Columns menu, opened above the button and outside the table card', async () => {
+    amcApi(ADMIN, { contracts: [FIRE], override: listWithTotals })
+    renderApp('/amc/contracts')
+
+    await screen.findByRole('table', { name: 'AMC contracts' })
+    const button = screen.getByRole('button', { name: /^Columns/ })
+    expect(button).toHaveTextContent('9/9')
+    // jsdom lays nothing out: place the button low in a 768px window, where the list used to be cut off.
+    vi.spyOn(button, 'getBoundingClientRect').mockReturnValue({ top: 700, bottom: 740, left: 900, right: 1000, width: 100, height: 40, x: 900, y: 700, toJSON: () => ({}) } as DOMRect)
+    await userEvent.click(button)
+
+    const menu = screen.getByRole('group', { name: 'Columns' })
+    expect(menu.parentElement).toBe(document.body)
+    // Above the button (anchored by its bottom edge), right-aligned with it, never taller than the room above.
+    expect(menu.style.bottom).toBe(`${window.innerHeight - 700 + 8}px`)
+    expect(menu.style.top).toBe('')
+    expect(menu.style.left).toBe(`${1000 - 224}px`)
+    expect(menu.style.maxHeight).toBe(`${700 - 16}px`)
+    expect(within(menu).getAllByRole('checkbox').map((box) => box.closest('label')?.textContent)).toEqual([
+      'AMC Reference',
+      'System',
+      'Sales Engineer',
+      'Validity',
+      'Frequency',
+      'Contract Value (ex VAT)',
+      'Final Credit (ex VAT)',
+      'Visits',
+      'Status',
+    ])
+
+    await userEvent.click(document.body)
+    expect(screen.queryByRole('group', { name: 'Columns' })).not.toBeInTheDocument()
+  })
+
+  it('shows no Upload Contract link to someone who cannot upload either', async () => {
     amcApi({ ...EXECUTION, permissions: ['AMC_CONTRACTS:VIEW'] }, { contracts: [FIRE] })
     renderApp('/amc/contracts')
 
