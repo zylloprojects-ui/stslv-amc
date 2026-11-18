@@ -18,9 +18,9 @@ No export exists for an individual invoice: a PDF of one would resemble a Zoho t
 
 | Subject | Decision |
 |---|---|
-| PDF page | Every application-generated PDF is A4 landscape (297 × 210 mm) with no letterhead: no header or footer artwork, logo or branded background (decided 2026-11-04). |
+| PDF page | Every application-generated PDF is A4 landscape (297 × 210 mm) with a short company header: the official logo and company name, the brand colours and bordered tables (requested 2026-11-18; replaces the plain page of 2026-11-04). No full-width header or footer artwork and no background, so the data keeps the page. |
 | Excel header and footer | The company's official artwork, on screen and on every printed Excel page. Never redrawn, recoloured or stretched. Unchanged by the PDF decision. |
-| Company details | Excel: only what the artwork carries. PDF: none are printed; the company name is in the file properties only. |
+| Company details | Excel: only what the artwork carries. PDF: only what the logo carries (the company name in Arabic and English); the company name is also in the file properties. |
 | Uploaded documents | Signed contracts, service reports, attachments and other uploaded files are never re-rendered; a download returns the original bytes. |
 | Invoice reports | Every page says "Internal tracking report. Not an official tax invoice." |
 | Currency | Amounts keep three decimals and carry no currency label. The single-currency question (Q18) is still open. |
@@ -33,12 +33,13 @@ No export exists for an individual invoice: a PDF of one would resemble a Zoho t
 Defined once in `stslv-api/src/shared/export/pdf.ts` (`PDF_PAGE`, `pageLayout()`), and used by every PDF export:
 
 - A4 landscape, 841.89 × 595.28 pt, whatever `orientation` the report declares. `ReportDefinition.orientation` now only sets how the Excel workbook prints.
-- Margins: 28 pt each side, 54 pt top, 40 pt bottom.
-- Top of every page: the report title (bold, 12 pt) and, on the right, the period, over a thin rule.
-- Bottom of every page: a thin rule; under it the standing disclaimer (if the report has one), "Generated <time> by <user> · STSLEV AMC", and "Page n of N" on the right.
-- Under the title on the first page: the filters applied.
-- Tables: Roboto 8 pt, a navy heading row repeated on every page, rows never split across pages, zebra striping, group headings and a totals row where the report defines them. A group heading (a month, for example) is never left alone at the foot of a page: it and the group's first row are laid out as one row, which moves to the next page together if it does not fit. Columns share the full width between the margins in proportion to their declared widths, so a table never runs off the page; long text wraps inside its column.
-- No images of any kind are embedded.
+- Margins: 28 pt each side, 70 pt top, 40 pt bottom.
+- Top of every page: on the left the company logo with its Arabic and English name, 30 pt high (`LOGO_HEIGHT`); on the right the report title (bold, 13 pt, navy) and the period (blue); under both, a green bar over a blue one, the colours of the official artwork's swoosh.
+- The logo is `stslv-api/assets/branding/report-logo.png`: the left part of `report-header.png` (logo and both names), cut out without the swoosh or the rule, not redrawn, recoloured or scaled.
+- Bottom of every page: a thin blue rule; under it the standing disclaimer (if the report has one), "Generated <time> by <user> · STSLEV AMC", and "Page n of N" on the right.
+- Under the header on the first page: the filters applied, in a light panel with a blue left edge.
+- Tables: Roboto 8 pt, a navy frame round the table and under the heading row, light blue lines between rows and columns, a navy heading row repeated on every page, rows never split across pages, zebra striping, group headings and a totals row where the report defines them. A group heading (a month, for example) is never left alone at the foot of a page: it and the group's first row are laid out as one row, which moves to the next page together if it does not fit. Columns share the full width between the margins in proportion to their declared widths, so a table never runs off the page; long text wraps inside its column.
+- The logo is the only image embedded (once per file). The release package must carry `stslv-api/assets` (`deploy/hostinger/deploy/package-release.sh` refuses to package without the artwork).
 
 ## The artwork (Excel only)
 

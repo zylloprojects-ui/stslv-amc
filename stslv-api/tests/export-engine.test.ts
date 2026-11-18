@@ -3,9 +3,9 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { afterAll, describe, expect, it } from "vitest";
-import { SYSTEM_NAME, artworkHeight, footerArtwork, headerArtwork } from "../src/shared/export/branding";
+import { SYSTEM_NAME, artworkHeight, footerArtwork, headerArtwork, logoArtwork } from "../src/shared/export/branding";
 import { HEADER_ROW, excelValue, printLayout, renderExcel } from "../src/shared/export/excel";
-import { pageLayout, pdfDefinition, pdfText, renderPdf } from "../src/shared/export/pdf";
+import { LOGO_HEIGHT, pageLayout, pdfDefinition, pdfText, renderPdf } from "../src/shared/export/pdf";
 import {
   EMPTY_MESSAGE,
   assertExportSize,
@@ -174,7 +174,7 @@ describe("Excel workbook", () => {
 describe("PDF", () => {
   it("repeats the headings, never splits a row, and leaves out the Excel-only columns", () => {
     const definition = pdfDefinition(report(ROWS));
-    const table = (definition.content as { table?: { headerRows: number; dontBreakRows: boolean; body: { text?: string }[][]; widths: number[] } }[]).find((node) => node.table)?.table;
+    const table = (definition.content as { table?: { headerRows: number; dontBreakRows: boolean; body: { text?: string }[][]; widths: number[] } }[]).find((node) => node.table?.headerRows)?.table;
 
     expect(definition.pageOrientation).toBe("landscape");
     expect(table).toMatchObject({ headerRows: 1, dontBreakRows: true });
@@ -219,7 +219,7 @@ describe("PDF", () => {
 
     table.groupBy = (row) => String(row.month);
     const definition = pdfDefinition(grouped);
-    const outer = (definition.content as { table?: { dontBreakRows: boolean; widths: number[]; body: Cell[][] } }[]).find((node) => node.table)?.table;
+    const outer = (definition.content as { table?: { dontBreakRows: boolean; widths: number[]; body: Cell[][] } }[]).find((node) => node.table?.dontBreakRows)?.table;
     const body = outer?.body ?? [];
     // Each row as: its heading and first-row reference when it carries a group, or its reference.
     const shape = body.map((row) => {
@@ -296,7 +296,13 @@ describe("official header and footer artwork", () => {
     expect([footerArtwork().width, footerArtwork().height]).toEqual([1318, 180]);
   });
 
-  it("is never drawn in a PDF: every PDF is plain A4 landscape, whatever the report declares", async () => {
+  it("gives the PDF logo the left part of the official header artwork, unscaled", () => {
+    // Cut from report-header.png (logo and company name in Arabic and English), without the swoosh or the rule.
+    expect(size("report-logo.png")).toEqual([842, 142]);
+    expect([logoArtwork().width, logoArtwork().height]).toEqual([842, 142]);
+  });
+
+  it("puts a short company logo, not the full artwork, on every A4 landscape PDF page", async () => {
     for (const orientation of ["portrait", "landscape"] as const) {
       const definition = pdfDefinition(report(ROWS, { orientation, disclaimer: "Internal tracking report. Not an official tax invoice." }));
       const layout = pageLayout();
@@ -304,12 +310,20 @@ describe("official header and footer artwork", () => {
       expect(definition.pageSize).toBe("A4");
       expect(definition.pageOrientation).toBe("landscape");
       expect(definition.pageMargins).toEqual(layout.margins);
-      // No letterhead: no artwork, no background, no images of any kind.
-      expect(definition.images).toBeUndefined();
+      // One picture: the logo. No full-width header or footer artwork and no background.
+      expect(Object.keys(definition.images ?? {})).toEqual(["logo"]);
+      expect(String((definition.images as Record<string, string>).logo)).toMatch(/^data:image\/png;base64,/);
       expect(definition.background).toBeUndefined();
-      expect(JSON.stringify(definition)).not.toContain("image");
+      // Short: the logo is at most 30 pt high and stays above the content.
+      expect(LOGO_HEIGHT).toBeLessThanOrEqual(30);
+      expect(layout.margins[1]).toBeGreaterThan(LOGO_HEIGHT + 20);
 
-      // The file itself: every page is 297 × 210 mm, and it embeds no picture.
+      const header = JSON.stringify(typeof definition.header === "function" ? definition.header(1, 1, { width: 841.89, height: 595.28 } as never) : definition.header);
+
+      expect(header).toContain('"image":"logo"');
+      expect(header).toContain("Test Register");
+
+      // The file itself: every page is 297 × 210 mm, and it embeds the logo.
       const pdf = (await renderPdf(report(ROWS, { orientation }))).toString("latin1");
       const boxes = pdf.match(/\/MediaBox \[[^\]]*\]/g) ?? [];
 
@@ -319,8 +333,28 @@ describe("official header and footer artwork", () => {
         expect(width).toBeCloseTo(841.89, 1);
         expect(height).toBeCloseTo(595.28, 1);
       }
-      expect(pdf).not.toMatch(/\/Subtype \/Image/);
+      expect(pdf).toMatch(/\/Subtype \/Image/);
     }
+  });
+
+  it("frames every PDF table in navy with light inner lines", () => {
+    const definition = pdfDefinition(report(ROWS));
+    const table = (definition.content as Array<{ table?: { body: unknown[][] }; layout?: Record<string, (i: number, node: unknown) => unknown> }>).find(
+      (item) => item.table && item.layout && item.table.body.length > 2
+    );
+
+    expect(table).toBeDefined();
+    const node = { table: (table as { table: { body: unknown[][] } }).table };
+    const rows = node.table.body.length;
+    const columns = (node.table.body[0] as unknown[]).length;
+    const layout = (table as { layout: Record<string, (i: number, node: unknown) => unknown> }).layout;
+
+    expect(layout.hLineColor?.(0, node)).toBe("#0B3B66");
+    expect(layout.hLineColor?.(rows, node)).toBe("#0B3B66");
+    expect(layout.vLineColor?.(0, node)).toBe("#0B3B66");
+    expect(layout.vLineColor?.(columns, node)).toBe("#0B3B66");
+    expect(layout.hLineColor?.(2, node)).toBe("#D7E5F2");
+    expect(layout.vLineColor?.(1, node)).toBe("#D7E5F2");
   });
 
   it("leaves room in a PDF's margins for the report lines, clear of the content", () => {
