@@ -13,3 +13,14 @@ export const TABLE = {
   /** For a cell holding an email address or reference with no spaces to wrap at. Short values stay on one line. */
   unbroken: 'min-w-44 max-w-80 [overflow-wrap:anywhere]',
 }
+
+/** An icon-only row action (see components/IconActions). Touch screens (phones, tablets) get a larger target. */
+const ACTION_BUTTON =
+  'inline-flex h-7 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10 disabled:cursor-not-allowed disabled:opacity-40 pointer-coarse:h-9 pointer-coarse:w-9'
+/** Destructive actions are red at rest as well as on hover, so they are never mistaken for a harmless one. */
+const ACTION_DANGER = '!text-red-600 hover:!bg-red-50 hover:!text-red-700'
+
+/** The classes of an icon row action; also for a link component of its own (for example ContractLink). */
+export function actionButtonClass(danger = false) {
+  return danger ? `${ACTION_BUTTON} ${ACTION_DANGER}` : ACTION_BUTTON
+}
