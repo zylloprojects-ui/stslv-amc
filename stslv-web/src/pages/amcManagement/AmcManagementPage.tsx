@@ -131,7 +131,7 @@ function RecentContracts({ recent }: { recent: AmcManagementSummary['recentContr
                 </span>
               </td>
               <td className={cx(TABLE.td, 'text-right')}>
-                <ActionLink icon="view" to={`/amc/contracts/${row.id}`} label={`View ${row.reference}`} hint="View contract" />
+                <ActionLink icon="view" to={`/amc/contracts/${row.id}`} label={`View ${row.reference}`} hint={`View contract ${row.reference}`} />
               </td>
             </tr>
           ))}

@@ -273,7 +273,7 @@ describe('change client status inline', () => {
     await userEvent.selectOptions(await screen.findByLabelText('Status'), 'all')
 
     const deactivate = await screen.findByRole('button', { name: 'Deactivate Test Client One' })
-    expect(deactivate).toHaveAttribute('title', 'Deactivate Test Client One')
+    expect(deactivate).toHaveAttribute('data-tooltip', 'Deactivate Test Client One')
     expect(deactivate).toHaveTextContent('')
     expect(screen.queryByLabelText(/^Status of /)).not.toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Reactivate Old Test Client' })).toBeInTheDocument()
@@ -317,7 +317,7 @@ describe('delete a client from the list (Super Admin only)', () => {
     await userEvent.selectOptions(await screen.findByLabelText('Status'), 'all')
 
     const remove = await screen.findByRole('button', { name: 'Delete Test Client One' })
-    expect(remove).toHaveAttribute('title', 'Delete Test Client One')
+    expect(remove).toHaveAttribute('data-tooltip', 'Delete Test Client One')
     expect(remove).toHaveTextContent('')
     expect(screen.getByRole('button', { name: 'Deactivate Test Client One' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Reactivate Old Test Client' })).toBeInTheDocument()

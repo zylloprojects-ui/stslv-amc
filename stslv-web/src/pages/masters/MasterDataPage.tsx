@@ -257,11 +257,10 @@ function MasterTable({ tab, items, canEdit, onEdit, onToggle }: { tab: Tab; item
     <Cell className="whitespace-nowrap text-right">
       {canEdit && (
         <ActionGroup>
-          <ActionButton icon="edit" label={`Edit ${String(record.name)}`} hint="Edit" onClick={() => onEdit(record)} />
+          <ActionButton icon="edit" label={`Edit ${String(record.name)}`} onClick={() => onEdit(record)} />
           <ActionButton
             icon={record.isActive ? 'deactivate' : 'reactivate'}
             label={`${record.isActive ? 'Deactivate' : 'Reactivate'} ${String(record.name)}`}
-            hint={record.isActive ? 'Deactivate' : 'Reactivate'}
             onClick={() => onToggle(record)}
           />
         </ActionGroup>

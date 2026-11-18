@@ -246,7 +246,7 @@ export function BackupRestorePage() {
                         <td className={cx(TABLE.td, TABLE.unbroken, 'font-mono text-xs')}>{record.sha256 ?? '—'}</td>
                         <td className={cx(TABLE.td, 'text-right')}>
                           {superAdmin && record.state === 'VERIFIED' && (
-                            <ActionButton icon="download" label={`Download backup from ${formatDateTime(record.startedAt)}`} hint="Download" onClick={() => void fetchFile(record)} />
+                            <ActionButton icon="download" label={`Download backup from ${formatDateTime(record.startedAt)}`} onClick={() => void fetchFile(record)} />
                           )}
                         </td>
                       </tr>

@@ -40,12 +40,21 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   amcValue: 'AMC Value (ex VAT)',
 }
 
+/**
+ * Hidden until a user chooses to show them (Hide Columns). Zoho Invoice Value comes from Invoice Tracking, not from the
+ * service itself; the client asked for it out of the default view (2026-11-18). Its data, total and export are unchanged.
+ */
+export const DEFAULT_HIDDEN: ReadonlySet<ColumnId> = new Set<ColumnId>(['invoiceValue'])
+
 function load(key: string): ReadonlySet<ColumnId> {
   try {
-    const saved: unknown = JSON.parse(localStorage.getItem(key) ?? 'null')
+    const stored = localStorage.getItem(key)
+    // Nothing saved yet: the default layout. A saved list (even an empty one: "show everything") is the user's choice.
+    if (stored === null) return DEFAULT_HIDDEN
+    const saved: unknown = JSON.parse(stored)
     return new Set(Array.isArray(saved) ? saved.filter((id): id is ColumnId => COLUMN_IDS.includes(id as ColumnId)) : [])
   } catch {
-    return new Set()
+    return DEFAULT_HIDDEN
   }
 }
 
@@ -60,8 +69,8 @@ export function useHiddenColumns(userId: string): [ReadonlySet<ColumnId>, (hidde
     (next: ReadonlySet<ColumnId>) => {
       setState({ key, hidden: next })
       try {
-        if (next.size > 0) localStorage.setItem(key, JSON.stringify([...next]))
-        else localStorage.removeItem(key)
+        // Kept even when empty, so "show every column" is remembered instead of falling back to the default.
+        localStorage.setItem(key, JSON.stringify([...next]))
       } catch {
         // Storage may be blocked; the choice then lasts for this visit only.
       }

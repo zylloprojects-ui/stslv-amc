@@ -259,7 +259,6 @@ function ServiceReportCell({ item }: { item: ServicesSalesItem }) {
         <ActionButton
           icon="view"
           label={`View ${subject}${viewable ? '' : ' (Word document: downloads)'}`}
-          hint={viewable ? 'View report' : 'View report (Word document: downloads)'}
           onClick={() => void view()}
           loading={state.kind === 'busy' && state.action === 'view'}
           disabled={state.kind === 'busy'}
@@ -267,7 +266,6 @@ function ServiceReportCell({ item }: { item: ServicesSalesItem }) {
         <ActionButton
           icon="download"
           label={`Download ${subject}`}
-          hint="Download report"
           onClick={() => void save()}
           loading={state.kind === 'busy' && state.action === 'download'}
           disabled={state.kind === 'busy'}

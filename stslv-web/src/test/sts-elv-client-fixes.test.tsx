@@ -279,6 +279,10 @@ describe('Accounts: Service Report viewer and filtered totals', () => {
     renderApp('/finance/accounts')
 
     await screen.findByText('AMC-0007')
+    // Zoho Invoice Value (and its total) is hidden by default: show it first.
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Zoho Invoice Value (ex VAT)' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
     const footer = screen.getByRole('rowheader', { name: /Total Filtered \(120 services, all pages\)/ }).closest('tr') as HTMLElement
     expect(footer).toHaveTextContent('Total Filtered Service Value (ex VAT)')
     expect(footer).toHaveTextContent('48,600.000')

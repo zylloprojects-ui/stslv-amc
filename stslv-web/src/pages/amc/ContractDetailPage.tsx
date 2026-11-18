@@ -673,7 +673,7 @@ export function ContractDetailPage() {
                                     <ServiceColor visit={visit} canEdit={canEditSchedule} />
                                   </td>
                                   <td className={`${TABLE.td} whitespace-nowrap`}>
-                                    <ActionLink icon="schedule" to={`/amc/schedule?contractId=${contract.id}`} label={`Open ${visitNumberLabel(visit)} in AMC Schedule`} hint="Open in AMC Schedule" />
+                                    <ActionLink icon="schedule" to={`/amc/schedule?contractId=${contract.id}`} label={`Open ${visitNumberLabel(visit)} in AMC Schedule`} />
                                   </td>
                                 </tr>
                               ))}

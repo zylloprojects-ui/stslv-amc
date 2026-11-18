@@ -81,6 +81,19 @@ const ICONS = {
       <rect x="17" y="9" width="4.5" height="9.5" rx="1" />
     </>
   ),
+  save: (
+    <>
+      <path d="M5 4.5h11.5L19.5 7.5V19a.5.5 0 0 1-.5.5H5a.5.5 0 0 1-.5-.5V5a.5.5 0 0 1 .5-.5Z" strokeLinejoin="round" />
+      <path d="M8 4.5v4.5h7V4.5M8 19.5v-5.5h8v5.5" strokeLinejoin="round" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none" />
+    </>
+  ),
   visitActions: (
     <>
       <path d="M8.5 4.5H6a1 1 0 0 0-1 1V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V5.5a1 1 0 0 0-1-1h-2.5" strokeLinejoin="round" />
@@ -112,7 +125,8 @@ export function ActionGroup({ children }: { children: ReactNode }) {
   return <div className="inline-flex items-center gap-0.5">{children}</div>
 }
 
-/** An icon-only button in an ActionGroup. The label is its accessible name and its tooltip. */
+/** An icon-only button in an ActionGroup. The label is its accessible name; the hint (or else the label) its tooltip,
+ *  drawn by ActionTooltipLayer (components/ActionTooltip), never the browser's own small title tooltip. */
 export function ActionButton({
   label,
   icon,
@@ -129,28 +143,37 @@ export function ActionButton({
   disabled?: boolean
   /** Shows a spinner in place of the icon and blocks a second click while the action runs. */
   loading?: boolean
-  /** Tooltip shown instead of the label: a short name when the label is long, or why the action is unavailable. */
+  /** Tooltip shown instead of the label: a clearer sentence, or why the action is unavailable. */
   hint?: string
 }) {
-  return (
+  const off = disabled || loading
+  const button = (
     <button
       type="button"
       aria-label={label}
       aria-busy={loading || undefined}
-      title={hint ?? label}
+      data-tooltip={off ? undefined : (hint ?? label)}
       onClick={onClick}
-      disabled={disabled || loading}
+      disabled={off}
       className={actionButtonClass(danger)}
     >
       {loading ? <ActionSpinner /> : <ActionIcon name={icon} />}
     </button>
+  )
+  // A disabled button receives no pointer events, so its tooltip (often the reason it is disabled) sits on a wrapper.
+  return off ? (
+    <span className="inline-flex cursor-not-allowed" data-tooltip={hint ?? label}>
+      {button}
+    </span>
+  ) : (
+    button
   )
 }
 
 /** An icon-only link in an ActionGroup, for an action that opens a page. */
 export function ActionLink({ label, icon, to, danger = false, hint }: { label: string; icon: ActionIconName; to: string; danger?: boolean; hint?: string }) {
   return (
-    <Link to={to} aria-label={label} title={hint ?? label} className={actionButtonClass(danger)}>
+    <Link to={to} aria-label={label} data-tooltip={hint ?? label} className={actionButtonClass(danger)}>
       <ActionIcon name={icon} />
     </Link>
   )
