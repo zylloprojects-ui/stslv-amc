@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+# STSELV AMC — install a release on the Hostinger VPS. Runs as root, ONLY through this sudoers rule:
+#   stselvdeploy ALL=(root) NOPASSWD: /usr/local/sbin/stselv-release
+# Install: /usr/local/sbin/stselv-release (root:root 0755). The copy in the repository is reviewed and installed BY
+# HAND; a deployment never replaces this file, so a pushed commit cannot change what root runs.
+#
+#   stselv-release check  <commit>   verify the uploaded archive and print the migration plan; changes nothing
+#   stselv-release deploy <commit>   install it (after the same checks), restart the API, verify, roll back on failure
+#   stselv-release status            print the deployed commit
+#
+# What a deployment changes: the release folders under /opt/stslv-amc/api/releases and /var/www/stslv-amc/web/releases,
+# the two "current" symlinks, and a restart of stslv-amc-api. It NEVER touches the database contents (except pending
+# migrations explicitly approved below), /etc/stslv-amc/api.env, uploaded documents, users, Nginx or systemd units.
+#
+# Migrations: the API applies pending migrations when it starts (ExecStartPre). A release that brings a migration the
+# database has not applied is REFUSED unless /etc/stslv-amc/deploy-approvals/<commit>.migrations (root-owned) lists
+# exactly those versions; then a database recovery point (pg_dump, verified) is taken first.
+#
+# Exit codes: 0 deployed/ok · 2 bad request · 3 refused before any change (checks, approvals) · 4 health check failed,
+# code ROLLED BACK to the previous release · 5 health check failed AFTER a migration: not rolled back (the previous
+# code cannot run on the migrated database); recovery point named in the output · 6 another deployment is running.
+set -euo pipefail
+umask 022
+
+INCOMING=/var/lib/stselv-deploy/incoming
+STAGING=/var/lib/stselv-deploy/staging
+STATE=/var/lib/stselv-deploy/state
+API_RELEASES=/opt/stslv-amc/api/releases
+API_CURRENT=/opt/stslv-amc/api/current
+WEB_RELEASES=/var/www/stslv-amc/web/releases
+WEB_CURRENT=/var/www/stslv-amc/web/current
+APPROVALS=/etc/stslv-amc/deploy-approvals
+RECOVERY=/var/backups/stselv-deploy
+ENV_FILE=/etc/stslv-amc/api.env
+SERVICE=stslv-amc-api
+KEEP_RELEASES=5
+
+log() { printf '[stselv-release] %s\n' "$*"; }
+fail() { local code="$1"; shift; log "FAILED: $*"; exit "$code"; }
+env_value() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
+
+mode="${1:-}"
+commit="${2:-}"
+
+if [[ "$mode" == "status" ]]; then
+  if [[ -f "$STATE/deployed.json" ]]; then cat "$STATE/deployed.json"; else echo '{"commit":null}'; fi
+  echo "api current: $(basename "$(readlink -f "$API_CURRENT")")  web current: $(basename "$(readlink -f "$WEB_CURRENT")")"
+  exit 0
+fi
+[[ "$mode" == "check" || "$mode" == "deploy" ]] || fail 2 "usage: stselv-release check|deploy <commit> | status"
+[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || fail 2 "commit must be 40 hexadecimal characters"
+
+install -d -m 755 "$STATE" "$STAGING"
+exec 9>/run/lock/stselv-deploy.lock
+flock -n 9 || fail 6 "another deployment is running"
+
+archive="$INCOMING/$commit.tar.gz"
+[[ -f "$archive" ]] || fail 3 "no uploaded archive for $commit"
+short="${commit:0:7}"
+db_name="$(env_value DB_NAME)"
+app_url="$(env_value APP_URL)"
+app_host="${app_url#https://}"; app_host="${app_host%%/*}"
+[[ -n "$db_name" && -n "$app_host" ]] || fail 3 "DB_NAME or APP_URL missing from $ENV_FILE"
+
+# ---- 1. Archive contents: only RELEASE, api/ and web/; no absolute paths, no "..". ----------------------------
+while IFS= read -r entry; do
+  case "$entry" in
+    RELEASE|api/*|web/*|api|web|./) ;;
+    *) fail 3 "unexpected archive entry: $entry" ;;
+  esac
+  [[ "$entry" != /* && "$entry" != *../* && "$entry" != *'/..' ]] || fail 3 "unsafe path in archive: $entry"
+done < <(tar -tzf "$archive")
+
+work="$STAGING/$commit"
+rm -rf "$work"; install -d -m 755 "$work"
+tar -xzf "$archive" -C "$work" --no-same-owner --no-same-permissions
+# Symbolic links (node_modules/.bin) must stay inside the release.
+while IFS= read -r link; do
+  target="$(readlink -f "$link" || true)"
+  [[ "$target" == "$work"/* ]] || fail 3 "symbolic link leaves the release: ${link#$work/}"
+done < <(find "$work" -type l)
+[[ "$(tr -d '[:space:]' < "$work/RELEASE")" == "$commit" ]] || fail 3 "RELEASE file does not match $commit"
+for f in api/dist/server.js api/dist/db/migrate-cli.js api/package.json api/node_modules web/index.html; do
+  [[ -e "$work/$f" ]] || fail 3 "release is missing $f"
+done
+chmod -R u=rwX,go=rX "$work"
+log "archive verified: $commit"
+
+# ---- 2. Migration plan: what the database has applied vs. what the release brings. -----------------------------
+applied_raw="$(sudo -u postgres psql -X -At -v ON_ERROR_STOP=1 -d "$db_name" -c "select version from schema_migrations order by version")" \
+  || fail 3 "could not read schema_migrations from $db_name; nothing changed"
+mapfile -t applied < <(printf '%s\n' "$applied_raw" | grep -E '^[0-9]{4}$' || true)
+mapfile -t shipped < <(find "$work/api/migrations" -maxdepth 1 -name '[0-9][0-9][0-9][0-9]_*.sql' -printf '%f\n' | cut -c1-4 | sort)
+missing=(); for v in "${applied[@]}"; do [[ " ${shipped[*]} " == *" $v "* ]] || missing+=("$v"); done
+pending=(); for v in "${shipped[@]}"; do [[ " ${applied[*]} " == *" $v "* ]] || pending+=("$v"); done
+last_applied="$(printf '%s\n' "${applied[@]}" | tail -1)"
+log "database $db_name: ${#applied[@]} migrations applied (last ${last_applied:-none}); release ships ${#shipped[@]}"
+(( ${#missing[@]} == 0 )) || fail 3 "the database has migrations this release does not contain (${missing[*]}): it is OLDER than the database; refused"
+
+if (( ${#pending[@]} > 0 )); then
+  log "release brings NEW migrations: ${pending[*]}"
+  for v in "${pending[@]}"; do
+    f="$(ls "$work/api/migrations/${v}_"*.sql)"
+    risky="$(grep -viE '^\s*--' "$f" | grep -ioE '\b(drop|truncate|delete[[:space:]]+from|rename|alter[[:space:]]+column[^;]*type)\b' | sort -u | tr '\n' ' ' || true)"
+    log "  $(basename "$f")${risky:+  -- contains: $risky(review carefully)}"
+  done
+  approval="$APPROVALS/$commit.migrations"
+  if [[ ! -f "$approval" ]]; then
+    fail 3 "new migrations need a separate approval. After review, as an administrator: echo '${pending[*]}' | sudo tee $approval  (root-owned), then re-run the deployment"
+  fi
+  [[ "$(stat -c %U "$approval")" == root ]] || fail 3 "$approval must be owned by root"
+  mapfile -t approved < <(tr ' ,' '\n\n' < "$approval" | grep -E '^[0-9]{4}$' | sort -u)
+  [[ "${approved[*]}" == "$(printf '%s\n' "${pending[@]}" | sort -u | tr '\n' ' ' | sed 's/ $//')" ]] || fail 3 "approval lists '${approved[*]}' but the release brings '${pending[*]}'"
+  log "migrations approved by $approval"
+else
+  log "no new migrations"
+fi
+
+if [[ "$mode" == "check" ]]; then
+  log "check finished: nothing was changed"
+  exit 0
+fi
+
+# ---- 3. Recovery point before any approved migration. -------------------------------------------------------------
+recovery=""
+if (( ${#pending[@]} > 0 )); then
+  install -d -m 700 -o postgres -g postgres "$RECOVERY"
+  recovery="$RECOVERY/${db_name}_before_${short}_$(date -u +%Y%m%d_%H%M%S).dump"
+  sudo -u postgres pg_dump -Fc -d "$db_name" -f "$recovery" || fail 3 "recovery point (pg_dump) failed; nothing changed"
+  sudo -u postgres pg_restore --list "$recovery" > /dev/null || fail 3 "recovery point is not readable; nothing changed"
+  log "recovery point verified: $recovery ($(stat -c %s "$recovery") bytes)"
+fi
+
+# ---- 4. Install and switch. -------------------------------------------------------------------------------------------
+prev_api="$(readlink -f "$API_CURRENT")"
+prev_web="$(readlink -f "$WEB_CURRENT")"
+prev_commit="$(basename "$prev_api")"
+new_api="$API_RELEASES/$commit"
+new_web="$WEB_RELEASES/$commit"
+
+if [[ "$prev_api" != "$new_api" ]]; then
+  rm -rf "$new_api.tmp" "$new_web.tmp"
+  cp -a "$work/api" "$new_api.tmp"; cp -a "$work/web" "$new_web.tmp"
+  chown -R root:root "$new_api.tmp" "$new_web.tmp"
+  rm -rf "$new_api" "$new_web"; mv "$new_api.tmp" "$new_api"; mv "$new_web.tmp" "$new_web"
+fi
+
+switch_to() { # atomic symlink swaps
+  ln -sfn "$1" "$API_CURRENT.new" && mv -T "$API_CURRENT.new" "$API_CURRENT"
+  ln -sfn "$2" "$WEB_CURRENT.new" && mv -T "$WEB_CURRENT.new" "$WEB_CURRENT"
+}
+
+health() {
+  local i code db
+  for i in $(seq 1 45); do
+    if curl -sf -o /dev/null http://127.0.0.1:3001/api/health; then break; fi
+    sleep 2
+  done
+  curl -sf -o /dev/null http://127.0.0.1:3001/api/health || { log "  API /api/health not answering"; return 1; }
+  db="$(curl -sf http://127.0.0.1:3001/api/health/database | sed -n 's/.*"database":"\([^"]*\)".*/\1/p')"
+  [[ "$db" == "$db_name" ]] || { log "  database check failed (got '$db')"; return 1; }
+  code="$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/api/auth/me)"
+  [[ "$code" == 401 ]] || { log "  authentication check: /api/auth/me without a token gave $code, expected 401"; return 1; }
+  local r=(--resolve "$app_host:443:127.0.0.1" -s)
+  local page asset
+  page="$(curl "${r[@]}" -f "https://$app_host/")" || { log "  web page not served through Nginx"; return 1; }
+  asset="$(printf '%s' "$page" | grep -oE '/assets/index-[A-Za-z0-9_-]+\.js' | head -1)"
+  [[ -n "$asset" ]] && curl "${r[@]}" -f -o /dev/null "https://$app_host$asset" || { log "  web bundle $asset not served"; return 1; }
+  curl "${r[@]}" -f -o /dev/null "https://$app_host/api/health" || { log "  API not reachable through Nginx"; return 1; }
+  log "  health: API ok, database $db ok, authentication ok, web ok ($asset), Nginx proxy ok"
+}
+
+log "switching $prev_commit -> $commit"
+switch_to "$new_api" "$new_web"
+systemctl restart "$SERVICE" || true
+
+if health; then
+  printf '{"commit":"%s","previous":"%s","deployed_at":"%s","migrations_applied":"%s","recovery_point":"%s"}\n' \
+    "$commit" "$prev_commit" "$(date -u +%FT%TZ)" "${pending[*]:-}" "$recovery" > "$STATE/deployed.json"
+  printf '%s %s <- %s migrations=[%s]\n' "$(date -u +%FT%TZ)" "$commit" "$prev_commit" "${pending[*]:-}" >> "$STATE/history.log"
+  rm -f "$archive"; rm -rf "$work"
+  # Keep the newest releases plus current and previous.
+  for dir in "$API_RELEASES" "$WEB_RELEASES"; do
+    ls -1t "$dir" | grep -E '^[0-9a-f]{40}$|^[0-9a-f]{7}$' | tail -n +$((KEEP_RELEASES + 1)) | while read -r old; do
+      [[ "$dir/$old" == "$new_api" || "$dir/$old" == "$new_web" || "$dir/$old" == "$prev_api" || "$dir/$old" == "$prev_web" ]] || rm -rf "${dir:?}/$old"
+    done
+  done
+  log "DEPLOYED $commit"
+  exit 0
+fi
+
+if (( ${#pending[@]} > 0 )); then
+  log "health check failed after migrations ${pending[*]} were applied. The previous code cannot start on the migrated"
+  log "database, so the code is NOT rolled back. The database can be restored from $recovery only with the owner's approval."
+  printf '%s %s FAILED-after-migration recovery=%s\n' "$(date -u +%FT%TZ)" "$commit" "$recovery" >> "$STATE/history.log"
+  exit 5
+fi
+
+log "health check failed: rolling the code back to $prev_commit"
+switch_to "$prev_api" "$prev_web"
+systemctl restart "$SERVICE" || true
+if health; then
+  printf '%s %s ROLLED-BACK to %s\n' "$(date -u +%FT%TZ)" "$commit" "$prev_commit" >> "$STATE/history.log"
+  log "ROLLED BACK to $prev_commit (the website is running the previous release)"
+else
+  printf '%s %s ROLLBACK-UNHEALTHY %s\n' "$(date -u +%FT%TZ)" "$commit" "$prev_commit" >> "$STATE/history.log"
+  log "rolled back to $prev_commit, but it is ALSO unhealthy: manual attention needed"
+fi
+exit 4

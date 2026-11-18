@@ -1,0 +1,173 @@
+# STSELV AMC — test, build and deploy to the Hostinger VPS.
+#
+# Every push to main: tests + builds, then (only if they pass AND the repository variable
+# HOSTINGER_DEPLOY_ENABLED is "true") deploys to the VPS through the restricted deploy key.
+# Pull requests to main and pushes to ci/** branches: tests + builds only (no secrets, no deployment).
+#
+# Server side (installed by hand, never replaced by a deployment): deploy/hostinger/deploy/README.md
+# Settings (Settings > Secrets and variables > Actions, environment "hostinger"):
+#   secret   HOSTINGER_SSH_KEY         private key of the dedicated deploy key (forced command on the server)
+#   variable HOSTINGER_HOST            189.31.34.153
+#   variable HOSTINGER_USER            stselvdeploy
+#   variable HOSTINGER_KNOWN_HOSTS     the VPS host key line (pinned; StrictHostKeyChecking=yes)
+#   variable HOSTINGER_DEPLOY_ENABLED  "true" to deploy; anything else = test/build only
+#   variable HOSTINGER_URL             https://srv2167443.hstgr.cloud
+name: Hostinger deploy
+
+on:
+  push:
+    branches: [main, "ci/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deployment at a time; a newer push waits instead of cancelling a running deployment.
+concurrency:
+  group: hostinger-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test-and-build:
+    name: Test and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: stslv_ci
+          POSTGRES_PASSWORD: ci-only-password-not-a-secret
+          POSTGRES_DB: stslv_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U stslv_ci -d stslv_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: stslv_ci
+      DB_USER: stslv_ci
+      DB_PASSWORD: ci-only-password-not-a-secret
+      TZ: UTC
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            stslv-api/package-lock.json
+            stslv-web/package-lock.json
+
+      - name: API — install, typecheck, build
+        working-directory: stslv-api
+        run: |
+          npm ci --include=dev --no-audit --no-fund
+          npm run typecheck
+          npm run build
+
+      - name: API — tests (PostgreSQL 17, own schema)
+        working-directory: stslv-api
+        # ops-backup needs gpg + PostgreSQL client tools on the runner; it is run separately before backup releases.
+        run: npx vitest run --exclude tests/ops-backup.test.ts
+
+      - name: Web — install, typecheck + build, lint, tests
+        working-directory: stslv-web
+        run: |
+          npm ci --no-audit --no-fund
+          VITE_API_BASE_URL= npm run build
+          npm run lint
+          npx vitest run --maxWorkers=2
+
+      - name: Package the release
+        run: |
+          bash deploy/hostinger/deploy/package-release.sh "$RUNNER_TEMP/release.tar.gz"
+          echo "RELEASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: hostinger-release-${{ github.sha }}
+          path: ${{ runner.temp }}/release.tar.gz
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          echo "### Tests and build passed" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit \`${RELEASE_SHA}\` packaged ($(du -h "$RUNNER_TEMP/release.tar.gz" | cut -f1))." >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy to Hostinger VPS
+    needs: test-and-build
+    # Runs for pushes to main and "Run workflow" on main. The on/off switch HOSTINGER_DEPLOY_ENABLED is checked in the
+    # first step, inside the "hostinger" environment, so it may be a repository OR an environment variable.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment:
+      name: hostinger
+      url: ${{ vars.HOSTINGER_URL }}
+    steps:
+      - name: Deployment switch
+        id: gate
+        env:
+          ENABLED: ${{ vars.HOSTINGER_DEPLOY_ENABLED }}
+        run: |
+          if [ "$ENABLED" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::HOSTINGER_DEPLOY_ENABLED is not 'true': tests and build passed, nothing was deployed."
+            echo "### Deployment switched off (HOSTINGER_DEPLOY_ENABLED is not 'true'); nothing was deployed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/download-artifact@v5
+        if: steps.gate.outputs.enabled == 'true'
+        with:
+          name: hostinger-release-${{ github.sha }}
+          path: ${{ runner.temp }}/release
+
+      - name: Prepare SSH (deploy key, pinned host key)
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          SSH_KEY: ${{ secrets.HOSTINGER_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.HOSTINGER_KNOWN_HOSTS }}
+        run: |
+          test -n "$SSH_KEY" || { echo "::error::secret HOSTINGER_SSH_KEY is not set"; exit 1; }
+          test -n "$KNOWN_HOSTS" || { echo "::error::variable HOSTINGER_KNOWN_HOSTS is not set"; exit 1; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload and install the release (server verifies, migrates only if approved, health-checks, rolls back)
+        id: deploy
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          HOST: ${{ vars.HOSTINGER_HOST }}
+          USER: ${{ vars.HOSTINGER_USER }}
+        run: |
+          set -o pipefail
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts -o BatchMode=yes -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+              "$USER@$HOST" "deploy ${GITHUB_SHA}" < "$RUNNER_TEMP/release/release.tar.gz" | tee "$RUNNER_TEMP/deploy.log"
+
+      - name: Public check
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          URL: ${{ vars.HOSTINGER_URL }}
+        run: |
+          curl -sf "$URL/api/health"
+          curl -sf -o /dev/null "$URL/"
+          echo "### Deployed \`${GITHUB_SHA}\` to ${URL}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deployment log in the summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/deploy.log" ]; then
+            { echo '```'; cat "$RUNNER_TEMP/deploy.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          rm -f ~/.ssh/deploy_key
