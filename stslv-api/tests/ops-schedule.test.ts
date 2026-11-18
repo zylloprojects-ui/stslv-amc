@@ -846,3 +846,58 @@ describe("review fixes (2026-11-18)", () => {
     expect(looksEncrypted(Buffer.from([0x8c, 0x0d]))).toBe(true); // passphrase session key
   });
 });
+
+describe("email alerting through the heartbeats (Healthchecks.io, 2026-11-18)", () => {
+  const heartbeats = {
+    heartbeatDbUrl: "https://hc.example.invalid/db",
+    heartbeatDocsUrl: "https://hc.example.invalid/docs",
+    heartbeatConfigUrl: "https://hc.example.invalid/config",
+  };
+
+  it("a failure before a step's own handling (expired Google authorization, failed pre-flight) pings /fail with the reason", async () => {
+    const stateDir = await freshDir("hb-state");
+    const workDir = await freshDir("hb-work");
+    const ok = async () => 0;
+    const result = await runScheduledBackup({
+      kind: "daily",
+      config: { environment: "test", stateDir, workDir, alertWebhookUrl: null, ...heartbeats },
+      log,
+      fetchImpl,
+      now: () => at("2026-11-21T12:30:05Z"),
+      steps: {
+        database: async () => {
+          throw new Error("Google Drive authorization has expired or was revoked: authorize rclone again");
+        },
+        documents: ok,
+        configuration: ok,
+      },
+    });
+
+    expect(result).toMatchObject({ exitCode: 1, failed: ["database"], completed: ["documents"] });
+    const failPing = alerts.find((alert) => alert.startsWith("https://hc.example.invalid/db/fail "));
+    expect(failPing).toContain("authorization has expired");
+    expect(failPing).toContain("[STSLV AMC test]");
+    expect(alerts.some((alert) => alert.startsWith("https://hc.example.invalid/docs/fail"))).toBe(false);
+  });
+
+  it("a job that cannot start (another backup still running) pings /fail on every check it was due to update", async () => {
+    const stateDir = await freshDir("hb-lock");
+    let clock = Date.parse("2026-11-20T12:30:00Z");
+    const release = await acquireBackupLock(stateDir, { label: "running", now: () => new Date(clock) });
+    const result = await runScheduledBackup({
+      kind: "weekly",
+      config: { environment: "test", stateDir, workDir: await freshDir("hb-lock-work"), alertWebhookUrl: null, ...heartbeats },
+      log,
+      fetchImpl,
+      now: () => new Date(clock),
+      lock: { waitMs: 60_000, pollMs: 15_000, sleep: async (ms) => void (clock += ms) },
+      steps: { database: async () => 0, documents: async () => 0, configuration: async () => 0 },
+    });
+    await release();
+
+    expect(result.exitCode).toBe(75);
+    for (const check of ["db", "docs", "config"]) {
+      expect(alerts.find((alert) => alert.startsWith(`https://hc.example.invalid/${check}/fail `))).toContain("NOT STARTED");
+    }
+  });
+});

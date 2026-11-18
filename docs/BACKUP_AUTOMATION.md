@@ -182,6 +182,38 @@ is replaced by `<redacted>`.
 - The manifest lists path, size, checksum, attachment record (id, version, entity, category, original name,
   MIME type, upload time) and the encrypted copy's key for every file.
 
+## Alerts: email through Healthchecks.io (decided 2026-11-18)
+
+The VPS sends no email itself, and no chat webhook is used: failure alerts are **emails from Healthchecks.io** to
+the business's notification address (set in the Healthchecks account, not in this repository). The backup jobs
+only make HTTPS requests to three check URLs, set in `/etc/stslv-amc/backup.env` (never in GitHub):
+
+| Check (Healthchecks name) | `backup.env` | Schedule (Cron, time zone `Asia/Kolkata`) | Grace |
+|---|---|---|---|
+| `stslv-db` | `BACKUP_HEARTBEAT_DB_URL` | `0 18 * * *` (every day) | 3 hours |
+| `stslv-docs` | `BACKUP_HEARTBEAT_DOCS_URL` | `0 18 * * *` (every day) | 3 hours |
+| `stslv-config` | `BACKUP_HEARTBEAT_CONFIG_URL` | `0 18 * * 5` (Fridays) | 3 hours |
+
+The grace covers a job that waits for another backup (up to 2 hours) plus its own run time.
+
+What sends an email:
+- **Any failure of a step**: `<url>/fail` is POSTed with the reason as text (secrets redacted, at most 1,000
+  characters), which Healthchecks includes in the email. This covers database dump or `pg_restore --list` checks,
+  encryption, **Google Drive upload failures** (authorization expired or revoked, Drive full, rate limits, wrong
+  folder), **verification failures** (size/MD5 after upload, SHA-256 of the downloaded copy, a document that no
+  longer matches its database checksum or is missing), the pre-flight checks (a private key on the server, the
+  token file readable by others), a failed promotion, and a job that could not start because another backup did
+  not finish in time.
+- **Missed runs**: no ping within the schedule plus grace (the server was down, the timer was disabled, the unit
+  could not start, the job hung) — Healthchecks' dead-man's switch.
+- Recovery: the next successful run pings the check, and Healthchecks sends an "up" email.
+
+Not alerted by email (logged and visible in `journalctl`): a failure to remove OLD backups after a successful one
+(retention; retried by the next run). A Drive that fills up is alerted when the next upload fails.
+
+Testing the alert path: a run with an impossible setting (for example an unknown `BACKUP_GPG_RECIPIENT` in a
+temporary copy of the settings) must produce a "down" email with the reason; the next good run an "up" email.
+
 ## Keys
 
 - Generate an **encryption key pair offline** on an administrator's machine (e.g. `gpg --full-generate-key`,

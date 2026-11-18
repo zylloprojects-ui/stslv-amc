@@ -3,8 +3,8 @@ import path from "node:path";
 import type { BackupConfig } from "./config";
 import { discardConfigSnapshot } from "./config-backup";
 import { describeFailure, type Logger } from "./log";
-import { sendAlert, type Fetch } from "./notify";
-import { acquireBackupLock, BackupLockedError, planRun, readScheduleState, recordStepDone, type BackupKind, type BackupStep, type LockOptions } from "./schedule";
+import { pingHeartbeat, sendAlert, type Fetch } from "./notify";
+import { acquireBackupLock, BackupLockedError, planRun, readScheduleState, recordStepDone, STEPS, type BackupKind, type BackupStep, type LockOptions } from "./schedule";
 
 // A scheduled backup (systemd timer → `cli.js scheduled-backup --kind daily|weekly`; the Friday job becomes the
 // monthly backup on the last Friday of the month, see schedule.ts):
@@ -23,7 +23,7 @@ export type Promoter = (step: BackupStep, id: string, kind: BackupKind, from: Ba
 
 export interface ScheduledBackupDeps {
   kind: BackupKind;
-  config: Pick<BackupConfig, "environment" | "stateDir" | "workDir" | "alertWebhookUrl">;
+  config: Pick<BackupConfig, "environment" | "stateDir" | "workDir" | "alertWebhookUrl"> & Partial<Pick<BackupConfig, "heartbeatDbUrl" | "heartbeatDocsUrl" | "heartbeatConfigUrl">>;
   log: Logger;
   steps: Record<BackupStep, StepRunner>;
   promote?: Promoter;
@@ -44,6 +44,14 @@ export async function runScheduledBackup(deps: ScheduledBackupDeps): Promise<Sch
   const { kind, config, log } = deps;
   const now = deps.now ?? (() => new Date());
   let release: (() => Promise<void>) | null = null;
+  // Every failure the scheduled job sees is reported to that step's heartbeat ("<url>/fail", with the reason), not
+  // only failures inside a step: a failed pre-flight (private key on the server, token file permissions), an expired
+  // or revoked Google authorization or a wrong Drive folder is raised BEFORE the step's own error handling, and must
+  // reach the email alert at once instead of waiting for the missed-run alert (review of email-only alerting,
+  // 2026-11-18). A second /fail ping for a failure the step already reported changes nothing.
+  const heartbeat = (step: BackupStep): string | null =>
+    (step === "database" ? config.heartbeatDbUrl : step === "documents" ? config.heartbeatDocsUrl : config.heartbeatConfigUrl) ?? null;
+  const reportFailure = (step: BackupStep, reason: string) => pingHeartbeat(heartbeat(step), false, log, deps.fetchImpl, `[STSLV AMC ${config.environment}] ${reason}`);
 
   try {
     release = await acquireBackupLock(config.stateDir, { ...deps.lock, label: `scheduled ${kind}`, now });
@@ -51,6 +59,7 @@ export async function runScheduledBackup(deps: ScheduledBackupDeps): Promise<Sch
     if (error instanceof BackupLockedError) {
       log.error("scheduled_backup.locked", { kind, holder: error.holder });
       await sendAlert(config.alertWebhookUrl, `[STSLV AMC ${config.environment}] ${kind.toUpperCase()} BACKUP NOT STARTED: ${error.message}`, log, deps.fetchImpl);
+      for (const step of STEPS[kind]) await reportFailure(step, `${kind.toUpperCase()} BACKUP NOT STARTED: ${error.message}`);
       return { exitCode: 75, plan: null, completed: [], failed: [] };
     }
     throw error;
@@ -90,7 +99,9 @@ export async function runScheduledBackup(deps: ScheduledBackupDeps): Promise<Sch
       } catch (error) {
         failed.push(step);
         log.error("scheduled_backup.promote_failed", { kind: plan.kind, step, id, reason: describeFailure(error, log) });
-        await sendAlert(config.alertWebhookUrl, `[STSLV AMC ${config.environment}] ${plan.kind.toUpperCase()} BACKUP: raising today's ${step} backup ${id} failed: ${describeFailure(error, log)}`, log, deps.fetchImpl);
+        const reason = `${plan.kind.toUpperCase()} BACKUP: raising today's ${step} backup ${id} failed: ${describeFailure(error, log)}`;
+        await sendAlert(config.alertWebhookUrl, `[STSLV AMC ${config.environment}] ${reason}`, log, deps.fetchImpl);
+        await reportFailure(step, reason);
       }
     }
 
@@ -106,11 +117,15 @@ export async function runScheduledBackup(deps: ScheduledBackupDeps): Promise<Sch
           if (code === 2) warnings = true;
         } else {
           failed.push(step);
+          await reportFailure(step, `${plan.kind.toUpperCase()} BACKUP: the ${step} step ended with exit code ${code}`);
         }
       } catch (error) {
-        // The step has alerted and recorded its own failure; this line ties it to the scheduled job.
+        // A failure inside the backup has already been alerted by the step; one before it (pre-flight, Google
+        // authorization, Drive folder check) has not: both are reported to the heartbeat here.
         failed.push(step);
-        log.error("scheduled_backup.step_failed", { kind: plan.kind, step, reason: describeFailure(error, log) });
+        const reason = describeFailure(error, log);
+        log.error("scheduled_backup.step_failed", { kind: plan.kind, step, reason });
+        await reportFailure(step, `${plan.kind.toUpperCase()} BACKUP FAILED (${step}): ${reason}`);
       }
     }
 

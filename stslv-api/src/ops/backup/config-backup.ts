@@ -198,7 +198,7 @@ export async function runConfigBackup(deps: ConfigBackupDeps): Promise<{ id: str
     log.error("config_backup.failed", { id, reason });
     await writeState(config.stateDir, { ...state, lastFailureAt: now().toISOString(), lastFailure: reason, lastRunId: id }).catch(() => undefined);
     await sendAlert(config.alertWebhookUrl, `[STSLV AMC ${config.environment}] CONFIGURATION BACKUP FAILED (${id}): ${reason}`, log, deps.fetchImpl);
-    await pingHeartbeat(config.heartbeatConfigUrl, false, log, deps.fetchImpl);
+    await pingHeartbeat(config.heartbeatConfigUrl, false, log, deps.fetchImpl, `CONFIGURATION BACKUP FAILED (${id}): ${reason}`);
     throw error;
   } finally {
     // The encrypted snapshot is uploaded or reported; nothing is left behind in the work folder.

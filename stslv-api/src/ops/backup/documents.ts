@@ -277,7 +277,7 @@ export async function runDocumentsBackup(deps: DocsBackupDeps): Promise<Document
         deps.fetchImpl
       );
     }
-    await pingHeartbeat(config.heartbeatDocsUrl, problems === 0, log, deps.fetchImpl);
+    await pingHeartbeat(config.heartbeatDocsUrl, problems === 0, log, deps.fetchImpl, `DOCUMENT BACKUP PROBLEMS (${id}): ${summary["missing-in-bucket"]} file(s) missing from document storage, ${summary["checksum-mismatch"]} checksum mismatch(es).`);
 
     return manifest;
   } catch (error) {
@@ -286,7 +286,7 @@ export async function runDocumentsBackup(deps: DocsBackupDeps): Promise<Document
     log.error("docs_backup.failed", { id, reason });
     await writeState(config.stateDir, { ...state, lastFailureAt: now().toISOString(), lastFailure: reason, lastRunId: id }).catch(() => undefined);
     await sendAlert(config.alertWebhookUrl, `[STSLV AMC ${config.environment}] DOCUMENT BACKUP FAILED (${id}): ${reason}`, log, deps.fetchImpl);
-    await pingHeartbeat(config.heartbeatDocsUrl, false, log, deps.fetchImpl);
+    await pingHeartbeat(config.heartbeatDocsUrl, false, log, deps.fetchImpl, `DOCUMENT BACKUP FAILED (${id}): ${reason}`);
     throw error;
   } finally {
     await rm(runDir, { recursive: true, force: true });

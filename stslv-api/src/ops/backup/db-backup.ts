@@ -258,7 +258,7 @@ export async function runDatabaseBackup(deps: DbBackupDeps): Promise<DbBackupRes
     log.error("db_backup.failed", { id, reason });
     await writeState(config.stateDir, { ...state, lastFailureAt: now().toISOString(), lastFailure: reason, lastRunId: id }).catch(() => undefined);
     await sendAlert(config.alertWebhookUrl, `[STSLV AMC ${config.environment}] DATABASE BACKUP FAILED (${id}): ${reason}`, log, deps.fetchImpl);
-    await pingHeartbeat(config.heartbeatDbUrl, false, log, deps.fetchImpl);
+    await pingHeartbeat(config.heartbeatDbUrl, false, log, deps.fetchImpl, `DATABASE BACKUP FAILED (${id}): ${reason}`);
     throw error;
   } finally {
     // The plain dump and every temporary file are removed whatever happened.
