@@ -193,7 +193,8 @@ function ProfilePanel() {
           >
             {initialsOf(user.fullName)}
           </span>
-          <div className="min-w-0 flex-1 pb-1">
+          {/* At least 12rem wide: on a phone the name moves below the avatar instead of being squeezed beside it. */}
+          <div className="min-w-[12rem] flex-1 pb-1">
             <h2 className="break-words text-2xl font-bold tracking-tight text-[#0b3b66]">{user.fullName}</h2>
             <p className="break-words text-sm text-slate-500">{user.email}</p>
           </div>
