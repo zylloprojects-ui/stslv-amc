@@ -288,3 +288,32 @@ describe("settings and disk space", () => {
 
 // Keys used above, so a renamed key fails here first.
 void configArchiveKey;
+
+describe("documents on the VPS: the runs of the latest 7 days, shared encrypted files kept", () => {
+  it("removes document run manifests older than 7 IST days (never the newest); the encrypted document files stay", async () => {
+    const local = await localSettings();
+    const scratch = await freshDir("docs-blob");
+    const blob = path.join(scratch, "b");
+    await writeFile(blob, "encrypted");
+    await local.store.upload("docs/files/attachments/5f0c.pdf/ab12.gpg", blob);
+    const runs: { id: string; day: string }[] = [];
+    for (let day = 1; day <= 12; day += 1) {
+      const id = newRunId("stslv-docs", "test", new Date(Date.UTC(2026, 10, day, 12, 31, 0)));
+      await local.store.upload(`docs/manifests/${id}.json.gpg`, blob);
+      runs.push({ id, day: `2026-11-${String(day).padStart(2, "0")}` });
+    }
+
+    await pruneLocalCopies({ local: local.store, retainDays: 7, now: new Date("2026-11-12T13:00:00Z"), log, confirmedOffsite: async () => true });
+
+    const left = (await local.store.list("docs/manifests/")).map((object) => object.key).sort();
+    expect(left).toEqual(runs.filter((run) => run.day >= "2026-11-06").map((run) => `docs/manifests/${run.id}.json.gpg`).sort());
+    expect(await local.store.head("docs/files/attachments/5f0c.pdf/ab12.gpg")).not.toBeNull();
+
+    // A single, old run is the newest one: kept.
+    const lone = await localSettings();
+    const oldId = newRunId("stslv-docs", "test", new Date("2026-09-01T12:31:00Z"));
+    await lone.store.upload(`docs/manifests/${oldId}.json.gpg`, blob);
+    await pruneLocalCopies({ local: lone.store, retainDays: 7, now: new Date("2026-11-12T13:00:00Z"), log, confirmedOffsite: async () => true });
+    expect((await lone.store.list("docs/manifests/")).map((object) => object.key)).toEqual([`docs/manifests/${oldId}.json.gpg`]);
+  });
+});

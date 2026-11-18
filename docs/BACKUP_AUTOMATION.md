@@ -184,7 +184,8 @@ is replaced by `<redacted>`.
 
 ## Encrypted copies on the VPS (approved 2026-11-18)
 
-Besides Google Drive, every scheduled backup keeps an encrypted copy on the VPS in
+Besides Google Drive, the **database and document** backups of every calendar day (Saturday–Thursday by the daily
+job, Friday by the weekly/monthly job, all at 18:00 IST) keep an encrypted copy on the VPS in
 `BACKUP_LOCAL_COPY_DIR=/var/lib/stslv-amc-backup/local` (owner `stslv-backup`, mode 0700, inside the backup user's
 0700 home; root and sudo administrators can read it; the application cannot). Code: `local-copy.ts`. There is no
 second schedule: the same daily and Friday jobs do it.
@@ -192,11 +193,14 @@ second schedule: the same daily and Friday jobs do it.
 ```
 /var/lib/stslv-amc-backup/local/
   db/        <id>.dump.gpg  <id>.manifest.json.gpg  <id>.kind-<type>.json      latest 7 calendar days
-  config/    <id>.tar.gpg   <id>.manifest.json.gpg  <id>.kind-<type>.json      latest 7 calendar days (Fridays)
-  docs/      files/…/<sha256>.gpg   manifests/<run>.json.gpg                   never removed (as in Drive)
+  docs/      manifests/<run>.json.gpg                                       latest 7 calendar days
+  docs/      files/…/<sha256>.gpg   one encrypted copy per document version, shared by all runs: kept
 ```
 
-- **VPS first, then Drive, the same files.** The database and configuration backups are made complete and verified
+- **Owner's design (approved 2026-11-18):** VPS = database + documents, every day, latest 7 days, no separate weekly
+  or monthly copies (a Friday's backup is that day's one copy, labelled with its type). The weekly/monthly
+  configuration backup stays **Drive-only**, unchanged. Hostinger's own daily VPS backups are separate and unchanged.
+- **VPS first, then Drive, the same files.** The database backup is made complete and verified
   on the VPS (no pruning there), then the very same encrypted files are uploaded to the Drive folder of their type,
   manifest last, checked by size + MD5 and by a SHA-256 comparison after downloading them again. Documents are
   copied encrypted to the VPS and then to Drive by the same document job.
@@ -204,10 +208,12 @@ second schedule: the same daily and Friday jobs do it.
   VPS, but the Google Drive copy failed: <reason>" in the journal and in the job's state file, the unit ends
   *failed*, and the day is not recorded as done. The next job first uploads every VPS backup still missing in Drive
   (`local_copy.uploaded_late`). A Drive upload interrupted before the manifest leaves nothing listed in Drive.
-- **Retention on the VPS: the latest 7 calendar days (IST)** (`BACKUP_LOCAL_RETAIN_DAYS`), daily, weekly and monthly
-  backups alike. Never removed: the newest database and the newest configuration backup, and any backup not
+- **Retention on the VPS: the latest 7 calendar days (IST)** (`BACKUP_LOCAL_RETAIN_DAYS`), whatever the type label.
+  Never removed: the newest database backup, and any backup not
   confirmed present in its Drive folder (if Drive cannot be asked, nothing is removed). Only this folder is ever
-  touched: the manual safety backups in `/var/backups/stselv-safety` are outside it and never affected. Drive
+  touched: the manual safety backups in `/var/backups/stselv-safety` are outside it and never affected. Document
+  runs follow the same 7 days; the encrypted document files they point to are shared by every run holding that
+  version (the server cannot read the encrypted run lists to tell which are unused) and are kept. Drive
   retention is unchanged (14 daily, 8 weekly, 12 monthly).
 - **Disk space.** Below `BACKUP_LOCAL_MIN_FREE_GB` (5 GB) free, no VPS copy is made (error in the journal; the
   backup still goes to Drive and the step reports a warning). Today: ~0.3 MB per day.
@@ -215,7 +221,7 @@ second schedule: the same daily and Friday jobs do it.
   work folder during a run. The private key never comes to the VPS, so the VPS copies are restored on the
   administrator PC: copy the folder (encrypted) and point `BACKUP_LOCAL_DIR` at it, e.g.
   `ssh <admin>@<VPS> "sudo tar -C /var/lib/stslv-amc-backup/local -cf - ." | tar -C <new folder> -xf -`, then
-  `db-restore-drill`, `docs-restore --local-layout` and `config-restore` exactly as for a Drive download.
+  `db-restore-drill` and `docs-restore --local-layout` exactly as for a Drive download (tested 2026-11-18).
 - Turning it off: empty `BACKUP_LOCAL_COPY_DIR` (Drive only, as before); nothing else changes.
 
 ## Checking the backups (no external monitoring service — decided 2026-11-18)

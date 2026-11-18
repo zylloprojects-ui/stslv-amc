@@ -4,9 +4,11 @@ import path from "node:path";
 import type { BackupConfig } from "./config";
 import { configArchiveKey, configKindKey, configManifestKey, listConfigBackups } from "./config-backup";
 import { dumpKey, kindMarkerKey, listDatabaseBackups, manifestKey } from "./db-backup";
+import { docsManifestKey } from "./documents";
 import { describeFailure, type Logger } from "./log";
 import { readState, writeState } from "./notify";
 import type { RecoveryKind } from "./retention";
+import { newestFirst } from "./run-id";
 import { backupDay } from "./schedule";
 import type { WritableStore } from "./store";
 import { sha256File } from "./tools";
@@ -24,11 +26,13 @@ import { sha256File } from "./tools";
 // job twice; they are never deleted (the same rule as in Drive).
 //
 // Local retention: the backups of the latest N calendar days (Asia/Kolkata, BACKUP_LOCAL_RETAIN_DAYS, default 7) —
-// daily, weekly and monthly alike. Never removed: the newest backup, and any backup not confirmed present in its Drive
+// daily, weekly and monthly alike; for documents, the run manifests of those days (the shared encrypted files stay). Never removed: the newest backup, and any backup not confirmed present in its Drive
 // folder (if Drive cannot be asked, nothing is removed). Only the local store's own folder is ever touched.
 // Everything here is encrypted with the backup PUBLIC key; no plain copy and no private key is ever kept.
 
 export type TypedStep = "database" | "configuration";
+
+const DOCS_RUN_PREFIX = "stslv-docs";
 
 export interface LocalCopySettings {
   store: WritableStore;
@@ -148,6 +152,19 @@ export async function pruneLocalCopies(input: {
       await input.local.remove(keys[0] as string);
       removed.push(backup.id);
     }
+  }
+
+  // Document runs: the run manifests (which document versions a day's backup holds) of the latest `retainDays` days
+  // are kept, the newest always. The encrypted document files themselves are shared by every run that holds that
+  // document version and are never removed (the server cannot read the encrypted manifests to tell which are unused).
+  const docRuns = newestFirst(
+    DOCS_RUN_PREFIX,
+    (await input.local.list("docs/manifests/")).map((object) => /^docs\/manifests\/(.+)\.json\.gpg$/.exec(object.key)?.[1]).filter((id): id is string => typeof id === "string")
+  );
+  for (const run of docRuns.slice(1)) {
+    if (backupDay(run.createdAt).date >= oldestKeptDay) continue;
+    await input.local.remove(docsManifestKey(run.id));
+    removed.push(run.id);
   }
 
   // Data files whose manifest never arrived (a local run interrupted mid-way), older than two days: not recoverable.

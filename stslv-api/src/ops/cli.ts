@@ -2,13 +2,13 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { config as loadEnvFile } from "dotenv";
 import { gdriveFolderName, openBackupStore, openDocumentSource, readBackupConfig, readDatabaseSource, readLocalCopySettings, type BackupConfig } from "./backup/config";
-import { configKindKey, pruneConfigBackups, restoreConfigBackup, runConfigBackup } from "./backup/config-backup";
+import { restoreConfigBackup, runConfigBackup } from "./backup/config-backup";
 import { localCopyAllowed, recordOffsiteFailure, runTypedStepWithLocalCopy, type LocalCopySettings } from "./backup/local-copy";
 import { assertNoPrivateKey, assertPrivateFile } from "./backup/preflight";
 import { promoteBackup } from "./backup/promote";
 import { RcloneStore } from "./backup/rclone-store";
 import type { WritableStore } from "./backup/store";
-import { listDatabaseBackups, pgClient, promoteDatabaseBackup, pruneDatabaseBackups, runDatabaseBackup, uploadKindMarker } from "./backup/db-backup";
+import { listDatabaseBackups, pgClient, promoteDatabaseBackup, pruneDatabaseBackups, runDatabaseBackup } from "./backup/db-backup";
 import { restoreDatabaseBackup } from "./backup/db-restore";
 import { readAttachmentInventory, restoreDocuments, runDocumentsBackup } from "./backup/documents";
 import { createLogger, describeFailure } from "./backup/log";
@@ -160,33 +160,25 @@ async function documentsStep(config: BackupConfig, vars: Vars, log: Log, verifyS
   return findings(manifest) || local.skipped ? 2 : 0;
 }
 
+/**
+ * The weekly/monthly configuration backup: Google Drive only (owner's design, 2026-11-18: the VPS keeps 7 days of
+ * database and document backups, no separate weekly/monthly copies). Unchanged from before the VPS copies.
+ */
 async function configurationStep(config: BackupConfig, vars: Vars, log: Log, kind: BackupKind = "weekly"): Promise<{ code: number; id: string }> {
-  const local = await localCopyFor(vars, log);
-  if (local.settings) {
-    const { id } = await runTypedStepWithLocalCopy({
-      step: "configuration",
-      kind,
-      job: "config-backup",
-      local: local.settings,
-      config,
-      log,
-      makeLocal: async () => ({ id: (await runConfigBackup({ config: { ...config, prune: false }, store: local.settings!.store, log, kind })).id }),
-      openRemote: remoteStores(vars, log),
-      pruneRemote: async (remote, keepId) => (config.prune ? pruneConfigBackups(remote, config.retention, keepId) : []),
-    });
-    return { code: 0, id };
-  }
   const result = await runConfigBackup({ config, store: await destination(vars, log, kind), log, kind });
-  return { code: local.skipped ? 2 : 0, id: result.id };
+  return { code: 0, id: result.id };
 }
 
-/** Adds the higher type's marker to the VPS copy of a promoted backup (so a late Drive upload targets the right folder). */
+/**
+ * Adds the higher type's marker to the VPS copy of a promoted DATABASE backup (so a late Drive upload targets the
+ * right folder; it is still the one copy of that day, not a separate weekly/monthly copy). Configuration backups are
+ * Drive-only and have no VPS copy.
+ */
 async function promoteLocalCopy(vars: Vars, log: Log, workDir: string, step: "database" | "configuration", id: string, kind: BackupKind): Promise<void> {
   const settings = readLocalCopySettings(vars);
-  if (!settings) return;
+  if (!settings || step !== "database") return;
   try {
-    if (step === "database") await promoteDatabaseBackup(settings.store, id, kind, workDir);
-    else await uploadKindMarker(settings.store, configKindKey(id, kind), path.join(workDir, `promote-${id}.json`), { id, kind, promotedAt: new Date().toISOString() });
+    if (await settings.store.head(`db/${id}.manifest.json.gpg`)) await promoteDatabaseBackup(settings.store, id, kind, workDir);
   } catch (error) {
     log.warn("local_copy.promote_failed", { step, id, kind, reason: describeFailure(error, log) });
   }
