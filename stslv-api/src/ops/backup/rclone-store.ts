@@ -55,7 +55,7 @@ export class RcloneError extends Error {
   }
 }
 
-const COMMON_FLAGS = ["--retries", "3", "--low-level-retries", "10", "--retry-sleep", "10s", "--stats", "0", "--log-level", "ERROR", "--use-json-log=false"];
+const COMMON_FLAGS = ["--retries", "3", "--low-level-retries", "10", "--retries-sleep", "10s", "--stats", "0", "--log-level", "ERROR", "--use-json-log=false"];
 /** "<id>.kind-<daily|weekly|monthly>.json": the only plain (unencrypted) objects, holding id, type and times. */
 const KIND_MARKER_KEY = /\.kind-(daily|weekly|monthly)\.json$/;
 const MAX_MARKER_BYTES = 1024;

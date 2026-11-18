@@ -16,14 +16,22 @@ const ids = () => JSON.parse(fs.readFileSync(path.join(ROOT, "ids.json"), "utf8"
 
 const args = process.argv.slice(2);
 if (process.env.FAKE_RCLONE_LOG) fs.appendFileSync(process.env.FAKE_RCLONE_LOG, `${args.filter((a) => !a.includes("config")).join(" ")}\n`);
-const VALUED = new Set(["--config", "--retries", "--low-level-retries", "--retry-sleep", "--stats", "--log-level", "--drive-root-folder-id", "--hash-type"]);
+const VALUED = new Set(["--config", "--retries", "--low-level-retries", "--retries-sleep", "--stats", "--log-level", "--drive-root-folder-id", "--hash-type"]);
+// Like real rclone, an unknown flag is an error: every flag here was checked against rclone 1.76 ("rclone help
+// flags" and the command's --help) on the VPS, 2026-11-18. ("--retry-sleep" had slipped through a lenient stand-in;
+// the real flag is --retries-sleep.)
+const SWITCHES = new Set(["--use-json-log", "--dirs-only", "--files-only", "--no-modtime", "--hash", "--json", "--immutable", "--no-update-modtime", "--drive-use-trash"]);
 const flags = new Map();
 const positional = [];
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i];
+  const name = arg.split("=")[0];
   if (VALUED.has(arg)) flags.set(arg, args[++i]);
-  else if (arg.startsWith("--") || arg === "-R") flags.set(arg.split("=")[0], true);
-  else positional.push(arg);
+  else if (SWITCHES.has(name) || arg === "-R") flags.set(name, true);
+  else if (arg.startsWith("-")) {
+    process.stderr.write(`Error: unknown flag: ${name}\nUsage:\n  rclone [flags]\n`);
+    process.exit(1);
+  } else positional.push(arg);
 }
 const [command, ...rest] = positional;
 
