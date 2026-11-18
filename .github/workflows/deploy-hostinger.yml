@@ -11,7 +11,8 @@
 #   variable HOSTINGER_USER            stselvdeploy
 #   variable HOSTINGER_KNOWN_HOSTS     the VPS host key line (pinned; StrictHostKeyChecking=yes)
 #   variable HOSTINGER_DEPLOY_ENABLED  "true" to deploy; anything else = test/build only
-#   variable HOSTINGER_URL             https://srv2167443.hstgr.cloud
+#   variable HOSTINGER_URL             public address for the post-deploy check: https://stsamc.com (primary) or
+#                                      https://srv2167443.hstgr.cloud; both are served by the same Nginx and certificate
 name: Hostinger deploy
 
 on:
