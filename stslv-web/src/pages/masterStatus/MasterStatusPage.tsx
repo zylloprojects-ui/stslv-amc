@@ -736,7 +736,7 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-        <ActionButton icon="details" label={`Details of ${item.reference} ${serviceCodeLabel(item.service)}`} hint="Details" onClick={() => setDetails(true)} />
+        <ActionButton icon="details" label={`Details of ${item.reference} ${serviceCodeLabel(item.service)}`} hint={`View details of ${item.reference} ${serviceCodeLabel(item.service)}`} onClick={() => setDetails(true)} />
         {details && <DetailsDialog item={item} canViewContract={canViewContract} onClose={() => setDetails(false)} />}
       </td>
     </tr>

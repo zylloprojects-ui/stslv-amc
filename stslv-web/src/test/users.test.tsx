@@ -356,7 +356,7 @@ describe('sign-up requests', () => {
     expect(within(row).getByText('No role')).toBeInTheDocument()
     expect(within(row).queryByText('Inactive')).not.toBeInTheDocument()
     expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' })).toBeDisabled()
-    expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' })).toHaveAttribute('title', 'Assign a role before approving this user.')
+    expect(within(row).getByRole('button', { name: 'Approve Nadia Newcomer' }).parentElement).toHaveAttribute('data-tooltip', 'Assign a role before approving this user.')
     expect(within(row).getByText('Assign a role before approving this user.')).toBeInTheDocument()
     // Reject and Change roles stay available.
     expect(within(row).getByRole('button', { name: 'Reject Nadia Newcomer' })).toBeEnabled()

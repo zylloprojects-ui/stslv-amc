@@ -333,7 +333,8 @@ describe('Admin and the privileged roles', () => {
 
     const button = await screen.findByRole('button', { name: 'Change role of Sam Super' })
     expect(button).toBeDisabled()
-    expect(button).toHaveAttribute('title', 'Only Super Admin can manage Super Admin and Service Dept accounts.')
+    // A disabled button gets no hover events: its tooltip (the reason) sits on the wrapper around it.
+    expect(button.parentElement).toHaveAttribute('data-tooltip', 'Only Super Admin can manage Super Admin and Service Dept accounts.')
     expect(screen.getByRole('button', { name: 'Deactivate Sam Super' })).toBeDisabled()
 
     await userEvent.click(screen.getByRole('button', { name: 'Change role of Fay Finance' }))

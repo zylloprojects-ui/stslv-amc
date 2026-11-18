@@ -354,10 +354,14 @@ function QueueRow({ item, number, shown, onAction }: { item: RenewalQueueItem; n
           {item.renewalState === 'UNDER_APPROVAL' && renewal && canCancel && (
             <ActionButton icon="reject" danger label="Cancel" hint={`Cancel the renewal of ${item.reference}`} onClick={() => onAction({ kind: 'status', contractId: renewal.id, status: 'CANCELLED' })} />
           )}
-          <ContractLink id={renewal && item.renewalState !== 'CANCELLED' ? renewal.id : item.id} className={actionButtonClass()} aria-label={renewal && item.renewalState !== 'CANCELLED' ? 'View Renewal' : 'View'} hideWithoutAccess>
-            <span title={renewal && item.renewalState !== 'CANCELLED' ? 'View the renewal contract' : 'View the contract'} className="inline-flex">
-              <ActionIcon name="view" />
-            </span>
+          <ContractLink
+            id={renewal && item.renewalState !== 'CANCELLED' ? renewal.id : item.id}
+            className={actionButtonClass()}
+            aria-label={renewal && item.renewalState !== 'CANCELLED' ? 'View Renewal' : 'View'}
+            tooltip={renewal && item.renewalState !== 'CANCELLED' ? `View the renewal contract of ${item.reference}` : `View contract ${item.reference}`}
+            hideWithoutAccess
+          >
+            <ActionIcon name="view" />
           </ContractLink>
         </ActionGroup>
       </td>

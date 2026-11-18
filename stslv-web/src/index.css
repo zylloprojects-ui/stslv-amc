@@ -303,6 +303,55 @@
 .dark .hover\:bg-red-50:hover {
   background-color: #3a1a22;
 }
+/* The icon-action tooltip (components/ActionTooltip.tsx): readable 14px text, drawn above everything. */
+.action-tooltip {
+  position: fixed;
+  z-index: 1000;
+  /* Its own width, not what is left to the right of it: the size measured before placing it is the final size. */
+  width: max-content;
+  max-width: min(20rem, calc(100vw - 16px));
+  padding: 0.45rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: #0b2545;
+  color: #ffffff;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: 0 8px 20px -6px rgba(15, 23, 42, 0.35), 0 2px 6px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+  animation: action-tooltip-in 90ms ease-out;
+}
+.action-tooltip-arrow {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin-left: -5px;
+  background-color: inherit;
+  transform: rotate(45deg);
+}
+.action-tooltip[data-placement='above'] .action-tooltip-arrow {
+  bottom: -4px;
+}
+.action-tooltip[data-placement='below'] .action-tooltip-arrow {
+  top: -4px;
+}
+.dark .action-tooltip {
+  background-color: #e8f1fb;
+  color: #0b2545;
+  box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.6);
+}
+@keyframes action-tooltip-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .action-tooltip {
+    animation: none;
+  }
+}
 /* Destructive icon actions (components/table.ts actionButtonClass) use important utilities. Important declarations in a
    layer beat unlayered ones, so these overrides sit in the same layer and win on specificity. */
 @layer utilities {

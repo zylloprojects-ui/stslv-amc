@@ -260,13 +260,12 @@ export function RecycleBin() {
                       </td>
                       <td className={TABLE.td}>
                         <ActionGroup>
-                          <ActionButton icon="restore" label={`Restore ${item.typeLabel} ${item.reference} ${item.name}`} hint="Restore" onClick={() => setRestoring(item)} />
+                          <ActionButton icon="restore" label={`Restore ${item.typeLabel} ${item.reference} ${item.name}`} onClick={() => setRestoring(item)} />
                           {item.type !== 'AMC_CONTRACT' && (
                             <ActionButton
                               icon="delete"
                               danger
                               label={`Delete permanently ${item.typeLabel} ${item.reference} ${item.name}`}
-                              hint="Delete permanently"
                               onClick={() => setPurging(item)}
                             />
                           )}

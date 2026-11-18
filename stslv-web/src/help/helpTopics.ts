@@ -870,7 +870,7 @@ const FINANCE: HelpTopic[] = [
         bullets: [
           'The Total Filtered row adds up every service that matches the filters, on every page, not only the rows shown.',
           'Total Filtered Service Value (ex VAT): the scheduled service amounts, excluding VAT. Paid (Invoice No.) is the part with an Invoice No. entered: a reference status, not proof of payment.',
-          'Total Filtered Invoice Value (ex VAT): the Zoho invoice amounts allocated to those services in Invoice Tracking. Cancelled invoices are left out. It is not the contract value.',
+          'Total Filtered Invoice Value (ex VAT): the Zoho invoice amounts allocated to those services in Invoice Tracking. Cancelled invoices are left out. It is not the contract value. The Zoho Invoice Value (ex VAT) column and this total are hidden by default: show them with Hide Columns.',
           'An empty Value with "No Billing Basis or Cost per Visit on the contract" means the contract gives no amount; no value is invented. Set a Billing Basis or Cost per Visit on the contract and Regenerate.',
         ],
       },

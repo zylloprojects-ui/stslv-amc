@@ -16,7 +16,7 @@ export const TABLE = {
 
 /** An icon-only row action (see components/IconActions). Touch screens (phones, tablets) get a larger target. */
 const ACTION_BUTTON =
-  'inline-flex h-7 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10 disabled:cursor-not-allowed disabled:opacity-40 pointer-coarse:h-9 pointer-coarse:w-9'
+  'inline-flex h-7 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-sky-50 hover:text-[#1479BD] focus-visible:relative focus-visible:z-10 disabled:pointer-events-none disabled:opacity-40 pointer-coarse:h-9 pointer-coarse:w-9'
 /** Destructive actions are red at rest as well as on hover, so they are never mistaken for a harmless one. */
 const ACTION_DANGER = '!text-red-600 hover:!bg-red-50 hover:!text-red-700'
 
