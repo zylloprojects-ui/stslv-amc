@@ -250,6 +250,33 @@ export function openDocumentSource(vars: Vars, nodeEnv = vars.NODE_ENV): Readabl
   );
 }
 
+/**
+ * Encrypted copies kept on the VPS as well (local-copy.ts), or null when BACKUP_LOCAL_COPY_DIR is not set (Drive
+ * only, as before). The folder must be absolute and outside the work folder (whose leftover run folders are removed).
+ */
+export function readLocalCopySettings(vars: Vars): { dir: string; store: WritableStore; retainDays: number; minFreeBytes: number } | null {
+  const dir = read(vars, "BACKUP_LOCAL_COPY_DIR");
+  if (!dir) return null;
+  if (!path.isAbsolute(dir)) throw new Error("BACKUP_LOCAL_COPY_DIR must be an absolute path.");
+  const resolved = path.resolve(dir);
+  const workDir = read(vars, "BACKUP_WORK_DIR");
+  if (workDir) {
+    const work = path.resolve(workDir);
+    if (resolved === work || resolved.startsWith(work + path.sep) || work.startsWith(resolved + path.sep)) {
+      throw new Error("BACKUP_LOCAL_COPY_DIR must be outside BACKUP_WORK_DIR (and not contain it).");
+    }
+  }
+  const destination = read(vars, "BACKUP_LOCAL_DIR");
+  if (destination && path.resolve(destination) === resolved) throw new Error("BACKUP_LOCAL_COPY_DIR must not be the BACKUP_LOCAL_DIR destination.");
+
+  return {
+    dir: resolved,
+    store: new LocalDirStore(resolved),
+    retainDays: wholeNumber(vars, "BACKUP_LOCAL_RETAIN_DAYS", 7, 1, 60),
+    minFreeBytes: wholeNumber(vars, "BACKUP_LOCAL_MIN_FREE_GB", 5, 1, 1000) * 1024 ** 3,
+  };
+}
+
 /** The expected name of the Google Drive destination folder (checked against its ID before every run). */
 export function gdriveFolderName(vars: Vars): string {
   return read(vars, "BACKUP_GDRIVE_FOLDER_NAME") || "STS-ELV Backup";

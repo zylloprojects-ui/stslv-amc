@@ -107,6 +107,25 @@ export async function discardConfigSnapshot(workDir: string): Promise<void> {
   await rm(path.join(workDir, CONFIG_SNAPSHOT_PATHS), { force: true });
 }
 
+/**
+ * Retention of configuration backups by type: the newest 8 weekly (never fewer than 4) and 12 monthly copies; never
+ * the backup just made; nothing while 4 or fewer exist. Manifest first: an interrupted prune never leaves a listed
+ * recovery point without its archive.
+ */
+export async function pruneConfigBackups(store: WritableStore, retention: Pick<BackupConfig["retention"], "weekly" | "monthly">, keepId: string): Promise<string[]> {
+  const pruned: string[] = [];
+  const backups = await listConfigBackups(store);
+  if (backups.length <= 4) return pruned;
+  const decision = selectByKind(backups, { daily: 0, weekly: Math.max(4, retention.weekly), monthly: retention.monthly });
+  for (const old of decision.remove.filter((candidate) => candidate !== keepId)) {
+    await store.remove(configManifestKey(old));
+    for (const kind of ["daily", "weekly", "monthly"] as const) await store.remove(configKindKey(old, kind));
+    await store.remove(configArchiveKey(old));
+    pruned.push(old);
+  }
+  return pruned;
+}
+
 export async function runConfigBackup(deps: ConfigBackupDeps): Promise<{ id: string; manifest: ConfigManifest; pruned: string[] }> {
   const { config, store, log } = deps;
   const now = deps.now ?? (() => new Date());
@@ -169,17 +188,7 @@ export async function runConfigBackup(deps: ConfigBackupDeps): Promise<{ id: str
     let pruned: string[] = [];
     if (config.prune) {
       try {
-        const backups = await listConfigBackups(store);
-        if (backups.length > 4) {
-          const decision = selectByKind(backups, { daily: 0, weekly: Math.max(4, config.retention.weekly), monthly: config.retention.monthly });
-          for (const old of decision.remove.filter((candidate) => candidate !== id)) {
-            // Manifest first: an interrupted prune never leaves a listed recovery point without its archive.
-            await store.remove(configManifestKey(old));
-            for (const kind of ["daily", "weekly", "monthly"] as const) await store.remove(configKindKey(old, kind));
-            await store.remove(configArchiveKey(old));
-            pruned.push(old);
-          }
-        }
+        pruned = await pruneConfigBackups(store, config.retention, id);
       } catch (error) {
         const reason = describeFailure(error, log);
         log.warn("config_backup.prune_failed", { id, reason });
