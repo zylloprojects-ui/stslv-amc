@@ -1,6 +1,10 @@
 import ExcelJS from "exceljs";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { pool } from "../src/config/database";
+import { buildAccountsExport } from "../src/modules/accounts/accounts.export";
+import type { ExportAccountsQuery } from "../src/modules/accounts/accounts.schemas";
+import type { AuthContext } from "../src/modules/auth/access";
+import { pdfDefinition } from "../src/shared/export/pdf";
 import { overallServiceCounts, periodServiceFigures, tillDateServiceCounts, yearToDateServiceCounts } from "../src/modules/dashboard/operations.service";
 import { activeContract, createClient, grant, visitsOf, withServiceReport, type Session } from "./amc-helpers";
 import { api, closePool, resetData, signedIn, withAuditLogUnlocked } from "./helpers";
@@ -201,6 +205,32 @@ describe("Client UAT 2026-11-16", () => {
       const accountsSheet = await sheet("/api/accounts/export", {}, accounts, "Accounts");
       expect(accountsSheet.header).toEqual(expect.arrayContaining(["AMC Value (ex VAT)", "Service Value (ex VAT)"]));
       expect(Number(accountsSheet.column("AMC Value (ex VAT)")[0])).toBe(1150.5);
+
+      // Owner request 2026-11-18: the PDF never carries AMC Value (heading, values or its note), even with no column
+      // hidden; Service Value and every other column stay. The Excel export above is unchanged.
+      const pdfAuth: AuthContext = {
+        user: { id: accounts.id, email: "uat-accounts@example.com", fullName: "Accounts" },
+        roles: [],
+        permissions: new Set(["ACCOUNTS:VIEW", "ACCOUNTS:EXPORT"]) as AuthContext["permissions"],
+        mustChangePassword: false,
+      };
+      for (const hidden of [[], ["system"]] as ExportAccountsQuery["hidden"][]) {
+        const { report } = await buildAccountsExport(pdfAuth, { format: "pdf", hidden } as ExportAccountsQuery);
+        const headers = report.tables[0]!.columns.filter((column) => !column.excelOnly).map((column) => column.header);
+        expect(headers).not.toContain("AMC Value (ex VAT)");
+        expect(headers).toContain("Service Value (ex VAT)");
+        expect(headers.indexOf("Service Value (ex VAT)")).toBe(headers.indexOf("Service Engineer") + 1);
+        const content = JSON.stringify(pdfDefinition(report).content);
+        for (const absent of ["AMC Value", "Customer PO Value", "1,150.500"]) expect(content).not.toContain(absent);
+        expect(content).toContain("300.000");
+      }
+      const xlsx = await buildAccountsExport(pdfAuth, { format: "xlsx", hidden: [] } as unknown as ExportAccountsQuery);
+      expect(xlsx.report.tables[0]!.columns.map((column) => column.header)).toContain("AMC Value (ex VAT)");
+      expect(JSON.stringify(xlsx.report.tables[0]!.notes)).toContain("Customer PO Value");
+      const pdfFile = await api().get("/api/accounts/export").query({ format: "pdf" }).responseType("blob").set(accounts.headers);
+      expect(pdfFile.status).toBe(200);
+      expect(pdfFile.headers["content-type"]).toBe("application/pdf");
+      expect((pdfFile.body as Buffer).subarray(0, 4).toString()).toBe("%PDF");
 
       // ...and nothing more: no contract, contract list, Service Status, Master Status or Service Sales.
       for (const path of [`/api/amc/contracts/${contractId}`, "/api/amc/contracts", "/api/amc/service-status", "/api/amc/master-status", "/api/services-sales"]) {

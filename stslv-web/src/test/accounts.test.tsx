@@ -564,38 +564,41 @@ describe('Accounts engineers and values', () => {
       ? ok({ items, total: items.length, page: 1, pageSize: 50, kpis: { rows: items.length, completed: 0, notCompleted: items.length, invoiceFilled: 0, totalValue: '300.000', valueMissing: 0, red: items.length, blue: 0, green: 0 }, amcValueVisible: visible })
       : undefined
 
-  it('shows Sales Engineer, Service Engineer, AMC Value and Service Value after the Service Report, each from its own source', async () => {
+  it('shows Sales Engineer, Service Engineer and Service Value after the Service Report, each from its own source', async () => {
     accountsApi(VIEWER, [], withAmcValue([ROW], true))
     renderPage()
     await screen.findByText('Vijay Service')
 
     const columns = headers()
     const at = (heading: string) => columns.indexOf(heading)
-    expect([at('Sales Engineer'), at('Service Engineer'), at('AMC Value (ex VAT)'), at('Service Value (ex VAT)')]).toEqual([
+    expect([at('Sales Engineer'), at('Service Engineer'), at('Service Value (ex VAT)')]).toEqual([
       at('Service Report No.') + 2,
       at('Service Report No.') + 3,
       at('Service Report No.') + 4,
-      at('Service Report No.') + 5,
     ])
     const row = rowOf('AMC-0007')
     const cells = [...row.querySelectorAll('td')].map((cell) => cell.textContent)
+    expect(cells).toHaveLength(columns.length)
     expect(cells[at('Sales Engineer')]).toBe('Esha Engineer')
     expect(cells[at('Service Engineer')]).toBe('Vijay Service')
-    expect(cells[at('AMC Value (ex VAT)')]).toBe('1,200.000')
     expect(cells[at('Service Value (ex VAT)')]).toBe('300.000')
-    // The total adds service values only; the repeated AMC Value is never totalled.
-    const total = within(screen.getByRole('table')).getByRole('rowheader', { name: /Total Filtered/ }).closest('tr') as HTMLElement
-    expect(total).not.toHaveTextContent('1,200.000')
+    // The Customer PO Value the API sends is not shown anywhere in the table, and never totalled.
+    expect(within(screen.getByRole('table')).queryByText('1,200.000')).not.toBeInTheDocument()
   })
 
-  it('shows "Not entered" in AMC Value when the contract has no Customer PO Value (CR-013)', async () => {
-    accountsApi(VIEWER, [], withAmcValue([makeItem({ amcValue: null, visitValue: '300.000' })], true))
+  // Owner request 2026-11-18: the AMC Value (ex VAT) column is hidden from the table and from Hide Columns.
+  it('never shows the AMC Value column or offers it in Hide Columns, even when the API sends it', async () => {
+    accountsApi(VIEWER, [], withAmcValue([makeItem({ amcValue: '3450.000', visitValue: '300.000' })], true))
     renderPage()
     await screen.findByText('AMC-0007')
 
-    const cells = [...rowOf('AMC-0007').querySelectorAll('td')]
-    expect(cells[headers().indexOf('AMC Value (ex VAT)')]).toHaveTextContent('Not entered')
-    expect(cells[headers().indexOf('Service Value (ex VAT)')]).toHaveTextContent('300.000')
+    expect(headers()).not.toContain('AMC Value (ex VAT)')
+    expect(screen.queryByText('Not entered')).not.toBeInTheDocument()
+    expect(screen.queryByText('3,450.000')).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    const dialog = within(screen.getByRole('dialog'))
+    expect(dialog.queryByRole('checkbox', { name: 'AMC Value (ex VAT)' })).not.toBeInTheDocument()
+    expect(dialog.getByRole('checkbox', { name: 'Service Value (ex VAT)' })).toBeChecked()
   })
 
   it('shows "—" for a service whose Service Engineer was never entered, never the Sales Engineer', async () => {
@@ -620,7 +623,7 @@ describe('Accounts engineers and values', () => {
     expect(within(screen.getByRole('dialog')).queryByRole('checkbox', { name: 'AMC Value (ex VAT)' })).not.toBeInTheDocument()
   })
 
-  it('shows the contract AMC Value / Year below the service value, as on Master AMC Status, without changing the PO column or the total', async () => {
+  it('shows the contract AMC Value / Year below the service value, as on Master AMC Status, without adding it to the total', async () => {
     accountsApi(VIEWER, [], withAmcValue([makeItem({ amcValue: '3450.000', annualAmcValue: '1000.000', visitValue: '250.000' })], true))
     renderPage()
     await screen.findByText('AMC-0007')
@@ -631,8 +634,9 @@ describe('Accounts engineers and values', () => {
     expect(value).toHaveClass('text-right', 'font-semibold', 'tabular-nums', 'text-slate-900')
     const secondary = within(value).getByText('AMC Value / Year: 1,000.000')
     expect(secondary).toHaveClass('text-xs', 'font-normal', 'text-slate-500')
-    // The separate Customer PO Value column is unchanged; the total adds service values only.
-    expect(cells[headers().indexOf('AMC Value (ex VAT)')]).toHaveTextContent('3,450.000')
+    // The Customer PO Value is not a table column (2026-11-18); the total adds service values only.
+    expect(headers()).not.toContain('AMC Value (ex VAT)')
+    expect(within(screen.getByRole('table')).queryByText('3,450.000')).not.toBeInTheDocument()
     const total = within(screen.getByRole('table')).getByRole('rowheader', { name: /Total Filtered/ }).closest('tr') as HTMLElement
     expect(total).not.toHaveTextContent('1,000.000')
   })

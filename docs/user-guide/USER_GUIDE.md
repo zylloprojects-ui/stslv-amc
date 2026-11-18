@@ -330,7 +330,7 @@ Search (reference, client, system, engineer), Client, System, Year (validity cov
 | Final credit | Yes (new) | Filled with the AMC Value / Year as you type it, until you change it yourself (2026-11-11); enter 0 when none; cannot be cleared once recorded. Editing a saved contract never changes it |
 | Default visit amount | No | Ignored while a Billing basis is selected |
 | Billing basis / Custom Billing Value | No | §2. A new contract starts on **AMC Value / Year** (2026-11-11); choose another basis or *Not set* if needed. Renewals and saved contracts keep their own |
-| Customer PO Value (ex VAT) | No | Client UAT (2026-11-17): the customer's purchase order amount, OMR excluding VAT, ≥0, 3 decimals, as on the PO (one year or several). Shown on Accounts as *AMC Value (ex VAT)* and on the contract page; in the AMC Contracts Excel export. Calculates nothing: visit amounts still come from the billing basis. Empty = "Not entered"; existing contracts were not filled in. A renewal starts empty. Changes are in the Audit Log |
+| Customer PO Value (ex VAT) | No | Client UAT (2026-11-17): the customer's purchase order amount, OMR excluding VAT, ≥0, 3 decimals, as on the PO (one year or several). Shown on the contract page; in the AMC Contracts Excel export and the Accounts Excel download as *AMC Value (ex VAT)* (since 2026-11-18 no longer a column in the Accounts table or its PDF). Calculates nothing: visit amounts still come from the billing basis. Empty = "Not entered"; existing contracts were not filled in. A renewal starts empty. Changes are in the Audit Log |
 | Contract document | Yes (new) | PDF/DOC/DOCX, ≤12 MB — "Attach the contract document." |
 | Description, Notes | No | ≤2000 |
 
@@ -544,6 +544,13 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 > giving access to the contracts themselves) and
 > *Service Value (ex VAT)* (this service's own value, the one the Total Filtered row adds up). This column order is
 > provisional until the client confirms it.
+
+> **AMC Value column hidden; AMC Value / Year under Service Value (2026-11-18).** The *AMC Value (ex VAT)* column
+> (Customer PO Value) is no longer shown in the Accounts table or offered in Hide Columns. The Customer PO Value itself is
+> unchanged: it stays on the contract and in the Excel download. The PDF download never includes it (heading, values or
+> note), whatever columns are hidden. Under each *Service Value (ex VAT)*,
+> users who may view AMC Contracts see the contract's *AMC Value / Year* (the same figure as on Master AMC Status). It is
+> repeated on each service and never added to the Total Filtered row.
 
 **Page:** Accounts → Invoices (`/finance/accounts`; the page is titled Accounts). **Permissions:** *Accounts: View / Export*; *Invoice Tracking: Edit* to change the Invoice No.
 
