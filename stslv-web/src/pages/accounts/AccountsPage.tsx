@@ -34,6 +34,8 @@ import {
 } from './accountsTypes'
 
 const PAGE_SIZE = 50
+/** Owner request 2026-11-18: the AMC Value (ex VAT) column is left out of this table and its Hide Columns list. */
+const TABLE_HIDDEN_COLUMNS: ReadonlySet<ColumnId> = new Set<ColumnId>(['amcValue'])
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
 const icon = (path: ReactNode) => (
@@ -340,8 +342,10 @@ export function AccountsPage() {
   const pendingChanges = JSON.stringify({ ...draft, search: draft.search.trim() }) !== JSON.stringify(filters)
 
   const data = accounts.data
-  // AMC Value (CR-013) is offered when the API sends it (every user of this page; an older API does not).
-  const offered = COLUMN_IDS.filter((id) => id !== 'amcValue' || data?.amcValueVisible === true)
+  // The AMC Value (ex VAT) column (CR-013, the Customer PO Value) is not shown in this table or offered in Hide Columns
+  // (owner request 2026-11-18). The API, its data and the downloads are unchanged; the downloads still follow the
+  // hidden list as before. The AMC Value / Year line under Service Value is a separate figure and stays.
+  const offered = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id))
   const shown = (id: ColumnId) => offered.includes(id) && !hidden.has(id)
   const visible = offered.filter(shown)
 
