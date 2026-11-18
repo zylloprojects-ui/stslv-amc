@@ -49,9 +49,14 @@ const COLUMNS: (ReportColumn & { hideable?: AccountsColumn })[] = [
   { key: "colour", header: "Row Colour", kind: "text", width: 30 },
 ];
 
-/** The report's columns: everything the page shows. AMC Value only for users who may see contract values. */
-export function accountsColumns(hidden: readonly AccountsColumn[], options: { amcValue?: boolean } = {}): ReportColumn[] {
-  return COLUMNS.filter((column) => (column.key !== "amcValue" || options.amcValue === true) && (!column.hideable || !hidden.includes(column.hideable))).map(
+/**
+ * The report's columns: everything the page shows. AMC Value only for users who may see contract values, and only in
+ * Excel: the PDF never carries it, whatever columns are hidden (owner request 2026-11-18). The PDF columns share the
+ * page width in proportion to their declared widths, so the remaining columns widen to fill the space.
+ */
+export function accountsColumns(hidden: readonly AccountsColumn[], options: { amcValue?: boolean; format?: "xlsx" | "pdf" } = {}): ReportColumn[] {
+  const amcValue = options.amcValue === true && options.format !== "pdf";
+  return COLUMNS.filter((column) => (column.key !== "amcValue" || amcValue) && (!column.hideable || !hidden.includes(column.hideable))).map(
     ({ hideable: _hideable, ...column }) => column
   );
 }
@@ -116,7 +121,8 @@ export async function buildAccountsExport(auth: AuthContext, query: ExportAccoun
     "Red: service not completed. Blue: completed, Unpaid. Green: completed, Paid.",
     PAID_STATUS_NOTE,
     "Service Value is the scheduled amount of each service, in OMR excluding VAT. Zoho invoices are the records in Invoice Tracking; cancelled ones are not listed.",
-    ...(amcValue
+    // Excel only: the PDF has no AMC Value column, so it has no note about it either (2026-11-18).
+    ...(amcValue && format === "xlsx"
       ? ["AMC Value (ex VAT) is the Customer PO Value entered on the contract, repeated on each of its services, so it is not totalled. Blank: no PO value entered."]
       : []),
     `Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)} · Zoho Invoice Value (Invoice Tracking) ${displayMoney(kpis.invoiceValue)} over ${kpis.invoiced} ${kpis.invoiced === 1 ? "service" : "services"}.`,
@@ -137,7 +143,7 @@ export async function buildAccountsExport(auth: AuthContext, query: ExportAccoun
     tables: [
       {
         name: "Accounts",
-        columns: accountsColumns(hidden, { amcValue }),
+        columns: accountsColumns(hidden, { amcValue, format }),
         rows: items.map(toRow),
         groupBy: (row) => displayMonth(String(row.scheduledDate)),
         ...(hidden.includes("visitValue") && hidden.includes("invoiceValue")
