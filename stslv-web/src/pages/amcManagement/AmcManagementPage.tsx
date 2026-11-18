@@ -3,6 +3,7 @@ import { useId, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { TABLE } from '../../components/table'
+import { ActionLink } from '../../components/IconActions'
 import { Alert, Button, PageHeader, Spinner } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatCount, formatTime } from '../../lib/format'
@@ -130,9 +131,7 @@ function RecentContracts({ recent }: { recent: AmcManagementSummary['recentContr
                 </span>
               </td>
               <td className={cx(TABLE.td, 'text-right')}>
-                <Link to={`/amc/contracts/${row.id}`} aria-label={`View ${row.reference}`} className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-0.5 text-xs font-bold text-[#0b3b66] transition-colors hover:border-[#1479BD] hover:bg-[#1479BD] hover:text-white">
-                  View →
-                </Link>
+                <ActionLink icon="view" to={`/amc/contracts/${row.id}`} label={`View ${row.reference}`} hint={`View contract ${row.reference}`} />
               </td>
             </tr>
           ))}

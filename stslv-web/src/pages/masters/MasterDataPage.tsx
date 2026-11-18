@@ -3,6 +3,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
 import { LoadError, Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
 import { Alert, Badge, Button, Card, EmptyState, Modal, PageHeader, SelectField, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
@@ -255,14 +256,14 @@ function MasterTable({ tab, items, canEdit, onEdit, onToggle }: { tab: Tab; item
   const actions = (record: AnyRecord) => (
     <Cell className="whitespace-nowrap text-right">
       {canEdit && (
-        <span className="inline-flex gap-2">
-          <Button size="sm" variant="secondary" onClick={() => onEdit(record)} aria-label={`Edit ${String(record.name)}`}>
-            Edit
-          </Button>
-          <Button size="sm" variant="secondary" onClick={() => onToggle(record)} aria-label={`${record.isActive ? 'Deactivate' : 'Reactivate'} ${String(record.name)}`}>
-            {record.isActive ? 'Deactivate' : 'Reactivate'}
-          </Button>
-        </span>
+        <ActionGroup>
+          <ActionButton icon="edit" label={`Edit ${String(record.name)}`} onClick={() => onEdit(record)} />
+          <ActionButton
+            icon={record.isActive ? 'deactivate' : 'reactivate'}
+            label={`${record.isActive ? 'Deactivate' : 'Reactivate'} ${String(record.name)}`}
+            onClick={() => onToggle(record)}
+          />
+        </ActionGroup>
       )}
     </Cell>
   )

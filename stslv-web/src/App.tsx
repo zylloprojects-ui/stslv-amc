@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
+import { ActionTooltipLayer } from './components/ActionTooltip'
 import { createBrowserRouter, Navigate, Route, RouterProvider, Routes, useLocation } from 'react-router-dom'
 import { appRouteObjects } from './appRoutes'
 import { AuthProvider } from './auth/AuthProvider'
@@ -407,5 +408,10 @@ export default function App() {
   // A data router, so pages with unsaved changes can block any navigation, including Back/Forward.
   const [router] = useState(() => createBrowserRouter(appRouteObjects()))
 
-  return <RouterProvider router={router} />
+  return (
+    <>
+      <RouterProvider router={router} />
+      <ActionTooltipLayer />
+    </>
+  )
 }

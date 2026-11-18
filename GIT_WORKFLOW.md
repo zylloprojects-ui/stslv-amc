@@ -70,6 +70,19 @@ cd stslv-api && npm run typecheck && npm test && npm run build
 cd ../stslv-web && npm run typecheck && npm test && npm run lint && npm run build
 ```
 
+Browser (Playwright) tests, before a release or a change to pages or exports:
+
+```
+cd stslv-web && npm run e2e          # starts the local API and web; signs in with E2E_EMAIL / E2E_PASSWORD
+E2E_BASE_URL=https://<site> npm run e2e   # the same tests against a running site
+```
+
+They sign in through the login page, open every page on a desktop and a phone screen (no JavaScript, console or API
+error; no sideways scrolling), download every report as PDF (with the company logo) and Excel, and compare the login
+page and the application frame with the approved pictures in `stslv-web/e2e/__screenshots__` (`npm run e2e:update`
+after an approved visual change). They only read and download. Put the sign-in in the git-ignored
+`stslv-web/e2e/.env.e2e` (`E2E_EMAIL=…`, `E2E_PASSWORD=…`); use a local or test account, never a real user's.
+
 ## Not configured yet
 
 - Branch protection on GitHub (rules 1–3 are an agreement until it is switched on).

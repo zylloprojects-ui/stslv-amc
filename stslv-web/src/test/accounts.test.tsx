@@ -183,7 +183,7 @@ describe('Accounts page', () => {
       'Service Engineer',
       'Service Value (ex VAT)',
       'Invoice No.',
-      'Zoho Invoice Value (ex VAT)',
+      // Zoho Invoice Value (ex VAT) is hidden by default (2026-11-18); see the Hide Columns tests.
     ])
     expect(rowOf('AMC-0007')).toHaveAttribute('data-colour', 'RED')
     expect(rowOf('AMC-0008')).toHaveAttribute('data-colour', 'BLUE')
@@ -300,7 +300,7 @@ describe('Accounts page', () => {
     const buttons = screen.getAllByRole('button', { name: /Hide Columns/ })
     expect(buttons).toHaveLength(1)
     const filters = within(screen.getByRole('form', { name: 'Filters' }))
-    expect(filters.getByRole('button', { name: 'Hide Columns · 12 of 12 shown' })).toBe(buttons[0])
+    expect(filters.getByRole('button', { name: 'Hide Columns · 11 of 12 shown' })).toBe(buttons[0])
     expect(filters.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
     expect(filters.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
     // Excel and PDF stay in the header, outside the filters.
@@ -330,7 +330,7 @@ describe('Accounts page', () => {
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(headers()).not.toContain('Actions')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 10 of 12 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 9 of 12 shown' })).toBeInTheDocument()
 
     view.unmount()
     renderPage()
@@ -341,6 +341,32 @@ describe('Accounts page', () => {
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Reset to Default' }))
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
     expect(headers()).toContain('Invoice No.')
+    // The default keeps Zoho Invoice Value hidden.
+    expect(headers()).not.toContain('Zoho Invoice Value (ex VAT)')
+  })
+
+  it('hides Zoho Invoice Value by default, shows it on request and remembers "show every column"', async () => {
+    accountsApi(VIEWER, [GREEN])
+    const view = renderPage()
+    await screen.findByText('AMC-0009')
+
+    expect(headers()).not.toContain('Zoho Invoice Value (ex VAT)')
+    expect(headers()).toContain('Service Value (ex VAT)')
+    expect(headers()).toContain('Invoice No.')
+
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    const zoho = within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'Zoho Invoice Value (ex VAT)' })
+    expect(zoho).not.toBeChecked()
+    await userEvent.click(zoho)
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
+    expect(headers()).toContain('Zoho Invoice Value (ex VAT)')
+    expect(screen.getByRole('button', { name: 'Hide Columns · 12 of 12 shown' })).toBeInTheDocument()
+
+    // Showing every column is remembered, not replaced by the default on the next visit.
+    view.unmount()
+    renderPage()
+    await screen.findByText('AMC-0009')
+    expect(headers()).toContain('Zoho Invoice Value (ex VAT)')
   })
 
   it('downloads Excel and PDF with the applied filters and the hidden columns', async () => {
@@ -361,7 +387,7 @@ describe('Accounts page', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Export Accounts to Excel' }))
     await waitFor(() => expect(saved).toEqual(['accounts.xlsx']))
-    expect(Object.fromEntries(api.find('GET', '/accounts/export')[0]?.query ?? [])).toEqual({ invoiceStatus: 'RECORDED', hidden: 'system', format: 'xlsx' })
+    expect(Object.fromEntries(api.find('GET', '/accounts/export')[0]?.query ?? [])).toEqual({ invoiceStatus: 'RECORDED', hidden: 'invoiceValue,system', format: 'xlsx' })
     await userEvent.click(screen.getByRole('button', { name: 'Export Accounts to PDF' }))
     await waitFor(() => expect(api.find('GET', '/accounts/export')[1]?.query.get('format')).toBe('pdf'))
   })

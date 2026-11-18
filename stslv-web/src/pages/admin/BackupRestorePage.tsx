@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
 import { TABLE } from '../../components/table'
+import { ActionButton } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, PageHeader, Spinner } from '../../components/ui'
 import { api, download, errorMessage, saveFile } from '../../lib/api'
 import { cx, formatDateTime } from '../../lib/format'
@@ -245,9 +246,7 @@ export function BackupRestorePage() {
                         <td className={cx(TABLE.td, TABLE.unbroken, 'font-mono text-xs')}>{record.sha256 ?? '—'}</td>
                         <td className={cx(TABLE.td, 'text-right')}>
                           {superAdmin && record.state === 'VERIFIED' && (
-                            <Button variant="secondary" size="sm" aria-label={`Download backup from ${formatDateTime(record.startedAt)}`} onClick={() => void fetchFile(record)}>
-                              Download
-                            </Button>
+                            <ActionButton icon="download" label={`Download backup from ${formatDateTime(record.startedAt)}`} onClick={() => void fetchFile(record)} />
                           )}
                         </td>
                       </tr>

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useAuth } from '../../auth/context'
-import { Alert, Badge, Button, Card, ConfirmDialog, EmptyState, Spinner } from '../../components/ui'
+import { ActionButton, ActionGroup } from '../../components/IconActions'
+import { Alert, Badge, Card, ConfirmDialog, EmptyState, Spinner } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { formatDateTime } from '../../lib/format'
 import { describeDevice, type SessionSummary } from '../../lib/sessions'
@@ -82,14 +83,23 @@ export function ActiveSessionsPanel() {
                   <td className={`${TABLE.td} whitespace-nowrap`}>{formatDateTime(session.lastActivityAt)}</td>
                   {canEnd && (
                     <td className={`${TABLE.td} space-x-2 whitespace-nowrap text-right`}>
-                      {!session.current && (
-                        <Button size="sm" variant="secondary" loading={endOne.isPending && endOne.variables?.id === session.id} onClick={() => endOne.mutate({ userId: session.user.id, id: session.id })}>
-                          Sign out
-                        </Button>
-                      )}
-                      <Button size="sm" variant="ghost" onClick={() => setSignOutUser({ id: session.user.id, name: session.user.fullName })}>
-                        All devices
-                      </Button>
+                      <ActionGroup>
+                        {!session.current && (
+                          <ActionButton
+                            icon="signOut"
+                            label="Sign out"
+                            hint={`Sign out this session of ${session.user.fullName}`}
+                            loading={endOne.isPending && endOne.variables?.id === session.id}
+                            onClick={() => endOne.mutate({ userId: session.user.id, id: session.id })}
+                          />
+                        )}
+                        <ActionButton
+                          icon="devices"
+                          label="All devices"
+                          hint={`Sign ${session.user.fullName} out of all devices`}
+                          onClick={() => setSignOutUser({ id: session.user.id, name: session.user.fullName })}
+                        />
+                      </ActionGroup>
                     </td>
                   )}
                 </tr>

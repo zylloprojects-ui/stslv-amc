@@ -6,6 +6,7 @@ import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
+import { ActionButton } from '../../components/IconActions'
 import { Alert, Button, Card, EmptyState, Modal, OptionsNotice, PageHeader, Spinner } from '../../components/ui'
 import { scheduledPeriod } from '../../lib/scheduledPeriod'
 import { api, errorMessage } from '../../lib/api'
@@ -735,14 +736,7 @@ function Row({ item, number, shown, canViewContract }: { item: MasterStatusItem;
       )}
       {shown('salesEngineer') && <td className={`${TABLE.td} ${TABLE.text}`}>{item.salesEngineer?.name ?? <Missing title="No sales engineer" />}</td>}
       <td className={`${TABLE.td} whitespace-nowrap text-right`}>
-        <button
-          type="button"
-          onClick={() => setDetails(true)}
-          aria-label={`Details of ${item.reference} ${serviceCodeLabel(item.service)}`}
-          className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-semibold text-[#0b3b66] shadow-sm hover:border-[#1479BD] hover:text-[#1479BD]"
-        >
-          Details
-        </button>
+        <ActionButton icon="details" label={`Details of ${item.reference} ${serviceCodeLabel(item.service)}`} hint={`View details of ${item.reference} ${serviceCodeLabel(item.service)}`} onClick={() => setDetails(true)} />
         {details && <DetailsDialog item={item} canViewContract={canViewContract} onClose={() => setDetails(false)} />}
       </td>
     </tr>

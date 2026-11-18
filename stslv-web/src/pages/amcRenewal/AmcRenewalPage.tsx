@@ -1,11 +1,12 @@
 import { ContractLink } from '../../components/ContractLink'
+import { ActionButton, ActionGroup, ActionIcon } from '../../components/IconActions'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { ExportButtons } from '../../components/ExportButtons'
 import { PageTabs, TabPanel } from '../../components/PageTabs'
-import { TABLE } from '../../components/table'
+import { TABLE, actionButtonClass } from '../../components/table'
 import { Alert, Button, EmptyState, Modal, PageHeader, Spinner } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { cx, formatDate, formatDateTime } from '../../lib/format'
@@ -293,8 +294,6 @@ function QueueRow({ item, number, shown, onAction }: { item: RenewalQueueItem; n
   const canEdit = auth.can('AMC_CONTRACTS', 'EDIT')
   const canCancel = canEdit && auth.can('AMC_CONTRACTS', 'DELETE')
   const renewal = item.renewal
-  const actionClass = 'inline-flex items-center rounded-lg border px-2.5 py-1 text-xs font-semibold shadow-sm'
-
   return (
     <tr className={TABLE.row} data-state={item.renewalState}>
       <td className={TABLE.sn}>{number}</td>
@@ -340,34 +339,31 @@ function QueueRow({ item, number, shown, onAction }: { item: RenewalQueueItem; n
         )}
       </td>
       <td className={cx(TABLE.td, STICKY_ACTIONS, 'whitespace-nowrap bg-white')}>
-        <div className="flex flex-wrap gap-1.5">
+        <ActionGroup>
           {(item.renewalState === 'DUE' || item.renewalState === 'CANCELLED') && canCreate && (
-            <button type="button" className={`${actionClass} border-[#1479BD] bg-[#1479BD] text-white hover:bg-[#0e5a96]`} onClick={() => onAction({ kind: 'renew', contractId: item.id })}>
-              {item.renewalState === 'CANCELLED' ? 'Restart Renewal' : 'Start Renewal'}
-            </button>
+            <ActionButton
+              icon="renew"
+              label={item.renewalState === 'CANCELLED' ? 'Restart Renewal' : 'Start Renewal'}
+              hint={`${item.renewalState === 'CANCELLED' ? 'Restart the renewal' : 'Start the renewal'} of ${item.reference}`}
+              onClick={() => onAction({ kind: 'renew', contractId: item.id })}
+            />
           )}
           {item.renewalState === 'UNDER_APPROVAL' && renewal && canEdit && (
-            <button
-              type="button"
-              className={`${actionClass} border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700`}
-              onClick={() => onAction({ kind: 'status', contractId: renewal.id, status: 'ACTIVE' })}
-            >
-              Approve
-            </button>
+            <ActionButton icon="approve" label="Approve" hint={`Approve the renewal of ${item.reference}`} onClick={() => onAction({ kind: 'status', contractId: renewal.id, status: 'ACTIVE' })} />
           )}
           {item.renewalState === 'UNDER_APPROVAL' && renewal && canCancel && (
-            <button
-              type="button"
-              className={`${actionClass} border-slate-300 bg-white text-red-700 hover:border-red-400`}
-              onClick={() => onAction({ kind: 'status', contractId: renewal.id, status: 'CANCELLED' })}
-            >
-              Cancel
-            </button>
+            <ActionButton icon="reject" danger label="Cancel" hint={`Cancel the renewal of ${item.reference}`} onClick={() => onAction({ kind: 'status', contractId: renewal.id, status: 'CANCELLED' })} />
           )}
-          <ContractLink id={renewal && item.renewalState !== 'CANCELLED' ? renewal.id : item.id} className={`${actionClass} border-slate-300 bg-white text-[#0b3b66] hover:border-[#1479BD]`} hideWithoutAccess>
-            {renewal && item.renewalState !== 'CANCELLED' ? 'View Renewal' : 'View'}
+          <ContractLink
+            id={renewal && item.renewalState !== 'CANCELLED' ? renewal.id : item.id}
+            className={actionButtonClass()}
+            aria-label={renewal && item.renewalState !== 'CANCELLED' ? 'View Renewal' : 'View'}
+            tooltip={renewal && item.renewalState !== 'CANCELLED' ? `View the renewal contract of ${item.reference}` : `View contract ${item.reference}`}
+            hideWithoutAccess
+          >
+            <ActionIcon name="view" />
           </ContractLink>
-        </div>
+        </ActionGroup>
       </td>
     </tr>
   )
