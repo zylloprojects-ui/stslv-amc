@@ -8,8 +8,25 @@ Templates: `deploy/hostinger/`. Placeholders that must be confirmed before use:
 
 | Placeholder | Meaning |
 |---|---|
-| `__APP_DOMAIN__` | the confirmed public host name (no IP address or domain is assumed anywhere) |
+| `__APP_DOMAIN__` | the confirmed public host name; in production: `stsamc.com` (see below) |
 | `__DEPLOY_USER__` | the confirmed non-root administrator account for SSH |
+
+## Production host names (2026-11-18)
+
+| Host name | Behaviour |
+|---|---|
+| `stsamc.com` | primary address (DNS A record at Hostinger → the VPS) |
+| `www.stsamc.com` | CNAME to `stsamc.com`; Nginx answers 301 to `https://stsamc.com`, path and query kept |
+| `srv2167443.hstgr.cloud` | Hostinger host name; still serves the application |
+
+- One Let's Encrypt certificate, lineage `stsamc.com`, covers all three names (webroot, `certbot.timer`).
+  The older `srv2167443.hstgr.cloud` lineage is kept unused as a fallback.
+- `/etc/stslv-amc/api.env`: `CORS_ORIGIN=https://stsamc.com,https://www.stsamc.com,https://srv2167443.hstgr.cloud`,
+  `APP_URL=https://stsamc.com`. The deployment health check (`stselv-release`) connects to the `APP_URL` host
+  through local Nginx, so that host must stay in the certificate.
+- Sign-in uses a token in the browser's storage, which is kept per host name: a person signs in once on each.
+- Deployments never change Nginx, certificates or `api.env`. `deploy/hostinger/nginx/stslv-amc.conf` is the
+  reviewed copy of the live site file; edit the server by hand (`nginx -t`, then `systemctl reload nginx`).
 
 ## Target architecture
 
