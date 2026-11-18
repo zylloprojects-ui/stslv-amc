@@ -31,13 +31,22 @@ retention) and `stslv-api/tests/ops-schedule.test.ts` (schedule, no overlap, no 
   counts as daily. Configuration copies: 8 weekly (never fewer than 4) and 12 monthly.
 - **No overlap.** Every backup command — scheduled or run by hand (`db-backup`, `docs-backup`, `config-backup`) —
   takes one lock (`<state dir>/backup.lock`). A second job waits for the first to finish (up to 2 hours), then
-  carries on; a lock whose process has died, or older than 4 hours, is reclaimed. If the wait runs out, the job
-  sends an alert and exits 75 (the unit shows as failed, so the monitor reports it too).
-- **No duplicates, even after downtime.** The steps completed per IST day, the type reached and the backup ids are
-  recorded in `<state dir>/schedule.json`; a job runs only the steps still missing that day. `Persistent=true` starts
-  a missed run once at boot; a Friday job caught up on a later day keeps the type of the Friday it stands for (a
-  missed last Friday is still the monthly backup). If a daily backup already ran that day, the Friday catch-up
-  PROMOTES it (adds the weekly/monthly marker) instead of making a second backup, and adds only the configuration.
+  carries on; a lock whose process has died, that was written before the last reboot (the lock records the Linux
+  boot id, because process ids are reused), or older than 4 hours, is reclaimed. Reclaiming is atomic (rename and
+  compare), so two jobs catching up at boot can never both take it. If the wait runs out, the job sends an alert and
+  exits 75 (the unit shows as failed, so the monitor reports it too).
+- **One record per scheduled slot, even after downtime.** A job belongs to the most recent 18:00 IST at or before
+  its start (`scheduleSlot`): a run started before 18:00 is the PREVIOUS day's backup. The steps completed per slot,
+  the type reached and the backup ids are recorded in `<state dir>/schedule.json`; a job runs only the steps still
+  missing for its slot. `Persistent=true` starts a missed run once at boot. Example: server off from Thursday 17:00
+  to Saturday 09:00 IST: at boot the Friday job makes Friday's weekly (or monthly) backup, the daily catch-up falls in
+  Friday's slot and does nothing, and Saturday 18:00 makes Saturday's backup as usual. (Before this rule, review
+  2026-11-18, the boot-time catch-up was recorded against Saturday and Saturday's 18:00 backup was skipped.) If a
+  daily backup already ran for the slot, a Friday catch-up PROMOTES it (adds the weekly/monthly marker) instead of
+  making a second backup, and adds only the configuration.
+- **Runs by hand** (`systemctl start stslv-amc-backup-daily`) follow the same rule: before 18:00 IST they count for
+  the previous day's slot and do nothing if that backup is already complete. For an extra backup at any time use
+  `db-backup` / `docs-backup` directly (counted as daily, under the same lock).
 - A failed step does not stop the following ones and is not recorded, so the next job that day retries it.
 - Upcoming runs: `node dist/ops/cli.js schedule`; on the server also
   `systemd-analyze calendar --iterations=7 'Sat..Thu *-*-* 18:00:00 Asia/Kolkata'`,
@@ -114,7 +123,7 @@ STS-ELV Backup/            (Drive ID in BACKUP_GDRIVE_FOLDER_ID)
 - **Authorizing without sharing anything in chat**: on the VPS, `rclone config` (remote `stselv-gdrive`, type
   `drive`, scope as decided above, *auto config* = no) prints a command for a machine with a browser. On this PC
   rclone is blocked by Windows application control, so instead run it on the VPS with an SSH tunnel: `ssh -L
-  53682:127.0.0.1:53682 stselvadmin@<VPS>`, then on the VPS `sudo -u stslv-backup rclone authorize drive
+  53682:127.0.0.1:53682 <admin-user>@<VPS>`, then on the VPS `sudo -u stslv-backup rclone authorize drive
   --auth-no-open-browser` and open the printed `http://127.0.0.1:53682/auth?...` link in the browser on this PC;
   the owner approves in Google's page; the token goes straight into the VPS configuration.
 - **Revoking**: Google Account → Security → Third-party access → rclone → remove access. The backups then fail with
@@ -134,9 +143,9 @@ The in-app "Backup & Restore" page (docs/BACKUP_RESTORE.md) is unchanged and sta
 | | Database | Documents (VPS folder or Supabase/R2 bucket) | VPS configuration |
 |---|---|---|---|
 | Frequency | Every day at 18:00 IST (daily, weekly or monthly job) | Same | Fridays 18:00 IST (weekly or monthly job) |
-| Method | `pg_dump` custom format inside an exported snapshot | Every document (`ATTACHMENTS_DIR` files, or bucket objects under `attachments/`), compared with the `attachments` table | `config-snapshot.sh` (root): `tar` of `/etc/stslv-amc`, Nginx, Let's Encrypt, systemd units, deploy scripts, sudoers, SSH/UFW/fail2ban, PostgreSQL settings, streamed straight into GnuPG |
+| Method | `pg_dump` custom format inside an exported snapshot, as the read-only role `stslv-backup` (peer authentication over the local socket, no password) | Every document (`ATTACHMENTS_DIR` files, or bucket objects under `attachments/`), compared with the `attachments` table | `config-snapshot.sh` (root, read-only): `tar` of `/etc/stslv-amc`, Nginx, Let's Encrypt, systemd units, deploy scripts, sudoers, SSH/UFW/fail2ban, PostgreSQL settings, plus PostgreSQL role definitions without passwords (`postgres/globals.sql`) and the schema with owners and grants (`postgres/schema.sql`), streamed straight into GnuPG |
 | Encryption | GnuPG, backup **public** key, AES-256 | Same, one encrypted file per document | Same; the plain archive never touches the disk |
-| Destination | Independent S3-compatible bucket, `db/<id>.dump.gpg` + `db/<id>.manifest.json` | Same bucket, `docs/files/<path>/<sha256>.gpg` + `docs/manifests/<run>.json` | Same bucket, `config/<id>.tar.gpg` + `config/<id>.manifest.json` |
+| Destination | Google Drive `<Daily\|Weekly\|Monthly>/db/<id>.dump.gpg` + `db/<id>.manifest.json.gpg` + type marker | Same folder, `docs/files/<path>/<sha256>.gpg` + `docs/manifests/<run>.json.gpg` | `<Weekly\|Monthly>/config/<id>.tar.gpg` + `config/<id>.manifest.json.gpg` + type marker |
 | Retention | newest 14 daily, 8 weekly, 12 monthly by recovery-point type (`BACKUP_RETAIN_*`; code default 7/4/12) | Kept indefinitely; never overwritten or deleted | By type: 8 weekly (never fewer than 4) + 12 monthly |
 | Verification | Row counts in the snapshot, `pg_restore --list`, upload size, re-download checksum | SHA-256 against the database, upload size; full re-hash with `--verify-source` | Refuses a file that is not OpenPGP-encrypted or older than 6 h; upload size; re-download checksum |
 | Alerting | Webhook on failure, heartbeat ping (success / fail), state file for the monitor | Same, plus alert on missing or altered files | Webhook, `BACKUP_HEARTBEAT_CONFIG_URL`, state file (monitor limit 194 h) |
@@ -233,30 +242,34 @@ Never restore over the live database. Order:
 2. Take a fresh backup of the current database if it is reachable (`db-backup`), even if damaged.
 3. Choose the backup (`db-list`), run drill A into `stslv_restore_<date>` and inspect it: counts, money totals,
    the latest records the business remembers, sign-in on a copy of the application pointed at it.
-4. With written approval: create a **new** Neon branch or database, restore into it with
-   `pg_restore --no-owner --no-privileges --clean --if-exists --exit-on-error --single-transaction`, check it
-   again, then point `/etc/stslv-amc/api.env` at it and start the API.
+4. With written approval: create a **new** database on the VPS (owner: the application role; roles and grants
+   are in the configuration backup's `postgres/globals.sql` and `postgres/schema.sql` if the cluster itself was
+   lost), restore into it with
+   `pg_restore --no-owner --no-privileges --clean --if-exists --exit-on-error --single-transaction` as that owner,
+   check it again, grant `CONNECT` to `stslv-backup` (deploy/hostinger/sql/backup-role.sql), then point `DB_NAME`
+   in `/etc/stslv-amc/api.env` (and `backup.env`) at it and start the API. The old database is kept, renamed.
 5. Code and database must match: an API release older than the backup's newest migration refuses to start.
-6. Documents: restore into a new bucket or folder (`docs-restore`), compare, and only then switch
-   `SUPABASE_*` with approval. Files uploaded after the chosen backup exist only in the old bucket.
+6. Documents: restore into a new folder (`docs-restore --local-layout`), compare, and only then switch
+   `ATTACHMENTS_DIR` with approval. Files uploaded after the chosen backup exist only in the old folder.
 7. Record what was restored, from which backup id, by whom; keep the damaged copy until the business signs off.
 
-Data written after the chosen backup is lost unless recovered separately (Neon's own point-in-time restore,
-within its retention window, may be the better first option for very recent damage — check it first).
+Data written after the chosen backup is lost unless recovered separately (WAL archiving is not enabled on the
+VPS, so there is no point-in-time recovery: the newest daily backup is the recovery point).
 
 ## Activation on the Hostinger VPS (each step needs approval)
 
 0. **Release** the code (`alpha` → `develop` → `main`; the Hostinger pipeline deploys it; no migrations). Nothing
    runs until the units below are installed and enabled.
-1. **Packages and user** (as `stselvadmin`, sudo):
+1. **Packages and user** (as the administrator user, sudo):
    `apt install acl gnupg` and rclone from rclone.org's `.deb` (Ubuntu's package is too old for some Drive features);
    `useradd --system --home-dir /var/lib/stslv-amc-backup --create-home --shell /usr/sbin/nologin stslv-backup`;
    `install -d -m 700 -o stslv-backup -g stslv-backup /var/lib/stslv-amc-backup/{work,state,gnupg,rclone}`.
 2. **Read access to documents only** (see "VPS permissions"): the three `setfacl` lines; check with
    `sudo -u stslv-backup ls /var/lib/stslv-amc/attachments` (works) and `sudo -u stslv-backup cat
    /etc/stslv-amc/api.env` (must be refused).
-3. **Database backup role**: `deploy/hostinger/sql/backup-role.sql` on the local PostgreSQL (read-only role,
-   password chosen on the server); check `pg_dump --schema-only` works as that role and an `INSERT` is refused.
+3. **Database backup role**: `deploy/hostinger/sql/backup-role.sql` on the local PostgreSQL (read-only role
+   `stslv-backup`, peer authentication over the Unix socket, so no password exists); check `pg_dump` works as that
+   role and a write inside `BEGIN READ WRITE` is refused with "permission denied" (the checks are in the file).
 4. **Encryption key**: copy only `stselv-backup-public.asc` (fingerprint `1B1D 7F26 FFC7 3C97 B0CD D2BE 6A49 C984
    BF29 02ED`) to the VPS; `sudo -u stslv-backup gpg --homedir /var/lib/stslv-amc-backup/gnupg --import`; confirm
    the fingerprint; the private key never leaves the administrator's PC.
@@ -266,7 +279,8 @@ within its retention window, may be the better first option for very recent dama
    `sudo -u stslv-backup rclone --config … lsjson --dirs-only stselv-gdrive:` → the single "STS-ELV Backup" entry
    and its `ID`; compare it with the ID in the folder's address in the browser.
 6. **Settings**: `/etc/stslv-amc/backup.env` from `deploy/hostinger/env/backup.env.example` (root:stslv-backup 0640):
-   database (backup role), `ATTACHMENTS_DIR`, `BACKUP_GPG_RECIPIENT`, `BACKUP_GDRIVE_FOLDER_ID`, retention 14/8/12,
+   database (`DB_HOST=/var/run/postgresql`, `DB_USER=stslv-backup`, empty `DB_PASSWORD`, `PGSSLMODE=disable`),
+   `ATTACHMENTS_DIR`, `BACKUP_GPG_RECIPIENT`, `BACKUP_GDRIVE_FOLDER_ID`, retention 14/8/12,
    alert webhook and three heartbeat URLs (database, documents, configuration).
 7. **Units**: `config-snapshot.sh` → `/usr/local/sbin/stslv-amc-config-snapshot` (root:root 0755); the four
    `stslv-amc-backup-{daily,weekly}.{service,timer}` → `/etc/systemd/system/`; `systemctl daemon-reload`.
@@ -293,6 +307,30 @@ is undone by the normal release rollback (previous release kept on the VPS).
 The three encrypted safety backups of 2026-11-18 stay where they are (administrator PC and the VPS); they are not
 uploaded to Drive or deleted without a separate approval.
 
+## Independent review (2026-11-18) — fixed
+
+- **Configuration snapshot privilege boundary**: root only reads (`tar`, `pg_dumpall`); every file in the backup
+  user's work folder is created, moved and removed AS that user, and root never creates or changes that folder. (A
+  link planted there could otherwise have made root `chown` a system file to the backup user.)
+- **A failed snapshot no longer cancels the Friday backup**: `ExecStartPre=-+`; `tar` exit 1 (a file changed while
+  read) is accepted with a warning; the configuration step then reports the missing snapshot (alert, heartbeat
+  `/fail`) while the database and documents are still backed up.
+- **Scheduled slot instead of calendar date** (see "Schedule"); **atomic stale-lock reclaim with boot id**.
+- **Pruning removes the manifest first**, then markers, then the dump/archive: an interrupted prune never leaves a
+  listed recovery point that cannot be restored. Dumps with a plain manifest from before manifests were encrypted
+  are never removed as orphans. `db-prune --apply` takes the backup lock.
+- **"Encrypted" means an OpenPGP session-key packet** (tag 1 or 3) at the start, not merely a high first byte (plain
+  PNG/JPEG files passed the old check).
+- Tests for each: `tests/ops-schedule.test.ts` "review fixes (2026-11-18)".
+
+Known limitations (accepted, monitored):
+- A run killed by systemd at `TimeoutStartSec` leaves its work folder (plain copies, mode 0600 inside the 0700 backup
+  home) until the next scheduled run removes it.
+- Failures before Node starts (a unit that cannot start at all) are not alerted by the job itself; the heartbeat
+  service (no ping on time) and `monitor.sh` (failed units) catch them.
+- Documents are checked on Drive one by one (a few rclone calls per new file): fine for thousands of files; review
+  if the document count grows into the tens of thousands.
+
 ## Verified (2026-11-18, schedule and configuration backup, disposable resources only)
 
 `tests/ops-schedule.test.ts` (34 tests) on temporary folders and a throwaway GnuPG key:
@@ -302,7 +340,7 @@ uploaded to Drive or deleted without a separate approval.
   lock is reclaimed; a job never releases another job's lock; two jobs started together never overlap;
 - a failed step does not stop the others and is retried by the next job; exit 2 findings are recorded;
 - the timer and service files: the exact `OnCalendar` expressions, daily ∩ weekly = ∅ and daily ∪ weekly = all
-  seven days, `Persistent=true`, no random delay, the weekly `ExecStartPre=+` snapshot, no other backup timer;
+  seven days, `Persistent=true`, no random delay, the weekly `ExecStartPre=-+` snapshot, no other backup timer;
 - the configuration upload refuses a plain archive, a missing or stale snapshot (alert, heartbeat `/fail`, state);
   a real encrypted snapshot is uploaded with its manifest, verified, removed locally, and retention keeps 4.
 `tests/ops-backup.test.ts` (14 tests) still passes. `tests/ops-gdrive.test.ts` (17 tests: destination, encryption-only uploads, encrypted manifests, errors, retention, promotion, pre-flight) covers the Google Drive

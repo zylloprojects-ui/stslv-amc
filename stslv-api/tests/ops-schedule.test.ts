@@ -1,5 +1,5 @@
 import { mkdtemp, mkdir, readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readBackupConfig } from "../src/ops/backup/config";
@@ -20,6 +20,7 @@ import {
   readScheduleState,
   recordStepDone,
   scheduledKind,
+  scheduleSlot,
   STEPS,
   type BackupStep,
 } from "../src/ops/backup/schedule";
@@ -177,8 +178,9 @@ describe("what a started job does", () => {
   });
 
   it("a Friday job caught up on another day keeps the type of the Friday it stands for", () => {
-    // Server off over the last Friday of November: the catch-up on Saturday 28th is still the monthly backup.
-    expect(planRun("weekly", at("2026-11-28T03:00:00Z"), empty)).toMatchObject({ action: "run", kind: "monthly", day: "2026-11-28" });
+    // Server off over the last Friday of November: the catch-up on Saturday 28th (08:30 IST, before that day's
+    // 18:00 slot) is still the monthly backup, recorded for Friday 27th's slot.
+    expect(planRun("weekly", at("2026-11-28T03:00:00Z"), empty)).toMatchObject({ action: "run", kind: "monthly", day: "2026-11-27" });
     // Missed the ordinary Friday 20th: caught up on Sunday 22nd as the weekly backup.
     expect(planRun("weekly", at("2026-11-22T03:00:00Z"), empty)).toMatchObject({ kind: "weekly" });
   });
@@ -452,7 +454,8 @@ describe("systemd timers and services (deploy/hostinger/systemd)", () => {
 
     expect(setting(daily, "ExecStart")).toEqual(["/usr/bin/node /opt/stslv-amc/api/current/dist/ops/cli.js scheduled-backup --kind daily"]);
     expect(setting(daily, "ExecStartPre")).toEqual([]);
-    expect(setting(weekly, "ExecStartPre")).toEqual(["+/usr/local/sbin/stslv-amc-config-snapshot"]);
+    // "-": a failed snapshot must not cancel the Friday database and document backups (review 2026-11-18).
+    expect(setting(weekly, "ExecStartPre")).toEqual(["-+/usr/local/sbin/stslv-amc-config-snapshot"]);
     expect(setting(weekly, "ExecStart")).toEqual(["/usr/bin/node /opt/stslv-amc/api/current/dist/ops/cli.js scheduled-backup --kind weekly"]);
     for (const text of [daily, weekly]) {
       expect(setting(text, "User")).toEqual(["stslv-backup"]);
@@ -703,5 +706,135 @@ describe("recovery after an interrupted run", () => {
     expect(await readdir(workDir)).toEqual([CONFIG_SNAPSHOT_FILE]);
     expect(lines.some((line) => line.includes("scheduled_backup.abandoned_runs_removed"))).toBe(true);
     expect(ran).toEqual(["database", "documents", "configuration"]);
+  });
+});
+
+describe("review fixes (2026-11-18)", () => {
+  const empty = { days: {} };
+
+  it("a run belongs to the most recent 18:00 IST slot: a morning catch-up never uses up that evening's backup", () => {
+    expect(scheduleSlot(at("2026-11-21T12:30:00Z")).toISOString()).toBe("2026-11-21T12:30:00.000Z");
+    expect(scheduleSlot(at("2026-11-21T12:29:59Z")).toISOString()).toBe("2026-11-20T12:30:00.000Z");
+    expect(scheduleSlot(at("2026-11-21T20:00:00Z")).toISOString()).toBe("2026-11-21T12:30:00.000Z");
+
+    // Server off from Thursday 17:00 to Saturday 09:00 IST. At boot both timers catch up: the Friday job is
+    // Friday's weekly backup; the daily catch-up falls in Friday's slot and does nothing.
+    const boot = at("2026-11-21T03:30:00Z");
+    expect(planRun("weekly", boot, empty)).toMatchObject({ action: "run", kind: "weekly", day: "2026-11-20" });
+    expect(planRun("daily", boot, empty)).toMatchObject({ action: "skip", reason: "friday-full-backup-only", day: "2026-11-20" });
+    // Saturday 18:00 still makes Saturday's backup.
+    const afterCatchUp = { days: { "2026-11-20": { completed: ["database", "documents", "configuration"] as BackupStep[], kind: "weekly" as const, updatedAt: "" } } };
+    expect(planRun("daily", at("2026-11-21T12:30:00Z"), afterCatchUp)).toMatchObject({ action: "run", kind: "daily", day: "2026-11-21", steps: ["database", "documents"] });
+
+    // A daily catch-up on Friday morning makes Thursday's missing backup (no longer refused as "Friday").
+    expect(planRun("daily", at("2026-11-20T03:30:00Z"), empty)).toMatchObject({ action: "run", kind: "daily", day: "2026-11-19" });
+  });
+
+  it("a lock written before the last reboot is reclaimed even if its process id is alive again", async () => {
+    const dir = await freshDir("lock-boot");
+    await writeFile(path.join(dir, "backup.lock"), JSON.stringify({ pid: process.pid, host: hostname(), job: "before-reboot", since: new Date().toISOString(), boot: "old-boot" }));
+    const release = await acquireBackupLock(dir, {
+      bootId: "new-boot",
+      waitMs: 0,
+      sleep: async () => {
+        throw new Error("must not wait");
+      },
+    });
+    expect(JSON.parse(await readFile(path.join(dir, "backup.lock"), "utf8"))).toMatchObject({ boot: "new-boot" });
+    await release();
+  });
+
+  it("two jobs reclaiming the same abandoned lock at once never run together", async () => {
+    const dir = await freshDir("lock-race");
+    await writeFile(path.join(dir, "backup.lock"), JSON.stringify({ pid: 999_999, host: hostname(), job: "crashed", since: new Date().toISOString() }));
+    let active = 0;
+    let most = 0;
+    const job = async (label: string) => {
+      const release = await acquireBackupLock(dir, { label, bootId: null, pollMs: 2, isAlive: (pid) => pid !== 999_999 });
+      active += 1;
+      most = Math.max(most, active);
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      active -= 1;
+      await release();
+    };
+    await Promise.all([job("a"), job("b"), job("c")]);
+    expect(most).toBe(1);
+    expect((await readdir(dir)).filter((name) => name.startsWith("backup.lock"))).toEqual([]);
+  });
+
+  it("pruning removes the manifest first: an interrupted prune never leaves a recovery point without its dump", async () => {
+    const dir = await freshDir("prune-order");
+    const inner = new LocalDirStore(dir);
+    const blob = `${dir}-blob.bin`;
+    await writeFile(blob, "x");
+    const ids: string[] = [];
+    for (let day = 0; day < 12; day += 1) {
+      const id = newRunId("stslv-db", "test", new Date(Date.UTC(2026, 10, 18 - day, 12, 30)));
+      ids.push(id);
+      await inner.upload(dumpKey(id), blob);
+      await inner.upload(manifestKey(id), blob);
+    }
+    const removals: string[] = [];
+    let failAfter = Number.POSITIVE_INFINITY;
+    const store = {
+      label: inner.label,
+      list: (prefix: string) => inner.list(prefix),
+      head: (key: string) => inner.head(key),
+      download: (key: string, file: string) => inner.download(key, file),
+      upload: (key: string, file: string) => inner.upload(key, file),
+      remove: async (key: string) => {
+        if (removals.length >= failAfter) throw new Error("connection reset");
+        removals.push(key);
+        await inner.remove(key);
+      },
+    };
+    const retention = { daily: 7, weekly: 0, monthly: 0 };
+
+    failAfter = 1; // interrupted right after the first removal
+    await expect(pruneDatabaseBackups({ store, config: { retention }, log, keepId: ids[0] as string })).rejects.toThrow();
+    expect(removals[0]?.endsWith(".manifest.json.gpg")).toBe(true);
+    for (const backup of await listDatabaseBackups(inner)) expect(await inner.head(dumpKey(backup.id))).not.toBeNull();
+
+    failAfter = Number.POSITIVE_INFINITY;
+    removals.length = 0;
+    await pruneDatabaseBackups({ store, config: { retention }, log, keepId: ids[0] as string });
+    const oldest = ids[11] as string;
+    expect(removals.indexOf(manifestKey(oldest))).toBeGreaterThanOrEqual(0);
+    expect(removals.indexOf(manifestKey(oldest))).toBeLessThan(removals.indexOf(dumpKey(oldest)));
+  });
+
+  it("an older backup with a plain manifest (before manifests were encrypted) is never removed as an orphan", async () => {
+    const dir = await freshDir("legacy");
+    const store = new LocalDirStore(dir);
+    const blob = `${dir}-blob.bin`;
+    await writeFile(blob, "x");
+    const ids: string[] = [];
+    for (let day = 0; day < 9; day += 1) {
+      const id = newRunId("stslv-db", "test", new Date(Date.UTC(2026, 10, 18 - day, 12, 30)));
+      ids.push(id);
+      await store.upload(dumpKey(id), blob);
+      await store.upload(manifestKey(id), blob);
+    }
+    const legacy = newRunId("stslv-db", "test", new Date(Date.UTC(2026, 9, 1, 2, 15)));
+    const orphan = newRunId("stslv-db", "test", new Date(Date.UTC(2026, 9, 2, 2, 15)));
+    await store.upload(dumpKey(legacy), blob);
+    await store.upload(`db/${legacy}.manifest.json`, blob);
+    await store.upload(dumpKey(orphan), blob);
+    const old = new Date(Date.UTC(2026, 9, 2));
+    for (const key of [dumpKey(legacy), `db/${legacy}.manifest.json`, dumpKey(orphan)]) await utimes(path.join(dir, ...key.split("/")), old, old);
+
+    await pruneDatabaseBackups({ store, config: { retention: { daily: 14, weekly: 0, monthly: 0 } }, log, keepId: ids[0] as string });
+    expect(await store.head(dumpKey(legacy))).not.toBeNull();
+    expect(await store.head(dumpKey(orphan))).toBeNull();
+  });
+
+  it("only an OpenPGP session-key packet counts as encrypted: plain PNG, JPEG and other packets are refused", () => {
+    expect(looksEncrypted(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(false); // PNG
+    expect(looksEncrypted(Buffer.from([0xff, 0xd8, 0xff, 0xe0]))).toBe(false); // JPEG
+    expect(looksEncrypted(Buffer.from([0xa3, 0x01]))).toBe(false); // compressed data, not encrypted
+    expect(looksEncrypted(Buffer.from([0xcb, 0x10]))).toBe(false); // literal data (new format)
+    expect(looksEncrypted(Buffer.from([0x85, 0x01, 0x0c]))).toBe(true); // public-key session key (old format)
+    expect(looksEncrypted(Buffer.from([0xc1, 0x5e]))).toBe(true); // public-key session key (new format)
+    expect(looksEncrypted(Buffer.from([0x8c, 0x0d]))).toBe(true); // passphrase session key
   });
 });

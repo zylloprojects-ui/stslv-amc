@@ -1,5 +1,6 @@
+import { randomBytes } from "node:crypto";
 import { hostname } from "node:os";
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { link, mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { highestKind, kindRank } from "./retention";
 
@@ -77,6 +78,19 @@ export function fridayJobKind(at: Date): BackupKind {
   return "weekly";
 }
 
+/**
+ * The scheduled slot a job started at `at` belongs to: the most recent 18:00 IST at or before `at`. A job started
+ * before 18:00 (systemd catching up a run missed while the server was off, typically at boot) is the PREVIOUS day's
+ * backup, so it never uses up the backup still due at 18:00 that day. (Found in review 2026-11-18: keyed by the
+ * calendar date, a boot-time catch-up on Saturday morning made Saturday's 18:00 backup skip as "already-done".)
+ */
+export function scheduleSlot(at: Date): Date {
+  const { date } = backupDay(at);
+  const todaySlot = new Date(Date.parse(`${date}T${String(SCHEDULED_HOUR).padStart(2, "0")}:00:00.000Z`) - IST_OFFSET_MINUTES * 60_000);
+
+  return todaySlot.getTime() <= at.getTime() ? todaySlot : new Date(todaySlot.getTime() - 86_400_000);
+}
+
 /** The next `count` scheduled runs strictly after `from`: one per IST day at 18:00. */
 export function nextScheduledRuns(from: Date, count: number): { at: Date; kind: BackupKind; day: string }[] {
   const runs: { at: Date; kind: BackupKind; day: string }[] = [];
@@ -113,18 +127,19 @@ export type RunPlan =
   | { action: "skip"; day: string; kind: BackupKind; reason: "friday-full-backup-only" | "already-done" };
 
 /**
- * What a job must still do for its IST day.
- *   - A daily job does nothing on a Friday: the Friday job (weekly or monthly) is that day's only backup.
+ * What a job must still do for its scheduled slot (scheduleSlot: the IST day of the most recent 18:00 IST).
+ *   - A daily job does nothing for a Friday slot: the Friday job (weekly or monthly) is that day's only backup.
  *   - A Friday job ("weekly" from the timer) becomes the monthly backup on the last Friday of the month.
  *   - Steps already done that day are not repeated. Typed backups made earlier that day by a LOWER type are
  *     promoted to this job's type instead.
  */
 export function planRun(requested: BackupKind, at: Date, state: ScheduleState): RunPlan {
-  const { date, weekday } = backupDay(at);
+  const slot = scheduleSlot(at);
+  const { date, weekday } = backupDay(slot);
 
   if (requested === "daily" && weekday === FRIDAY) return { action: "skip", day: date, kind: requested, reason: "friday-full-backup-only" };
 
-  const kind: BackupKind = requested === "daily" ? "daily" : requested === "monthly" ? "monthly" : fridayJobKind(at);
+  const kind: BackupKind = requested === "daily" ? "daily" : requested === "monthly" ? "monthly" : fridayJobKind(slot);
   const record = state.days[date];
   const done = new Set(record?.completed ?? []);
   const reached = record?.kind ?? (done.size > 0 ? "daily" : undefined);
@@ -199,6 +214,8 @@ export interface LockOptions {
   sleep?: (ms: number) => Promise<void>;
   /** Identifies the lock holder in messages. */
   label?: string;
+  /** This boot's identifier (tests); default: /proc/sys/kernel/random/boot_id, null where unavailable. */
+  bootId?: string | null;
 }
 
 function processIsAlive(pid: number): boolean {
@@ -213,9 +230,19 @@ function processIsAlive(pid: number): boolean {
 
 const LOCK_FILE = "backup.lock";
 
+/** Linux boot identifier: a lock written before a reboot is abandoned whatever its process id (ids are reused). */
+async function currentBootId(): Promise<string | null> {
+  return (await readFile("/proc/sys/kernel/random/boot_id", "utf8").catch(() => "")).trim() || null;
+}
+
 /**
  * Takes the backup lock (an exclusively created file in the state folder) and returns the function that releases
- * it. Waits while another backup holds it; reclaims a lock whose process has gone or that is too old.
+ * it. Waits while another backup holds it; reclaims a lock whose process has gone, that was written before the last
+ * reboot, or that is too old.
+ *
+ * Reclaiming is atomic: the abandoned lock is RENAMED to a unique name and its content compared with what was
+ * judged abandoned. If two jobs reclaim at the same moment (both timers catching up at boot), the second one would
+ * otherwise delete the lock the first had just taken; instead it finds a different content and puts that lock back.
  */
 export async function acquireBackupLock(stateDir: string, options: LockOptions = {}): Promise<() => Promise<void>> {
   const waitMs = options.waitMs ?? 2 * 60 * 60_000;
@@ -226,7 +253,8 @@ export async function acquireBackupLock(stateDir: string, options: LockOptions =
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const file = path.join(stateDir, LOCK_FILE);
   const started = now().getTime();
-  const owner = { pid: process.pid, host: hostname(), job: options.label ?? "backup", since: now().toISOString() };
+  const bootId = options.bootId !== undefined ? options.bootId : await currentBootId();
+  const owner = { pid: process.pid, host: hostname(), job: options.label ?? "backup", since: now().toISOString(), ...(bootId ? { boot: bootId } : {}) };
 
   await mkdir(stateDir, { recursive: true });
 
@@ -245,18 +273,31 @@ export async function acquireBackupLock(stateDir: string, options: LockOptions =
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
     }
 
-    let holder: { pid?: number; host?: string; job?: string; since?: string } = {};
+    let holder: { pid?: number; host?: string; job?: string; since?: string; boot?: string } = {};
+    const raw = await readFile(file, "utf8").catch(() => null);
+    if (raw === null) continue; // released meanwhile
     try {
-      holder = JSON.parse(await readFile(file, "utf8")) as typeof holder;
+      holder = JSON.parse(raw) as typeof holder;
     } catch {
-      // Unreadable or half-written: judged by its age below.
+      // Half-written: judged by its age below.
     }
     const since = holder.since ? Date.parse(holder.since) : (await stat(file).catch(() => null))?.mtimeMs ?? 0;
     const sameHost = !holder.host || holder.host === owner.host;
-    const abandoned = (sameHost && typeof holder.pid === "number" && !isAlive(holder.pid)) || now().getTime() - since > staleMs;
+    const beforeReboot = sameHost && Boolean(bootId && holder.boot && holder.boot !== bootId);
+    const abandoned = beforeReboot || (sameHost && typeof holder.pid === "number" && !isAlive(holder.pid)) || now().getTime() - since > staleMs;
 
     if (abandoned) {
-      await rm(file, { force: true });
+      const grave = `${file}.reclaim-${process.pid}-${randomBytes(4).toString("hex")}`;
+      try {
+        await rename(file, grave);
+      } catch {
+        continue; // someone else moved or released it
+      }
+      const moved = await readFile(grave, "utf8").catch(() => null);
+      // Not the lock judged abandoned: another job took the lock meanwhile. Put it back (link fails only if a
+      // third job already holds a new lock) and wait for it like any other running backup.
+      if (moved !== raw) await link(grave, file).catch(() => undefined);
+      await rm(grave, { force: true });
       continue;
     }
     if (now().getTime() - started >= waitMs) throw new BackupLockedError(`${holder.job ?? "backup"} since ${holder.since ?? "unknown"}`);

@@ -16,7 +16,7 @@ import { sha256File } from "./tools";
 //
 // Those files belong to root and hold secrets, while this job runs as the unprivileged "stslv-backup" user.
 // So the archive is made by deploy/hostinger/scripts/config-snapshot.sh, run as root just before the weekly job
-// (ExecStartPre=+ in stslv-amc-backup-weekly.service): it streams `tar` straight into GnuPG (the plain archive
+// (ExecStartPre=-+ in stslv-amc-backup-weekly.service): it streams `tar` straight into GnuPG (the plain archive
 // never touches the disk) and leaves only the ENCRYPTED file in the work folder. This step checks that the file
 // is really encrypted and recent, uploads it (never over an existing object), verifies the stored copy, writes
 // the manifest last and applies retention.
@@ -46,11 +46,18 @@ export interface ConfigManifest {
 }
 
 /**
- * True when the first bytes are an OpenPGP message and not a plain archive: the first byte of an OpenPGP packet
- * has its top bit set, a tar archive has "ustar" at offset 257, a gzip file starts with 1f 8b.
+ * True when the first bytes are an ENCRYPTED OpenPGP message and not a plain file: the message must start with a
+ * session-key packet — tag 1 (public-key encrypted, what `gpg --encrypt` writes) or tag 3 (passphrase). A top-bit
+ * check alone also accepted plain PNG (0x89) and JPEG (0xFF) files (review 2026-11-18). Also refused: a tar archive
+ * ("ustar" at offset 257) and gzip (1f 8b).
  */
 export function looksEncrypted(head: Buffer): boolean {
-  if (head.length === 0 || (head[0]! & 0x80) === 0) return false;
+  if (head.length === 0) return false;
+  const first = head[0]!;
+  if ((first & 0x80) === 0) return false;
+  // New packet format (bit 6 set): tag = low 6 bits. Old format: tag = bits 5..2.
+  const tag = first & 0x40 ? first & 0x3f : (first >> 2) & 0x0f;
+  if (tag !== 1 && tag !== 3) return false;
   if (head.length >= 262 && head.subarray(257, 262).toString("latin1") === "ustar") return false;
   if (head[0] === 0x1f && head[1] === 0x8b) return false;
 
@@ -166,9 +173,10 @@ export async function runConfigBackup(deps: ConfigBackupDeps): Promise<{ id: str
         if (backups.length > 4) {
           const decision = selectByKind(backups, { daily: 0, weekly: Math.max(4, config.retention.weekly), monthly: config.retention.monthly });
           for (const old of decision.remove.filter((candidate) => candidate !== id)) {
-            await store.remove(configArchiveKey(old));
-            for (const kind of ["daily", "weekly", "monthly"] as const) await store.remove(configKindKey(old, kind));
+            // Manifest first: an interrupted prune never leaves a listed recovery point without its archive.
             await store.remove(configManifestKey(old));
+            for (const kind of ["daily", "weekly", "monthly"] as const) await store.remove(configKindKey(old, kind));
+            await store.remove(configArchiveKey(old));
             pruned.push(old);
           }
         }

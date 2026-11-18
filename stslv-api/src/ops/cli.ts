@@ -214,8 +214,11 @@ async function main(): Promise<number> {
           log.info("db_prune.dry_run", { keep: decision.keep.length, wouldRemove: decision.remove });
           return 0;
         }
-        await pruneDatabaseBackups({ store, config, log, keepId: backups[0]?.id ?? "" });
-        return 0;
+        // Under the backup lock: never alongside a scheduled job's own pruning or promotion.
+        return await exclusively(config, log, "db-prune", async () => {
+          await pruneDatabaseBackups({ store, config, log, keepId: (await listDatabaseBackups(store))[0]?.id ?? "" });
+          return 0;
+        });
       }
       case "db-restore-drill": {
         const targetDb = text(flags, "target-db");

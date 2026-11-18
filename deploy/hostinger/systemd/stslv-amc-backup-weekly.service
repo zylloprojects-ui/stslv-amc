@@ -3,7 +3,8 @@
 # TEMPLATE: NOT YET DEPLOYED, NOT SCHEDULED. Started by stslv-amc-backup-weekly.timer (Friday 18:00 IST).
 # Run by hand:  systemctl start stslv-amc-backup-weekly
 #
-# 1. ExecStartPre (as root, the "+" prefix): config-snapshot.sh streams the configuration files through GnuPG
+# 1. ExecStartPre (as root, the "+" prefix; "-" = a failure does NOT cancel the database and document backups,
+#    the configuration step then finds no fresh snapshot and alerts): config-snapshot.sh streams the files through GnuPG
 #    into /var/lib/stslv-amc-backup/work/config-snapshot.tar.gpg. Only the ENCRYPTED archive is written.
 # 2. ExecStart (as stslv-backup): `scheduled-backup --kind weekly` takes the backup lock and runs the steps not
 #    yet done today: database, documents, configuration (uploads the encrypted snapshot, verifies, retention).
@@ -21,7 +22,7 @@ Group=stslv-backup
 EnvironmentFile=/etc/stslv-amc/backup.env
 Environment=NODE_ENV=production
 Environment=GNUPGHOME=/var/lib/stslv-amc-backup/gnupg
-ExecStartPre=+/usr/local/sbin/stslv-amc-config-snapshot
+ExecStartPre=-+/usr/local/sbin/stslv-amc-config-snapshot
 ExecStart=/usr/bin/node /opt/stslv-amc/api/current/dist/ops/cli.js scheduled-backup --kind weekly
 TimeoutStartSec=4h
 Nice=10

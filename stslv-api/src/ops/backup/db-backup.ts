@@ -307,8 +307,9 @@ export async function listDatabaseBackups(store: WritableStore | Pick<WritableSt
 /**
  * Removes backups outside the retention policy: the newest N daily, weekly and monthly backups are kept
  * (retention.ts selectByKind), counted over complete, verified backups only. Never removes the backup just made,
- * never runs while 7 or fewer complete backups exist, and removes the manifest last (an interrupted prune leaves a
- * manifest-less dump, which is ignored and removed by a later prune).
+ * never runs while 7 or fewer complete backups exist, and removes the manifest FIRST, then the type markers, then
+ * the dump: an interrupted prune leaves a manifest-less dump, which is never listed or restored and is removed by a
+ * later prune — never a manifest without its dump, which would count as a recovery point that cannot be restored.
  */
 export async function pruneDatabaseBackups(input: { store: WritableStore; config: Pick<BackupConfig, "retention">; log: Logger; keepId: string }): Promise<string[]> {
   const { store, config, log, keepId } = input;
@@ -321,16 +322,23 @@ export async function pruneDatabaseBackups(input: { store: WritableStore; config
 
   for (const id of decision.remove) {
     if (id === keepId) continue;
-    await store.remove(dumpKey(id));
-    for (const kind of ["daily", "weekly", "monthly"] as const) await store.remove(kindMarkerKey(id, kind));
     await store.remove(manifestKey(id));
+    for (const kind of ["daily", "weekly", "monthly"] as const) await store.remove(kindMarkerKey(id, kind));
+    await store.remove(dumpKey(id));
     removed.push(id);
   }
 
-  // Dumps whose manifest never arrived (an upload interrupted mid-way), older than two days.
+  // Dumps whose manifest never arrived (an upload interrupted mid-way), older than two days. A dump with a PLAIN
+  // manifest (db/<id>.manifest.json, written before manifests were encrypted) is an older complete backup, not an
+  // orphan: it is never removed automatically.
+  const objects = await store.list(DB_PREFIX);
   const complete = new Set(backups.map((backup) => backup.id));
+  for (const object of objects) {
+    const legacy = /^db\/(.+)\.manifest\.json$/.exec(object.key)?.[1];
+    if (legacy) complete.add(legacy);
+  }
   const cutoff = Date.now() - 2 * 86_400_000;
-  for (const object of await store.list(DB_PREFIX)) {
+  for (const object of objects) {
     const id = /^db\/(.+)\.dump\.gpg$/.exec(object.key)?.[1];
     if (id && id !== keepId && !complete.has(id) && object.lastModified && object.lastModified.getTime() < cutoff) {
       await store.remove(object.key);
