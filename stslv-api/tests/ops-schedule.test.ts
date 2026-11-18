@@ -901,3 +901,47 @@ describe("email alerting through the heartbeats (Healthchecks.io, 2026-11-18)", 
     }
   });
 });
+
+describe("monitoring is optional (decision 2026-11-18: no external service)", () => {
+  it("with no heartbeat or webhook configured, a backup runs normally, a failure is still recorded, and nothing is sent anywhere", async () => {
+    const stateDir = await freshDir("nomon-state");
+    const sent: string[] = [];
+    const recordFetch = async (url: string) => {
+      sent.push(url);
+      return { ok: true, status: 200 };
+    };
+    const result = await runScheduledBackup({
+      kind: "daily",
+      config: { environment: "test", stateDir, workDir: await freshDir("nomon-work"), alertWebhookUrl: null, heartbeatDbUrl: null, heartbeatDocsUrl: null, heartbeatConfigUrl: null },
+      log,
+      fetchImpl: recordFetch,
+      now: () => at("2026-11-21T12:30:05Z"),
+      steps: {
+        database: async () => {
+          throw new Error("Google Drive authorization has expired");
+        },
+        documents: async () => 0,
+        configuration: async () => 0,
+      },
+    });
+
+    expect(result).toMatchObject({ exitCode: 1, failed: ["database"], completed: ["documents"] });
+    expect(sent).toEqual([]);
+    // The failure is visible locally: the journal (log line) and the unit's exit status.
+    expect(lines.some((line) => line.includes("scheduled_backup.step_failed") && line.includes("authorization has expired"))).toBe(true);
+    expect((await readScheduleState(stateDir)).days["2026-11-21"]?.completed).toEqual(["documents"]);
+  });
+
+  it("the settings accept empty monitoring values in production", () => {
+    const config = readBackupConfig({
+      NODE_ENV: "production",
+      BACKUP_GPG_RECIPIENT: "1B1D7F26FFC73C97B0CDD2BE6A49C984BF2902ED",
+      BACKUP_WORK_DIR: "/var/lib/stslv-amc-backup/work",
+      BACKUP_ALERT_WEBHOOK_URL: "",
+      BACKUP_HEARTBEAT_DB_URL: "",
+      BACKUP_HEARTBEAT_DOCS_URL: "",
+      BACKUP_HEARTBEAT_CONFIG_URL: "",
+    });
+    expect([config.alertWebhookUrl, config.heartbeatDbUrl, config.heartbeatDocsUrl, config.heartbeatConfigUrl]).toEqual([null, null, null, null]);
+  });
+});

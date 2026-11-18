@@ -13,7 +13,7 @@
 #
 # Also included, in "postgres/" inside the archive: the cluster's role definitions WITHOUT passwords
 # (pg_dumpall --globals-only --no-role-passwords) and the application database's schema WITH owners and grants
-# (pg_dump --schema-only): the daily database backup is made --no-owner --no-privileges, so this is what rebuilds
+# (pg_dump --schema-only --create: also the database itself and its CONNECT grants): the daily database backup is made --no-owner --no-privileges, so this is what rebuilds
 # the roles and permissions around it.
 #
 # Output (owner stslv-backup, 0600), uploaded by `cli.js scheduled-backup --kind weekly`:
@@ -70,7 +70,7 @@ chmod 711 "$PGTMP"   # postgres may enter (not list) it to reach its own 0700 su
 install -d -m 700 -o postgres -g postgres "$PGTMP/postgres"
 EXTRA=()
 if runuser -u postgres -- pg_dumpall --globals-only --no-role-passwords --file="$PGTMP/postgres/globals.sql" \
-   && { [ -z "$DB_NAME" ] || runuser -u postgres -- pg_dump --schema-only --dbname="$DB_NAME" --file="$PGTMP/postgres/schema.sql"; }; then
+   && { [ -z "$DB_NAME" ] || runuser -u postgres -- pg_dump --schema-only --create --dbname="$DB_NAME" --file="$PGTMP/postgres/schema.sql"; }; then
   EXTRA=(-C "$PGTMP" postgres)
 else
   log "WARNING: PostgreSQL roles/schema could not be exported; the snapshot continues without them"

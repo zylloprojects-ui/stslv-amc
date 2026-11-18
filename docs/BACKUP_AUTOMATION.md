@@ -182,37 +182,30 @@ is replaced by `<redacted>`.
 - The manifest lists path, size, checksum, attachment record (id, version, entity, category, original name,
   MIME type, upload time) and the encrypted copy's key for every file.
 
-## Alerts: email through Healthchecks.io (decided 2026-11-18)
+## Checking the backups (no external monitoring service — decided 2026-11-18)
 
-The VPS sends no email itself, and no chat webhook is used: failure alerts are **emails from Healthchecks.io** to
-the business's notification address (set in the Healthchecks account, not in this repository). The backup jobs
-only make HTTPS requests to three check URLs, set in `/etc/stslv-amc/backup.env` (never in GitHub):
+The owner decided **not** to use Healthchecks.io or any other external notification service. Backups never depend
+on one: every alert setting (`BACKUP_ALERT_WEBHOOK_URL`, `BACKUP_HEARTBEAT_*_URL`) is optional and left empty;
+an empty setting is skipped (tested: `tests/ops-schedule.test.ts` "monitoring is optional").
 
-| Check (Healthchecks name) | `backup.env` | Schedule (Cron, time zone `Asia/Kolkata`) | Grace |
-|---|---|---|---|
-| `stslv-db` | `BACKUP_HEARTBEAT_DB_URL` | `0 18 * * *` (every day) | 3 hours |
-| `stslv-docs` | `BACKUP_HEARTBEAT_DOCS_URL` | `0 18 * * *` (every day) | 3 hours |
-| `stslv-config` | `BACKUP_HEARTBEAT_CONFIG_URL` | `0 18 * * 5` (Fridays) | 3 hours |
+Every result is recorded on the VPS instead:
+- **systemd**: a run with a failed step ends with a non-zero exit code and the unit shows as *failed*
+  (`systemctl status stslv-amc-backup-daily stslv-amc-backup-weekly`, `systemctl list-units --failed`);
+  `systemctl list-timers 'stslv-amc-backup-*'` shows the last and the next run.
+- **Journal**: one JSON line per event, secrets redacted:
+  `journalctl -u stslv-amc-backup-daily -u stslv-amc-backup-weekly --since "-8 days"`.
+  Failures read `"level":"error"` with a plain reason (e.g. Google authorization expired, Drive full, checksum
+  mismatch, private key found on the server).
+- **State files** in `/var/lib/stslv-amc-backup/state/`: `schedule.json` (the steps completed per day, with the
+  backup ids) and `db-backup.json`, `docs-backup.json`, `config-backup.json` (last success, last failure and its
+  reason). Summary: `node /opt/stslv-amc/api/current/dist/ops/cli.js status` (as `stslv-backup`, with the settings).
+- **Google Drive**: `STS-ELV Backup/Daily` should gain one `db/*.dump.gpg` every day except Friday, `Weekly` or
+  `Monthly` one every Friday.
 
-The grace covers a job that waits for another backup (up to 2 hours) plus its own run time.
-
-What sends an email:
-- **Any failure of a step**: `<url>/fail` is POSTed with the reason as text (secrets redacted, at most 1,000
-  characters), which Healthchecks includes in the email. This covers database dump or `pg_restore --list` checks,
-  encryption, **Google Drive upload failures** (authorization expired or revoked, Drive full, rate limits, wrong
-  folder), **verification failures** (size/MD5 after upload, SHA-256 of the downloaded copy, a document that no
-  longer matches its database checksum or is missing), the pre-flight checks (a private key on the server, the
-  token file readable by others), a failed promotion, and a job that could not start because another backup did
-  not finish in time.
-- **Missed runs**: no ping within the schedule plus grace (the server was down, the timer was disabled, the unit
-  could not start, the job hung) — Healthchecks' dead-man's switch.
-- Recovery: the next successful run pings the check, and Healthchecks sends an "up" email.
-
-Not alerted by email (logged and visible in `journalctl`): a failure to remove OLD backups after a successful one
-(retention; retried by the next run). A Drive that fills up is alerted when the next upload fails.
-
-Testing the alert path: a run with an impossible setting (for example an unknown `BACKUP_GPG_RECIPIENT` in a
-temporary copy of the settings) must produce a "down" email with the reason; the next good run an "up" email.
+**Risk accepted by the owner:** without an external service nobody is told when a backup fails or does not run
+(for example an expired Google authorization or a server that is down at 18:00 IST). Recommended routine: look at
+the Drive folder (or `systemctl list-timers` + the journal) once a week, and run the restore drill monthly. Email or
+chat alerts can be added later by filling in the optional settings above — no code change is needed.
 
 ## Keys
 
@@ -313,21 +306,21 @@ VPS, so there is no point-in-time recovery: the newest daily backup is the recov
 6. **Settings**: `/etc/stslv-amc/backup.env` from `deploy/hostinger/env/backup.env.example` (root:stslv-backup 0640):
    database (`DB_HOST=/var/run/postgresql`, `DB_USER=stslv-backup`, empty `DB_PASSWORD`, `PGSSLMODE=disable`),
    `ATTACHMENTS_DIR`, `BACKUP_GPG_RECIPIENT`, `BACKUP_GDRIVE_FOLDER_ID`, retention 14/8/12,
-   alert webhook and three heartbeat URLs (database, documents, configuration).
+   the alert and heartbeat settings stay EMPTY (no external monitoring service, see "Checking the backups").
 7. **Units**: `config-snapshot.sh` → `/usr/local/sbin/stslv-amc-config-snapshot` (root:root 0755); the four
    `stslv-amc-backup-{daily,weekly}.{service,timer}` → `/etc/systemd/system/`; `systemctl daemon-reload`.
    Check: `systemd-analyze calendar --iterations=7 'Mon..Thu,Sat,Sun *-*-* 18:00:00 Asia/Kolkata'`,
    `systemd-analyze calendar --iterations=5 'Fri *-*-* 18:00:00 Asia/Kolkata'`; `node …/cli.js schedule`.
    Timers stay **disabled**.
 8. **First manual encrypted upload**: `systemctl start stslv-amc-backup-daily`; check the journal, the state files,
-   `STS-ELV Backup/Daily` in the browser (only `.gpg` and `.json` files) and the heartbeats.
+   `STS-ELV Backup/Daily` in the browser (only `.gpg` and `.json` files).
 9. **Isolated restore test** on the administrator PC (private key there): download the Daily folder's newest
    recovery point; `db-restore-drill --kind daily --target-db stslv_restore_<date>` (row counts and migration must
    match), `docs-restore --kind daily --local-layout --to-dir <new folder>` (checksums), drop the test database.
    On another day, `systemctl start stslv-amc-backup-weekly` and the same test for `Weekly` plus
    `config-restore --kind weekly --to-dir <new folder>` (the archive decrypts; compare its file list with the server).
-10. **Alert test**: one run with a wrong `BACKUP_GPG_RECIPIENT` (or rclone authorization removed) must send the
-    alert and the heartbeat `/fail`; restore the setting.
+10. **Failure test**: one run with a deliberately wrong setting must end with the unit *failed* and a plain
+    reason in the journal, without uploading anything; restore the setting.
 11. **Activate**: `systemctl enable --now stslv-amc-backup-daily.timer stslv-amc-backup-weekly.timer`; confirm the
     first scheduled runs (`systemctl list-timers 'stslv-amc-backup-*'`) and the monitor.
 
