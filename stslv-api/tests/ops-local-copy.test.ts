@@ -1,11 +1,11 @@
-import { mkdtemp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readLocalCopySettings } from "../src/ops/backup/config";
 import { configArchiveKey, configManifestKey, listConfigBackups } from "../src/ops/backup/config-backup";
 import { dumpKey, kindMarkerKey, listDatabaseBackups, manifestKey } from "../src/ops/backup/db-backup";
-import { localCopyAllowed, pruneLocalCopies, replicateBackup, runTypedStepWithLocalCopy, typedBackupKeys, uploadMissingBackups, type LocalCopySettings } from "../src/ops/backup/local-copy";
+import { docsRefsKey, localCopyAllowed, pruneLocalCopies, recordDocumentReferences, replicateBackup, runTypedStepWithLocalCopy, typedBackupKeys, uploadMissingBackups, type LocalCopySettings } from "../src/ops/backup/local-copy";
 import { createLogger } from "../src/ops/backup/log";
 import { readState } from "../src/ops/backup/notify";
 import type { RecoveryKind } from "../src/ops/backup/retention";
@@ -245,10 +245,20 @@ describe("local retention: the latest 7 calendar days (IST), safely", () => {
         },
       })
     ).toEqual([]);
-    // Each is the newest (only) backup of its kind: kept even when confirmed in Drive.
-    expect(await pruneLocalCopies({ local: local.store, retainDays: 7, now, log, confirmedOffsite: async () => true })).toEqual([]);
+    // Confirmed in Drive: the newest DATABASE backup is still kept (the VPS keeps making them); a configuration copy
+    // (no longer made on the VPS — left by earlier code or a test) expires like any old backup, so it cannot stay forever.
+    expect(await pruneLocalCopies({ local: local.store, retainDays: 7, now, log, confirmedOffsite: async () => true })).toEqual([older]);
     expect((await listDatabaseBackups(local.store)).map((b) => b.id)).toEqual([old]);
-    expect((await listConfigBackups(local.store)).map((b) => b.id)).toEqual([older]);
+    expect(await listConfigBackups(local.store)).toEqual([]);
+  });
+
+  it("a leftover configuration copy within the 7 days, or not confirmed in Drive, is kept", async () => {
+    const local = await localSettings();
+    const recent = await fakeBackup(local.store, "configuration", new Date("2026-11-18T17:32:36Z"), "weekly");
+    const now = new Date("2026-11-19T13:00:00Z");
+    expect(await pruneLocalCopies({ local: local.store, retainDays: 7, now, log, confirmedOffsite: async () => true })).toEqual([]);
+    // Eight days later, confirmed in Drive: removed.
+    expect(await pruneLocalCopies({ local: local.store, retainDays: 7, now: new Date("2026-11-26T13:00:00Z"), log, confirmedOffsite: async () => true })).toEqual([recent]);
   });
 
   it("only the local store's own folder is touched: the manual safety backups next to it are never removed", async () => {
@@ -315,5 +325,80 @@ describe("documents on the VPS: the runs of the latest 7 days, shared encrypted 
     await lone.store.upload(`docs/manifests/${oldId}.json.gpg`, blob);
     await pruneLocalCopies({ local: lone.store, retainDays: 7, now: new Date("2026-11-12T13:00:00Z"), log, confirmedOffsite: async () => true });
     expect((await lone.store.list("docs/manifests/")).map((object) => object.key)).toEqual([`docs/manifests/${oldId}.json.gpg`]);
+  });
+});
+
+describe("document files on the VPS do not accumulate: removed only when no retained run needs them", () => {
+  const day = (n: number) => new Date(Date.UTC(2026, 10, n, 12, 31, 0));
+  const ageFile = async (dir: string, key: string, when: Date) => utimes(path.join(dir, ...key.split("/")), when, when);
+
+  async function docsStore() {
+    const local = await localSettings();
+    const work = await freshDir("refs-work");
+    const blob = path.join(work, "blob");
+    await writeFile(blob, "encrypted");
+    const file = async (key: string, when: Date) => {
+      await local.store.upload(key, blob);
+      await ageFile(local.dir, key, when);
+    };
+    const run = async (when: Date, files: string[], withRefs = true) => {
+      const id = newRunId("stslv-docs", "test", when);
+      await local.store.upload(`docs/manifests/${id}.json.gpg`, blob);
+      if (withRefs) await recordDocumentReferences(local.store, work, { id, entries: [...files.map((encryptedKey) => ({ encryptedKey })), { encryptedKey: null }] });
+      return id;
+    };
+    return { local, work, file, run };
+  }
+
+  it("a document version only old runs referenced is removed; files of retained runs, and very new files, stay", async () => {
+    const { local, work, file, run } = await docsStore();
+    const oldOnly = "docs/files/attachments/a.pdf/1111.gpg";
+    const shared = "docs/files/attachments/b.pdf/2222.gpg";
+    const brandNew = "docs/files/attachments/c.pdf/3333.gpg";
+    await file(oldOnly, day(1));
+    await file(shared, day(1));
+    // Days 1-3: a.pdf (v1) and b.pdf; from day 4 a.pdf was replaced (new version below), b.pdf continues.
+    const replaced = "docs/files/attachments/a.pdf/4444.gpg";
+    await file(replaced, day(4));
+    const runs: string[] = [];
+    for (let n = 1; n <= 12; n += 1) runs.push(await run(day(n), n <= 3 ? [oldOnly, shared] : [replaced, shared]));
+    await file(brandNew, new Date("2026-11-12T12:00:00Z")); // copied an hour ago by a run still in progress
+
+    await pruneLocalCopies({ local: local.store, retainDays: 7, now: new Date("2026-11-12T13:00:00Z"), log, confirmedOffsite: async () => true, workDir: work });
+
+    expect(await local.store.head(oldOnly)).toBeNull();
+    expect(await local.store.head(shared)).not.toBeNull();
+    expect(await local.store.head(replaced)).not.toBeNull();
+    expect(await local.store.head(brandNew)).not.toBeNull();
+    // Every file a retained run references is present (each kept run stays fully restorable).
+    const keptRuns = (await local.store.list("docs/manifests/")).length;
+    expect(keptRuns).toBe(7);
+    // The reference lists of removed runs are removed with them.
+    expect(await local.store.head(docsRefsKey(runs[0] as string))).toBeNull();
+    expect(await local.store.head(docsRefsKey(runs[11] as string))).not.toBeNull();
+  });
+
+  it("nothing is removed while any retained run has no reference list (runs made before the lists existed)", async () => {
+    const { local, work, file, run } = await docsStore();
+    const unreferenced = "docs/files/attachments/old.pdf/9999.gpg";
+    await file(unreferenced, day(1));
+    await run(day(11), [], false); // legacy run without a list
+    await run(day(12), []);
+    await pruneLocalCopies({ local: local.store, retainDays: 7, now: new Date("2026-11-12T13:00:00Z"), log, confirmedOffsite: async () => true, workDir: work });
+    expect(await local.store.head(unreferenced)).not.toBeNull();
+  });
+
+  it("with no document run at all, no document file is removed", async () => {
+    const { local, work, file } = await docsStore();
+    await file("docs/files/attachments/x.pdf/7777.gpg", day(1));
+    await pruneLocalCopies({ local: local.store, retainDays: 7, now: new Date("2026-11-12T13:00:00Z"), log, confirmedOffsite: async () => true, workDir: work });
+    expect(await local.store.head("docs/files/attachments/x.pdf/7777.gpg")).not.toBeNull();
+  });
+
+  it("the reference list is a plain list of object names only (no document content), never with missing entries", async () => {
+    const { local, work } = await docsStore();
+    await recordDocumentReferences(local.store, work, { id: "stslv-docs-test-20261112T123100000Z-abcdef", entries: [{ encryptedKey: "docs/files/attachments/b.pdf/2222.gpg" }, { encryptedKey: null }, { encryptedKey: "docs/files/attachments/a.pdf/1111.gpg" }] });
+    const text = await readFile(path.join(local.dir, "docs", "refs", "stslv-docs-test-20261112T123100000Z-abcdef.json"), "utf8");
+    expect(JSON.parse(text)).toEqual({ run: "stslv-docs-test-20261112T123100000Z-abcdef", files: ["docs/files/attachments/a.pdf/1111.gpg", "docs/files/attachments/b.pdf/2222.gpg"] });
   });
 });

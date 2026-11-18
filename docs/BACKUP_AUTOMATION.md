@@ -194,7 +194,9 @@ second schedule: the same daily and Friday jobs do it.
 /var/lib/stslv-amc-backup/local/
   db/        <id>.dump.gpg  <id>.manifest.json.gpg  <id>.kind-<type>.json      latest 7 calendar days
   docs/      manifests/<run>.json.gpg                                       latest 7 calendar days
-  docs/      files/…/<sha256>.gpg   one encrypted copy per document version, shared by all runs: kept
+  docs/      refs/<run>.json        plain list of the encrypted files that run uses (names only; VPS only)
+  docs/      files/…/<sha256>.gpg   one encrypted copy per document version, shared by runs: removed when no
+                                    retained run uses it
 ```
 
 - **Owner's design (approved 2026-11-18):** VPS = database + documents, every day, latest 7 days, no separate weekly
@@ -212,8 +214,12 @@ second schedule: the same daily and Friday jobs do it.
   Never removed: the newest database backup, and any backup not
   confirmed present in its Drive folder (if Drive cannot be asked, nothing is removed). Only this folder is ever
   touched: the manual safety backups in `/var/backups/stselv-safety` are outside it and never affected. Document
-  runs follow the same 7 days; the encrypted document files they point to are shared by every run holding that
-  version (the server cannot read the encrypted run lists to tell which are unused) and are kept. Drive
+  runs follow the same 7 days. Document files do not accumulate: each VPS document run also writes a plain list of
+  the encrypted files it uses (`docs/refs/<run>.json`: object names only — the run manifest itself is encrypted
+  and unreadable on the server; the list is never uploaded). A document file is removed only when no retained
+  run's list names it, only when every retained run has its list (otherwise nothing is removed), and only when
+  older than one day — so every retained run stays fully restorable. Configuration backups are not made on the VPS;
+  any left by earlier code or tests expire after 7 days once confirmed in Drive. Drive
   retention is unchanged (14 daily, 8 weekly, 12 monthly).
 - **Disk space.** Below `BACKUP_LOCAL_MIN_FREE_GB` (5 GB) free, no VPS copy is made (error in the journal; the
   backup still goes to Drive and the step reports a warning). Today: ~0.3 MB per day.

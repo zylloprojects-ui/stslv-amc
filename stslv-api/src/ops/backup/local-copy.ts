@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { mkdir, rm, stat, statfs } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, statfs, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BackupConfig } from "./config";
 import { configArchiveKey, configKindKey, configManifestKey, listConfigBackups } from "./config-backup";
@@ -117,10 +118,54 @@ export async function uploadMissingBackups(input: {
   return uploaded;
 }
 
+/** The plain list of encrypted document files one LOCAL document run references (local only, never uploaded). */
+export const docsRefsKey = (runId: string) => `docs/refs/${runId}.json`;
+
 /**
- * Local retention: removes database and configuration backups older than the latest `retainDays` calendar days
- * (IST). Keeps the newest backup of each kind of step whatever its age, and keeps any backup not confirmed present in
- * its Drive folder (`confirmedOffsite` false or failing). Manifest first, then markers, then the data.
+ * Records which encrypted document files a local document run references, as a plain JSON list of object keys
+ * (the same names the files already have on disk: no content, no secret). The run's manifest itself is encrypted
+ * with the public key, so without this list the server could never tell which shared document files are still
+ * needed; with it, files no retained run references can be removed safely (pruneLocalCopies).
+ */
+export async function recordDocumentReferences(store: WritableStore, workDir: string, manifest: { id: string; entries: { encryptedKey: string | null }[] }): Promise<void> {
+  const keys = [...new Set(manifest.entries.map((entry) => entry.encryptedKey).filter((key): key is string => typeof key === "string"))].sort();
+  const scratch = path.join(workDir, `refs-${randomBytes(6).toString("hex")}.json`);
+  await mkdir(workDir, { recursive: true, mode: 0o700 });
+  try {
+    await writeFile(scratch, `${JSON.stringify({ run: manifest.id, files: keys })}\n`, { mode: 0o600 });
+    await store.upload(docsRefsKey(manifest.id), scratch);
+  } finally {
+    await rm(scratch, { force: true });
+  }
+}
+
+async function readReferences(store: WritableStore, runId: string, workDir: string): Promise<string[] | null> {
+  const scratch = path.join(workDir, `refs-read-${randomBytes(6).toString("hex")}.json`);
+  await mkdir(workDir, { recursive: true, mode: 0o700 });
+  try {
+    if (!(await store.head(docsRefsKey(runId)))) return null;
+    await store.download(docsRefsKey(runId), scratch);
+    const parsed = JSON.parse(await readFile(scratch, "utf8")) as { run?: unknown; files?: unknown };
+    if (parsed.run !== runId || !Array.isArray(parsed.files) || !parsed.files.every((key) => typeof key === "string")) return null;
+    return parsed.files as string[];
+  } catch {
+    return null;
+  } finally {
+    await rm(scratch, { force: true });
+  }
+}
+
+/**
+ * Local retention for the latest `retainDays` calendar days (IST):
+ *   - database backups: older ones are removed once confirmed in their Drive folder; the newest is always kept;
+ *   - configuration backups: no longer made on the VPS (Drive-only); any left from earlier code or tests expire the
+ *     same way once confirmed in Drive (no "keep the newest" rule, so they do not stay forever);
+ *   - document runs: run manifests (and their reference lists) older than the window are removed, the newest kept;
+ *   - document files (shared by every run holding that document version): removed only when NO retained run
+ *     references them, only when EVERY retained run has its reference list (otherwise nothing is removed), and only
+ *     when older than one day.
+ * A backup not confirmed in Drive (`confirmedOffsite` false or failing) is never removed. Only the local store is
+ * touched. Manifest first, then markers, then the data.
  */
 export async function pruneLocalCopies(input: {
   local: WritableStore;
@@ -128,17 +173,19 @@ export async function pruneLocalCopies(input: {
   now: Date;
   confirmedOffsite: (step: TypedStep, id: string, kind: RecoveryKind) => Promise<boolean>;
   log: Logger;
+  /** Scratch folder for reading reference lists (default: a temporary folder under the system temp dir). */
+  workDir?: string;
 }): Promise<string[]> {
   const removed: string[] = [];
   const oldestKeptDay = backupDay(new Date(input.now.getTime() - (input.retainDays - 1) * 86_400_000)).date;
-  const typed: { step: TypedStep; backups: { id: string; createdAt: Date; kind: RecoveryKind }[] }[] = [
-    { step: "database", backups: await listDatabaseBackups(input.local) },
-    { step: "configuration", backups: await listConfigBackups(input.local) },
+  const typed: { step: TypedStep; keepNewest: boolean; backups: { id: string; createdAt: Date; kind: RecoveryKind }[] }[] = [
+    { step: "database", keepNewest: true, backups: await listDatabaseBackups(input.local) },
+    { step: "configuration", keepNewest: false, backups: await listConfigBackups(input.local) },
   ];
 
-  for (const { step, backups } of typed) {
-    // Newest first: index 0 is never removed.
-    for (const backup of backups.slice(1)) {
+  for (const { step, keepNewest, backups } of typed) {
+    // Newest first: index 0 is kept where the step still makes VPS copies (database).
+    for (const backup of keepNewest ? backups.slice(1) : backups) {
       if (backupDay(backup.createdAt).date >= oldestKeptDay) continue;
       const offsite = await input.confirmedOffsite(step, backup.id, backup.kind).catch(() => false);
       if (!offsite) {
@@ -154,17 +201,49 @@ export async function pruneLocalCopies(input: {
     }
   }
 
-  // Document runs: the run manifests (which document versions a day's backup holds) of the latest `retainDays` days
-  // are kept, the newest always. The encrypted document files themselves are shared by every run that holds that
-  // document version and are never removed (the server cannot read the encrypted manifests to tell which are unused).
+  // Document runs: the run manifests of the latest `retainDays` days are kept, the newest always.
   const docRuns = newestFirst(
     DOCS_RUN_PREFIX,
     (await input.local.list("docs/manifests/")).map((object) => /^docs\/manifests\/(.+)\.json\.gpg$/.exec(object.key)?.[1]).filter((id): id is string => typeof id === "string")
   );
+  const retainedRuns = docRuns.slice(0, 1).concat(docRuns.slice(1).filter((run) => backupDay(run.createdAt).date >= oldestKeptDay));
   for (const run of docRuns.slice(1)) {
     if (backupDay(run.createdAt).date >= oldestKeptDay) continue;
     await input.local.remove(docsManifestKey(run.id));
+    await input.local.remove(docsRefsKey(run.id));
     removed.push(run.id);
+  }
+
+  // Document files no retained run references. Safe only when every retained run says what it references.
+  const scratch = input.workDir ?? path.join(tmpdir(), "stslv-local-copy");
+  const referenced = new Set<string>();
+  let allKnown = retainedRuns.length > 0;
+  for (const run of retainedRuns) {
+    const keys = await readReferences(input.local, run.id, scratch);
+    if (!keys) {
+      allKnown = false;
+      break;
+    }
+    for (const key of keys) referenced.add(key);
+  }
+  const fileCutoff = input.now.getTime() - 86_400_000;
+  if (allKnown) {
+    const unused: string[] = [];
+    for (const object of await input.local.list("docs/files/")) {
+      if (referenced.has(object.key)) continue;
+      if (!object.lastModified || object.lastModified.getTime() >= fileCutoff) continue;
+      await input.local.remove(object.key);
+      unused.push(object.key);
+    }
+    if (unused.length > 0) input.log.info("local_copy.document_files_removed", { count: unused.length, retainedRuns: retainedRuns.length });
+  } else if (retainedRuns.length > 0) {
+    input.log.info("local_copy.document_files_kept", { reason: "a retained document run has no reference list (made before reference lists existed)" });
+  }
+  // Reference lists whose run manifest is gone (an interrupted prune), older than two days.
+  const runIds = new Set(docRuns.map((run) => run.id));
+  for (const object of await input.local.list("docs/refs/")) {
+    const id = /^docs\/refs\/(.+)\.json$/.exec(object.key)?.[1];
+    if (id && !runIds.has(id) && object.lastModified && object.lastModified.getTime() < input.now.getTime() - 2 * 86_400_000) await input.local.remove(object.key);
   }
 
   // Data files whose manifest never arrived (a local run interrupted mid-way), older than two days: not recoverable.
@@ -258,6 +337,7 @@ export async function runTypedStepWithLocalCopy(input: {
       retainDays: input.local.retainDays,
       now: now(),
       log: input.log,
+      workDir: input.config.workDir,
       confirmedOffsite: async (step, backupId, kind) => Boolean(await (await input.openRemote(kind)).head(manifestOf(step, backupId))),
     });
   } catch (error) {

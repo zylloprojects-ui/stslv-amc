@@ -3,7 +3,7 @@ import path from "node:path";
 import { config as loadEnvFile } from "dotenv";
 import { gdriveFolderName, openBackupStore, openDocumentSource, readBackupConfig, readDatabaseSource, readLocalCopySettings, type BackupConfig } from "./backup/config";
 import { restoreConfigBackup, runConfigBackup } from "./backup/config-backup";
-import { localCopyAllowed, recordOffsiteFailure, runTypedStepWithLocalCopy, type LocalCopySettings } from "./backup/local-copy";
+import { localCopyAllowed, recordDocumentReferences, recordOffsiteFailure, runTypedStepWithLocalCopy, type LocalCopySettings } from "./backup/local-copy";
 import { assertNoPrivateKey, assertPrivateFile } from "./backup/preflight";
 import { promoteBackup } from "./backup/promote";
 import { RcloneStore } from "./backup/rclone-store";
@@ -143,8 +143,10 @@ async function documentsStep(config: BackupConfig, vars: Vars, log: Log, verifyS
 
   const local = await localCopyFor(vars, log);
   if (local.settings) {
-    // Encrypted document copies on the VPS first (never deleted, like in Drive), then the same job for Drive.
+    // Encrypted document copies on the VPS first, then the same job for Drive. The run's list of referenced encrypted
+    // files (plain object names, local only) lets VPS retention remove document files no retained run needs.
     const onServer = await run(local.settings.store);
+    await recordDocumentReferences(local.settings.store, config.workDir, onServer);
     log.info("local_copy.stored", { step: "documents", id: onServer.id });
     try {
       const offsite = await run(await destination(vars, log, kind));
