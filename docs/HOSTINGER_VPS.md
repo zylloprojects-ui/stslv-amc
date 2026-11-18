@@ -35,7 +35,7 @@ Internet ── 443 ── Nginx (TLS, security headers, CSP, rate limits)
                     ├── /            static web build   /var/www/stslv-amc/web/current
                     └── /api/        127.0.0.1:3001     Node.js API (systemd: stslv-amc-api, user "stslv")
 API ── TLS ── Neon PostgreSQL 17 (retained)      API ── HTTPS ── Supabase private bucket (retained)
-Timers: stslv-amc-db-backup, stslv-amc-docs-backup (user "stslv-backup") ── HTTPS ── independent backup bucket
+Timers: stslv-amc-backup-daily (18:00 IST, not Friday), stslv-amc-backup-weekly (Friday 18:00 IST, + configuration; monthly on the last Friday) (user "stslv-backup") ── HTTPS ── independent backup bucket
 Timer:  stslv-amc-monitor (user "stslv-monitor") ── alerts webhook / heartbeat
 ```
 

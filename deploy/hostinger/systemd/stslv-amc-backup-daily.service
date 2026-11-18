@@ -1,0 +1,43 @@
+# STSLV AMC — daily backup: encrypted database backup + encrypted document copies, off-site.
+# TEMPLATE: NOT YET DEPLOYED, NOT SCHEDULED. Started by stslv-amc-backup-daily.timer (18:00 IST, not Friday).
+# Run by hand:  systemctl start stslv-amc-backup-daily
+# Result:       journalctl -u stslv-amc-backup-daily   and   /var/lib/stslv-amc-backup/state/*.json
+#
+# `scheduled-backup --kind daily` takes the backup lock (no two backups at once, by hand or scheduled), skips a
+# Friday (the weekly job covers it) and any step already completed today, then runs: database, documents.
+# Each step alerts and pings its own heartbeat. Settings: /etc/stslv-amc/backup.env (root:stslv-backup 0640).
+# See docs/BACKUP_AUTOMATION.md.
+
+[Unit]
+Description=STSLV AMC daily backup (database + documents)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=stslv-backup
+Group=stslv-backup
+EnvironmentFile=/etc/stslv-amc/backup.env
+Environment=NODE_ENV=production
+Environment=GNUPGHOME=/var/lib/stslv-amc-backup/gnupg
+ExecStart=/usr/bin/node /opt/stslv-amc/api/current/dist/ops/cli.js scheduled-backup --kind daily
+# Database (minutes) + documents; includes waiting for a backup that is still running.
+TimeoutStartSec=4h
+Nice=10
+IOSchedulingClass=idle
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/stslv-amc-backup
+ReadOnlyPaths=-/var/lib/stslv-amc/attachments
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077

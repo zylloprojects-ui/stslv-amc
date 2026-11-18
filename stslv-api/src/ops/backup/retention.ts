@@ -71,3 +71,53 @@ export function selectRetained(backups: readonly BackupStamp[], policy: Retentio
     reasons,
   };
 }
+
+// -- Retention by recovery-point type (approved 2026-11-18) ------------------------------------------------
+// The schedule labels every backup it makes: "daily" (Saturday–Thursday), "weekly" (Fridays) or "monthly"
+// (the last Friday of the month). Retention keeps the newest N of each type — default 14 daily, 8 weekly,
+// 12 monthly — counted only over COMPLETE backups (a manifest exists, written after the off-site copy was
+// verified). The newest backup is always kept. A backup without a type (made by hand, or before types existed)
+// counts as daily.
+
+export type RecoveryKind = "daily" | "weekly" | "monthly";
+
+const KIND_RANK: Record<RecoveryKind, number> = { daily: 0, weekly: 1, monthly: 2 };
+
+/** The highest of several kinds (a daily backup promoted to weekly or monthly counts as the higher kind). */
+export function highestKind(kinds: Iterable<RecoveryKind>): RecoveryKind {
+  let best: RecoveryKind = "daily";
+  for (const kind of kinds) if (KIND_RANK[kind] > KIND_RANK[best]) best = kind;
+  return best;
+}
+
+export function kindRank(kind: RecoveryKind): number {
+  return KIND_RANK[kind];
+}
+
+export interface KindedBackup extends BackupStamp {
+  kind: RecoveryKind;
+}
+
+export function selectByKind(backups: readonly KindedBackup[], policy: RetentionPolicy): RetentionDecision {
+  for (const [name, value] of Object.entries(policy)) {
+    if (!Number.isInteger(value) || value < 0) throw new Error(`Retention ${name} must be a whole number of 0 or more.`);
+  }
+
+  const newestFirst = [...backups].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id));
+  const reasons: Record<string, string[]> = {};
+  const counts: Record<RecoveryKind, number> = { daily: 0, weekly: 0, monthly: 0 };
+
+  if (newestFirst[0]) (reasons[newestFirst[0].id] ??= []).push("newest");
+  for (const backup of newestFirst) {
+    if (counts[backup.kind] < policy[backup.kind]) {
+      counts[backup.kind] += 1;
+      (reasons[backup.id] ??= []).push(backup.kind);
+    }
+  }
+
+  return {
+    keep: newestFirst.filter((backup) => reasons[backup.id]).map((backup) => backup.id),
+    remove: newestFirst.filter((backup) => !reasons[backup.id]).map((backup) => backup.id),
+    reasons,
+  };
+}

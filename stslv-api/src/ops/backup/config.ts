@@ -1,3 +1,6 @@
+import { GDRIVE_KIND_FOLDERS, RcloneStore } from "./rclone-store";
+import type { RecoveryKind } from "./retention";
+import { LocalAttachmentsSource } from "./local-documents";
 import path from "node:path";
 import { resolveStorageConfig } from "../../config/storage-config";
 import { assertFingerprint } from "./gpg";
@@ -34,6 +37,8 @@ export interface BackupConfig {
   alertWebhookUrl: string | null;
   heartbeatDbUrl: string | null;
   heartbeatDocsUrl: string | null;
+  /** Weekly configuration backup heartbeat (optional). */
+  heartbeatConfigUrl: string | null;
   /** Every secret value, for redaction of logs and alerts. */
   secrets: string[];
 }
@@ -139,6 +144,7 @@ export function readBackupConfig(vars: Vars, nodeEnv = vars.NODE_ENV): BackupCon
     vars.BACKUP_ALERT_WEBHOOK_URL,
     vars.BACKUP_HEARTBEAT_DB_URL,
     vars.BACKUP_HEARTBEAT_DOCS_URL,
+    vars.BACKUP_HEARTBEAT_CONFIG_URL,
     vars.RESTORE_DB_PASSWORD,
     vars.DB_HOST,
   ].filter((value): value is string => typeof value === "string" && value.trim().length >= 3).map((value) => value.trim());
@@ -161,6 +167,7 @@ export function readBackupConfig(vars: Vars, nodeEnv = vars.NODE_ENV): BackupCon
     alertWebhookUrl: httpsUrl(vars, "BACKUP_ALERT_WEBHOOK_URL", !production),
     heartbeatDbUrl: httpsUrl(vars, "BACKUP_HEARTBEAT_DB_URL", !production),
     heartbeatDocsUrl: httpsUrl(vars, "BACKUP_HEARTBEAT_DOCS_URL", !production),
+    heartbeatConfigUrl: httpsUrl(vars, "BACKUP_HEARTBEAT_CONFIG_URL", !production),
     secrets,
   };
 }
@@ -170,9 +177,22 @@ export function readBackupConfig(vars: Vars, nodeEnv = vars.NODE_ENV): BackupCon
  * production providers (not Neon, not the Supabase project), or a folder (BACKUP_LOCAL_DIR) for development
  * and tests. Exactly one.
  */
-export function openBackupStore(vars: Vars, nodeEnv = vars.NODE_ENV): WritableStore {
+export function openBackupStore(vars: Vars, nodeEnv = vars.NODE_ENV, kind: RecoveryKind = "daily"): WritableStore {
   const local = read(vars, "BACKUP_LOCAL_DIR");
   const s3 = ["BACKUP_S3_ENDPOINT", "BACKUP_S3_BUCKET", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY"].filter((name) => read(vars, name));
+  const gdrive = read(vars, "BACKUP_GDRIVE_FOLDER_ID");
+
+  // Google Drive (rclone): My Drive / "STS-ELV Backup" / Daily | Weekly | Monthly. Exactly one destination.
+  if (gdrive) {
+    if (local || s3.length > 0) throw new Error("Set only one backup destination: BACKUP_GDRIVE_*, BACKUP_S3_* or BACKUP_LOCAL_DIR.");
+    return new RcloneStore({
+      command: [read(vars, "BACKUP_RCLONE_PATH") || "rclone"],
+      configFile: required(vars, "BACKUP_RCLONE_CONFIG"),
+      remote: read(vars, "BACKUP_RCLONE_REMOTE") || "stselv-gdrive",
+      folderId: gdrive,
+      subFolder: GDRIVE_KIND_FOLDERS[kind],
+    });
+  }
 
   if (local && s3.length > 0) throw new Error("Set either BACKUP_LOCAL_DIR or the BACKUP_S3_* settings, not both.");
   if (local) {
@@ -214,7 +234,8 @@ export function openDocumentSource(vars: Vars, nodeEnv = vars.NODE_ENV): Readabl
   const config = resolveStorageConfig(vars, nodeEnv, process.cwd());
 
   if (!config) throw new Error("No document storage is configured (SUPABASE_*, R2_* or ATTACHMENTS_DIR).");
-  if (config.driver === "local") return readOnly(new LocalDirStore(config.dir));
+  // The VPS: a flat local folder, read through a source that offers only regular application files (no links).
+  if (config.driver === "local") return new LocalAttachmentsSource(config.dir);
 
   return readOnly(
     new S3Store({
@@ -227,4 +248,9 @@ export function openDocumentSource(vars: Vars, nodeEnv = vars.NODE_ENV): Readabl
       conditionalWrites: false,
     })
   );
+}
+
+/** The expected name of the Google Drive destination folder (checked against its ID before every run). */
+export function gdriveFolderName(vars: Vars): string {
+  return read(vars, "BACKUP_GDRIVE_FOLDER_NAME") || "STS-ELV Backup";
 }

@@ -1,12 +1,13 @@
-# STSLV AMC — daily encrypted copy of the private document bucket. TEMPLATE: NOT YET DEPLOYED.
-# Started by stslv-amc-docs-backup.timer. Run by hand:  systemctl start stslv-amc-docs-backup
+# STSLV AMC — encrypted copy of the documents, BY HAND ONLY (no timer). TEMPLATE: NOT YET DEPLOYED.
+# The schedule is stslv-amc-backup-daily/weekly.timer (18:00 IST). Run by hand:  systemctl start stslv-amc-docs-backup
+# A run by hand waits for a scheduled backup that is still running (shared backup lock), never overlaps it.
 #
 # Reads the Supabase bucket (list and download only; the code never writes or deletes there), encrypts each
 # file with the backup PUBLIC key and copies it to the off-site backup bucket. Existing backup copies are
 # never overwritten or deleted. See docs/BACKUP_AUTOMATION.md "Documents".
 
 [Unit]
-Description=STSLV AMC encrypted document backup (Supabase -> GPG -> off-site)
+Description=STSLV AMC encrypted document backup (VPS folder or bucket -> GPG -> off-site)
 After=network-online.target
 Wants=network-online.target
 

@@ -1,8 +1,9 @@
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { pgToolEnv, type DatabaseSource } from "./config";
 import { dumpKey, listDatabaseBackups, manifestKey, MANIFEST_FORMAT, pgClient, type DatabaseManifest } from "./db-backup";
 import { decryptFile, type GpgOptions } from "./gpg";
+import { readEncryptedJson } from "./manifest-crypto";
 import type { Logger } from "./log";
 import type { ReadableStore } from "./store";
 import { childEnv, runTool, sha256File } from "./tools";
@@ -39,12 +40,9 @@ export interface RestoreReport {
   ok: boolean;
 }
 
-export async function readManifest(store: ReadableStore, id: string, workDir: string): Promise<DatabaseManifest> {
-  const file = path.join(workDir, `${id}.manifest.json`);
-
-  await store.download(manifestKey(id), file);
-
-  const manifest = JSON.parse(await readFile(file, "utf8")) as DatabaseManifest;
+/** The backup's manifest, decrypted with the backup PRIVATE key (it is stored encrypted, manifest-crypto.ts). */
+export async function readManifest(store: ReadableStore, id: string, workDir: string, gpg: GpgOptions): Promise<DatabaseManifest> {
+  const manifest = await readEncryptedJson<DatabaseManifest>({ store, key: manifestKey(id), gpg, scratchDir: workDir });
 
   if (manifest.format !== MANIFEST_FORMAT || manifest.kind !== "database" || manifest.id !== id) throw new Error("The backup manifest is not a database manifest of this backup.");
 
@@ -85,7 +83,7 @@ export async function restoreDatabaseBackup(input: {
   log.info("db_restore.start", { id, target: target.database });
 
   try {
-    const manifest = await readManifest(store, id, runDir);
+    const manifest = await readManifest(store, id, runDir, input.gpg);
     const encryptedFile = path.join(runDir, "database.dump.gpg");
     const plainFile = path.join(runDir, "database.dump");
 

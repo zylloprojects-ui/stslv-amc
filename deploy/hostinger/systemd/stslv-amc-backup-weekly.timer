@@ -1,0 +1,23 @@
+# STSLV AMC — FRIDAY full backup schedule: every Friday at 18:00 India Standard Time.
+#   Weekly  on every Friday except the last Friday of the month.
+#   Monthly on the last Friday of the month (it REPLACES the weekly backup that day).
+# A calendar expression cannot say "every Friday except the last one", so this one timer starts the Friday job
+# and the job decides from the IST date whether it is the weekly or the monthly backup
+# (stslv-api/src/ops/backup/schedule.ts). There is no separate monthly timer: one backup per day, never two.
+# TEMPLATE: install and enable only with approval (docs/BACKUP_AUTOMATION.md "Activation").
+#   systemctl enable --now stslv-amc-backup-weekly.timer
+#   systemd-analyze calendar --iterations=5 'Fri *-*-* 18:00:00 Asia/Kolkata'
+#   (the last Fridays alone, for reference: systemd-analyze calendar --iterations=12 'Fri *-*~07/1 18:00:00 Asia/Kolkata')
+#
+# 18:00 IST = 12:30 UTC. Database + documents + VPS configuration. It is the only backup on Fridays.
+
+[Unit]
+Description=STSLV AMC Friday full backup (weekly; monthly on the last Friday), 18:00 IST
+
+[Timer]
+OnCalendar=Fri *-*-* 18:00:00 Asia/Kolkata
+AccuracySec=1min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
