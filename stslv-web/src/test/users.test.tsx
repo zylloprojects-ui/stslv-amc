@@ -279,6 +279,44 @@ describe('users', () => {
     })
   })
 
+  describe('protected Super Admin', () => {
+    it('shows a Protected badge and no management actions to another Super Admin', async () => {
+      USERS[1] = { ...(USERS[1] as User), isProtected: true }
+      try {
+        usersApi()
+        renderApp('/admin/users')
+
+        const row = (await screen.findByText('Arun Accountant')).closest('tr') as HTMLElement
+        expect(within(row).getByText('Protected')).toBeInTheDocument()
+        expect(within(row).getByText('Protected account')).toBeInTheDocument()
+        expect(within(row).queryByRole('button')).not.toBeInTheDocument()
+
+        // Other rows keep their actions.
+        expect(screen.getByRole('button', { name: 'Edit Asha Admin' })).toBeInTheDocument()
+      } finally {
+        USERS[1] = { ...(USERS[1] as User), isProtected: false }
+      }
+    })
+
+    it('lets the protected account see its own row with the actions it may take', async () => {
+      USERS[0] = { ...(USERS[0] as User), isProtected: true }
+      try {
+        usersApi()
+        renderApp('/admin/users')
+
+        const edit = await screen.findByRole('button', { name: 'Edit Asha Admin' })
+        const row = edit.closest('tr') as HTMLElement
+        expect(within(row).getByText('Protected')).toBeInTheDocument()
+        expect(edit).toBeEnabled()
+        expect(within(row).queryByText('Protected account')).not.toBeInTheDocument()
+        // It still manages everyone else.
+        expect(screen.getByRole('button', { name: 'Change role of Arun Accountant' })).toBeEnabled()
+      } finally {
+        USERS[0] = { ...(USERS[0] as User), isProtected: false }
+      }
+    })
+  })
+
   it('replaces the current role with the one chosen', async () => {
     const api = usersApi()
     renderApp('/admin/users')

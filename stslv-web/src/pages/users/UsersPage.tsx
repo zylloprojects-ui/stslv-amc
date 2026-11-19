@@ -59,6 +59,9 @@ const ROLE_REQUIRED_TO_APPROVE = 'Assign a role before approving this user.'
 
 const PRIVILEGED_ACCOUNT_ONLY = `Only Super Admin can manage ${PRIVILEGED_ROLES_LABEL} accounts.`
 
+/** The one protected Super Admin (API migration 0119). The API refuses every other administrator. */
+const PROTECTED_ACCOUNT_HINT = 'This account is protected. Only its owner can manage it.'
+
 /** Why an administrator cannot issue a temporary password to this user, if they cannot. The API enforces the same. */
 function temporaryPasswordBlock(user: User, isSelf: boolean): string | undefined {
   if (isSelf) return 'You cannot issue a temporary password for your own account. Change your password under My account.'
@@ -295,6 +298,8 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                     {users.data.items.map((user, index) => {
                       const isSelf = user.id === auth.user?.id
                       const locked = lockedForMe(user)
+                      // Only the protected account itself can manage it; the API refuses everyone else.
+                      const protectedFromMe = Boolean(user.isProtected) && !isSelf
 
                       return (
                         <tr key={user.id} className={TABLE.row}>
@@ -302,6 +307,11 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                           <td className={cx(TABLE.td, TABLE.text, 'font-medium text-slate-900')}>
                             {user.fullName}
                             {isSelf && <span className="ml-2 text-xs font-normal text-slate-500">(you)</span>}
+                            {user.isProtected && (
+                              <span className="ml-2" title={PROTECTED_ACCOUNT_HINT}>
+                                <Badge tone="amber">Protected</Badge>
+                              </span>
+                            )}
                           </td>
                           {show('email') && <td className={cx(TABLE.td, TABLE.unbroken)}>{user.email}</td>}
                           {show('role') && <td className={TABLE.td}>
@@ -332,7 +342,9 @@ export function UsersPage({ initialTab = 'users' }: { initialTab?: Tab }) {
                           {show('lastSignIn') && <td className={cx(TABLE.td, 'whitespace-nowrap')}>{user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'Never'}</td>}
                           {(canEdit || canApprove) && (
                             <td className={cx(TABLE.td, 'whitespace-nowrap text-right')}>
-                              {isRejected(user) ? (
+                              {protectedFromMe ? (
+                                <span className="text-xs text-slate-500" title={PROTECTED_ACCOUNT_HINT}>Protected account</span>
+                              ) : isRejected(user) ? (
                                 <span className="text-xs text-slate-500">No actions</span>
                               ) : (
                               <ActionGroup>

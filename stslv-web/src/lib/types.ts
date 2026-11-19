@@ -168,6 +168,8 @@ export interface User {
   /** Set while a temporary password is outstanding: when it stops working. */
   temporaryCredentialExpiresAt?: string | null
   roles: RoleSummary[]
+  /** The one protected Super Admin (API migration 0119): only its owner can manage it. The API enforces this. */
+  isProtected?: boolean
 }
 
 export interface Permission {

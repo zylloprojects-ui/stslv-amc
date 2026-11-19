@@ -9,6 +9,8 @@ import { isSuperAdmin } from "../../shared/role-model";
 import { parseIdParam } from "../../shared/validation";
 import { listDeletedContracts, restoreContract } from "../amc/contracts.service";
 import { listAllOpenSessions } from "../auth/sessions.service";
+import { protectedAccountId } from "../users/protected-account";
+import { pool } from "../../config/database";
 import { listBackups, startBackup, verifiedBackupFile } from "./backups.service";
 import { sendExport } from "../../shared/export/send";
 import { transportOf } from "../dashboard/readiness.service";
@@ -36,8 +38,13 @@ securityRouter.get("/events", async (req, res) => {
 
 // Every open session (migration 0108), for the Active Sessions list. Ending one is done per user under
 // /api/users/:id/sessions, which applies the user-management rules.
+// The protected account's sessions are private to it (migration 0119): other administrators do not see them.
 securityRouter.get("/sessions", async (req, res) => {
-  res.json({ success: true, data: await listAllOpenSessions(requireAuth(req).sessionId ?? null) });
+  const auth = requireAuth(req);
+  const [sessions, protectedId] = await Promise.all([listAllOpenSessions(auth.sessionId ?? null), protectedAccountId(pool)]);
+  const hidden = protectedId !== null && protectedId !== String(auth.user.id) ? protectedId : null;
+
+  res.json({ success: true, data: hidden === null ? sessions : { ...sessions, items: sessions.items.filter((item) => String(item.user.id) !== hidden) } });
 });
 
 securityRouter.get("/deletions/export", async (req, res) => {

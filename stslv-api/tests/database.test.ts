@@ -49,6 +49,7 @@ describe("migrations", () => {
       "procurement_requests",
       "project_expenses",
       "projects",
+      "protected_accounts",
       "role_permissions",
       "roles",
       "sales_engineer_retired_codes",
