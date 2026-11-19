@@ -404,3 +404,24 @@ Super Admin (`ADMIN`), AMC Operations Executive and Viewer are unchanged.
   metadata are recorded by code.
 - **Reverse** (only with approval): the three `UPDATE` statements in the header of 0117, then delete its
   `schema_migrations` row, and restore the constants.
+
+## 15. AMC Renewal role (2026-11-19)
+
+Requested by the owner: one more built-in role, **AMC Renewal** (code `AMC_RENEWAL_EXECUTIVE`). A user role only:
+no module, page or AMC Renewal workflow changed. The code is deliberately not `AMC_RENEWAL`, the code of the AMC
+Renewal permission module.
+
+- **Same rules as Accounts, AMC Sales and AMC Operations Executive.** Built-in (never deleted; only Super Admin
+  renames, deactivates or reactivates it), operational (`OPERATIONAL_ROLE_CODES`: any supported permission except
+  Users & Access), not privileged (Service Dept may assign it), never Super Admin. Super Admin configures its
+  permissions in Roles & Permissions; Service Dept may as well, within its own permissions (CR-031).
+- **Starts with no permissions.** Migration `0120_amc_renewal_role.sql` inserts only the `roles` row: no
+  `role_permissions`, no `user_roles`, no other role touched. A holder sees no page (the start page shows Access
+  denied) until permissions are granted. No starting grant was decided, so none was invented; `defaultGrants()`
+  returns an empty list.
+- **Fails safely.** 0120 stops, changing nothing, if a role with that code or the name "AMC Renewal" (any case)
+  already exists, for example a custom role Super Admin created. Read-only pre-check and reverse are in its header.
+- **Numbering.** 0119 is reserved by the protected Super Admin work; apply 0119 before 0120 (the runner refuses a
+  file numbered below the last applied one).
+- **Tests.** API `tests/amc-renewal-role.test.ts` (migration, scope, Roles & Permissions, assignment, API access
+  before and after grants); web `src/test/amc-renewal-role.test.tsx` (sidebar, start page, route guards, role tab).

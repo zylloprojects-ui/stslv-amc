@@ -1110,7 +1110,7 @@ const ADMINISTRATION: HelpTopic[] = [
     access: { kind: 'nav', path: '/admin/roles' },
     pages: ['/admin/roles'],
     guideChapter: 'Users and Roles',
-    summary: `What each role may do, module by module. Super Admin changes every role; ${ADMINISTRATOR_NAME} changes custom roles and the permissions of ${FINANCE_ROLE_NAME}, ${MASTER_DATA_ROLE_NAME}, ${BUILT_IN_ROLE_NAMES.AMC_OPERATIONS_EXECUTIVE} and ${BUILT_IN_ROLE_NAMES.VIEWER}, within its own permissions.`,
+    summary: `What each role may do, module by module. Super Admin changes every role; ${ADMINISTRATOR_NAME} changes custom roles and the permissions of ${FINANCE_ROLE_NAME}, ${MASTER_DATA_ROLE_NAME}, ${BUILT_IN_ROLE_NAMES.AMC_OPERATIONS_EXECUTIVE}, ${BUILT_IN_ROLE_NAMES.AMC_RENEWAL_EXECUTIVE} and ${BUILT_IN_ROLE_NAMES.VIEWER}, within its own permissions.`,
     sections: [
       {
         heading: 'Built-in roles',
@@ -1121,6 +1121,7 @@ const ADMINISTRATION: HelpTopic[] = [
           { term: MASTER_DATA_ROLE_NAME, meaning: 'Starts with the Master Data Center.' },
           { term: BUILT_IN_ROLE_NAMES.AMC_OPERATIONS_EXECUTIVE, meaning: 'Starts with the AMC pages (Master AMC Status, AMC Contracts, AMC Execution, AMC Renewals) and Service Sales.' },
           { term: BUILT_IN_ROLE_NAMES.VIEWER, meaning: 'Starts with View only, and submitting suggestions.' },
+          { term: BUILT_IN_ROLE_NAMES.AMC_RENEWAL_EXECUTIVE, meaning: 'Starts with no permissions; opens only what Super Admin grants here. A role, not the AMC Renewals page.' },
         ],
       },
       {
@@ -1128,7 +1129,7 @@ const ADMINISTRATION: HelpTopic[] = [
         bullets: [
           'Actions: View, Create, Edit, Delete, Approve, Export and Data read. Every action needs View; cancelling a contract also needs Edit.',
           'Data read shows a module’s data inside another page (for example client names in the contract form) without opening that module’s pages.',
-          'Starting grants are only a starting point; Super Admin may change them. Users permissions never go to the four operational roles.',
+          'Starting grants are only a starting point; Super Admin may change them. Users permissions never go to the five operational roles.',
           'Saved permissions apply immediately. If someone else saved first, nothing is overwritten.',
           'The sidebar shows a page, and a group heading, only when the role holds View on it. Hiding is a convenience: the server checks every request.',
           'Fixed access (Audit Log, Recycle Bin, Security Center, Backup) cannot be changed here.',
@@ -1139,7 +1140,7 @@ const ADMINISTRATION: HelpTopic[] = [
         bullets: [
           'Add custom roles in Settings → Organization → Role list; set their permissions here.',
           'Super Admin: every role, except Super Admin’s own permissions; may give a role Users & Access.',
-          `${ADMINISTRATOR_NAME} (needs Edit on Users & Access): adds custom roles and changes those whose every permission ${ADMINISTRATOR_NAME} holds; and (client UAT, 2026-11-17) sets the permissions of ${FINANCE_ROLE_NAME}, ${MASTER_DATA_ROLE_NAME}, ${BUILT_IN_ROLE_NAMES.AMC_OPERATIONS_EXECUTIVE} and ${BUILT_IN_ROLE_NAMES.VIEWER} within its own permissions. Never its own role, never Super Admin or ${ADMINISTRATOR_NAME}, never renames, deactivates or deletes a built-in role, and never gives a role Users & Access (may remove it).`,
+          `${ADMINISTRATOR_NAME} (needs Edit on Users & Access): adds custom roles and changes those whose every permission ${ADMINISTRATOR_NAME} holds; and (client UAT, 2026-11-17) sets the permissions of ${FINANCE_ROLE_NAME}, ${MASTER_DATA_ROLE_NAME}, ${BUILT_IN_ROLE_NAMES.AMC_OPERATIONS_EXECUTIVE}, ${BUILT_IN_ROLE_NAMES.AMC_RENEWAL_EXECUTIVE} and ${BUILT_IN_ROLE_NAMES.VIEWER} within its own permissions. Never its own role, never Super Admin or ${ADMINISTRATOR_NAME}, never renames, deactivates or deletes a built-in role, and never gives a role Users & Access (may remove it).`,
           'Nobody grants, removes or assigns a permission they do not hold. The server enforces every rule; a role you may not change shows why.',
         ],
       },

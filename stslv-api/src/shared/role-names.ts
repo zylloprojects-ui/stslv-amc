@@ -4,6 +4,8 @@
 //   ADMINISTRATOR          Admin                 -> Service Dept
 //   FINANCE_EXECUTIVE      Finance Executive     -> Accounts
 //   MASTER_DATA_EXECUTIVE  Master Data Executive -> AMC Sales
+// Migration 0120 added one more operational role (2026-11-19): AMC_RENEWAL_EXECUTIVE "AMC Renewal". Its code
+// differs from the AMC_RENEWAL permission module on purpose: a role and a module are separate things.
 //
 // Screens, exports and API responses read roles.name from the database; API messages that name a role
 // use these constants. Role codes never change, so assignments, grants, permission checks and audit
@@ -19,6 +21,7 @@ export const BUILT_IN_ROLE_NAMES = {
   MASTER_DATA_EXECUTIVE: "AMC Sales",
   AMC_OPERATIONS_EXECUTIVE: "AMC Operations Executive",
   VIEWER: "Viewer",
+  AMC_RENEWAL_EXECUTIVE: "AMC Renewal",
 } as const;
 
 /** The legacy roles of the first permission model (inactive since 0088); their names are unchanged. */

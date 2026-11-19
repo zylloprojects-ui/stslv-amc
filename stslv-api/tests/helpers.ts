@@ -78,7 +78,11 @@ export const PASSWORD = "Correct-Horse-42";
 // The seed migrations, in order. Each is idempotent, so they can be run again after the grants are emptied.
 const SEED_MIGRATIONS = ["seed_roles_and_permissions", "seed_historical_data_permission", "seed_services_sales_permission", "seed_page_permissions", "six_role_model", "role_model_refinements", "seed_independent_page_permissions", "seed_invoice_acknowledgement_permissions", "seed_invoice_acknowledgement_defaults"];
 const seedSql = SEED_MIGRATIONS.map((name) => loadMigrationFiles().find((migration) => migration.name === name)?.sql ?? "").join("\n");
-const seedsFound = SEED_MIGRATIONS.every((name) => loadMigrationFiles().some((migration) => migration.name === name));
+// Migrations that add a built-in role after the seeds (0120 AMC Renewal). They are not idempotent: resetData
+// deletes the role first, so the role is re-added exactly as on a migrated database, with no permissions.
+const POST_SEED_MIGRATIONS = ["amc_renewal_role"];
+const postSeedSql = POST_SEED_MIGRATIONS.map((name) => loadMigrationFiles().find((migration) => migration.name === name)?.sql ?? "").join("\n");
+const seedsFound = [...SEED_MIGRATIONS, ...POST_SEED_MIGRATIONS].every((name) => loadMigrationFiles().some((migration) => migration.name === name));
 
 /**
  * Runs SQL that empties or deletes from activity_logs, which migration 0109 makes append-only. Test schema only.
@@ -131,6 +135,9 @@ export async function resetData(): Promise<void> {
     [names.map(([code]) => code), names.map(([, name]) => name)]
   );
   await pool.query(seedSql);
+  // Roles added after the seeds, in migration order: the seeds above grant some modules to every existing role
+  // (0092: Suggestions), which a role added later never received. Deleted above, they are added again here.
+  await pool.query(postSeedSql);
   // The TRUNCATE above also empties maintenance_frequencies (its created_by refers to users).
   // From migration 0076 contracts refer to its codes, so the seeded rows are put back.
   await restoreSeededFrequencies();

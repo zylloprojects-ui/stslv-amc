@@ -1,6 +1,7 @@
 // Display names of the built-in roles, the same as the API (stslv-api/src/shared/role-names.ts; its
 // tests/role-display-names.test.ts checks both files agree). Renamed for the client on 2026-11-11
 // (migration 0117): Admin -> Service Dept, Finance Executive -> Accounts, Master Data Executive -> AMC Sales.
+// Migration 0120 added the operational role AMC Renewal (code AMC_RENEWAL_EXECUTIVE, not the AMC Renewal page).
 //
 // Role lists, user rows, dropdowns and exports show the name the API sends (roles.name). These constants
 // are for fixed text that names a role: help, hints and messages. Role codes never change.
@@ -12,6 +13,7 @@ export const BUILT_IN_ROLE_NAMES = {
   MASTER_DATA_EXECUTIVE: 'AMC Sales',
   AMC_OPERATIONS_EXECUTIVE: 'AMC Operations Executive',
   VIEWER: 'Viewer',
+  AMC_RENEWAL_EXECUTIVE: 'AMC Renewal',
 } as const
 
 /** The configurable administrator role (code ADMINISTRATOR). */
