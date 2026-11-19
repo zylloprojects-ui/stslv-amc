@@ -10,6 +10,7 @@ import { hashPassword } from "../auth/password";
 import { revokeResetTokens } from "../auth/password-reset.service";
 import { listUserSessions, revokeSession, revokeUserSessions, type SessionSummary } from "../auth/sessions.service";
 import { generateTemporaryPassword, TEMPORARY_PASSWORD_MINUTES } from "../auth/temporary-password";
+import { assertMayManageProtectedAccount, protectedAccountId } from "./protected-account";
 import { ONE_ROLE_MESSAGE, type CreateUserInput, type UserFilters } from "./users.schemas";
 
 /**
@@ -41,6 +42,8 @@ export interface User {
   /** Set while a temporary password is outstanding: when it stops working. */
   temporaryCredentialExpiresAt: string | null;
   roles: RoleSummary[];
+  /** The one protected Super Admin (migration 0119): nobody else may manage it. */
+  isProtected: boolean;
 }
 
 // password_hash is deliberately never selected here.
@@ -56,8 +59,9 @@ const USER_SELECT = `
   LEFT JOIN user_roles ur ON ur.user_id = u.id
   LEFT JOIN roles r ON r.id = ur.role_id`;
 
-function toUser(row: UserRow): User {
+function toUser(row: UserRow, protectedId: string | null): User {
   return {
+    isProtected: protectedId !== null && String(row.id) === protectedId,
     id: row.id,
     email: row.email,
     fullName: row.full_name,
@@ -71,9 +75,9 @@ function toUser(row: UserRow): User {
 }
 
 export async function listUsers(): Promise<User[]> {
-  const result = await pool.query<UserRow>(`${USER_SELECT} GROUP BY u.id ORDER BY lower(u.full_name), u.id`);
+  const [result, protectedId] = await Promise.all([pool.query<UserRow>(`${USER_SELECT} GROUP BY u.id ORDER BY lower(u.full_name), u.id`), protectedAccountId(pool)]);
 
-  return result.rows.map(toUser);
+  return result.rows.map((row) => toUser(row, protectedId));
 }
 
 function userFilter(filters: UserFilters) {
@@ -99,7 +103,7 @@ function userFilter(filters: UserFilters) {
 /** One page of the Users table. pendingTotal ignores the filters: requests waiting for a decision are always announced. */
 export async function listUsersPage(query: UserFilters & { page: number; pageSize: number }) {
   const { params, where } = userFilter(query);
-  const [total, pending, rows] = await Promise.all([
+  const [total, pending, rows, protectedId] = await Promise.all([
     pool.query<{ count: number }>(`SELECT count(*)::int AS count FROM users f WHERE ${where}`, params),
     pool.query<{ count: number }>("SELECT count(*)::int AS count FROM users WHERE approval_status = 'PENDING'"),
     pool.query<UserRow>(
@@ -108,17 +112,21 @@ export async function listUsersPage(query: UserFilters & { page: number; pageSiz
        LIMIT ${query.pageSize} OFFSET ${(query.page - 1) * query.pageSize}`,
       params
     ),
+    protectedAccountId(pool),
   ]);
 
-  return { items: rows.rows.map(toUser), total: total.rows[0]?.count ?? 0, pendingTotal: pending.rows[0]?.count ?? 0, page: query.page, pageSize: query.pageSize };
+  return { items: rows.rows.map((row) => toUser(row, protectedId)), total: total.rows[0]?.count ?? 0, pendingTotal: pending.rows[0]?.count ?? 0, page: query.page, pageSize: query.pageSize };
 }
 
 /** Every user matching the filters, for the export. */
 export async function listUsersMatching(filters: UserFilters): Promise<User[]> {
   const { params, where } = userFilter(filters);
-  const rows = await pool.query<UserRow>(`${USER_SELECT} WHERE u.id IN (SELECT f.id FROM users f WHERE ${where}) GROUP BY u.id ORDER BY lower(u.full_name), u.id`, params);
+  const [rows, protectedId] = await Promise.all([
+    pool.query<UserRow>(`${USER_SELECT} WHERE u.id IN (SELECT f.id FROM users f WHERE ${where}) GROUP BY u.id ORDER BY lower(u.full_name), u.id`, params),
+    protectedAccountId(pool),
+  ]);
 
-  return rows.rows.map(toUser);
+  return rows.rows.map((row) => toUser(row, protectedId));
 }
 
 async function findUser(db: Queryable, id: string): Promise<User> {
@@ -129,7 +137,7 @@ async function findUser(db: Queryable, id: string): Promise<User> {
     throw notFound("User not found.");
   }
 
-  return toUser(row);
+  return toUser(row, await protectedAccountId(db));
 }
 
 /**
@@ -185,6 +193,9 @@ async function assertCanGrantRoles(auth: AuthContext, db: Queryable, roleIds: st
  * roles of) someone whose permissions do not exceed their own.
  */
 async function assertCanManageUser(auth: AuthContext, db: Queryable, targetUserId: string): Promise<void> {
+  // The protected account (migration 0119) is managed by nobody but itself, other Super Admins included.
+  await assertMayManageProtectedAccount(auth, db, targetUserId);
+
   // Super Admin and Admin accounts are managed by Super Admin only, whatever permissions Admin is given.
   if (!isSuperAdmin(auth.roles)) {
     const held = await db.query<{ code: string }>(

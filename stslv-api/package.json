@@ -12,6 +12,8 @@
     "migrate": "tsx src/db/migrate-cli.ts",
     "migrate:status": "tsx src/db/migrate-cli.ts --status",
     "admin:create": "tsx src/scripts/create-admin.ts",
+    "admin:bootstrap-protected": "tsx src/scripts/bootstrap-protected-admin.ts",
+    "admin:recover-protected": "tsx src/scripts/recover-protected-admin.ts",
     "legacy-import:dry-run": "tsx src/scripts/legacy-import.ts",
     "legacy-import:apply": "tsx src/scripts/legacy-import-apply.ts",
     "export:sample": "tsx src/scripts/export-sample.ts",

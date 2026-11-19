@@ -21,6 +21,7 @@ Updated 2026-11-09. Start here.
 | [Document storage](DOCUMENT_STORAGE.md) | Supabase bucket |
 | [Backup & Restore](BACKUP_RESTORE.md) | In-app backups and manual restore |
 | [Sign-up and recovery](AUTH_SIGNUP_AND_RECOVERY.md) | Temporary passwords; recovery when no admin can sign in |
+| [Protected Super Admin](PROTECTED_SUPER_ADMIN.md) | The one account no other administrator can manage; bootstrap and emergency recovery |
 
 ## Handover
 
