@@ -273,7 +273,7 @@ function HideColumnsDialog({
         </div>
       }
     >
-      <p className="mb-3 text-sm text-slate-600">AMC Reference is always shown. Downloads include only the columns shown here, plus the row colour. Service Report files are viewed on the page and are not part of downloads.</p>
+      <p className="mb-3 text-sm text-slate-600">AMC Reference is always shown. Downloads include only the columns shown here, plus the row colour. Service Report and AMC Contract files are opened on the page and are not part of downloads.</p>
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">
@@ -345,7 +345,9 @@ export function AccountsPage() {
   // The AMC Value (ex VAT) column (CR-013, the Customer PO Value) is not shown in this table or offered in Hide Columns
   // (owner request 2026-11-18). The API, its data and the downloads are unchanged; the downloads still follow the
   // hidden list as before. The AMC Value / Year line under Service Value is a separate figure and stays.
-  const offered = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id))
+  // The AMC Contract column (the contract document) only for users who may view AMC Contracts: the API sends the
+  // documents, and the attachment download serves them, only to those users.
+  const offered = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id) && (id !== 'amcContract' || canViewContract))
   const shown = (id: ColumnId) => offered.includes(id) && !hidden.has(id)
   const visible = offered.filter(shown)
 
@@ -692,6 +694,50 @@ function ServiceReportCell({ item }: { item: AccountsItem }) {
   )
 }
 
+/**
+ * The AMC Contract column: the contract document uploaded on AMC Contracts for THIS service's contract. Download only,
+ * through the shared attachment download (/attachments/:id/download), which checks AMC Contracts: View on the server;
+ * the file is saved under its original name and nothing is copied or changed.
+ */
+function ContractDocumentCell({ item }: { item: AccountsItem }) {
+  const contractFile = item.contractDocument
+  const [downloading, setDownloading] = useState(false)
+  const [failure, setFailure] = useState<string | null>(null)
+
+  if (!contractFile) {
+    return (
+      <span className="whitespace-nowrap text-slate-400" title="No contract document has been uploaded on AMC Contracts for this contract">
+        Not uploaded
+      </span>
+    )
+  }
+
+  const save = async () => {
+    setDownloading(true)
+    setFailure(null)
+    try {
+      const file = await download(`/attachments/${contractFile.id}/download`)
+      // The original name as uploaded (already cleaned by the API), never the server's ASCII fallback.
+      saveFile({ blob: new Blob([file.blob], { type: contractFile.mimeType }), filename: contractFile.originalName }, contractFile.originalName)
+    } catch (error) {
+      setFailure(errorMessage(error))
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  return (
+    <div className="min-w-24" title={contractFile.originalName}>
+      <ActionGroup>
+        <ActionButton icon="download" label={`Download AMC contract for ${item.reference}`} onClick={() => void save()} loading={downloading} disabled={downloading} />
+      </ActionGroup>
+      <p aria-live="polite" className="text-xs">
+        {failure && <span className="mt-1 block max-w-56 font-medium text-red-700">{failure}</span>}
+      </p>
+    </div>
+  )
+}
+
 function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProps) {
   const tone = COLOUR_TONE[item.colour]
 
@@ -749,6 +795,11 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
       {shown('serviceReport') && (
         <td className={TABLE.td}>
           <ServiceReportCell item={item} />
+        </td>
+      )}
+      {shown('amcContract') && (
+        <td className={TABLE.td}>
+          <ContractDocumentCell item={item} />
         </td>
       )}
       {/* Client UAT CR-011 to CR-013: the contract's Sales Engineer, the visit's Service Engineer, the contract's Customer PO Value. */}

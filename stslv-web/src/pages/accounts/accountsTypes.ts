@@ -56,6 +56,12 @@ export interface AccountsItem {
   valueSourceMissing?: boolean
   /** The Service Report uploaded on Service Status, or null when none. Absent from an older API. */
   serviceReport?: { id: string; originalName: string; mimeType: string; sizeBytes: number; uploadedAt: string } | null
+  /**
+   * The contract document of this service's AMC contract (uploaded on AMC Contracts), metadata only; `id` is the
+   * attachment downloaded through /attachments/:id/download. Null when the contract has none, and for a user without
+   * AMC Contracts: View. Absent from an older API.
+   */
+  contractDocument?: { id: string; title: string; version: number; originalName: string; mimeType: string; sizeBytes: number; uploadedAt: string } | null
   /** The contract's Sales Engineer: the person who brought the AMC (client UAT CR-011). */
   salesEngineer: { id: string; name: string } | null
   /** The engineer who performed this service, as entered on Service Status (CR-012). Absent from an older API. */
@@ -101,6 +107,8 @@ export interface AccountsList {
   kpis: AccountsKpis
   /** The AMC Value column is sent, so it is offered. Absent from an older API. */
   amcValueVisible?: boolean
+  /** Contract documents are sent (the user holds AMC Contracts: View). Absent from an older API. */
+  contractDocumentVisible?: boolean
 }
 
 export interface AccountsOptions {

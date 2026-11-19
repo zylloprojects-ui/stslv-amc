@@ -178,6 +178,8 @@ describe('Accounts page', () => {
       'Service Status',
       'Service Report No.',
       'Service Report',
+      // The contract document of the service's contract (2026-11-19): VIEWER holds AMC Contracts: View.
+      'AMC Contract',
       // Client UAT CR-011 to CR-014 (provisional order). AMC Value is offered only when the API says the user may see
       // contract values; this mock does not.
       'Sales Engineer',
@@ -301,7 +303,7 @@ describe('Accounts page', () => {
     const buttons = screen.getAllByRole('button', { name: /Hide Columns/ })
     expect(buttons).toHaveLength(1)
     const filters = within(screen.getByRole('form', { name: 'Filters' }))
-    expect(filters.getByRole('button', { name: 'Hide Columns · 12 of 13 shown' })).toBe(buttons[0])
+    expect(filters.getByRole('button', { name: 'Hide Columns · 13 of 14 shown' })).toBe(buttons[0])
     expect(filters.getByRole('button', { name: 'Apply' })).toBeInTheDocument()
     expect(filters.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
     // Excel and PDF stay in the header, outside the filters.
@@ -311,7 +313,7 @@ describe('Accounts page', () => {
     // Opening the column chooser does not submit the filters, and Actions is not a choice.
     await userEvent.click(buttons[0])
     const dialog = within(screen.getByRole('dialog'))
-    expect(dialog.getAllByRole('checkbox')).toHaveLength(13)
+    expect(dialog.getAllByRole('checkbox')).toHaveLength(14)
     expect(dialog.queryByRole('checkbox', { name: 'Actions' })).not.toBeInTheDocument()
   })
 
@@ -331,7 +333,7 @@ describe('Accounts page', () => {
     expect(headers()).not.toContain('Sales Engineer')
     expect(headers()).toContain('AMC Reference')
     expect(headers()).not.toContain('Actions')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 10 of 13 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 11 of 14 shown' })).toBeInTheDocument()
 
     view.unmount()
     renderPage()
@@ -361,7 +363,7 @@ describe('Accounts page', () => {
     await userEvent.click(zoho)
     await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
     expect(headers()).toContain('Zoho Invoice Value (ex VAT)')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 13 of 13 shown' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide Columns · 14 of 14 shown' })).toBeInTheDocument()
 
     // Showing every column is remembered, not replaced by the default on the next visit.
     view.unmount()
@@ -571,10 +573,13 @@ describe('Accounts engineers and values', () => {
 
     const columns = headers()
     const at = (heading: string) => columns.indexOf(heading)
-    expect([at('Sales Engineer'), at('Service Engineer'), at('Service Value (ex VAT)')]).toEqual([
+    // AMC Contract sits between Service Report and Sales Engineer (2026-11-19).
+    expect([at('Service Report'), at('AMC Contract'), at('Sales Engineer'), at('Service Engineer'), at('Service Value (ex VAT)')]).toEqual([
+      at('Service Report No.') + 1,
       at('Service Report No.') + 2,
       at('Service Report No.') + 3,
       at('Service Report No.') + 4,
+      at('Service Report No.') + 5,
     ])
     const row = rowOf('AMC-0007')
     const cells = [...row.querySelectorAll('td')].map((cell) => cell.textContent)
@@ -657,5 +662,98 @@ describe('Accounts engineers and values', () => {
     const missing = [...rowOf('AMC-0008').querySelectorAll('td')][at] as HTMLElement
     expect(missing).toHaveTextContent('No Billing Basis or Cost per Visit on the contract')
     expect(missing).toHaveTextContent('AMC Value / Year: 1,000.000')
+  })
+})
+
+describe('Accounts AMC Contract column (contract document download)', () => {
+  const contractFile = (id: string, originalName: string) => ({ id, title: 'Contract document', version: 1, originalName, mimeType: 'application/pdf', sizeBytes: 2048, uploadedAt: '2026-10-01T08:00:00.000Z' })
+  const WITH_DOC = makeItem({ contractDocument: contractFile('501', 'Alpha signed contract.pdf') })
+  const OTHER_DOC = makeItem({ id: '2', reference: 'AMC-0008', contract: { id: '8', status: 'ACTIVE' }, contractDocument: contractFile('502', 'Beta contract.pdf') })
+  const NO_DOC = makeItem({ id: '3', reference: 'AMC-0009', contract: { id: '9', status: 'ACTIVE' }, contractDocument: null })
+  const ACCOUNTS_ONLY: SessionUser = { ...VIEWER, id: '11', permissions: ['ACCOUNTS:VIEW', 'ACCOUNTS:EXPORT'] }
+
+  const cellOf = (reference: string) => {
+    const at = headers().indexOf('AMC Contract')
+    return [...rowOf(reference).querySelectorAll('td')][at] as HTMLElement
+  }
+  const captureSaves = () => {
+    const saved: string[] = []
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: () => 'blob:contract', revokeObjectURL: () => undefined }))
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      saved.push(this.download)
+    })
+    return saved
+  }
+
+  it('sits right after Service Report and downloads the document of each row\'s own contract through the attachment download', async () => {
+    const saved = captureSaves()
+    const api = accountsApi(VIEWER, [WITH_DOC, OTHER_DOC, NO_DOC], (request) =>
+      request.path === '/attachments/501/download' || request.path === '/attachments/502/download' ? ok('%PDF-1.4') : undefined,
+    )
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    expect(headers().indexOf('AMC Contract')).toBe(headers().indexOf('Service Report') + 1)
+
+    await userEvent.click(within(cellOf('AMC-0008')).getByRole('button', { name: /^Download AMC contract for AMC-0008/ }))
+    await waitFor(() => expect(saved).toEqual(['Beta contract.pdf']))
+    expect(api.find('GET', '/attachments/502/download')).toHaveLength(1)
+    expect(api.find('GET', '/attachments/501/download')).toHaveLength(0)
+
+    await userEvent.click(within(cellOf('AMC-0007')).getByRole('button', { name: /^Download AMC contract for AMC-0007/ }))
+    await waitFor(() => expect(saved).toEqual(['Beta contract.pdf', 'Alpha signed contract.pdf']))
+    expect(api.find('GET', '/attachments/501/download')[0]?.authorization).toBe('Bearer test-token')
+  })
+
+  it('shows "Not uploaded" and no button when the contract has no document', async () => {
+    accountsApi(VIEWER, [NO_DOC])
+    renderPage()
+    await screen.findByText('AMC-0009')
+
+    expect(cellOf('AMC-0009')).toHaveTextContent('Not uploaded')
+    expect(within(cellOf('AMC-0009')).queryByRole('button')).not.toBeInTheDocument()
+  })
+
+  it('shows the server\'s reason when the download is refused, and saves nothing', async () => {
+    const saved = captureSaves()
+    accountsApi(VIEWER, [WITH_DOC], (request) => (request.path === '/attachments/501/download' ? fail(403, 'FORBIDDEN', 'You do not have permission to perform this action.') : undefined))
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    await userEvent.click(within(cellOf('AMC-0007')).getByRole('button', { name: /^Download AMC contract/ }))
+    expect(await within(cellOf('AMC-0007')).findByText(/do not have permission/)).toBeInTheDocument()
+    expect(saved).toEqual([])
+  })
+
+  it('is neither shown nor offered in Hide Columns to a user without AMC Contracts: View', async () => {
+    accountsApi(ACCOUNTS_ONLY, [{ ...WITH_DOC, contractDocument: null }])
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    expect(headers()).not.toContain('AMC Contract')
+    expect(screen.getByRole('button', { name: 'Hide Columns · 12 of 13 shown' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    expect(within(screen.getByRole('dialog')).queryByRole('checkbox', { name: 'AMC Contract' })).not.toBeInTheDocument()
+  })
+
+  it('can be hidden, is remembered, and never reaches the export as a hidden column', async () => {
+    const api = accountsApi(EXPORTER, [WITH_DOC], (request) => (request.path === '/accounts/export' ? ok(null) : undefined))
+    captureSaves()
+    const view = renderPage()
+    await screen.findByText('AMC-0007')
+
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('checkbox', { name: 'AMC Contract' }))
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Apply' }))
+    expect(headers()).not.toContain('AMC Contract')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Export Accounts to Excel' }))
+    await waitFor(() => expect(api.find('GET', '/accounts/export')).toHaveLength(1))
+    expect(api.find('GET', '/accounts/export')[0]?.query.get('hidden')).toBe('invoiceValue')
+
+    view.unmount()
+    renderPage()
+    await screen.findByText('AMC-0007')
+    expect(headers()).not.toContain('AMC Contract')
   })
 })
