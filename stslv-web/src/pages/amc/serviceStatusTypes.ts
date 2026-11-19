@@ -43,6 +43,8 @@ export interface ServiceStatusItem {
   salesEngineerName?: string | null
   /** Number of Working Days typed on this service (database update 0121); null when not entered. Never calculated. */
   workingDays?: number | null
+  /** Number of Manpower typed on this service (database update 0122); null when not entered. Never calculated. */
+  manpowerCount?: number | null
   /** The contract's AMC Value / Year (OMR, excluding VAT); null when this user may not see contract values. */
   amcValue?: string | null
   /** This service's own value (OMR, excluding VAT); same access as amcValue; null when none is recorded. Absent from an older API. */
@@ -102,6 +104,8 @@ export interface ServiceStatusList {
   salesEngineerNameAvailable?: boolean
   /** Database update 0121: the Number of Working Days of a service is stored. Absent from an older API. */
   workingDaysAvailable?: boolean
+  /** Database update 0122: the Number of Manpower of a service is stored. Absent from an older API. */
+  manpowerCountAvailable?: boolean
   /** The signed-in user may see contract values (AMC Contracts: View), so the AMC Value column is offered. */
   amcValueVisible?: boolean
   /**

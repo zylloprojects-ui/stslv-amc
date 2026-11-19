@@ -42,10 +42,12 @@ interface Features {
   engineerName: boolean;
   /** 0121: the Number of Working Days typed on a service. */
   workingDays: boolean;
+  /** 0122: the Number of Manpower typed on a service. */
+  manpowerCount: boolean;
 }
 
 async function features(): Promise<Features> {
-  const [masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName, workingDays] = await Promise.all([
+  const [masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName, workingDays, manpowerCount] = await Promise.all([
     schemaHas(["amc_contracts.sales_engineer_id", "amc_contracts.system_type_id", "sales_engineers", "system_types"]),
     schemaHas(["amc_contracts.renewed_from_id"]),
     schemaHas(["maintenance_frequencies"]),
@@ -54,9 +56,10 @@ async function features(): Promise<Features> {
     hasStoredReference(),
     schemaHas(["amc_visits.sales_engineer_name"]),
     schemaHas(["amc_visits.working_days"]),
+    schemaHas(["amc_visits.manpower_count"]),
   ]);
 
-  return { masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName, workingDays };
+  return { masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName, workingDays, manpowerCount };
 }
 
 /** Names of the four built-in frequencies, for a database without the frequency master. */
@@ -110,6 +113,7 @@ function selectSql(f: Features, acknowledgements = false): string {
          ${f.reportNumber ? "v.service_report_no" : "NULL::text"} AS service_report_no,
          ${f.engineerName ? "v.sales_engineer_name" : "NULL::text"} AS manual_engineer_name,
          ${f.workingDays ? "v.working_days" : "NULL::int"} AS working_days,
+         ${f.manpowerCount ? "v.manpower_count" : "NULL::int"} AS manpower_count,
          -- The contract's AMC Value / Year (OMR excluding VAT). Read from the contract, never copied onto the visit.
          c.contract_value::text AS amc_value,
          -- This service's own value: amc_visits.visit_amount, the same field Master AMC Status shows as its Service Value
@@ -150,6 +154,7 @@ interface ServiceRow {
   service_report_no: string | null;
   manual_engineer_name: string | null;
   working_days: number | null;
+  manpower_count: number | null;
   amc_value: string;
   service_value: string | null;
   no_amount_source: boolean;
@@ -205,6 +210,11 @@ export interface ServiceStatusItem {
    * entered it. Never calculated from dates.
    */
   workingDays: number | null;
+  /**
+   * Number of Manpower (0122), typed by hand on this service; a non-negative whole number, or null when nobody has
+   * entered it. Never calculated.
+   */
+  manpowerCount: number | null;
   /**
    * The linked contract's AMC Value / Year, OMR excluding VAT, as a decimal string. Null when the signed-in user may
    * not see contract values (needs AMC Contracts: View): it is then never sent.
@@ -272,6 +282,7 @@ function toItem(row: ServiceRow, access: ServiceStatusAccess = NO_EXTRA_ACCESS):
     reportNumber: row.service_report_no,
     salesEngineerName: row.manual_engineer_name,
     workingDays: row.working_days,
+    manpowerCount: row.manpower_count,
     amcValue: access.amcValue ? row.amc_value : null,
     serviceValue: access.amcValue ? row.service_value : null,
     valueSourceMissing: access.amcValue ? row.service_value === null && row.no_amount_source : false,
@@ -430,6 +441,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
     reportNumberLockEnabled: reportNumberLockEnabled(),
     salesEngineerNameAvailable: f.engineerName,
     workingDaysAvailable: f.workingDays,
+    manpowerCountAvailable: f.manpowerCount,
     amcValueVisible: access.amcValue,
     acknowledgementsVisible: access.acknowledgements === true,
     totals,
@@ -539,7 +551,8 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
   if (
     (input.reportNumber !== undefined && !f.reportNumber) ||
     (input.salesEngineerName !== undefined && !f.engineerName) ||
-    (input.workingDays !== undefined && !f.workingDays)
+    (input.workingDays !== undefined && !f.workingDays) ||
+    (input.manpowerCount !== undefined && !f.manpowerCount)
   ) {
     throw featureUnavailable();
   }
@@ -649,6 +662,27 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
           entityId: id,
           description: `Number of Working Days of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
             input.workingDays === null ? "cleared" : `set to ${input.workingDays}`
+          }.`,
+          metadata: { changes },
+        });
+      }
+    }
+
+    if (input.manpowerCount !== undefined) {
+      const changes = diffFields({ manpowerCount: row.manpower_count }, { manpowerCount: input.manpowerCount }, ["manpowerCount"]);
+
+      // Typed by hand, never calculated; like the Service Engineer it is not part of the completion or Paid locks and
+      // changes nothing else on the visit (its own column only, so the Number of Working Days is never overwritten).
+      if (Object.keys(changes).length > 0) {
+        await client.query("UPDATE amc_visits SET manpower_count = $1, updated_by = $2 WHERE id = $3", [input.manpowerCount, auth.user.id, id]);
+        await logActivity(client, {
+          userId: auth.user.id,
+          action: "amc_visit.manpower_count_changed",
+          module: "AMC_EXECUTION",
+          entityType: "amc_visits",
+          entityId: id,
+          description: `Number of Manpower of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
+            input.manpowerCount === null ? "cleared" : `set to ${input.manpowerCount}`
           }.`,
           metadata: { changes },
         });

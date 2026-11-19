@@ -92,6 +92,10 @@ export function ServiceDetailsDialog({ visitId, onClose }: { visitId: string; on
             <DetailRow label="Number of Working Days">
               <OrDash value={item.workingDays === null || item.workingDays === undefined ? null : String(item.workingDays)} />
             </DetailRow>
+            {/* Typed by hand on Service Status (database update 0122); blank until entered. */}
+            <DetailRow label="Number of Manpower">
+              <OrDash value={item.manpowerCount === null || item.manpowerCount === undefined ? null : String(item.manpowerCount)} />
+            </DetailRow>
             <DetailRow label="Service Report No.">
               <OrDash value={item.reportNumber} />
             </DetailRow>
