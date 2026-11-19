@@ -11,6 +11,8 @@ export const SERVICE_STATUS_HIDEABLE_COLUMNS = [
   "serviceValue", "acknowledgement",
   // 2026-11-19 (0121): the Number of Working Days typed on a service.
   "workingDays",
+  // 2026-11-19 (0122): the Number of Manpower typed on a service.
+  "manpowerCount",
 ] as const;
 export type ServiceStatusColumn = (typeof SERVICE_STATUS_HIDEABLE_COLUMNS)[number];
 

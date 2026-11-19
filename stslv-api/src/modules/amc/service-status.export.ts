@@ -44,6 +44,8 @@ const COLUMNS: (ReportColumn & { hideable?: ServiceStatusColumn })[] = [
   { key: "salesEngineerName", header: "Service Engineer", kind: "text", width: 20, wrap: true, hideable: "engineerName" },
   // 2026-11-19 (0121): typed by hand on each service, never calculated from dates; blank when not entered.
   { key: "workingDays", header: "Number of Working Days", kind: "count", width: 12, hideable: "workingDays" },
+  // 2026-11-19 (0122): typed by hand on each service, never calculated; blank when not entered. After Working Days.
+  { key: "manpowerCount", header: "Number of Manpower", kind: "count", width: 12, hideable: "manpowerCount" },
   // The contract's AMC Value / Year on each of its services: repeated per service, so it is never totalled.
   { key: "amcValue", header: "AMC Value (ex VAT)", kind: "money", width: 16, hideable: "amcValue" },
   // 2026-11-11: this service's own value, the same visit_amount Master AMC Status shows (blank when none was
@@ -58,6 +60,8 @@ export interface ServiceStatusExportOptions {
   salesEngineerName?: boolean;
   /** Database update 0121: the Number of Working Days is stored. */
   workingDays?: boolean;
+  /** Database update 0122: the Number of Manpower is stored. */
+  manpowerCount?: boolean;
   amcValue?: boolean;
   acknowledgements?: boolean;
 }
@@ -71,6 +75,7 @@ export function serviceStatusColumns(options: ServiceStatusExportOptions | boole
       (column.key !== "reportNumber" || available.reportNumber) &&
       (column.key !== "salesEngineerName" || available.salesEngineerName === true) &&
       (column.key !== "workingDays" || available.workingDays === true) &&
+      (column.key !== "manpowerCount" || available.manpowerCount === true) &&
       ((column.key !== "amcValue" && column.key !== "serviceValue") || available.amcValue === true) &&
       (column.key !== "acknowledgement" || available.acknowledgements === true) &&
       (!column.hideable || !hidden.includes(column.hideable))
@@ -93,6 +98,7 @@ function toRow(item: ServiceStatusItem, index: number): ReportRow {
     reportNumber: item.reportNumber,
     salesEngineerName: item.salesEngineerName,
     workingDays: item.workingDays,
+    manpowerCount: item.manpowerCount,
     amcValue: item.amcValue,
     serviceValue: item.serviceValue,
     acknowledgement: item.acknowledgement ? acknowledgedLabel(item.acknowledgement) : null,
@@ -170,7 +176,7 @@ export async function buildServiceStatusExport(
     tables: [
       {
         name: "Service Status",
-        columns: serviceStatusColumns({ reportNumber: features.reportNumber, salesEngineerName: features.engineerName, workingDays: features.workingDays, amcValue: access.amcValue, acknowledgements: access.acknowledgements }, hidden),
+        columns: serviceStatusColumns({ reportNumber: features.reportNumber, salesEngineerName: features.engineerName, workingDays: features.workingDays, manpowerCount: features.manpowerCount, amcValue: access.amcValue, acknowledgements: access.acknowledgements }, hidden),
         rows: items.map(toRow),
         groupBy: (row) => String(row.scheduledMonth),
         ...serviceValueTotal,
