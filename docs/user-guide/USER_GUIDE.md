@@ -442,6 +442,14 @@ Month (‹ ›) or All dates, search, Client, Status, System, Invoicing (Zoho), 
 
 ## Service Status
 
+> **Number of Working Days (2026-11-19).** A *Number of Working Days* column follows *Service Engineer*. It is typed
+> by hand as a whole number (0 to 9999) and saved with the row's **Save**; it is **never calculated from dates**. Empty
+> clears it; services where nobody entered it (every existing service at first) show "—". It can be entered and edited
+> on completed and Paid services too, and changes nothing else: not the Service Status, completion, Invoice No. or any
+> value. It needs *AMC Execution: Edit*, every change is recorded in the Audit Log, the View dialog shows it, and the
+> download carries it (hideable like the other columns). A service with a Number of Working Days counts as worked on,
+> so a contract term change or Regenerate keeps it, as it does a service with a Service Engineer.
+
 > **Sales Engineer and Service Engineer (client UAT, 2026-11-16).** *Sales Engineer* is the person who brought the AMC,
 > from the contract (chosen in Add AMC Contract); it is read only here. *Service Engineer* is the engineer who performed
 > the service: typed beside the Service Report No. and saved with the row (the field earlier labelled *Sales Engineer
@@ -481,7 +489,7 @@ One row per scheduled service (Scheduled, In progress, Postponed, Completed; ope
 KPI cards: Total Services, Completed, Not Completed, Waiting for Renewal (Customize to rename/reorder).
 
 ### Filters / columns
-Search, Client, Sales Engineer, System, Maintenance Frequency, Scheduled month and year (default: current), Service Status; Reset Filters; Hide Columns. Columns: #, AMC Reference, Client, System, Frequency, Service, AMC Value (ex VAT), Service Value (ex VAT), Scheduled Month / Due Date (red "overdue"), Service Status, Invoice Acknowledgement, Sales Engineer, Service Report No., Service Engineer, Service Report, Actions.
+Search, Client, Sales Engineer, System, Maintenance Frequency, Scheduled month and year (default: current), Service Status; Reset Filters; Hide Columns. Columns: #, AMC Reference, Client, System, Frequency, Service, AMC Value (ex VAT), Service Value (ex VAT), Scheduled Month / Due Date (red "overdue"), Service Status, Invoice Acknowledgement, Sales Engineer, Service Report No., Service Engineer, Number of Working Days, Service Report, Actions.
 
 ### Workflow — complete a service
 1. **Upload Report** — PDF, DOC or DOCX, within the size limit (12 MB by default).

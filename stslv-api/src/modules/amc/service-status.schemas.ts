@@ -9,6 +9,8 @@ export const SERVICE_STATUS_HIDEABLE_COLUMNS = [
   "client", "system", "frequency", "service", "due", "status", "engineer", "report", "engineerName", "amcValue", "serviceReport",
   // 2026-11-11: this service's own value (beside the contract's AMC Value), and the invoice acknowledgement indicator.
   "serviceValue", "acknowledgement",
+  // 2026-11-19 (0121): the Number of Working Days typed on a service.
+  "workingDays",
 ] as const;
 export type ServiceStatusColumn = (typeof SERVICE_STATUS_HIDEABLE_COLUMNS)[number];
 

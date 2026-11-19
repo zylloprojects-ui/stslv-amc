@@ -490,6 +490,9 @@ const REPORT_NUMBER_MESSAGE = "Service report number must be at most 50 characte
 const OVERRIDE_REASON_MESSAGE = "Enter the reason for changing a locked Service Report No. (5 to 500 characters).";
 // Client UAT CR-010: the field is the Service Engineer who performed the service; the API name salesEngineerName stays.
 const SALES_ENGINEER_NAME_MESSAGE = "Service Engineer must be at most 120 characters, without line breaks.";
+/** Input sanity limit of the Number of Working Days (0121), not a business rule: the database only refuses negatives. */
+export const WORKING_DAYS_MAX = 9999;
+const WORKING_DAYS_MESSAGE = `Number of Working Days must be a whole number from 0 to ${WORKING_DAYS_MAX}.`;
 
 export const saveServiceStatusSchema = z
   .strictObject({
@@ -522,12 +525,26 @@ export const saveServiceStatusSchema = z
       .transform((value) => (value === "" ? null : value))
       .nullable()
       .optional(),
+    // Number of Working Days (0121, column working_days): typed by hand, never calculated from dates. A non-negative
+    // whole number (a JSON number, not text); null clears it.
+    workingDays: z
+      .number({ error: WORKING_DAYS_MESSAGE })
+      .int(WORKING_DAYS_MESSAGE)
+      .min(0, WORKING_DAYS_MESSAGE)
+      .max(WORKING_DAYS_MAX, WORKING_DAYS_MESSAGE)
+      .nullable()
+      .optional(),
     // The updatedAt the page showed. A save over a newer change is refused, so one person cannot silently overwrite another.
     expectedUpdatedAt: z.string({ error: "Reload the page and try again." }).datetime({ offset: true, error: "Reload the page and try again." }),
   })
   .refine(
-    (value) => value.status !== undefined || value.reportNumber !== undefined || value.completedDate !== undefined || value.salesEngineerName !== undefined,
-    "Provide a status, completion date, report number or Service Engineer to save."
+    (value) =>
+      value.status !== undefined ||
+      value.reportNumber !== undefined ||
+      value.completedDate !== undefined ||
+      value.salesEngineerName !== undefined ||
+      value.workingDays !== undefined,
+    "Provide a status, completion date, report number, Service Engineer or Number of Working Days to save."
   )
   .refine((value) => value.reportNumberOverrideReason === undefined || value.reportNumber !== undefined, {
     message: "An override reason is given only with a Service Report No. change.",

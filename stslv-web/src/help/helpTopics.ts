@@ -548,7 +548,7 @@ const CONTRACTS: HelpTopic[] = [
         heading: 'Common errors',
         bullets: [
           '"A schedule is generated only for an active contract. Activate the contract first."',
-          '"Valid from cannot be changed: N visit(s) have already been worked on, edited or rescheduled, or have a Service Engineer, a document or an invoice record. Record a new contract for different terms."',
+          '"Valid from cannot be changed: N visit(s) have already been worked on, edited or rescheduled, or have a Service Engineer, Number of Working Days, a document or an invoice record. Record a new contract for different terms."',
           '"The validity period and frequency of an Expired contract cannot be changed. Reactivate the contract first."',
         ],
       },
@@ -702,6 +702,7 @@ const OPERATIONS: HelpTopic[] = [
           'Sales Engineer: the person who brought the AMC, from the contract (chosen in Add AMC Contract). Read only here.',
           'Service Engineer: the engineer who performed this service, typed beside the Service Report No. and saved with the row’s Save (up to 120 characters). It is shown on Master AMC Status, Invoices (Accounts) and Service Sales. A service where nobody entered it shows “—”.',
           'Changing the Service Engineer needs Edit on AMC Execution and is recorded in the Audit Log. It is not locked by the Paid rule.',
+          'Number of Working Days: typed by hand after the Service Engineer, as a whole number (0 to 9999); it is never calculated from dates. Empty clears it, and a service where nobody entered it shows “—”. Saved with the row’s Save, also on completed and Paid services; it changes nothing else (status, values or Invoice No.). Needs Edit on AMC Execution and is recorded in the Audit Log.',
           'Total Filtered row (same access as the values): Service Value adds up every matching service on every page; AMC Value counts each contract once, however many of its services match, so a contract’s value is never added once per service. The download carries the same totals.',
         ],
       },
