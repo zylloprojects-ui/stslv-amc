@@ -15,6 +15,8 @@ export const COLUMN_IDS = [
   'serviceStatus',
   'serviceReportNo',
   'serviceReport',
+  // The contract document of the service's AMC contract (2026-11-19), beside the Service Report.
+  'amcContract',
   // Client UAT 2026-11-16 (CR-011 to CR-014), provisional order pending the client's confirmation (Q-04).
   'salesEngineer',
   'serviceEngineer',
@@ -26,7 +28,7 @@ export const COLUMN_IDS = [
 export type ColumnId = (typeof COLUMN_IDS)[number]
 
 /** Page-only columns: the downloads have no such column, so they are never sent as hidden to the export. */
-export const PAGE_ONLY_COLUMNS: ReadonlySet<ColumnId> = new Set<ColumnId>(['serviceReport'])
+export const PAGE_ONLY_COLUMNS: ReadonlySet<ColumnId> = new Set<ColumnId>(['serviceReport', 'amcContract'])
 
 export const COLUMN_LABELS: Record<ColumnId, string> = {
   client: 'Client',
@@ -38,6 +40,7 @@ export const COLUMN_LABELS: Record<ColumnId, string> = {
   serviceStatus: 'Service Status',
   serviceReportNo: 'Service Report No.',
   serviceReport: 'Service Report',
+  amcContract: 'AMC Contract',
   invoiceNo: 'Invoice No.',
   invoiceValue: 'Zoho Invoice Value (ex VAT)',
   salesEngineer: 'Sales Engineer',

@@ -29,6 +29,9 @@ accountsRouter.get("/", ...accountsView, async (req, res) => {
     acknowledgements: permissions.has("INVOICE_ACKNOWLEDGEMENTS:VIEW"),
     amcValue: true,
     annualAmcValue: holdsPermission(permissions, "AMC_CONTRACTS:VIEW"),
+    // The AMC Contract column (the contract document) needs AMC Contracts: View as well: the file is downloaded through
+    // GET /api/attachments/:id/download, which checks that same permission, so Accounts grants no new document access.
+    contractDocument: holdsPermission(permissions, "AMC_CONTRACTS:VIEW"),
   };
 
   res.json({ success: true, data: await listAccounts(listAccountsSchema.parse(req.query), access) });

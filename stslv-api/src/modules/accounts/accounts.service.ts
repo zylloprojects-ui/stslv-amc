@@ -65,8 +65,23 @@ const ACKNOWLEDGEMENT_SQL = `CASE WHEN v.manual_invoice_no IS NULL THEN NULL ELS
     LEFT JOIN invoice_acknowledgements ca ON ca.id = ai.current_acknowledgement_id
     WHERE s.amc_visit_id = v.id AND s.invoice_number = v.manual_invoice_no), 'PENDING') END`;
 
+/**
+ * The contract document of the service's AMC contract, as JSON (metadata only, never the storage key): the current
+ * version of the contract's SIGNED_CONTRACT document, the category Add AMC Contract and Start Renewal record their
+ * mandatory document under. Should a contract hold more than one such document, the first one recorded (the one saved
+ * with the contract) is shown. A renewal is its own contract, so its services show the renewal's document, never the
+ * renewed contract's. Read through the attachments_entity_idx index.
+ */
+const CONTRACT_DOCUMENT_JSON_SQL = `(
+  SELECT jsonb_build_object('id', a.id::text, 'title', a.title, 'version', a.version, 'originalName', a.original_name,
+                            'mimeType', a.mime_type, 'sizeBytes', a.size_bytes, 'uploadedAt', a.uploaded_at)
+  FROM attachments a
+  WHERE a.entity_type = 'amc_contracts' AND a.entity_id = c.id AND a.is_current AND a.category = 'SIGNED_CONTRACT'
+  ORDER BY a.document_id
+  LIMIT 1)`;
+
 /** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
-const selectSql = (storedReference: boolean, reports: boolean, acknowledgements = false, serviceEngineer = false) => `
+const selectSql = (storedReference: boolean, reports: boolean, acknowledgements = false, serviceEngineer = false, contractDocument = false) => `
   SELECT v.id, c.id AS contract_id, ${referenceSql("c", storedReference)} AS contract_reference, c.status AS contract_status,
          ${serviceEngineerSql(serviceEngineer)} AS service_engineer,
          -- CR-013 (owner decision 2026-11-17): the contract's Customer PO Value (0118), never the annual value or a term
@@ -86,6 +101,7 @@ const selectSql = (storedReference: boolean, reports: boolean, acknowledgements 
          COALESCE(inv.numbers, '{}') AS invoice_numbers, inv.amount::text AS invoice_amount,
          (c.billing_basis IS NULL AND c.default_visit_amount IS NULL) AS no_amount_source,
          ${reports ? SERVICE_REPORT_JSON_SQL : "NULL::jsonb"} AS service_report,
+         ${contractDocument ? CONTRACT_DOCUMENT_JSON_SQL : "NULL::jsonb"} AS contract_document,
          ${SERVICE_STATUS_SQL} AS service_status,
          ${acknowledgements ? ACKNOWLEDGEMENT_SQL : "NULL"} AS acknowledgement_status,
          ${COLOUR_SQL} AS colour`;
@@ -122,6 +138,7 @@ interface AccountsRow {
   invoice_amount: string | null;
   no_amount_source: boolean;
   service_report: unknown;
+  contract_document: unknown;
   service_status: ServiceStatus;
   acknowledgement_status: "PENDING" | "ACKNOWLEDGED" | null;
   colour: AccountsColour;
@@ -165,6 +182,12 @@ export interface AccountsItem {
   valueSourceMissing: boolean;
   /** The Service Report document uploaded on Service Status (0104), or null when none. Metadata only. */
   serviceReport: ServiceReport | null;
+  /**
+   * The contract document of this service's AMC contract (see CONTRACT_DOCUMENT_JSON_SQL), metadata only. Downloaded
+   * through GET /api/attachments/:id/download, which checks AMC Contracts: View again. Null when the contract has none,
+   * and always null for a user without AMC Contracts: View (the response's contractDocumentVisible is then false).
+   */
+  contractDocument: ContractDocumentRef | null;
   /** The contract's Sales Engineer master link: the person who brought the AMC (client UAT CR-011). */
   salesEngineer: { id: string; name: string } | null;
   /** The engineer who performed this service, as entered on Service Status (CR-012, see amc/service-engineer.ts). */
@@ -190,6 +213,24 @@ export interface AccountsItem {
   colour: AccountsColour;
 }
 
+/** A contract document as listed on Accounts: the attachment id (for its download) and what the page shows. */
+export interface ContractDocumentRef {
+  id: string;
+  title: string;
+  version: number;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedAt: string;
+}
+
+function toContractDocument(value: unknown): ContractDocumentRef | null {
+  if (!value || typeof value !== "object") return null;
+  const document = value as ContractDocumentRef & { uploadedAt: string | Date };
+
+  return { ...document, uploadedAt: new Date(document.uploadedAt).toISOString() };
+}
+
 /** What the signed-in user may see on Accounts beyond the page itself. */
 export interface AccountsAccess {
   /** The read-only acknowledgement indicator: Invoice Acknowledgements: View. */
@@ -198,9 +239,14 @@ export interface AccountsAccess {
   amcValue: boolean;
   /** The contract's AMC Value / Year under the service value: AMC Contracts: View, as on Master AMC Status. */
   annualAmcValue?: boolean;
+  /**
+   * The AMC Contract column (the contract document): AMC Contracts: View, the permission the attachment download itself
+   * requires, so the page never lists a document its user could not download.
+   */
+  contractDocument?: boolean;
 }
 
-const NO_EXTRA_ACCESS: AccountsAccess = { acknowledgements: false, amcValue: false, annualAmcValue: false };
+const NO_EXTRA_ACCESS: AccountsAccess = { acknowledgements: false, amcValue: false, annualAmcValue: false, contractDocument: false };
 
 function toItem(row: AccountsRow, access: AccountsAccess = NO_EXTRA_ACCESS): AccountsItem {
   return {
@@ -221,6 +267,7 @@ function toItem(row: AccountsRow, access: AccountsAccess = NO_EXTRA_ACCESS): Acc
     invoiceValue: row.invoice_amount,
     valueSourceMissing: row.visit_amount === null && row.no_amount_source,
     serviceReport: toServiceReport(row.service_report),
+    contractDocument: access.contractDocument === true ? toContractDocument(row.contract_document) : null,
     manualInvoiceNo: row.manual_invoice_no,
     paymentStatus: row.manual_invoice_no ? "PAID" : "UNPAID",
     paidAt: row.manual_invoice_at?.toISOString() ?? null,
@@ -353,15 +400,16 @@ export async function listAccounts(query: ListAccountsQuery, access: AccountsAcc
   const storedReference = await hasStoredReference();
   const { where, params } = filterSql(query, storedReference);
   const acknowledgements = access.acknowledgements && (await schemaHas(["ack_invoices", "ack_invoice_services"]));
+  const contractDocument = access.contractDocument === true;
   const [figures, rows] = await Promise.all([
     kpis(where, params),
     pool.query<AccountsRow>(
-      `${selectSql(storedReference, await serviceReportsAvailable(), acknowledgements, await hasServiceEngineer())} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      `${selectSql(storedReference, await serviceReportsAvailable(), acknowledgements, await hasServiceEngineer(), contractDocument)} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, query.pageSize, (query.page - 1) * query.pageSize]
     ),
   ]);
 
-  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.rows, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue };
+  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.rows, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue, contractDocumentVisible: contractDocument };
 }
 
 /**
