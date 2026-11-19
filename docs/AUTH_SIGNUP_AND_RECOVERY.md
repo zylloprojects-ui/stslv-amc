@@ -82,7 +82,7 @@ Roles and permissions are never changed by any of this.
 
 ### Admin recovery
 
-- **Another Admin exists:** they issue the locked-out Admin a temporary password exactly as above; the Admin must change it at sign-in. This does not work for the protected Super Admin, which nobody else can manage: it is recovered with `npm run admin:recover-protected` on the server (see [PROTECTED_SUPER_ADMIN.md](PROTECTED_SUPER_ADMIN.md)).
+- **Another Admin exists:** they issue the locked-out Admin a temporary password exactly as above; the Admin must change it at sign-in. This does not work for the protected Super Admin, which nobody else can manage: it is recovered with the server-side recovery script `dist/scripts/recover-protected-admin.js`, run as the service account `stslv` (exact command in [PROTECTED_SUPER_ADMIN.md](PROTECTED_SUPER_ADMIN.md), section 5).
 - **No other Admin can sign in:** there is deliberately no public emergency route and no default password. Someone with verified access to the infrastructure (the hosting dashboard and the production database credentials) runs, from a trusted machine with `stslv-api/.env` pointing at that database:
 
   ```
