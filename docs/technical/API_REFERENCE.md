@@ -155,7 +155,7 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | GET | `/service-status/options` | Any([SERVICE_STATUS, MONTHLY_CALENDAR, AMC_SCHEDULE],VIEW) |
 | GET | `/calendar/options` | Any([MONTHLY_CALENDAR, AMC_SCHEDULE],VIEW) |
 | GET | `/service-status/export` | SERVICE_STATUS VIEW + EXPORT |
-| PATCH | `/service-status/:id` | AMC_EXECUTION EDIT |
+| PATCH | `/service-status/:id` | AMC_EXECUTION EDIT — any of `status`, `completedDate`, `reportNumber`, `salesEngineerName`, `workingDays` (0121: JSON integer 0–9999 or `null` to clear; never calculated), plus `expectedUpdatedAt` (409 when stale). Items carry `workingDays`; lists carry `workingDaysAvailable` |
 | POST / DELETE | `/service-status/:id/report` | AMC_EXECUTION EDIT — raw body, `X-File-Name` (URI-encoded) |
 | GET | `/master-status`, `/master-status/options` (+ `/export`) | MASTER_AMC_STATUS VIEW (+ EXPORT). Items carry `invoiceNumbers` and `invoiceReferences` (same order); the export adds Zoho Invoices (Tracking) and Zoho References (Tracking), hidden with Invoice No. |
 

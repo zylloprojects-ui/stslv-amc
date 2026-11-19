@@ -264,6 +264,7 @@ export const VISIT_LOCKED_SQL = `(
  * The full "acted on" rule, used by every schedule change that may remove a visit (a term change and Regenerate): the
  * visit's own columns (VISIT_LOCKED_SQL) and, as this database has them (P1 after the client UAT, audit finding S-02):
  *   * a Service Engineer typed on Service Status (0110);
+ *   * a Number of Working Days typed on Service Status (0121), so a schedule change never deletes what was entered;
  *   * any document attached to the visit, a Service Report uploaded before completion included, current or replaced (0071/0104);
  *   * any Zoho invoice allocation, even of a cancelled invoice (0060), and any import link (0031);
  *   * any Invoice Acknowledgement record or acknowledgement-invoice link (0112, 0114), which outlive a cleared Invoice No.
@@ -271,8 +272,9 @@ export const VISIT_LOCKED_SQL = `(
  * Nothing is added or rewritten. Expects the amc_visits alias "v".
  */
 export async function visitLockedSql(): Promise<string> {
-  const [engineer, attachments, allocations, imports, acknowledgements, ackServices] = await Promise.all([
+  const [engineer, workingDays, attachments, allocations, imports, acknowledgements, ackServices] = await Promise.all([
     schemaHas(["amc_visits.sales_engineer_name"]),
+    schemaHas(["amc_visits.working_days"]),
     schemaHas(["attachments"]),
     schemaHas(["invoice_allocations"]),
     schemaHas(["legacy_import_rows.amc_visit_id"]),
@@ -281,6 +283,7 @@ export async function visitLockedSql(): Promise<string> {
   ]);
   const extra = [
     engineer ? "v.sales_engineer_name IS NOT NULL" : null,
+    workingDays ? "v.working_days IS NOT NULL" : null,
     attachments ? "EXISTS (SELECT 1 FROM attachments a WHERE a.entity_type = 'amc_visits' AND a.entity_id = v.id)" : null,
     allocations ? "EXISTS (SELECT 1 FROM invoice_allocations al WHERE al.amc_visit_id = v.id)" : null,
     imports ? "EXISTS (SELECT 1 FROM legacy_import_rows lr WHERE lr.amc_visit_id = v.id)" : null,
@@ -758,11 +761,11 @@ function planForTerms(current: Terms, proposed: Terms, existing: ExistingVisit[]
     // Every period is counted from the start date. Moving it would shift all
     // periods under visits that have already been worked on.
     blockedReason =
-      `Valid from cannot be changed: ${acted.length} visit(s) have already been worked on, edited or rescheduled, or have a Service Engineer, a document or an invoice record. ` +
+      `Valid from cannot be changed: ${acted.length} visit(s) have already been worked on, edited or rescheduled, or have a Service Engineer, Number of Working Days, a document or an invoice record. ` +
       "Record a new contract for different terms.";
   } else if (plan.blocking.length > 0) {
     blockedReason =
-      `${plan.blocking.length} visit(s) that have been worked on, edited or rescheduled, or that have a Service Engineer, a document or an invoice record, fall outside the new validity period ` +
+      `${plan.blocking.length} visit(s) that have been worked on, edited or rescheduled, or that have a Service Engineer, Number of Working Days, a document or an invoice record, fall outside the new validity period ` +
       `(${plan.blocking.map((visit) => visit.periodStart).join(", ")}). Cancel those visits first, or keep them inside the validity period.`;
   }
 

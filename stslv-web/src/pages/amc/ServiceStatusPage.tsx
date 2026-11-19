@@ -40,6 +40,11 @@ const PAGE_SIZE = 50
 const REPORT_NUMBER_MAX = 50
 /** The API's limit for the Service Engineer typed on a service (database update 0110; client UAT CR-010). */
 const ENGINEER_NAME_MAX = 120
+/** The API's input limit of the Number of Working Days (an input sanity limit, not a business rule). */
+const WORKING_DAYS_MAX = 9999
+const WORKING_DAYS_MESSAGE = `Number of Working Days must be a whole number from 0 to ${WORKING_DAYS_MAX}.`
+/** Empty (clears it) or digits only, at most WORKING_DAYS_MAX: no sign, decimal point or exponent. */
+const isWorkingDays = (text: string) => text === '' || (/^\d+$/.test(text) && Number(text) <= WORKING_DAYS_MAX)
 
 // --- Status colours of the badges and the legend. Row colours are in serviceStatus.css,
 // keyed on the row's data-status, so they hold on odd and even rows alike. ---
@@ -131,6 +136,8 @@ const COLUMNS = [
   // Client UAT CR-009/CR-010: 'engineer' is the contract's Sales Engineer (read only here); 'engineerName' is the
   // Service Engineer who performed this service, typed beside the report number (database update 0110).
   { key: 'engineerName', label: 'Service Engineer' },
+  // Typed by hand on each service (database update 0121); never calculated from dates.
+  { key: 'workingDays', label: 'Number of Working Days' },
   { key: 'serviceReport', label: 'Service Report' },
 ] as const
 type ColumnKey = (typeof COLUMNS)[number]['key']
@@ -182,12 +189,17 @@ interface Draft {
   status: ServiceStatus
   reportNumber: string
   salesEngineerName: string
+  /** As typed; checked before saving and sent as a whole number (empty clears it). */
+  workingDays: string
 }
+
+const workingDaysText = (value: number | null | undefined) => (value === null || value === undefined ? '' : String(value))
 
 const draftOf = (item: ServiceStatusItem): Draft => ({
   status: item.serviceStatus,
   reportNumber: item.reportNumber ?? '',
   salesEngineerName: item.salesEngineerName ?? '',
+  workingDays: workingDaysText(item.workingDays),
 })
 
 /** The API's minimum length of an override reason. */
@@ -212,6 +224,8 @@ interface RowProps {
   reportNumberAvailable: boolean
   /** Database update 0110: the Service Engineer can be saved. */
   engineerNameAvailable: boolean
+  /** Database update 0121: the Number of Working Days can be saved. */
+  workingDaysAvailable: boolean
   serviceReportsAvailable: boolean
   reportMaxMb: number
   onSaved: (item: ServiceStatusItem) => void
@@ -232,6 +246,7 @@ function ServiceRow({
   canViewContracts,
   reportNumberAvailable,
   engineerNameAvailable,
+  workingDaysAvailable,
   serviceReportsAvailable,
   reportMaxMb,
   onSaved,
@@ -253,7 +268,8 @@ function ServiceRow({
   const statusChanged = draft.status !== item.serviceStatus
   const reportChanged = reportNumberAvailable && draft.reportNumber.trim() !== (item.reportNumber ?? '')
   const engineerNameChanged = engineerNameAvailable && draft.salesEngineerName.trim() !== (item.salesEngineerName ?? '')
-  const dirty = statusChanged || reportChanged || engineerNameChanged
+  const workingDaysChanged = workingDaysAvailable && draft.workingDays.trim() !== workingDaysText(item.workingDays)
+  const dirty = statusChanged || reportChanged || engineerNameChanged || workingDaysChanged
   // Paid and the lock switched on: read-only, except an administrator's override with a reason.
   const reportNumberLocked = item.reportNumberLocked === true
   const reportNumberEditable = canSave && reportNumberAvailable && (!reportNumberLocked || canOverrideReportNumber)
@@ -293,6 +309,7 @@ function ServiceRow({
     if (statusChanged && draft.status === 'COMPLETED' && !item.serviceReport) return askForReport()
     if (draft.reportNumber.trim().length > REPORT_NUMBER_MAX) return setProblem(`The report number can have at most ${REPORT_NUMBER_MAX} characters.`)
     if (draft.salesEngineerName.trim().length > ENGINEER_NAME_MAX) return setProblem(`The Service Engineer can have at most ${ENGINEER_NAME_MAX} characters.`)
+    if (workingDaysChanged && !isWorkingDays(draft.workingDays.trim())) return setProblem(WORKING_DAYS_MESSAGE)
     if (needsOverrideReason && overrideReason.trim().length < OVERRIDE_REASON_MIN) {
       return setProblem(`This service is Paid, so its report number is locked. Enter the reason for the change (at least ${OVERRIDE_REASON_MIN} characters).`)
     }
@@ -302,6 +319,7 @@ function ServiceRow({
       ...(reportChanged ? { reportNumber: draft.reportNumber.trim() } : {}),
       ...(needsOverrideReason ? { reportNumberOverrideReason: overrideReason.trim() } : {}),
       ...(engineerNameChanged ? { salesEngineerName: draft.salesEngineerName.trim() } : {}),
+      ...(workingDaysChanged ? { workingDays: draft.workingDays.trim() === '' ? null : Number(draft.workingDays.trim()) } : {}),
       expectedUpdatedAt: item.updatedAt,
     })
   }
@@ -483,6 +501,29 @@ function ServiceRow({
             </span>
           ) : (
             <span className="text-slate-400">—</span>
+          )}
+        </td>
+      )}
+      {shown('workingDays') && (
+        <td className={cx(TABLE.td, 'min-w-24')}>
+          {canSave && workingDaysAvailable ? (
+            <input
+              aria-label={`Number of Working Days of ${label}`}
+              value={draft.workingDays}
+              inputMode="numeric"
+              maxLength={String(WORKING_DAYS_MAX).length}
+              onChange={(event) => {
+                setSavedAt(null)
+                setDraft({ ...draft, workingDays: event.target.value })
+              }}
+              disabled={mutation.isPending}
+              placeholder="Days"
+              className="block w-full min-w-[5rem] rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-right text-sm tabular-nums shadow-sm placeholder:text-slate-400"
+            />
+          ) : item.workingDays === null || item.workingDays === undefined ? (
+            <span className="text-slate-400">—</span>
+          ) : (
+            <span className="tabular-nums">{item.workingDays}</span>
           )}
         </td>
       )}
@@ -669,13 +710,15 @@ export function ServiceStatusPage() {
   const reportMaxMb = data?.serviceReportLimits.maxMb ?? 12
   const amcValueVisible = data?.amcValueVisible === true
   const engineerNameAvailable = data?.salesEngineerNameAvailable === true
+  const workingDaysAvailable = data?.workingDaysAvailable === true
   // Columns this user and database can have at all; the rest of the choice is the user's Hide Columns setting.
   const acknowledgementsVisible = data?.acknowledgementsVisible === true
   const availableColumns = COLUMNS.filter(
     (column) =>
       ((column.key !== 'amcValue' && column.key !== 'serviceValue') || amcValueVisible) &&
       (column.key !== 'acknowledgement' || acknowledgementsVisible) &&
-      (column.key !== 'engineerName' || engineerNameAvailable),
+      (column.key !== 'engineerName' || engineerNameAvailable) &&
+      (column.key !== 'workingDays' || workingDaysAvailable),
   )
   const shown = (key: ColumnKey) => availableColumns.some((column) => column.key === key) && !hidden.has(key)
   const hiddenCount = availableColumns.filter((column) => hidden.has(column.key)).length
@@ -962,6 +1005,7 @@ export function ServiceStatusPage() {
                       canViewContracts={canViewContracts}
                       reportNumberAvailable={reportNumberAvailable}
                       engineerNameAvailable={engineerNameAvailable}
+                      workingDaysAvailable={workingDaysAvailable}
                       serviceReportsAvailable={serviceReportsAvailable}
                       reportMaxMb={reportMaxMb}
                       onSaved={onSaved}

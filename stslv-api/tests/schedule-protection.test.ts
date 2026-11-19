@@ -52,6 +52,20 @@ describe("Schedule changes keep acted-on visits (S-02)", () => {
     expect(await engineerOf(visits[3]!.id)).toBe("Vijay Service");
   });
 
+  it("refuses shortening the validity past a visit with a Number of Working Days, and keeps the number (0121)", async () => {
+    const id = await activeContract(admin, clientId, body({ systemDescription: "DAYS SHRINK" }));
+    const visits = await visitsOf(id);
+    const row = await pool.query<{ updated_at: Date }>("SELECT updated_at FROM amc_visits WHERE id = $1", [visits[3]!.id]);
+    expect((await patch(`/amc/service-status/${visits[3]!.id}`, { workingDays: 0, expectedUpdatedAt: (row.rows[0]?.updated_at as Date).toISOString() })).status).toBe(200);
+
+    const refused = await patch(`/amc/contracts/${id}`, { validTo: "2027-06-30" });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.message).toMatch(/Number of Working Days/);
+    expect((await visitsOf(id)).map((visit) => visit.id)).toEqual(visits.map((visit) => visit.id));
+    const kept = await pool.query<{ working_days: number | null }>("SELECT working_days FROM amc_visits WHERE id = $1", [visits[3]!.id]);
+    expect(kept.rows[0]?.working_days).toBe(0);
+  });
+
   it("refuses shortening the validity past a visit with an uploaded Service Report, and keeps it", async () => {
     const id = await activeContract(admin, clientId, body({ systemDescription: "REPORT SHRINK" }));
     const visits = await visitsOf(id);

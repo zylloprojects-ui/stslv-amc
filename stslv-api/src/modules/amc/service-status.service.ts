@@ -40,10 +40,12 @@ interface Features {
   storedReference: boolean;
   /** 0110: the Service Engineer typed on a service (labelled "Sales Engineer Name" until the client UAT of 2026-11-16). */
   engineerName: boolean;
+  /** 0121: the Number of Working Days typed on a service. */
+  workingDays: boolean;
 }
 
 async function features(): Promise<Features> {
-  const [masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName] = await Promise.all([
+  const [masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName, workingDays] = await Promise.all([
     schemaHas(["amc_contracts.sales_engineer_id", "amc_contracts.system_type_id", "sales_engineers", "system_types"]),
     schemaHas(["amc_contracts.renewed_from_id"]),
     schemaHas(["maintenance_frequencies"]),
@@ -51,9 +53,10 @@ async function features(): Promise<Features> {
     serviceReportsAvailable(),
     hasStoredReference(),
     schemaHas(["amc_visits.sales_engineer_name"]),
+    schemaHas(["amc_visits.working_days"]),
   ]);
 
-  return { masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName };
+  return { masters, renewals, frequencies, reportNumber, reports, storedReference, engineerName, workingDays };
 }
 
 /** Names of the four built-in frequencies, for a database without the frequency master. */
@@ -106,6 +109,7 @@ function selectSql(f: Features, acknowledgements = false): string {
          ${f.masters ? "se.id AS sales_engineer_id, se.name AS sales_engineer_name" : "NULL::bigint AS sales_engineer_id, NULL::text AS sales_engineer_name"},
          ${f.reportNumber ? "v.service_report_no" : "NULL::text"} AS service_report_no,
          ${f.engineerName ? "v.sales_engineer_name" : "NULL::text"} AS manual_engineer_name,
+         ${f.workingDays ? "v.working_days" : "NULL::int"} AS working_days,
          -- The contract's AMC Value / Year (OMR excluding VAT). Read from the contract, never copied onto the visit.
          c.contract_value::text AS amc_value,
          -- This service's own value: amc_visits.visit_amount, the same field Master AMC Status shows as its Service Value
@@ -145,6 +149,7 @@ interface ServiceRow {
   sales_engineer_name: string | null;
   service_report_no: string | null;
   manual_engineer_name: string | null;
+  working_days: number | null;
   amc_value: string;
   service_value: string | null;
   no_amount_source: boolean;
@@ -195,6 +200,11 @@ export interface ServiceStatusItem {
    * link (0070). The API name stays salesEngineerName for compatibility.
    */
   salesEngineerName: string | null;
+  /**
+   * Number of Working Days (0121), typed by hand on this service; a non-negative whole number, or null when nobody has
+   * entered it. Never calculated from dates.
+   */
+  workingDays: number | null;
   /**
    * The linked contract's AMC Value / Year, OMR excluding VAT, as a decimal string. Null when the signed-in user may
    * not see contract values (needs AMC Contracts: View): it is then never sent.
@@ -261,6 +271,7 @@ function toItem(row: ServiceRow, access: ServiceStatusAccess = NO_EXTRA_ACCESS):
     salesEngineer: row.sales_engineer_id && row.sales_engineer_name ? { id: row.sales_engineer_id, name: row.sales_engineer_name } : null,
     reportNumber: row.service_report_no,
     salesEngineerName: row.manual_engineer_name,
+    workingDays: row.working_days,
     amcValue: access.amcValue ? row.amc_value : null,
     serviceValue: access.amcValue ? row.service_value : null,
     valueSourceMissing: access.amcValue ? row.service_value === null && row.no_amount_source : false,
@@ -418,6 +429,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
     serviceReportLimits: { maxMb: env.attachmentMaxMb, allowedTypes: SERVICE_REPORT_TYPES_TEXT },
     reportNumberLockEnabled: reportNumberLockEnabled(),
     salesEngineerNameAvailable: f.engineerName,
+    workingDaysAvailable: f.workingDays,
     amcValueVisible: access.amcValue,
     acknowledgementsVisible: access.acknowledgements === true,
     totals,
@@ -524,7 +536,11 @@ async function findServiceRow(db: Queryable, id: string, f: Features, acknowledg
 export async function saveServiceStatus(auth: AuthContext, id: string, input: SaveServiceStatusInput): Promise<ServiceStatusItem> {
   const f = await features();
 
-  if ((input.reportNumber !== undefined && !f.reportNumber) || (input.salesEngineerName !== undefined && !f.engineerName)) {
+  if (
+    (input.reportNumber !== undefined && !f.reportNumber) ||
+    (input.salesEngineerName !== undefined && !f.engineerName) ||
+    (input.workingDays !== undefined && !f.workingDays)
+  ) {
     throw featureUnavailable();
   }
 
@@ -612,6 +628,27 @@ export async function saveServiceStatus(auth: AuthContext, id: string, input: Sa
           // The action code stays (existing Audit Log entries and filters use it); the wording follows CR-010.
           description: `Service Engineer of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
             input.salesEngineerName ? `set to ${input.salesEngineerName}` : "cleared"
+          }.`,
+          metadata: { changes },
+        });
+      }
+    }
+
+    if (input.workingDays !== undefined) {
+      const changes = diffFields({ workingDays: row.working_days }, { workingDays: input.workingDays }, ["workingDays"]);
+
+      // Typed by hand, never calculated; like the Service Engineer it is not part of the completion or Paid locks and
+      // changes nothing else on the visit.
+      if (Object.keys(changes).length > 0) {
+        await client.query("UPDATE amc_visits SET working_days = $1, updated_by = $2 WHERE id = $3", [input.workingDays, auth.user.id, id]);
+        await logActivity(client, {
+          userId: auth.user.id,
+          action: "amc_visit.working_days_changed",
+          module: "AMC_EXECUTION",
+          entityType: "amc_visits",
+          entityId: id,
+          description: `Number of Working Days of AMC visit ${row.sequence_no} for "${row.client_name}" (${row.system_description}) ${
+            input.workingDays === null ? "cleared" : `set to ${input.workingDays}`
           }.`,
           metadata: { changes },
         });

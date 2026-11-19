@@ -142,8 +142,9 @@ describe("Exports honour hidden columns", () => {
     const auth = { user: { id: "1", fullName: "Test" } } as unknown as AuthContext;
     const { report } = await buildServiceStatusExport(auth, { format: "xlsx", hidden: ["client", "due", "status", "report"] });
     const keys = report.tables[0]?.columns.map((column) => column.key);
-    // The manual Sales Engineer Name (0110) is shown; the AMC Value is not, for a caller without AMC Contracts: View.
-    expect(keys).toEqual(["number", "reference", "system", "frequency", "service", "salesEngineer", "salesEngineerName"]);
+    // The manual Sales Engineer Name (0110) and Number of Working Days (0121) are shown; the AMC Value is not, for a
+    // caller without AMC Contracts: View.
+    expect(keys).toEqual(["number", "reference", "system", "frequency", "service", "salesEngineer", "salesEngineerName", "workingDays"]);
     // The month headings still group the rows.
     expect(report.tables[0]?.groupBy).toBeDefined();
     expect(String(report.tables[0]?.rows[0]?.scheduledMonth)).not.toBe("undefined");
