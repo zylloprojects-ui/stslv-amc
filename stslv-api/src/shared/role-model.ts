@@ -22,6 +22,12 @@ import { ACTIONS, ADMIN_ROLE_CODE, permissionKey, type Action, type Module, type
 
 export const ADMINISTRATOR_ROLE_CODE = "ADMINISTRATOR";
 
+/**
+ * "AMC Renewal" (migration 0120, requested 2026-11-19): a built-in operational role like Accounts or AMC Sales. It
+ * starts with no permissions, never holds Users & Access, and is not privileged. Not the AMC_RENEWAL module.
+ */
+export const AMC_RENEWAL_ROLE_CODE = "AMC_RENEWAL_EXECUTIVE";
+
 export { BUILT_IN_ROLE_NAMES, LEGACY_ROLE_NAMES, PRIVILEGED_ROLES_LABEL } from "./role-names";
 
 /** Roles whose holders only Super Admin may manage: assign, remove, edit, deactivate, reset passwords. */
@@ -42,7 +48,7 @@ export const SECURITY_MODULES: readonly Module[] = ["USERS"];
  * Built-in operational roles: any supported permission, except security administration. Since the client UAT
  * (CR-031, owner decision 2026-11-17) Admin may also configure their permissions, within Admin's own access.
  */
-export const OPERATIONAL_ROLE_CODES: readonly string[] = ["FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER"];
+export const OPERATIONAL_ROLE_CODES: readonly string[] = ["FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER", AMC_RENEWAL_ROLE_CODE];
 
 /** Whether a role of this code may hold the permission. Only grantable permissions are ever in scope. */
 export function isInRoleScope(roleCode: string, module: Module, action: Action): boolean {
@@ -179,6 +185,10 @@ export function defaultGrants(roleCode: string): PermissionKey[] {
       const administration = new Set<Module>(modulesOf("Administration"));
       return ["SUGGESTIONS:CREATE", ...all.filter((key) => key.endsWith(":VIEW") && !administration.has(key.split(":")[0] as Module))];
     }
+    case AMC_RENEWAL_ROLE_CODE:
+      // Added by 0120 with no permissions: it opens nothing until Super Admin (or Service Dept, within its own
+      // permissions) configures it in Roles & Permissions. No starting access was decided for it.
+      return [];
     default:
       return [];
   }
@@ -189,7 +199,10 @@ export const SIX_ROLE_CODES = [ADMIN_ROLE_CODE, ADMINISTRATOR_ROLE_CODE, "FINANC
 /** Kept with their grants, inactive from migration 0088. */
 export const LEGACY_ROLE_CODES = ["ACCOUNTANT", "PROCUREMENT", "EXECUTION", "INVOICING"] as const;
 
+/** Built-in operational roles added after the six-role model: AMC Renewal (0120, 2026-11-19). */
+export const ADDED_ROLE_CODES = [AMC_RENEWAL_ROLE_CODE] as const;
+
 /** Roles the migrations define. They are never deleted; only Super Admin renames, deactivates or reactivates them. */
-export const BUILT_IN_ROLE_CODES: readonly string[] = [...SIX_ROLE_CODES, ...LEGACY_ROLE_CODES];
+export const BUILT_IN_ROLE_CODES: readonly string[] = [...SIX_ROLE_CODES, ...ADDED_ROLE_CODES, ...LEGACY_ROLE_CODES];
 
 export const isBuiltInRole = (code: string) => BUILT_IN_ROLE_CODES.includes(code);

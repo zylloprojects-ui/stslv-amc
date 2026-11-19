@@ -28,6 +28,7 @@ describe('role display names', () => {
       MASTER_DATA_EXECUTIVE: 'AMC Sales',
       AMC_OPERATIONS_EXECUTIVE: 'AMC Operations Executive',
       VIEWER: 'Viewer',
+      AMC_RENEWAL_EXECUTIVE: 'AMC Renewal',
     })
     expect([ADMINISTRATOR_NAME, FINANCE_ROLE_NAME, MASTER_DATA_ROLE_NAME, PRIVILEGED_ROLES_LABEL]).toEqual(['Service Dept', 'Accounts', 'AMC Sales', 'Super Admin and Service Dept'])
   })
@@ -36,7 +37,7 @@ describe('role display names', () => {
     const topic = HELP_TOPICS.find((entry) => entry.id === 'roles-permissions')
     const terms = topic?.sections.flatMap((section) => section.terms ?? []).map((term) => term.term)
 
-    expect(terms).toEqual(['Super Admin', 'Service Dept', 'Accounts', 'AMC Sales', 'AMC Operations Executive', 'Viewer'])
+    expect(terms).toEqual(['Super Admin', 'Service Dept', 'Accounts', 'AMC Sales', 'AMC Operations Executive', 'Viewer', 'AMC Renewal'])
   })
 
   it('no help topic, page or message uses an old role name', () => {

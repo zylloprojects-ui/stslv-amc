@@ -125,6 +125,7 @@ describe("role permissions are data", () => {
       "MASTER_DATA_EXECUTIVE",
       "AMC_OPERATIONS_EXECUTIVE",
       "VIEWER",
+      "AMC_RENEWAL_EXECUTIVE",
     ]);
 
     const adminRole = response.body.data.roles[0];

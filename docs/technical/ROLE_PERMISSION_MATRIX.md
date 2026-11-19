@@ -14,6 +14,8 @@ Source: `stslv-api/src/shared/permission-catalog.ts` (what each permission does)
 >
 > The names are written down once, in `stslv-api/src/shared/role-names.ts` and `stslv-web/src/auth/roleNames.ts` (a test keeps them equal and equal to the database). Section titles such as "Finance" in the permission catalog are module groups, not roles, and are unchanged.
 
+> **AMC Renewal role (2026-11-19, migration 0120).** A seventh built-in role, code `AMC_RENEWAL_EXECUTIVE`, shown as **AMC Renewal**. It is an operational role like Accounts and AMC Sales, and it **starts with no permissions** (every cell of its column below would be "—"). Super Admin grants it any supported permission in Roles & Permissions; Service Dept may also, within its own permissions (CR-031 rule); it can never hold Users. Not to be confused with the *AMC Renewal* permission module (code `AMC_RENEWAL`), which is a page.
+
 > **These are starting grants, not necessarily the live grants.** Super Admin can change any role's permissions in Administration → Roles & Permissions (Service Dept only custom roles, within its own permissions), and the saved `role_permissions` rows decide access. Before handover, record the live grants of the production database (Roles & Permissions page, or a read-only query of `role_permissions`) in `docs/handover/USER_ACCESS_HANDOVER.md`.
 
 Legend: **V** View · **C** Create · **E** Edit · **D** Delete · **A** Approve · **X** Export · **R** Data read (the module's data inside another page, without its own pages) · — none · *n/a* the action does not exist for the module.
@@ -51,7 +53,7 @@ Notes:
 - **Invoice Acknowledgements** (2026-11-10, approved defaults): Super Admin all (0113); Service Dept View, Create, Edit, Export and Accounts (role) View, Create, Export (0115, insert-only, never overwrites a customised role); Viewer and other roles none. Create = attach and confirm; Edit = reasoned replacement and reconciliation. Amounts on the page and in its export also need Accounts: View.
 - **AMC Execution: Approve** has no effect at present (completed services are locked and cannot be reopened). Retiring it is an open decision (Outstanding Issues OI-08).
 - **Service Sales** is listed under Finance but starts with AMC Operations Executive, as originally seeded; moving a module in the catalog never changes starting grants.
-- **Users** permissions can never be given to the four operational roles (Accounts, AMC Sales, AMC Operations Executive, Viewer).
+- **Users** permissions can never be given to the five operational roles (Accounts, AMC Sales, AMC Operations Executive, AMC Renewal, Viewer).
 - **Retired modules** (Projects, Procurement, Expenses, Historical Data) keep any existing grants, but no new grant is accepted. Their pages were removed from the web application.
 - Legacy roles Accountant, Procurement, Execution and Invoicing are kept with their grants but **inactive** (migration 0088).
 

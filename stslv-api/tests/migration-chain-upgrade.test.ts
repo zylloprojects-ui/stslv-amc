@@ -206,6 +206,8 @@ describe("release chain 0108-0116 on the upgrade path", () => {
         MASTER_DATA_EXECUTIVE: "AMC Sales",
         AMC_OPERATIONS_EXECUTIVE: "AMC Operations Executive",
         VIEWER: "Viewer",
+        // 0120: one role added, with no permissions (checked below).
+        AMC_RENEWAL_EXECUTIVE: "AMC Renewal",
         ACCOUNTANT: "Accountant",
         PROCUREMENT: "Procurement",
         EXECUTION: "Execution",
@@ -213,7 +215,9 @@ describe("release chain 0108-0116 on the upgrade path", () => {
       });
       // 0117 changes one description (Super Admin's mention of the Admin role); every other is as before.
       const descriptionsAfter = (await db.query<{ code: string; description: string | null }>("SELECT code, description FROM roles ORDER BY id")).rows;
-      expect(descriptionsAfter.filter((row) => row.code !== "ADMIN")).toEqual(descriptionsBefore.filter((row) => row.code !== "ADMIN"));
+      expect(descriptionsAfter.filter((row) => row.code !== "ADMIN" && row.code !== "AMC_RENEWAL_EXECUTIVE")).toEqual(descriptionsBefore.filter((row) => row.code !== "ADMIN"));
+      expect(descriptionsBefore.some((row) => row.code === "AMC_RENEWAL_EXECUTIVE")).toBe(false);
+      expect(descriptionsAfter.filter((row) => row.code === "AMC_RENEWAL_EXECUTIVE")).toHaveLength(1);
       expect(descriptionsAfter.find((row) => row.code === "ADMIN")?.description).toBe(
         "Full access to every module, including Service Dept accounts and all role permissions. Cannot be changed."
       );
@@ -222,6 +226,8 @@ describe("release chain 0108-0116 on the upgrade path", () => {
       expect(grantsAfter).toEqual(expect.arrayContaining(grantsBefore));
       expect(new Set(grantsAfter.filter((g) => !grantsBefore.some((o) => o.code === g.code && o.module === g.module && o.action === g.action)).map((g) => g.module))).toEqual(new Set(["INVOICE_ACKNOWLEDGEMENTS"]));
       expect(grantsAfter.some((g) => g.code === "FINANCE_EXECUTIVE" && g.module === "ACCOUNTS" && g.action === "EXPORT")).toBe(false);
+      // 0120: the AMC Renewal role starts with no permissions.
+      expect(grantsAfter.filter((g) => g.code === "AMC_RENEWAL_EXECUTIVE")).toEqual([]);
 
       // 0111: every existing contract is version 1 of its own number; the pre-0111 renewal keeps its own number.
       expect((await db.query("SELECT id, amc_reference, contract_version, version_root_id FROM amc_contracts_all ORDER BY id")).rows).toEqual(

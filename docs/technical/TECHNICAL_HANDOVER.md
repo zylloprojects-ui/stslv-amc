@@ -64,7 +64,7 @@ See [API_REFERENCE.md](API_REFERENCE.md). Health checks: `GET /api/health`, `GET
 
 ## 5. Roles and permissions
 
-See [ROLE_PERMISSION_MATRIX.md](ROLE_PERMISSION_MATRIX.md). Six built-in roles: Super Admin (fixed), Service Dept, Accounts, AMC Sales, AMC Operations Executive, Viewer.
+See [ROLE_PERMISSION_MATRIX.md](ROLE_PERMISSION_MATRIX.md). Seven built-in roles: Super Admin (fixed), Service Dept, Accounts, AMC Sales, AMC Operations Executive, Viewer, and AMC Renewal (migration 0120; starts with no permissions).
 
 ## 6. Neon database configuration (current production database)
 

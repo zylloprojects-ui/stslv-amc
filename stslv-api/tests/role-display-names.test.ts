@@ -54,6 +54,8 @@ describe("one set of role names", () => {
       MASTER_DATA_EXECUTIVE: "AMC Sales",
       AMC_OPERATIONS_EXECUTIVE: "AMC Operations Executive",
       VIEWER: "Viewer",
+      // Added by 0120 (2026-11-19), not a rename.
+      AMC_RENEWAL_EXECUTIVE: "AMC Renewal",
     });
     expect(LEGACY_ROLE_NAMES).toEqual({ ACCOUNTANT: "Accountant", PROCUREMENT: "Procurement", EXECUTION: "Execution", INVOICING: "Invoicing" });
     expect(PRIVILEGED_ROLES_LABEL).toBe("Super Admin and Service Dept");

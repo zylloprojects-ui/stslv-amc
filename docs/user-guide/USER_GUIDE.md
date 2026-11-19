@@ -745,7 +745,7 @@ Anyone with *Users: View* can see roles. Who may change them (approved 2026-11-0
 | Rename, deactivate, reactivate, delete a custom role | Yes | Only a role whose every permission Service Dept holds | No |
 | Change a custom role's permissions | Yes | Only within Service Dept's own permissions | No |
 | Give a role *Users & Access* permissions | Yes | No (may remove them) | No |
-| Change the permissions of Accounts, AMC Sales, AMC Operations Executive or Viewer (client UAT, 2026-11-17) | Yes | Only within Service Dept's own permissions; never Users & Access | No |
+| Change the permissions of Accounts, AMC Sales, AMC Operations Executive, AMC Renewal or Viewer (client UAT, 2026-11-17; AMC Renewal from 0120) | Yes | Only within Service Dept's own permissions; never Users & Access | No |
 | Change Super Admin or Service Dept, or rename, deactivate or delete a built-in role | Yes (never Super Admin's permissions) | No | No |
 | Assign a custom role to a user | Yes | Only if Service Dept holds all its permissions | No |
 | Assign Super Admin or Service Dept | Yes | No | No |
@@ -760,10 +760,13 @@ Nobody changes their own role. A custom role cannot use a built-in code or an ex
 | AMC Sales | Dashboard; the five Master Data modules; Suggestions |
 | AMC Operations Executive | Dashboard; the AMC modules (permission group "AMC Operations": Master AMC Status, AMC Contracts, AMC Execution pages, AMC Renewal) and Service Sales; data read of Clients and Invoice Tracking; Suggestions |
 | Viewer | View of every non-administration module; submit suggestions |
+| AMC Renewal | Nothing: it opens only the pages and actions Super Admin grants it in Roles & Permissions (added 2026-11-19, migration 0120) |
 
 Role names (renamed for the client on 2026-11-11; codes, permissions and assignments unchanged): Admin is now **Service Dept**, Finance Executive is now **Accounts**, Master Data Executive is now **AMC Sales**. The role named Accounts is not the Accounts page, and the role named AMC Sales is not a page: what a role opens is set only by its permissions. Audit Log entries written before the rename keep the names used at the time.
 
-Reports is granted by Super Admin on purpose (no built-in role starts with it). The four operational roles can never hold *Users* permissions. Full matrix: `docs/technical/ROLE_PERMISSION_MATRIX.md`.
+The role named AMC Renewal is not the AMC Renewals page; a user with this role sees that page only if the role is given *AMC Renewal: View*.
+
+Reports is granted by Super Admin on purpose (no built-in role starts with it). The five operational roles can never hold *Users* permissions. Full matrix: `docs/technical/ROLE_PERMISSION_MATRIX.md`.
 
 - **Fixed access:** Super Admin only — built-in roles and their permissions, giving a role *Users & Access*, Super Admin/Service Dept accounts, running and downloading backups, the Recycle Bin view and its actions. Super Admin and Service Dept — custom roles (as above), Audit Log, Deletion History, Backup status, Security Center (including Active sessions). Everyone — Notifications, My account (including your Active sessions), Help.
 - **Saving:** "Permissions saved. They apply immediately." If someone else saved first: "Not saved: someone else changed these permissions since you opened them. Nothing was overwritten."

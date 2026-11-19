@@ -277,11 +277,11 @@ describe("only Super Admin changes built-in roles and their permissions", () => 
   });
 
   it("no built-in role is ever deleted, even by Super Admin; a custom one may be", async () => {
-    for (const code of ["ADMIN", "ADMINISTRATOR", "FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER", "ACCOUNTANT", "PROCUREMENT", "EXECUTION", "INVOICING"]) {
+    for (const code of ["ADMIN", "ADMINISTRATOR", "FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER", "AMC_RENEWAL_EXECUTIVE", "ACCOUNTANT", "PROCUREMENT", "EXECUTION", "INVOICING"]) {
       const response = await api().delete(`/api/roles/${await roleId(code)}`).set(superAdmin.headers);
       expect(response.status, code).toBe(403);
     }
-    expect((await pool.query("SELECT count(*)::int AS n FROM roles")).rows[0].n).toBe(10);
+    expect((await pool.query("SELECT count(*)::int AS n FROM roles")).rows[0].n).toBe(11);
 
     const custom = await api().post("/api/roles").set(superAdmin.headers).send({ code: "CUSTOM_ROLE", name: "Custom" });
     expect(custom.status).toBe(201);

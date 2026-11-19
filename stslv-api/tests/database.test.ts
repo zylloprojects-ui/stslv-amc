@@ -110,12 +110,13 @@ describe("migrations", () => {
 });
 
 describe("seed data", () => {
-  it("seeds the five initial roles, then the six-role model (0087; 0088 is covered in role-model.test.ts)", async () => {
+  it("seeds the five initial roles, then the six-role model (0087; 0088 is covered in role-model.test.ts), then AMC Renewal (0120)", async () => {
     const result = await pool.query<{ code: string }>("SELECT code FROM roles ORDER BY id");
 
     expect(result.rows.map((row) => row.code)).toEqual([
       "ADMIN", "ACCOUNTANT", "PROCUREMENT", "EXECUTION", "INVOICING",
       "ADMINISTRATOR", "FINANCE_EXECUTIVE", "MASTER_DATA_EXECUTIVE", "AMC_OPERATIONS_EXECUTIVE", "VIEWER",
+      "AMC_RENEWAL_EXECUTIVE",
     ]);
   });
 
