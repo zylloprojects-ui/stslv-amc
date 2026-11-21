@@ -9,6 +9,8 @@ import { loadUserHidden, loadUserPermissions, loadUserRoles, type AuthContext } 
 import { visibilityVersionOf } from "../src/modules/roles/roles.service";
 import { VISIBILITY_CATALOG, VISIBILITY_KEYS } from "../src/shared/visibility-catalog";
 import { exportAccountsSchema } from "../src/modules/accounts/accounts.schemas";
+import { buildMasterStatusExport } from "../src/modules/amc/master-status.export";
+import { exportMasterStatusSchema } from "../src/modules/amc/master-status.schemas";
 import { LocalDiskStorage } from "../src/shared/storage";
 import { activeContract, contractDocument, createClient, grant, logsFor, type Session } from "./amc-helpers";
 import { api, closePool, resetData, roleId, signedIn, withoutOneRoleConstraint } from "./helpers";
@@ -249,8 +251,6 @@ describe("Phase 2: Master AMC Status, Service Status, AMC Management", () => {
     expect(data.kpis.total).toBe(data.items.length);
     expect(data.amcValueVisible).toBe(false);
 
-    const { buildMasterStatusExport } = await import("../src/modules/amc/master-status.export");
-    const { exportMasterStatusSchema } = await import("../src/modules/amc/master-status.schemas");
     const { report } = await buildMasterStatusExport(await authOf(user.id), exportMasterStatusSchema.parse({ format: "xlsx" }));
     const keys = report.tables[0]!.columns.map((column) => column.key);
     expect(keys).not.toContain("client");
