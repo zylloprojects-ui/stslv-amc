@@ -5,6 +5,7 @@ import type { AuthContext } from "../auth/access";
 import type { ContractStatus } from "./amc.constants";
 import type { ContractColumn, ExportContractsQuery } from "./amc.schemas";
 import { listContracts, type Contract } from "./contracts.service";
+import { contractHiddenReportKeys } from "./contracts.visibility";
 
 // The AMC contract register as a report: the contracts the page lists for the
 // same filters, in the same order. Every amount is as stored; nothing is calculated here.
@@ -103,7 +104,8 @@ export async function buildContractsExport(auth: AuthContext, query: ExportContr
   assertExportSize(format, total);
 
   const [{ items, totals }, labels] = await Promise.all([listContracts({ ...filters, page: 1, pageSize: Math.max(total, 1) }), frequencyLabels()]);
-  const dropped = new Set(hidden.flatMap((column) => HIDDEN_KEYS[column]));
+  // The columns hidden on the page, plus those hidden from the user's role (0123, step B), which no request can bring back.
+  const dropped = new Set([...hidden.flatMap((column) => HIDDEN_KEYS[column]), ...contractHiddenReportKeys(auth)]);
   const columns = COLUMNS.filter((column) => !dropped.has(column.key));
   // The figures are PostgreSQL's numeric(16,3) sums over every contract the filters select.
   const totalValues: Record<string, string> = {

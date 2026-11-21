@@ -11,6 +11,8 @@ import type { AuthContext } from "../auth/access";
 import type { ExportClientContractsQuery, ExportClientsQuery } from "./clients.schemas";
 import { CLIENT_TYPE_LABELS, CLIENT_STATUS_LABELS } from "./clients.schemas";
 import { getClient, hasClientDetails, listAllClients, type Client } from "./clients.service";
+import { contractHiddenReportKeys } from "../amc/contracts.visibility";
+import { clientHiddenReportKeys } from "./clients.visibility";
 
 // The Client Master and one client's AMC contracts as reports. Every value is
 // the stored one; nothing is calculated here except the contract value total,
@@ -78,6 +80,7 @@ export async function buildClientsExport(auth: AuthContext, query: ExportClients
   const { format, ...filters } = query;
   const details = await hasClientDetails();
   const { items, total } = await listAllClients(filters, (count) => assertExportSize(format, count));
+  const roleHidden = clientHiddenReportKeys(auth);
 
   const report: ReportDefinition = {
     title: "Clients",
@@ -90,8 +93,9 @@ export async function buildClientsExport(auth: AuthContext, query: ExportClients
     tables: [
       {
         name: "Clients",
-        columns: [...BASE_COLUMNS, ...(details ? DETAIL_COLUMNS : []), ...CONTACT_COLUMNS],
-        rows: items.map(clientRow),
+        // Role visibility (0123, step B): the columns hidden from the user's role are left out of the file.
+        columns: [...BASE_COLUMNS, ...(details ? DETAIL_COLUMNS : []), ...CONTACT_COLUMNS].filter((column) => !roleHidden.has(column.key)),
+        rows: items.map(clientRow).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => !roleHidden.has(key)))),
         // An empty export already says so in the table; a count of zero would only repeat it.
         notes: total > 0 ? [`${total} ${total === 1 ? "client" : "clients"}.`] : [],
       },
@@ -145,6 +149,7 @@ const CONTRACT_COLUMNS: ReportColumn[] = [
 export async function buildClientContractsExport(auth: AuthContext, clientId: string, query: ExportClientContractsQuery): Promise<Built> {
   const { format } = query;
   const client = await getClient(clientId);
+  const contractHidden = contractHiddenReportKeys(auth);
   const count = (await pool.query<{ count: number }>("SELECT count(*)::int AS count FROM amc_contracts WHERE client_id = $1", [clientId])).rows[0]?.count ?? 0;
 
   assertExportSize(format, count);
@@ -186,7 +191,8 @@ export async function buildClientContractsExport(auth: AuthContext, clientId: st
     tables: [
       {
         name: "AMC Contracts",
-        columns: CONTRACT_COLUMNS,
+        // Contract data: the contract notes follow AMC Contracts' role visibility (0123, step B).
+        columns: CONTRACT_COLUMNS.filter((column) => !contractHidden.has(column.key)),
         rows: rows.rows.map((row) => ({
           system: row.system_description,
           engineer: row.responsible_engineer,
@@ -196,7 +202,7 @@ export async function buildClientContractsExport(auth: AuthContext, clientId: st
           contractValue: row.contract_value,
           status: CONTRACT_STATUS_LABELS[row.status] ?? row.status,
           finalCredit: row.final_credit,
-          notes: row.notes,
+          notes: contractHidden.has("notes") ? null : row.notes,
         })),
         totals: {
           label: `Contract value, excluding cancelled (${count} ${count === 1 ? "contract" : "contracts"})`,

@@ -4,6 +4,7 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, isUniqueViolation, notFound, validationError, type ErrorDetail } from "../../shared/errors";
 import { canRead } from "../../shared/permissions";
 import { escapeLike } from "../../shared/validation";
+import { keepHiddenFields } from "../../shared/visibility-fields";
 import type { InvoiceEligibility } from "../amc/amc.constants";
 import type { AuthContext } from "../auth/access";
 import type { InvoiceState } from "../projects/projects.schemas";
@@ -17,6 +18,7 @@ import type {
   ListInvoicesQuery,
   UpdateInvoiceInput,
 } from "./invoices.schemas";
+import { invoiceHiddenFields } from "./invoices.visibility";
 
 // Invoices are raised in Zoho. This module records what the Zoho invoice says
 // and which completed work it covers. It calculates nothing from a rate: the
@@ -801,7 +803,10 @@ export async function getInvoiceSummary(auth: AuthContext): Promise<InvoiceSumma
 // Write
 // ---------------------------------------------------------------------------
 
-export async function createInvoice(auth: AuthContext, input: CreateInvoiceInput): Promise<Invoice> {
+export async function createInvoice(auth: AuthContext, given: CreateInvoiceInput): Promise<Invoice> {
+  // Role visibility (0123, "Lock it"): a field hidden from the user is never taken from the request.
+  const input = keepHiddenFields(given, invoiceHiddenFields(auth));
+
   try {
     return await withTransaction(async (client) => {
       await requireClient(client, input.clientId);
@@ -858,7 +863,10 @@ export async function createInvoice(auth: AuthContext, input: CreateInvoiceInput
   }
 }
 
-export async function updateInvoice(auth: AuthContext, id: string, input: UpdateInvoiceInput): Promise<Invoice> {
+export async function updateInvoice(auth: AuthContext, id: string, given: UpdateInvoiceInput): Promise<Invoice> {
+  // Role visibility (0123, "Lock it"): a field hidden from the user who saves keeps its stored value, whatever is sent.
+  const input = keepHiddenFields(given, invoiceHiddenFields(auth));
+
   try {
     return await withTransaction(async (client) => {
       const before = await lockInvoice(client, id);

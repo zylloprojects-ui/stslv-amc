@@ -24,11 +24,14 @@ import {
   listInvoices,
   updateInvoice,
 } from "./invoices.service";
+import { applyInvoiceVisibility } from "./invoices.visibility";
 
 // Mounted at /api/invoices.
 export const invoicesRouter = Router();
 
 invoicesRouter.use(authenticate);
+// Role visibility (0123, step B): every JSON answer below leaves out the fields hidden from the user's role.
+invoicesRouter.use(applyInvoiceVisibility);
 
 // Invoice Tracking's list needs View. Data-only INVOICES:READ answers only the invoices of one
 // AMC contract or visit, which the contract and visit details of AMC pages show.

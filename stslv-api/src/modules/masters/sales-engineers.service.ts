@@ -6,6 +6,7 @@ import type { PermissionKey } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
 import type { ExportSalesEngineersQuery } from "./masters.schemas";
 import { getMaster, listAllMasters, SALES_ENGINEERS } from "./masters.service";
+import { ENGINEER_FIELD_VISIBILITY, visibleReportColumns } from "./masters.visibility";
 import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 
 // Engineer 360, the engineer list export and the accounts an engineer may be
@@ -277,7 +278,8 @@ export async function buildSalesEngineersExport(auth: AuthContext, query: Export
     tables: [
       {
         name: "Sales Engineers",
-        columns: COLUMNS,
+        // Role visibility (0123, step B): the columns hidden from the user's role are left out of the file.
+        columns: visibleReportColumns(auth, ENGINEER_FIELD_VISIBILITY, { employeeNo: ["employeeNo"], email: ["email"], phone: ["phone"], department: ["department"], linkedUser: ["user"], notes: ["notes"] }, COLUMNS),
         rows: (items as unknown as EngineerItem[]).map(engineerRow),
         // An empty export already says so in the table; a count of zero would only repeat it.
         notes: total > 0 ? [`${total} ${noun}. Contract counts include only contracts linked to the engineer in the master list.`] : [],

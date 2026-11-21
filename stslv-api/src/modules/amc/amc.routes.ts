@@ -54,6 +54,7 @@ import {
 import { getContractMasters, setContractMasters } from "./contract-masters.service";
 import { getAmcManagementSummary } from "./management.service";
 import { buildContractsExport } from "./contracts.export";
+import { applyContractVisibility } from "./contracts.visibility";
 import { listScheduleGenerations } from "./schedule-generations.service";
 import { buildMonthlyScheduleExport, exportMonthlyScheduleSchema, getMonthlySchedule, monthlyScheduleSchema } from "./schedule-monthly.service";
 import { buildMasterStatusExport } from "./master-status.export";
@@ -87,6 +88,9 @@ import { setManualInvoice, setManualInvoiceSchema } from "./manual-invoice.servi
 export const amcRouter = Router();
 
 amcRouter.use(authenticate);
+// Role visibility (0123, step B): every JSON answer of the contract routes leaves out the fields hidden from the
+// user's role on AMC Contracts (the register, a contract's page, its history, and the contract a save returns).
+amcRouter.use("/contracts", applyContractVisibility);
 
 // --- Summary (dashboard and reports) ----------------------------------------
 // Open to anyone holding at least one AMC view permission; each section of the

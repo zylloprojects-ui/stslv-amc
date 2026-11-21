@@ -8,11 +8,14 @@ import { sendExport } from "../../shared/export/send";
 import { getClientSummary } from "./client-summary.service";
 import { buildClientContractsExport, buildClientsExport } from "./clients.export";
 import { createClientSchema, exportClientContractsSchema, exportClientsSchema, listClientsSchema, updateClientSchema } from "./clients.schemas";
+import { applyClientVisibility } from "./clients.visibility";
 import { clientFeatures, createClient, deleteClient, getClient, getClientUsage, listClientHistory, listClients, setClientActive, updateClient } from "./clients.service";
 
 export const clientsRouter = Router();
 
 clientsRouter.use(authenticate);
+// Role visibility (0123, step B): every JSON answer below leaves out the client fields hidden from the user's role.
+clientsRouter.use(applyClientVisibility);
 
 // The list also feeds the client pickers and filters of AMC pages, so data-only CLIENTS:READ is
 // enough here. Everything else about a client (details, Client 360, history, export) needs View.
