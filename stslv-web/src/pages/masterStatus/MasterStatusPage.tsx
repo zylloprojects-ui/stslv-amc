@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { shows } from '../../lib/visibility'
 import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
@@ -95,7 +96,7 @@ function ValueTile({ name, kpis, position }: { name: string; kpis: MasterStatusK
 }
 
 /** The KPI cards. The user may rename and reorder them; both are remembered per user in this browser, and a renamed card keeps its figure. */
-function KpiCards({ userId, kpis }: { userId: string; kpis: MasterStatusKpis | undefined }) {
+function KpiCards({ userId, kpis, valueShown = true }: { userId: string; kpis: MasterStatusKpis | undefined; valueShown?: boolean }) {
   const [customizing, setCustomizing] = useState(false)
   const prefs = useKpiCustomization(userId, 'kpis', KPI_DEFAULTS, MASTER_STATUS_PREFIX)
 
@@ -152,7 +153,8 @@ function KpiCards({ userId, kpis }: { userId: string; kpis: MasterStatusKpis | u
         <p className="mb-2 text-xs text-slate-600">Rename a card or move it with the arrow buttons. A renamed card still shows the same figure. Names and order are remembered in this browser for your account.</p>
       )}
       <div className="grid auto-rows-fr grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6" role="group" aria-label="Master AMC Status figures">
-        {prefs.order.map((id, index) => {
+        {/* The value card is built from the Value column: hidden with it (role visibility). */}
+        {prefs.order.filter((id) => valueShown || id !== 'value').map((id, index) => {
           const standard = KPI_LABELS[id] ?? id
           const name = displayName(prefs.names, id, standard)
 
@@ -385,7 +387,8 @@ export function MasterStatusPage() {
 
   const data = status.data
   // Invoice Acknowledged is offered only when the API sends it (Invoice Acknowledgements: View).
-  const columns = COLUMN_IDS.filter((id) => id !== 'acknowledgement' || data?.acknowledgementsVisible === true)
+  // Role visibility (Roles & Permissions): a column hidden from the user's role is neither shown nor offered.
+  const columns = COLUMN_IDS.filter((id) => (id !== 'acknowledgement' || data?.acknowledgementsVisible === true) && shows(auth.user, `masterStatus.column.${id}`))
   const shown = (id: ColumnId) => !hidden.has(id) && columns.includes(id)
   const visible = columns.filter(shown)
 
@@ -414,7 +417,7 @@ export function MasterStatusPage() {
       )}
 
       {/* Keyed by user: the saved names and order are read when the cards mount, so a change of user reads them again. */}
-      <KpiCards key={userId} userId={userId} kpis={data?.kpis} />
+      <KpiCards key={userId} userId={userId} kpis={data?.kpis} valueShown={shows(auth.user, 'masterStatus.column.visitValue')} />
       <div className="-mt-3 mb-4">
         <KpiScopeNote cards={`${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} rows={`the same ${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} />
       </div>

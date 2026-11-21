@@ -120,21 +120,24 @@ export async function buildMasterStatusExport(
   auth: AuthContext,
   query: ExportMasterStatusQuery
 ): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
-  const { format, hidden, ...filters } = query;
+  const { format, hidden: pageHidden, ...filters } = query;
   // Contract values are not exported here; only the acknowledgement column depends on the user.
-  const { acknowledgements } = await masterStatusAccess(auth);
+  const { acknowledgements, hiddenColumns } = await masterStatusAccess(auth);
+  // Role visibility (0123): the role's hidden columns never reach the download, whatever the page sends.
+  const hidden = [...new Set([...pageHidden, ...(hiddenColumns ?? [])])];
+  const valuesShown = !hiddenColumns?.has("visitValue");
   const { items, kpis } = await listAllMasterStatus(filters, (count) => assertExportSize(format, count), { amcValue: false, acknowledgements });
   const columns = masterStatusColumns(hidden, { acknowledgements });
   const notes = [
-    `Total services ${kpis.total} · Green ${kpis.green} · Blue ${kpis.blue} · Yellow ${kpis.yellow} · Red ${kpis.red} · Total value (ex VAT) ${displayMoney(kpis.totalValue)}.`,
+    `Total services ${kpis.total} · Green ${kpis.green} · Blue ${kpis.blue} · Yellow ${kpis.yellow} · Red ${kpis.red}${valuesShown ? ` · Total value (ex VAT) ${displayMoney(kpis.totalValue)}` : ""}.`,
     "Red: not completed. Yellow: completed, no invoice recorded. Blue: completed and invoiced, no quotation number. Green: completed, invoiced and quoted.",
     PAID_STATUS_NOTE,
     "Zoho Invoices (Tracking) are the invoice numbers recorded in Invoice Tracking for each service; cancelled ones are not listed. They do not decide Paid or Unpaid.",
     "Zoho References (Tracking) are those invoices' Zoho references, in the same order; — marks an invoice recorded without one.",
-    `Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)} · Zoho Invoice Value (Invoice Tracking, ex VAT) ${displayMoney(kpis.invoiceValue)}.`,
+    ...(valuesShown ? [`Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)} · Zoho Invoice Value (Invoice Tracking, ex VAT) ${displayMoney(kpis.invoiceValue)}.`] : []),
   ];
 
-  if (kpis.valueMissing > 0) {
+  if (valuesShown && kpis.valueMissing > 0) {
     notes.push(`${kpis.valueMissing} ${kpis.valueMissing === 1 ? "service has" : "services have"} no visit value set; not included in the total.`);
   }
 

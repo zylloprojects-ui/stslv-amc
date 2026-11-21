@@ -12,6 +12,7 @@ import { schemaHas } from "../../shared/schema-features";
 import { hasServiceEngineer, serviceEngineerSql } from "../amc/service-engineer";
 import { normalizeMoney } from "../amc/amc.schemas";
 import type { AccountsColour, ListAccountsQuery } from "./accounts.schemas";
+import type { RoleHideableColumn } from "./accounts.visibility";
 
 // Accounts: a billing reconciliation with one row per scheduled maintenance visit
 // (amc_visits), never one per contract. It reads the same visit records as Service
@@ -244,9 +245,54 @@ export interface AccountsAccess {
    * the document is downloaded through the Accounts route, never the AMC Contracts attachment download.
    */
   contractDocument?: boolean;
+  /** Columns hidden from the user's role (role visibility, see accounts.visibility.ts): their data is not sent. */
+  hiddenColumns?: ReadonlySet<RoleHideableColumn>;
 }
 
 const NO_EXTRA_ACCESS: AccountsAccess = { acknowledgements: false, amcValue: false, annualAmcValue: false, contractDocument: false };
+
+/** Blanks what the role may not see. The row (reference, month, status, colour) and its identifiers stay. */
+function withoutHiddenColumns(item: AccountsItem, hidden: ReadonlySet<RoleHideableColumn> | undefined): AccountsItem {
+  if (!hidden || hidden.size === 0) return item;
+  const off = (column: RoleHideableColumn) => hidden.has(column);
+
+  return {
+    ...item,
+    client: off("client") ? { id: item.client.id, name: "" } : item.client,
+    system: off("system") ? { description: "", typeId: null, typeName: null } : item.system,
+    frequency: off("frequency") ? { code: "", label: "" } : item.frequency,
+    service: off("service") ? { sequenceNo: 0, cycleNo: null, serviceCode: null } : item.service,
+    serviceReportNo: off("serviceReportNo") ? null : item.serviceReportNo,
+    serviceReport: off("serviceReport") ? null : item.serviceReport,
+    contractDocument: off("amcContract") ? null : item.contractDocument,
+    salesEngineer: off("salesEngineer") ? null : item.salesEngineer,
+    serviceEngineer: off("serviceEngineer") ? null : item.serviceEngineer,
+    amcValue: off("amcValue") ? null : item.amcValue,
+    visitValue: off("visitValue") ? null : item.visitValue,
+    valueSourceMissing: off("visitValue") ? false : item.valueSourceMissing,
+    annualAmcValue: off("visitValue") ? null : item.annualAmcValue,
+    manualInvoiceNo: off("invoiceNo") ? null : item.manualInvoiceNo,
+    invoiceNumbers: off("invoiceNo") ? [] : item.invoiceNumbers,
+    acknowledgementStatus: off("invoiceNo") ? null : item.acknowledgementStatus,
+    invoiceValue: off("invoiceValue") ? null : item.invoiceValue,
+  };
+}
+
+/** The card figures without the value totals of a hidden value column (the counts stay). */
+function kpisWithout(figures: AccountsKpis, hidden: ReadonlySet<RoleHideableColumn> | undefined): AccountsKpis {
+  if (!hidden || hidden.size === 0) return figures;
+  const copy: Partial<AccountsKpis> = { ...figures };
+  if (hidden.has("visitValue")) {
+    delete copy.totalValue;
+    delete copy.paidValue;
+    delete copy.valueMissing;
+  }
+  if (hidden.has("invoiceValue")) {
+    delete copy.invoiceValue;
+    delete copy.invoiced;
+  }
+  return copy as AccountsKpis;
+}
 
 function toItem(row: AccountsRow, access: AccountsAccess = NO_EXTRA_ACCESS): AccountsItem {
   return {
@@ -409,7 +455,19 @@ export async function listAccounts(query: ListAccountsQuery, access: AccountsAcc
     ),
   ]);
 
-  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.rows, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue, contractDocumentVisible: contractDocument };
+  const hidden = access.hiddenColumns;
+
+  return {
+    items: rows.rows.map((row) => withoutHiddenColumns(toItem(row, access), hidden)),
+    total: figures.rows,
+    page: query.page,
+    pageSize: query.pageSize,
+    kpis: kpisWithout(figures, hidden),
+    amcValueVisible: access.amcValue && !hidden?.has("amcValue"),
+    contractDocumentVisible: contractDocument && !hidden?.has("amcContract"),
+    // The columns this user's role does not see (role visibility): the page leaves them out.
+    roleHiddenColumns: [...(hidden ?? [])],
+  };
 }
 
 /**

@@ -556,3 +556,17 @@ describe('Sales Engineer and Service Engineer', () => {
     expect(cellOf('AMC-0009', 'Service Engineer')).toHaveTextContent('—')
   })
 })
+
+describe('Role visibility (Roles & Permissions › Page visibility)', () => {
+  it('leaves out the columns hidden from the role, and the value card with the value column', async () => {
+    statusApi({ ...VIEWER, hidden: ['masterStatus.column.client', 'masterStatus.column.visitValue'] }, [RED, GREEN])
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    expect(headers()).not.toContain('Client')
+    expect(headers()).not.toContain('Service Value (ex VAT)')
+    expect(headers()).toContain('Invoice No.')
+    expect(document.querySelector('[data-kpi="value"]')).toBeNull()
+    expect(document.querySelector('[data-kpi="RED"]')).not.toBeNull()
+  })
+})

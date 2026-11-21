@@ -4,7 +4,7 @@ import { logActivity } from "../../shared/activity-log";
 import { withTransaction } from "../../shared/db";
 import { AppError, unauthorized, validationError } from "../../shared/errors";
 import { assertPasswordAllowed } from "../../shared/validation";
-import { loadUserPermissions, loadUserRoles, toSessionUser, type AuthContext } from "./access";
+import { loadUserHidden, loadUserPermissions, loadUserRoles, toSessionUser, type AuthContext } from "./access";
 import { hashPassword, verifyAgainstDummy, verifyPassword } from "./password";
 import { revokeResetTokens } from "./password-reset.service";
 import { createSession, revokeSession, revokeUserSessions } from "./sessions.service";
@@ -112,13 +112,14 @@ export async function login(email: string, password: string, context: LoginConte
     ip: context.ip,
     userAgent: context.userAgent ?? null,
   });
-  const [roles, permissions] = await Promise.all([loadUserRoles(pool, user.id), loadUserPermissions(pool, user.id)]);
+  const [roles, permissions, hidden] = await Promise.all([loadUserRoles(pool, user.id), loadUserPermissions(pool, user.id), loadUserHidden(pool, user.id)]);
   const auth: AuthContext = {
     user: { id: user.id, email: user.email, fullName: user.full_name },
     roles,
     permissions,
     mustChangePassword: user.must_change_password,
     sessionId,
+    hidden,
   };
 
   return { ...issueToken(user.id, { passwordChange: user.must_change_password, sessionId }), user: toSessionUser(auth) };

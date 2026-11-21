@@ -1,7 +1,7 @@
 import type { RequestHandler } from "express";
 import { pool } from "../config/database";
 import { env } from "../config/env";
-import { loadUserPermissions, loadUserRoles, type AuthContext } from "../modules/auth/access";
+import { loadUserHidden, loadUserPermissions, loadUserRoles, type AuthContext } from "../modules/auth/access";
 import { checkSession, reportedIdleSeconds, sessionsEnabled } from "../modules/auth/sessions.service";
 import { verifyToken } from "../modules/auth/token";
 import { AppError, unauthorized } from "../shared/errors";
@@ -93,9 +93,10 @@ function createAuthenticate(options: { allowPasswordChange: boolean }): RequestH
       throw new AppError(403, "PASSWORD_CHANGE_REQUIRED", "Choose a new password before continuing.");
     }
 
-    const [roles, permissions] = await Promise.all([
+    const [roles, permissions, hidden] = await Promise.all([
       loadUserRoles(pool, user.id),
       loadUserPermissions(pool, user.id),
+      loadUserHidden(pool, user.id),
     ]);
 
     req.auth = {
@@ -104,6 +105,7 @@ function createAuthenticate(options: { allowPasswordChange: boolean }): RequestH
       permissions,
       mustChangePassword: user.must_change_password,
       sessionId,
+      hidden,
     };
 
     next();

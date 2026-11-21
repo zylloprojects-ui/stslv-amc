@@ -34,6 +34,8 @@ const SECURITY_ACTIONS = [
   "role.updated",
   "role.deleted",
   "role.permissions_changed",
+  // Role visibility (0123): what a role sees inside its pages.
+  "role.visibility_changed",
   "user.activated",
   "user.deactivated",
   "backup.created",

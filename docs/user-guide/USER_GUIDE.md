@@ -795,6 +795,23 @@ Reports is granted by Super Admin on purpose (no built-in role starts with it). 
 - **Saving:** "Permissions saved. They apply immediately." If someone else saved first: "Not saved: someone else changed these permissions since you opened them. Nothing was overwritten."
 - **Messages:** "X also needs Y. Grant both, or neither." · "A built-in role cannot be deleted. Deactivate it instead." · "N people still have this role. Move them to another role first."
 
+#### Page visibility (2026-11-21, migration 0123)
+Below a role's permissions, **Page visibility** chooses what that role sees inside the pages it can open. Opening a page is still set by the permissions; this only hides parts of it.
+
+| Page | What can be hidden |
+|---|---|
+| Dashboard | Each key-figure row (AMC Portfolio, Current Month, Current Year (YTD), Overall Till Date, Overall Contract) and the panels AMC Maintenance Calendar, Upcoming Service Workload and Payment Trend |
+| Accounts › Invoices | The columns Client, System, Frequency, Service, Service Report No., Service Report, AMC Contract, Sales Engineer, Service Engineer, AMC Value (Excel only), Service Value, Invoice No. and Zoho Invoice Value; the actions Download AMC contract and View and download Service Report |
+| Master AMC Status | The columns Client, System, Frequency, Service, Value, Service Engineer, Invoice No. (with the Zoho invoice numbers), Quote No., Invoice Acknowledged and Sales Engineer |
+| Service Status | The read-only columns Client, System, Frequency, Service, AMC Value, Service Value, Invoice Acknowledgement and Sales Engineer. Columns entered on this page (report number, Service Engineer, working days, manpower, Service Report) cannot be hidden |
+| AMC Management | The Contract, Schedule and Invoice KPI groups, and the panels Recent AMC Contracts and Expiry & Renewal |
+
+- **Ticked means shown**, which is the default, so nothing changes for a role until you untick something. Untick an item and choose **Save visibility**: everyone with that role stops seeing it, and everything else stays as it is.
+- **Enforced by the server:** hidden data is not sent to their browser and is left out of their Excel and PDF downloads. A hidden download is refused. Hiding Service Value also hides the Total Value card, the value totals and AMC Value / Year. The AMC Reference, Scheduled Month and Service Status (with the row colour) always stay, because they define the row.
+- **Example:** to let Accounts download the contract from Invoices without opening AMC Contracts, leave *AMC Contracts: View* off and keep *Download AMC contract* ticked. To stop it, untick *Download AMC contract*: the column then shows "Uploaded" without a download.
+- **Several roles:** a person sees an item when any of their roles that opens the page shows it. Super Admin always sees everything, and its own role cannot be changed.
+- **Who may change it:** the same people who may change the role's permissions. Every change is recorded in the Audit Log ("Page visibility changed"). It applies the next time the person's page loads.
+
 ---
 
 ## Security Center

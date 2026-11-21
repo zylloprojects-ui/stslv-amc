@@ -4,7 +4,7 @@ import { getWorkload, type WorkloadMonth } from "../amc/reports.service";
 import { IN_SCOPE } from "../amc/service-status.service";
 import { SERVICE_IN_SCOPE_VISIT_ONLY } from "../amc/service-scope";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
-import type { AuthContext } from "../auth/access";
+import { shows, type AuthContext } from "../auth/access";
 import { schemaHas } from "../../shared/schema-features";
 import { BUSINESS_TIME_ZONE, BUSINESS_TODAY_SQL, businessDateSql } from "../../shared/business-date";
 
@@ -674,7 +674,7 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
     return rest;
   };
 
-  return {
+  return withoutHiddenParts(auth, {
     asOf: clock.rows[0]?.today ?? "",
     timeZone: clock.rows[0]?.time_zone ?? "",
     kpis,
@@ -686,6 +686,56 @@ export async function getOperationsDashboard(auth: AuthContext): Promise<Operati
     workload,
     schedule: todayWork,
     paymentTrend: trend ? { months: trend } : null,
+  });
+}
+
+/**
+ * Role visibility (0123): the figures of a Dashboard row or panel hidden from this user are left out of the response,
+ * so they never reach the browser. A row's figures are removed field by field, because one section (services,
+ * payments) feeds several rows; a section left with nothing is null, as for a user without its module. Nothing is
+ * recalculated: what stays is exactly what everyone else receives.
+ */
+function withoutHiddenParts(auth: AuthContext, dashboard: OperationsDashboard): OperationsDashboard {
+  const hide = (key: string) => !shows(auth, key);
+  const month = hide("dashboard.row.month");
+  const overall = hide("dashboard.row.overall");
+  const ytd = hide("dashboard.row.ytd");
+  const tillDate = hide("dashboard.row.tillDate");
+
+  if (!hide("dashboard.row.portfolio") && !month && !overall && !ytd && !tillDate
+    && !hide("dashboard.panel.calendar") && !hide("dashboard.panel.workload") && !hide("dashboard.panel.paymentTrend")) {
+    return dashboard;
+  }
+
+  const omit = <T extends object>(value: T | null, keys: readonly string[]): T | null => {
+    if (!value) return value;
+    const copy = { ...value } as Record<string, unknown>;
+    for (const key of keys) delete copy[key];
+    return Object.keys(copy).length > 0 ? (copy as T) : null;
+  };
+  const services = omit(dashboard.kpis.services, [
+    ...(month ? ["thisMonth", "completedThisMonth", "openThisMonth"] : []),
+    ...(overall ? ["overall", "openOverall"] : []),
+  ]);
+  const payments = omit(dashboard.kpis.payments, [
+    ...(month ? ["scheduledThisMonth", "paidThisMonth", "paidThisMonthValue"] : []),
+    ...(overall ? ["paid", "paidValue", "paidAmountMissing", "unpaid", "unpaidValue", "unpaidAmountMissing", "unpaidCompleted", "unpaidCompletedValue"] : []),
+  ]);
+  const periodInvoices = omit(dashboard.periodInvoices, [...(ytd ? ["yearToDate"] : []), ...(tillDate ? ["tillDate"] : [])]);
+
+  return {
+    ...dashboard,
+    kpis: {
+      contracts: hide("dashboard.row.portfolio") ? null : dashboard.kpis.contracts,
+      services,
+      payments,
+    },
+    yearToDate: ytd ? null : dashboard.yearToDate,
+    tillDate: tillDate ? null : dashboard.tillDate,
+    periodInvoices,
+    schedule: hide("dashboard.panel.calendar") ? null : dashboard.schedule,
+    workload: hide("dashboard.panel.workload") ? null : dashboard.workload,
+    paymentTrend: hide("dashboard.panel.paymentTrend") ? null : dashboard.paymentTrend,
   };
 }
 

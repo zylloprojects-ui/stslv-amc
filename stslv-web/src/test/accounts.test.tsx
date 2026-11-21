@@ -742,6 +742,34 @@ describe('Accounts AMC Contract column (contract document download)', () => {
     expect(api.find('GET', '/accounts/1/contract-document')).toHaveLength(1)
   })
 
+  it('shows "Uploaded" without a download when the role may not download the contract (role visibility)', async () => {
+    const api = accountsApi({ ...ACCOUNTS_ONLY, hidden: ['invoices.action.downloadContract'] }, [WITH_DOC])
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    expect(cellOf('AMC-0007')).toHaveTextContent('Uploaded')
+    expect(within(cellOf('AMC-0007')).queryByRole('button')).not.toBeInTheDocument()
+    expect(api.find('GET', '/accounts/1/contract-document')).toHaveLength(0)
+  })
+
+  it('is neither shown nor offered when the column is hidden from the role, nor are other hidden columns', async () => {
+    accountsApi({ ...ACCOUNTS_ONLY, hidden: ['invoices.column.amcContract', 'invoices.column.salesEngineer', 'invoices.column.visitValue'] }, [{ ...WITH_DOC, contractDocument: null }])
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    expect(headers()).not.toContain('AMC Contract')
+    expect(headers()).not.toContain('Sales Engineer')
+    expect(headers()).not.toContain('Service Value (ex VAT)')
+    expect(headers()).toContain('Invoice No.')
+    // Total Value is built from Service Value, so its card goes too.
+    expect(document.querySelector('[data-kpi="totalValue"]')).toBeNull()
+    expect(document.querySelector('[data-kpi="rows"]')).not.toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).queryByRole('checkbox', { name: 'AMC Contract' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('checkbox', { name: 'Sales Engineer' })).not.toBeInTheDocument()
+  })
+
   it('can be hidden, is remembered, and never reaches the export as a hidden column', async () => {
     const api = accountsApi(EXPORTER, [WITH_DOC], (request) => (request.path === '/accounts/export' ? ok(null) : undefined))
     captureSaves()
