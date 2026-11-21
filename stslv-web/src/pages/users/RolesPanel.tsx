@@ -623,6 +623,20 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
           )
         })}
 
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Pages reserved to fixed roles, which no box on this screen grants or removes. Shown last, after the permissions and
+ * the page visibility of the selected role (owner request 2026-11-21).
+ */
+function FixedAccessPanel({ catalogue }: { catalogue: RolesResponse }) {
+  if (!catalogue.fixedAccess) return null
+
+  return (
+    <div className="border-t border-slate-200 p-4">
         {catalogue.fixedAccess && (
           // Open by default: these restrictions matter when reading any role, and cannot be changed on this screen.
           <details open data-testid="fixed-access" className="rounded-xl border-[1.5px] border-l-4 border-slate-300 border-l-amber-500 bg-amber-50/40 p-4 text-sm text-slate-700">
@@ -651,7 +665,6 @@ function PermissionMatrix({ role, catalogue, canEdit, onDirtyChange }: Permissio
             <p className="mt-3 text-xs text-slate-500">A page marked + also needs view access to the other modules whose data it shows.</p>
           </details>
         )}
-      </div>
     </div>
   )
 }
@@ -789,6 +802,8 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
           {role && catalogue.visibilityCatalog && (
             <VisibilityEditor key={`visibility-${role.id}`} role={role} catalogue={catalogue.visibilityCatalog} canEdit={canEdit} onDirtyChange={setVisibilityDirty} />
           )}
+          {/* Last of all: the pages no box on this screen grants or removes. */}
+          {role && <FixedAccessPanel catalogue={catalogue} />}
         </div>
       </Card>
 

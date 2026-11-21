@@ -805,6 +805,12 @@ Below a role's permissions, **Page visibility** chooses what that role sees insi
 | Master AMC Status | The columns Client, System, Frequency, Service, Value, Service Engineer, Invoice No. (with the Zoho invoice numbers), Quote No., Invoice Acknowledged and Sales Engineer |
 | Service Status | The read-only columns Client, System, Frequency, Service, AMC Value, Service Value, Invoice Acknowledgement and Sales Engineer. Columns entered on this page (report number, Service Engineer, working days, manpower, Service Report) cannot be hidden |
 | AMC Management | The Contract, Schedule and Invoice KPI groups, and the panels Recent AMC Contracts and Expiry & Renewal |
+| Invoice Acknowledgements | The columns Client, AMC Contract, Invoice Date, Invoice Value, Service Value, Acknowledged On, Acknowledged By and Uploaded By. Invoice No., the status, the services and the document always stay, because the actions work from them |
+| Service Sales | The columns Client, System, Frequency, Service, Service Report No., Service Report (with its view and download), Service Engineer, Sales Engineer, and the AMC Value and Service Value of the downloads. Quote No. is entered on this page and always stays |
+| AMC Renewals | The columns Client, System, Frequency, Services, Contract Status, AMC Value and Remarks, and the Renewal History tab with its download |
+| Reports | Each report on its own: a hidden report is not listed, cannot be opened and cannot be downloaded |
+
+The page sections are listed collapsed, like the permission sections: click a page to open it, or use **Expand all**. **Find a page** filters the list, and **Show all** / **Hide all** inside a page change every item of that page. The **Not set by role permissions** box comes last, after Page visibility.
 
 - **Ticked means shown**, which is the default, so nothing changes for a role until you untick something. Untick an item and choose **Save visibility**: everyone with that role stops seeing it, and everything else stays as it is.
 - **Enforced by the server:** hidden data is not sent to their browser and is left out of their Excel and PDF downloads. A hidden download is refused. Hiding Service Value also hides the Total Value card, the value totals and AMC Value / Year. The AMC Reference, Scheduled Month and Service Status (with the row colour) always stay, because they define the row.

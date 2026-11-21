@@ -178,6 +178,104 @@ VISIBILITY_CATALOG.push(
   }
 );
 
+// Phase 3 (2026-11-21): Invoice Acknowledgements, Service Sales, AMC Renewals and Reports. Fields that an action of the
+// page works from (the acknowledgement document, Service Sales' Quote No.) are not hideable.
+VISIBILITY_CATALOG.push(
+  {
+    id: "invoiceAcks",
+    title: "Accounts › Invoice Acknowledgements",
+    page: { label: "Invoice Acknowledgements", path: "/finance/invoice-acknowledgements" },
+    requires: "INVOICE_ACKNOWLEDGEMENTS:VIEW",
+    // Invoice No., the acknowledgement status, the services and the document always stay: the actions work from them.
+    groups: [
+      {
+        title: "Columns",
+        items: [
+          { key: "invoiceAcks.column.client", label: "Client", kind: "column" },
+          { key: "invoiceAcks.column.contract", label: "AMC Contract", kind: "column" },
+          { key: "invoiceAcks.column.invoiceDate", label: "Invoice Date", kind: "column" },
+          { key: "invoiceAcks.column.invoiceValue", label: "Invoice Value", kind: "column", description: "Also hides its total, here and in the linked services" },
+          { key: "invoiceAcks.column.serviceValue", label: "Service Value", kind: "column", description: "Also hides its total and the values in Linked Services" },
+          { key: "invoiceAcks.column.acknowledgedAt", label: "Acknowledged On", kind: "column" },
+          { key: "invoiceAcks.column.acknowledgedBy", label: "Acknowledged By", kind: "column" },
+          { key: "invoiceAcks.column.uploadedBy", label: "Uploaded By", kind: "column" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "serviceSales",
+    title: "Service Sales",
+    page: { label: "Service Sales", path: "/amc/service-sales" },
+    requires: "SERVICES_SALES:VIEW",
+    // AMC Reference, Due Date and Service Status define a row; Quote No. is entered on this page and always stays.
+    groups: [
+      {
+        title: "Columns",
+        items: [
+          { key: "serviceSales.column.client", label: "Client", kind: "column" },
+          { key: "serviceSales.column.system", label: "System", kind: "column" },
+          { key: "serviceSales.column.frequency", label: "Frequency", kind: "column" },
+          { key: "serviceSales.column.service", label: "Service", kind: "column" },
+          { key: "serviceSales.column.serviceReportNo", label: "Service Report No.", kind: "column" },
+          { key: "serviceSales.column.serviceReport", label: "Service Report", kind: "column", description: "Also stops viewing and downloading the report" },
+          { key: "serviceSales.column.serviceEngineer", label: "Service Engineer", kind: "column" },
+          { key: "serviceSales.column.salesEngineer", label: "Sales Engineer", kind: "column" },
+          { key: "serviceSales.column.amcValue", label: "AMC Value (ex VAT)", kind: "column", description: "Downloads only, with its total" },
+          { key: "serviceSales.column.serviceValue", label: "Service Value (ex VAT)", kind: "column", description: "Downloads only" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "amcRenewal",
+    title: "AMC Renewals",
+    page: { label: "AMC Renewals", path: "/amc/renewal" },
+    requires: "AMC_RENEWAL:VIEW",
+    // AMC Reference, Expiry and the renewal status define a row and always stay.
+    groups: [
+      {
+        title: "Columns",
+        items: [
+          { key: "amcRenewal.column.client", label: "Client", kind: "column" },
+          { key: "amcRenewal.column.system", label: "System", kind: "column" },
+          { key: "amcRenewal.column.frequency", label: "Frequency", kind: "column" },
+          { key: "amcRenewal.column.service", label: "Services", kind: "column" },
+          { key: "amcRenewal.column.contractStatus", label: "Contract Status", kind: "column" },
+          { key: "amcRenewal.column.amount", label: "AMC Value", kind: "column" },
+          { key: "amcRenewal.column.remarks", label: "Remarks", kind: "column" },
+        ],
+      },
+      { title: "Panels", items: [{ key: "amcRenewal.panel.history", label: "Renewal History", kind: "panel", description: "Also its download" }] },
+    ],
+  },
+  {
+    id: "reports",
+    title: "Reports",
+    page: { label: "Reports", path: "/reports" },
+    requires: "REPORTS:VIEW",
+    groups: [
+      {
+        title: "Reports",
+        items: [
+          { key: "reports.report.contractSummary", label: "AMC Contract Summary", kind: "panel" },
+          { key: "reports.report.scheduledServices", label: "Billing Schedule", kind: "panel" },
+          { key: "reports.report.completedServices", label: "Completed Services", kind: "panel" },
+          { key: "reports.report.pendingServices", label: "Pending Services", kind: "panel" },
+          { key: "reports.report.monthlyMaintenance", label: "Monthly Maintenance", kind: "panel" },
+          { key: "reports.report.renewal", label: "AMC Renewal", kind: "panel" },
+          { key: "reports.report.expiryRenewal", label: "Expiry & Renewal Due", kind: "panel" },
+          { key: "reports.report.renewalHistory", label: "Renewal History", kind: "panel" },
+          { key: "reports.report.accounts", label: "Accounts / Paid and Unpaid Summary", kind: "panel" },
+          { key: "reports.report.clientSummary", label: "Client-wise Summary", kind: "panel" },
+          { key: "reports.report.engineerSummary", label: "Sales Engineer-wise Summary", kind: "panel" },
+          { key: "reports.report.contractValueReview", label: "Contract Value Review", kind: "panel" },
+        ],
+      },
+    ],
+  }
+);
+
 export const VISIBILITY_KEYS: ReadonlySet<string> = new Set(VISIBILITY_CATALOG.flatMap((section) => section.groups.flatMap((group) => group.items.map((item) => item.key))));
 
 /** The section an item belongs to. */

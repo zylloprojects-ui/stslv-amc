@@ -57,6 +57,7 @@ import { buildContractsExport } from "./contracts.export";
 import { listScheduleGenerations } from "./schedule-generations.service";
 import { buildMonthlyScheduleExport, exportMonthlyScheduleSchema, getMonthlySchedule, monthlyScheduleSchema } from "./schedule-monthly.service";
 import { buildMasterStatusExport } from "./master-status.export";
+import { applyRenewalQueueVisibility, renewalHiddenColumns, renewalHistoryVisible } from "./renewal-queue.visibility";
 import { exportMasterStatusSchema, listMasterStatusSchema } from "./master-status.schemas";
 import { getMasterStatusOptions, listMasterStatus, masterStatusAccess } from "./master-status.service";
 import { buildRenewalHistoryExport, buildRenewalQueueExport } from "./renewal.export";
@@ -117,12 +118,12 @@ amcRouter.get("/reports/expiring", authorize("AMC_CONTRACTS", "VIEW"), async (re
 // Renewals (migration 0072).
 const renewalsReady = requireSchema(["amc_contracts.renewed_from_id"]);
 
-amcRouter.get("/reports/renewals", authorize("AMC_RENEWAL", "VIEW"), renewalsReady, async (req, res) => {
+amcRouter.get("/reports/renewals", authorize("AMC_RENEWAL", "VIEW"), renewalsReady, renewalHistoryVisible, async (req, res) => {
   res.json({ success: true, data: await listRenewalHistory(renewalHistorySchema.parse(req.query)) });
 });
 
 // Every renewal made, as an Excel workbook or a PDF.
-amcRouter.get("/reports/renewals/export", authorize("AMC_RENEWAL", "VIEW"), authorize("AMC_RENEWAL", "EXPORT"), renewalsReady, async (req, res) => {
+amcRouter.get("/reports/renewals/export", authorize("AMC_RENEWAL", "VIEW"), authorize("AMC_RENEWAL", "EXPORT"), renewalsReady, renewalHistoryVisible, async (req, res) => {
   const query = exportRenewalHistorySchema.parse(req.query);
   const { report, recordExport } = await buildRenewalHistoryExport(requireAuth(req), query);
 
@@ -137,13 +138,15 @@ amcRouter.get("/reports/renewals/export", authorize("AMC_RENEWAL", "VIEW"), auth
 // Renewal page and its renewal history are governed by AMC_RENEWAL (migration 0080).
 const renewalQueueReady = requireSchema(["amc_contracts.renewed_from_id", "system_types", "maintenance_frequencies"]);
 
-amcRouter.get("/renewals/queue", authorize("AMC_RENEWAL", "VIEW"), renewalQueueReady, async (req, res) => {
+amcRouter.get("/renewals/queue", authorize("AMC_RENEWAL", "VIEW"), renewalQueueReady, applyRenewalQueueVisibility, async (req, res) => {
   res.json({ success: true, data: await listRenewalQueue(listRenewalQueueSchema.parse(req.query)) });
 });
 
 // Every row that matches the queue's filters, across all pages, with the page's visible columns.
 amcRouter.get("/renewals/queue/export", authorize("AMC_RENEWAL", "VIEW"), authorize("AMC_RENEWAL", "EXPORT"), renewalQueueReady, async (req, res) => {
-  const query = exportRenewalQueueSchema.parse(req.query);
+  const parsed = exportRenewalQueueSchema.parse(req.query);
+  // Role visibility (0123): the role's hidden columns never reach the download, whatever the page sends.
+  const query = { ...parsed, hidden: [...new Set([...parsed.hidden, ...renewalHiddenColumns(requireAuth(req))])] };
   const { report, recordExport } = await buildRenewalQueueExport(requireAuth(req), query);
 
   await sendExport(res, report, query.format, recordExport);
