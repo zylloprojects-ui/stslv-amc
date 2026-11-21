@@ -7,6 +7,7 @@ import { sendExport } from "../../shared/export/send";
 import { parseIdParam } from "../../shared/validation";
 import type { AuthContext } from "../auth/access";
 import { buildAcknowledgementsExport } from "./invoice-acknowledgements.export";
+import { ackHiddenColumns, applyAcknowledgementVisibility } from "./invoice-acknowledgements.visibility";
 import {
   chooseAcknowledgementSchema,
   confirmAcknowledgementSchema,
@@ -46,6 +47,8 @@ import {
 export const invoiceAcknowledgementsRouter = Router();
 
 invoiceAcknowledgementsRouter.use(authenticate);
+// Role visibility (0123): every JSON answer below leaves out the columns hidden from the user's role.
+invoiceAcknowledgementsRouter.use(applyAcknowledgementVisibility);
 
 const amountsVisible = (auth: AuthContext) => auth.permissions.has("ACCOUNTS:VIEW");
 
@@ -83,7 +86,9 @@ invoiceAcknowledgementsRouter.get("/options", view, async (_req, res) => {
 
 invoiceAcknowledgementsRouter.get("/export", view, authorize("INVOICE_ACKNOWLEDGEMENTS", "EXPORT"), async (req, res) => {
   const auth = requireAuth(req);
-  const query = exportAcknowledgementsSchema.parse(req.query);
+  const parsed = exportAcknowledgementsSchema.parse(req.query);
+  // Role visibility (0123): the role's hidden columns never reach the download, whatever the page sends.
+  const query = { ...parsed, hidden: [...new Set([...parsed.hidden, ...ackHiddenColumns(auth)])] };
   const { report, recordExport } = await buildAcknowledgementsExport(auth, query, amountsVisible(auth));
 
   await sendExport(res, report, query.format, recordExport);

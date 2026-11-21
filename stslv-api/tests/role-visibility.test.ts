@@ -299,6 +299,78 @@ describe("Phase 2: Master AMC Status, Service Status, AMC Management", () => {
   });
 });
 
+describe("Step A: Invoice Acknowledgements, Service Sales, AMC Renewals, Reports", () => {
+  it("Reports: a hidden report is left out of the list and refused, others stay", async () => {
+    await grant(ACCOUNTS_ROLE, [["REPORTS", "VIEW"], ["REPORTS", "EXPORT"], ["AMC_CONTRACTS", "EXPORT"], ["AMC_RENEWAL", "VIEW"], ["AMC_RENEWAL", "EXPORT"], ["SERVICES_SALES", "VIEW"]]);
+    const user = await signedIn("reports-vis@example.com", [ACCOUNTS_ROLE]);
+    const before = (await api().get("/api/reports").set(user.headers)).body.data as { id: string }[];
+    expect(before.map((report) => report.id)).toContain("contract-summary");
+
+    expect((await setHidden(ACCOUNTS_ROLE, ["reports.report.contractSummary"])).status).toBe(200);
+    const after = (await api().get("/api/reports").set(user.headers)).body.data as { id: string }[];
+    expect(after.map((report) => report.id)).not.toContain("contract-summary");
+    expect(after.length).toBe(before.length - 1);
+    expect((await api().get("/api/reports/contract-summary").set(user.headers)).status).toBe(403);
+    expect((await api().get("/api/reports/contract-summary/export").query({ format: "xlsx" }).set(user.headers)).status).toBe(403);
+  });
+
+  it("AMC Renewals: hidden queue columns are blanked and a hidden Renewal History is refused", async () => {
+    const user = await signedIn("renewal-vis@example.com", [ACCOUNTS_ROLE]);
+    expect((await api().get("/api/amc/reports/renewals").set(user.headers)).status).toBe(200);
+
+    expect((await setHidden(ACCOUNTS_ROLE, ["amcRenewal.column.amount", "amcRenewal.column.client", "amcRenewal.panel.history"])).status).toBe(200);
+    const queue = await api().get("/api/amc/renewals/queue").query({ pageSize: 200 }).set(user.headers);
+    expect(queue.status).toBe(200);
+    expect(queue.body.data.roleHiddenColumns.sort()).toEqual(["amount", "client"]);
+    for (const item of queue.body.data.items) {
+      expect(item.contractValue).toBe("");
+      expect(item.client.name).toBe("");
+      expect(item.reference).toBeTruthy();
+    }
+    expect((await api().get("/api/amc/reports/renewals").set(user.headers)).status).toBe(403);
+    expect((await api().get("/api/amc/reports/renewals/export").query({ format: "xlsx" }).set(user.headers)).status).toBe(403);
+  });
+
+  it("Service Sales: hidden columns are blanked; Quote No. is never hideable", async () => {
+    const user = await signedIn("sales-vis@example.com", [ACCOUNTS_ROLE]);
+    expect(VISIBILITY_KEYS.has("serviceSales.column.quotation")).toBe(false);
+    expect((await setHidden(ACCOUNTS_ROLE, ["serviceSales.column.client", "serviceSales.column.serviceReport"])).status).toBe(200);
+    const list = await api().get("/api/services-sales").query({ pageSize: 200 }).set(user.headers);
+    expect(list.status).toBe(200);
+    expect(list.body.data.roleHiddenColumns.sort()).toEqual(["client", "serviceReport"]);
+    for (const item of list.body.data.items) {
+      expect(item.client.name).toBe("");
+      expect(item.serviceReport).toBeNull();
+    }
+    // The report download follows the column.
+    const anyVisit = (await pool.query<{ id: string }>("SELECT id::text FROM amc_visits LIMIT 1")).rows[0]!.id;
+    expect((await api().get(`/api/services-sales/${anyVisit}/report`).set(user.headers)).status).toBe(403);
+  });
+
+  it("Invoice Acknowledgements: every answer of the router blanks the hidden columns and their totals", async () => {
+    const { applyAcknowledgementVisibility } = await import("../src/modules/invoice-acknowledgements/invoice-acknowledgements.visibility.js");
+    const item = {
+      invoiceId: "1", invoiceNo: "INV-1", client: { id: "5", name: "Client" }, contracts: [{ id: "7", reference: "AMC-1", version: 1 }],
+      invoiceDate: "2026-11-01", invoiceValue: "10.000", serviceValue: "9.000", acknowledgedAt: null, acknowledgedBy: null,
+      document: { attachmentId: "3", uploadedBy: { id: "2", fullName: "Uploader" } },
+    };
+    let sent: { data: { items: (typeof item)[]; kpis: Record<string, unknown> } } | undefined;
+    const res = { json: (body: typeof sent) => (sent = body) } as unknown as Parameters<typeof applyAcknowledgementVisibility>[1];
+    const req = { auth: { hidden: new Set(["invoiceAcks.column.invoiceValue", "invoiceAcks.column.client", "invoiceAcks.column.uploadedBy"]) } } as unknown as Parameters<typeof applyAcknowledgementVisibility>[0];
+    applyAcknowledgementVisibility(req, res, () => undefined);
+    res.json({ success: true, data: { items: [item], kpis: { invoiceValueTotal: "10.000", serviceValueTotal: "9.000" } } });
+
+    const out = sent!.data;
+    expect(out.items[0]!.invoiceValue).toBeNull();
+    expect(out.items[0]!.serviceValue).toBe("9.000");
+    expect(out.items[0]!.client.name).toBe("");
+    expect(out.items[0]!.document.attachmentId).toBe("3");
+    expect(out.items[0]!.document.uploadedBy.fullName).toBe("");
+    expect(out.kpis.invoiceValueTotal).toBeNull();
+    expect(out.kpis.serviceValueTotal).toBe("9.000");
+  });
+});
+
 describe("Several roles", () => {
   it("shows an item when any role that may open the page shows it; a role without the page has no say", async () => {
     await withoutOneRoleConstraint(async () => {

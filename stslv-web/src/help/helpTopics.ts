@@ -1152,6 +1152,8 @@ const ADMINISTRATION: HelpTopic[] = [
         bullets: [
           'Below a role’s permissions, Page visibility chooses what that role sees inside the pages it can open: a Dashboard row or panel, a column of Accounts › Invoices, Master AMC Status or Service Status, an AMC Management KPI group or panel, or an action such as Download AMC contract.',
           'On Service Status only the read-only columns can be hidden; columns entered on that page stay. AMC Reference, Scheduled Month and Service Status always stay on every page.',
+          'Invoice Acknowledgements, Service Sales, AMC Renewals (including the Renewal History tab) and Reports (each report on its own) can be set the same way. Fields an action works from, such as the acknowledgement document or the Quote No., always stay.',
+          'Each page is listed collapsed: click it to open, or use Expand all. Find a page filters the list; Show all and Hide all change every item of one page.',
           'Ticked means shown (the default). Untick an item and save: everyone with the role stops seeing it, and everything else stays as it is. Opening the page itself is still set by the permissions above.',
           'Hidden data is not sent to their browser and is left out of their Excel and PDF downloads; a hidden download is refused by the server. A hidden Service Value also hides the totals built from it.',
           'A person with several roles sees an item when any of their roles that opens the page shows it. Super Admin always sees everything.',
