@@ -57,9 +57,8 @@ export interface AccountsItem {
   /** The Service Report uploaded on Service Status, or null when none. Absent from an older API. */
   serviceReport?: { id: string; originalName: string; mimeType: string; sizeBytes: number; uploadedAt: string } | null
   /**
-   * The contract document of this service's AMC contract (uploaded on AMC Contracts), metadata only; `id` is the
-   * attachment downloaded through /attachments/:id/download. Null when the contract has none, and for a user without
-   * AMC Contracts: View. Absent from an older API.
+   * The contract document of this service's AMC contract (uploaded on AMC Contracts), metadata only; downloaded through
+   * /accounts/:visitId/contract-document (Accounts: View). Null when the contract has none. Absent from an older API.
    */
   contractDocument?: { id: string; title: string; version: number; originalName: string; mimeType: string; sizeBytes: number; uploadedAt: string } | null
   /** The contract's Sales Engineer: the person who brought the AMC (client UAT CR-011). */

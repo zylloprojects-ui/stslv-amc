@@ -7,6 +7,7 @@ import { IN_SCOPE, serviceStatusSql } from "../amc/service-status.service";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import { readServiceReport, SERVICE_REPORT_JSON_SQL, serviceReportsAvailable, toServiceReport, type ServiceReport } from "../amc/service-reports.service";
 import { notFound } from "../../shared/errors";
+import { readStoredFile } from "../attachments/attachments.service";
 import { schemaHas } from "../../shared/schema-features";
 import { hasServiceEngineer, serviceEngineerSql } from "../amc/service-engineer";
 import { normalizeMoney } from "../amc/amc.schemas";
@@ -184,8 +185,7 @@ export interface AccountsItem {
   serviceReport: ServiceReport | null;
   /**
    * The contract document of this service's AMC contract (see CONTRACT_DOCUMENT_JSON_SQL), metadata only. Downloaded
-   * through GET /api/attachments/:id/download, which checks AMC Contracts: View again. Null when the contract has none,
-   * and always null for a user without AMC Contracts: View (the response's contractDocumentVisible is then false).
+   * through GET /api/accounts/:id/contract-document (Accounts: View). Null when the contract has none.
    */
   contractDocument: ContractDocumentRef | null;
   /** The contract's Sales Engineer master link: the person who brought the AMC (client UAT CR-011). */
@@ -240,8 +240,8 @@ export interface AccountsAccess {
   /** The contract's AMC Value / Year under the service value: AMC Contracts: View, as on Master AMC Status. */
   annualAmcValue?: boolean;
   /**
-   * The AMC Contract column (the contract document): AMC Contracts: View, the permission the attachment download itself
-   * requires, so the page never lists a document its user could not download.
+   * The AMC Contract column (the contract document). The Accounts routes always ask for it (owner decision 2026-11-21);
+   * the document is downloaded through the Accounts route, never the AMC Contracts attachment download.
    */
   contractDocument?: boolean;
 }
@@ -459,4 +459,33 @@ export async function readAccountsServiceReport(visitId: string) {
   if (visit.rowCount === 0) throw notFound("AMC visit not found.");
 
   return readServiceReport(visitId);
+}
+
+/**
+ * The contract document of ONE visit shown on Accounts (the AMC Contract column), for its Download (owner decision
+ * 2026-11-21: Accounts users download it without AMC Contracts access). The same document the list names
+ * (CONTRACT_DOCUMENT_JSON_SQL): the current version of the visit's own contract's first SIGNED_CONTRACT document. Only a
+ * visit in Accounts' own scope is served, so no other contract's file and no other document type is reachable. Read
+ * through the private document storage and checked against its checksum.
+ */
+export async function readAccountsContractDocument(visitId: string) {
+  const found = await pool.query<{ storage_key: string; sha256: string; mime_type: string; original_name: string }>(
+    `SELECT a.storage_key, a.sha256, a.mime_type, a.original_name
+     FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
+     JOIN LATERAL (
+       SELECT a.storage_key, a.sha256, a.mime_type, a.original_name
+       FROM attachments a
+       WHERE a.entity_type = 'amc_contracts' AND a.entity_id = c.id AND a.is_current AND a.category = 'SIGNED_CONTRACT'
+       ORDER BY a.document_id
+       LIMIT 1) a ON true
+     WHERE v.id = $1 AND ${IN_SCOPE}`,
+    [visitId]
+  );
+  const row = found.rows[0];
+
+  if (!row) throw notFound("No contract document was found for this service.");
+
+  const data = await readStoredFile(row.storage_key, row.sha256, "The stored contract document could not be found.");
+
+  return { data, mimeType: row.mime_type, fileName: row.original_name };
 }
