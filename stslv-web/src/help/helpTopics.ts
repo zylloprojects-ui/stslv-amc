@@ -1147,6 +1147,16 @@ const ADMINISTRATION: HelpTopic[] = [
           'Nobody grants, removes or assigns a permission they do not hold. The server enforces every rule; a role you may not change shows why.',
         ],
       },
+      {
+        heading: 'Page visibility',
+        bullets: [
+          'Below a role’s permissions, Page visibility chooses what that role sees inside the pages it can open: a Dashboard row or panel, a column of Accounts › Invoices, or an action such as Download AMC contract.',
+          'Ticked means shown (the default). Untick an item and save: everyone with the role stops seeing it, and everything else stays as it is. Opening the page itself is still set by the permissions above.',
+          'Hidden data is not sent to their browser and is left out of their Excel and PDF downloads; a hidden download is refused by the server. A hidden Service Value also hides the totals built from it.',
+          'A person with several roles sees an item when any of their roles that opens the page shows it. Super Admin always sees everything.',
+          'The same people who may change a role’s permissions may change its page visibility. Changes are logged and apply the next time the page loads.',
+        ],
+      },
     ],
     related: ['users-and-roles'],
   },

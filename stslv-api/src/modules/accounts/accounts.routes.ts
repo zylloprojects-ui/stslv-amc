@@ -8,6 +8,10 @@ import { exportAccountsSchema, listAccountsSchema } from "./accounts.schemas";
 import { parseIdParam } from "../../shared/validation";
 import { holdsPermission } from "../../shared/permissions";
 import { getAccountsOptions, listAccounts, readAccountsContractDocument, readAccountsServiceReport } from "./accounts.service";
+import { mayDownloadContract, mayOpenServiceReport, roleHiddenColumns } from "./accounts.visibility";
+import { forbidden } from "../../shared/errors";
+
+const HIDDEN_FOR_ROLE = "This is not available to your role.";
 
 export const accountsRouter = Router();
 
@@ -20,7 +24,8 @@ accountsRouter.use(authenticate);
 const accountsView = [authorize("ACCOUNTS", "VIEW"), requireSchema(["amc_visits.service_report_no"])];
 
 accountsRouter.get("/", ...accountsView, async (req, res) => {
-  const { permissions } = requireAuth(req);
+  const auth = requireAuth(req);
+  const { permissions } = auth;
   // The read-only acknowledgement indicator only for users who may view Invoice Acknowledgements. The contract's AMC
   // Value (client UAT CR-013) is part of this page for everyone who may open it (Accounts: View): the client asked for
   // it so Accounts can invoice. Only that one figure per service; no other contract data, and no AMC Contracts access.
@@ -34,6 +39,8 @@ accountsRouter.get("/", ...accountsView, async (req, res) => {
     // below, which serves only the contract document of a service listed here. AMC Contracts itself (its pages, the
     // contract link, its other documents) still needs AMC Contracts: View.
     contractDocument: true,
+    // Role visibility (0123): the columns the user's role does not see are not sent at all.
+    hiddenColumns: roleHiddenColumns(auth),
   };
 
   res.json({ success: true, data: await listAccounts(listAccountsSchema.parse(req.query), access) });
@@ -46,6 +53,8 @@ accountsRouter.get("/options", ...accountsView, async (_req, res) => {
 // The Service Report uploaded on Service Status for ONE visit listed here, for the page's read-only viewer and the
 // Download inside it (client fixes, 2026-11-09). Read only, ACCOUNTS:VIEW, never a public or storage link.
 accountsRouter.get("/:id/report", ...accountsView, async (req, res) => {
+  // Role visibility: the Service Report column or its action may be hidden from the user's role.
+  if (!mayOpenServiceReport(requireAuth(req))) throw forbidden(HIDDEN_FOR_ROLE);
   const file = await readAccountsServiceReport(parseIdParam(req.params.id));
   // The stored name is already cleaned at upload; the ASCII fallback keeps only safe characters.
   const ascii = file.fileName.replace(/[^A-Za-z0-9._ -]/g, "_");
@@ -63,6 +72,8 @@ accountsRouter.get("/:id/report", ...accountsView, async (req, res) => {
 // The contract document of ONE service listed here (the AMC Contract column), for its Download (owner decision
 // 2026-11-21). ACCOUNTS:VIEW only: no AMC Contracts permission is needed, and no other document of the contract is reachable.
 accountsRouter.get("/:id/contract-document", ...accountsView, async (req, res) => {
+  // Role visibility: the AMC Contract column or the Download AMC contract action may be hidden from the user's role.
+  if (!mayDownloadContract(requireAuth(req))) throw forbidden(HIDDEN_FOR_ROLE);
   const file = await readAccountsContractDocument(parseIdParam(req.params.id));
   const ascii = file.fileName.replace(/[^A-Za-z0-9._ -]/g, "_");
 

@@ -854,3 +854,29 @@ describe('references and the Expiry report', () => {
     expect(within(panel).getByRole('link', { name: /AMC Contracts/ })).toHaveAttribute('href', '/amc/contracts')
   })
 })
+
+describe('Role visibility (Roles & Permissions › Page visibility)', () => {
+  it('leaves out exactly the rows and panels hidden from the role; every other row and panel stays', async () => {
+    dashboardApi({ ...ADMIN, hidden: ['dashboard.row.portfolio', 'dashboard.panel.workload'] }, { operations: () => ok(WITH_PERIODS) })
+    renderApp('/dashboard')
+
+    expect(labelsOf(await kpiRow('month'))).toEqual(['Services This Month', 'Services Pending', 'Invoices Generated', 'Invoices Not Generated'])
+    expect(await kpiRow('overall')).toBeInTheDocument()
+    expect(await kpiRow('ytd')).toBeInTheDocument()
+    expect(await kpiRow('tillDate')).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: ROW_TITLES.portfolio })).not.toBeInTheDocument()
+    expect(kpiOrder()).not.toContain('active')
+
+    expect(await screen.findByRole('heading', { name: 'AMC Maintenance Calendar' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Payment Trend' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Upcoming Service Workload' })).not.toBeInTheDocument()
+  })
+
+  it('shows every row when nothing is hidden', async () => {
+    dashboardApi({ ...ADMIN, hidden: [] })
+    renderApp('/dashboard')
+
+    expect(await kpiRow('portfolio')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Upcoming Service Workload' })).toBeInTheDocument()
+  })
+})

@@ -87,6 +87,8 @@ export interface SessionUser {
   roles: RoleSummary[]
   /** "MODULE:ACTION" strings, for example "CLIENTS:EDIT". */
   permissions: string[]
+  /** Page items hidden from this user's role (role visibility); read through lib/visibility.ts. Absent from an older API. */
+  hidden?: string[]
   /** Signed in with a temporary password: must choose a new password before anything else. */
   credentialChangeRequired?: boolean
 }
@@ -200,6 +202,10 @@ export interface Role {
   permissionsVersion?: string
   /** Defined by the migrations: never deleted. */
   builtIn?: boolean
+  /** The page items hidden from this role (role visibility). Absent from an older API. */
+  hiddenItems?: string[]
+  /** Fingerprint of the saved hidden items; a save sends it back and is refused (409) if they changed meanwhile. */
+  visibilityVersion?: string
   /** Whether the signed-in user may rename, deactivate or delete this role. Absent from an older API. */
   manageable?: boolean
   /** Why the signed-in user may not manage this role, or null. Absent from an older API. */
@@ -215,6 +221,24 @@ export interface RolesResponse {
   /** What each module governs and which of its actions are used (API: shared/permission-catalog.ts). Absent from an older API. */
   catalog?: PermissionSection[]
   fixedAccess?: { superAdminOnly?: CatalogPage[]; adminOnly: CatalogPage[]; everyone: CatalogPage[] }
+  /** The page items that can be hidden from a role (role visibility). Null or absent before migration 0123. */
+  visibilityCatalog?: VisibilitySection[] | null
+}
+
+export interface VisibilityItem {
+  key: string
+  label: string
+  kind: 'row' | 'panel' | 'column' | 'action'
+  description?: string
+}
+
+export interface VisibilitySection {
+  id: string
+  title: string
+  page: { label: string; path: string }
+  /** "MODULE:ACTION" that opens the page: only a role holding it is affected. */
+  requires: string
+  groups: { title: string; items: VisibilityItem[] }[]
 }
 
 export interface CatalogPage {

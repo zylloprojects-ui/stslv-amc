@@ -88,3 +88,15 @@ Notes:
 | Dashboard figures | Dashboard: View plus View on each figure's module |
 
 The API enforces every rule above on each request; the web application only hides what a user cannot use.
+
+## 5. Page visibility (role visibility, migration 0123, 2026-11-21)
+
+Within a page a role may open, Roles & Permissions can hide single items from that role. It only takes away; it never opens a page. The catalogue of hideable items is `stslv-api/src/shared/visibility-catalog.ts`; nothing is hidden by default.
+
+| Page | Items | Enforced by the API |
+|---|---|---|
+| Dashboard (`DASHBOARD:VIEW`) | Rows: AMC Portfolio, Current Month, Current Year (YTD), Overall Till Date, Overall Contract. Panels: AMC Maintenance Calendar, Upcoming Service Workload, Payment Trend | `/api/dashboard/operations` leaves out the hidden row's figures and the hidden panel's data |
+| Accounts › Invoices (`ACCOUNTS:VIEW`) | Columns: Client, System, Frequency, Service, Service Report No., Service Report, AMC Contract, Sales Engineer, Service Engineer, AMC Value, Service Value, Invoice No., Zoho Invoice Value. Actions: Download AMC contract, View and download Service Report | `/api/accounts` blanks hidden columns and drops totals built from them; `/export` leaves them out; `/:id/contract-document` and `/:id/report` answer 403 when hidden |
+
+- A user with several roles sees an item when any of their active roles that holds the page's permission shows it. A role without that permission has no say.
+- Super Admin's role never hides anything. The same people who may change a role's permissions may change its visibility; Admin only for items of pages Admin may open.

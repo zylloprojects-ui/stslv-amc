@@ -14,6 +14,8 @@ interface KpiStripProps {
   data: OperationsDashboard | undefined
   failed: boolean
   canView: (module: Module) => boolean
+  /** Role visibility: whether a row is shown to this user's role (default: every row). The API sends no figures for a hidden one. */
+  showsRow?: (row: KpiRow['id']) => boolean
 }
 
 /** The cards of one row this user may see, with what each shows now. A card whose section the API left out is not shown. */
@@ -81,12 +83,12 @@ function KpiCard({ kpi, state, column, order }: { kpi: KpiDefinition; state: Car
  * Current Year (YTD) row. Four cards a row on a wide screen, two on a tablet, one on a phone. Rows share card
  * names, so each row carries its own heading. A row with no card this user may see is left out.
  */
-export function KpiStrip({ data, failed, canView }: KpiStripProps) {
+export function KpiStrip({ data, failed, canView, showsRow = () => true }: KpiStripProps) {
   let order = 0
 
   return (
     <div className="space-y-5">
-      {KPI_ROWS.map((row) => {
+      {KPI_ROWS.filter((row) => showsRow(row.id)).map((row) => {
         const cards = cardsOf(row, data, failed, canView)
         if (cards.length === 0) return null
         const headingId = `kpi-row-${row.id}`

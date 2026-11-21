@@ -8,6 +8,7 @@ import type { AccountsColour, AccountsColumn, ExportAccountsQuery } from "./acco
 import { findContractReference } from "../amc/contract-reference";
 import { listAllAccounts, type AccountsItem } from "./accounts.service";
 import { holdsPermission } from "../../shared/permissions";
+import { exportColumnsOf, roleHiddenColumns } from "./accounts.visibility";
 
 // Accounts as a report: the visits the page lists for the same filters, the
 // same card figures, and only the columns the page shows. Nothing is calculated here.
@@ -111,13 +112,19 @@ async function describeFilters(query: ExportAccountsQuery): Promise<ReportDefini
 
 /** The report, and the audit entry to write once the file has been produced. */
 export async function buildAccountsExport(auth: AuthContext, query: ExportAccountsQuery): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
-  const { format, hidden, ...filters } = query;
+  const { format, hidden: pageHidden, ...filters } = query;
+  // Role visibility (0123): the columns the user's role does not see are never part of the download, whatever the
+  // page sends, and neither are the totals built from them.
+  const hidden = [...new Set([...pageHidden, ...exportColumnsOf(roleHiddenColumns(auth))])];
+  const roleHidden = roleHiddenColumns(auth);
+  const valuesShown = !roleHidden.has("visitValue");
+  const zohoValueShown = !roleHidden.has("invoiceValue");
   // The contract's AMC Value is part of the Accounts page and its download for everyone who may export it (client UAT
   // CR-013, as on the page). The route already requires Accounts: View and Export.
-  const amcValue = holdsPermission(auth.permissions, "ACCOUNTS:VIEW");
+  const amcValue = holdsPermission(auth.permissions, "ACCOUNTS:VIEW") && !roleHidden.has("amcValue");
   const { items, kpis } = await listAllAccounts(filters, (count) => assertExportSize(format, count), { acknowledgements: false, amcValue });
   const notes = [
-    `Rows ${kpis.rows} · Completed ${kpis.completed} · Not completed ${kpis.notCompleted} · Paid (Invoice No. entered) ${kpis.invoiceFilled} · Total value ${displayMoney(kpis.totalValue)}.`,
+    `Rows ${kpis.rows} · Completed ${kpis.completed} · Not completed ${kpis.notCompleted} · Paid (Invoice No. entered) ${kpis.invoiceFilled}${valuesShown ? ` · Total value ${displayMoney(kpis.totalValue)}` : ""}.`,
     "Red: service not completed. Blue: completed, Unpaid. Green: completed, Paid.",
     PAID_STATUS_NOTE,
     "Service Value is the scheduled amount of each service, in OMR excluding VAT. Zoho invoices are the records in Invoice Tracking; cancelled ones are not listed.",
@@ -125,10 +132,19 @@ export async function buildAccountsExport(auth: AuthContext, query: ExportAccoun
     ...(amcValue && format === "xlsx"
       ? ["AMC Value (ex VAT) is the Customer PO Value entered on the contract, repeated on each of its services, so it is not totalled. Blank: no PO value entered."]
       : []),
-    `Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)} · Zoho Invoice Value (Invoice Tracking) ${displayMoney(kpis.invoiceValue)} over ${kpis.invoiced} ${kpis.invoiced === 1 ? "service" : "services"}.`,
+    ...[
+      [
+        valuesShown ? `Value of Paid services (Invoice No. entered) ${displayMoney(kpis.paidValue)}` : null,
+        zohoValueShown ? `Zoho Invoice Value (Invoice Tracking) ${displayMoney(kpis.invoiceValue)} over ${kpis.invoiced} ${kpis.invoiced === 1 ? "service" : "services"}` : null,
+      ]
+        .filter((part) => part !== null)
+        .join(" · "),
+    ]
+      .filter((note) => note !== "")
+      .map((note) => `${note}.`),
   ];
 
-  if (kpis.valueMissing > 0) {
+  if (valuesShown && kpis.valueMissing > 0) {
     notes.push(`${kpis.valueMissing} ${kpis.valueMissing === 1 ? "service has" : "services have"} no visit value set; not included in the total.`);
   }
 

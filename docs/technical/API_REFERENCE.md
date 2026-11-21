@@ -75,6 +75,7 @@ Express 5 REST API in `stslv-api`, mounted under `/api` (`src/app.ts`). Describe
 | GET | `/` | P(USERS,VIEW) — roles (with `permissionsEditable`, `lockedReason`, `manageable`, `manageReason`, `assignable`), `canManageRoles`, catalog, fixed access |
 | POST | `/` · PATCH `/:id` · DELETE `/:id` | SA, or Admin with P(USERS,EDIT): custom roles only, within Admin's own permissions, never its own role (2026-11-09) |
 | PUT | `/:id/permissions` | Same as above; Admin cannot add USERS permissions; body has `expectedVersion` (refused if changed meanwhile) |
+| PUT | `/:id/visibility` | Role visibility (0123, 2026-11-21). Same people as `/:id/permissions` (never Super Admin's role); Admin only for items of pages it may open. Body `{ hidden: string[], expectedVersion }`: the page items hidden from the role, keys from `shared/visibility-catalog.ts` (unknown key 400, stale 409, 503 before 0123). GET `/` also returns `visibilityCatalog` and each role's `hiddenItems` / `visibilityVersion`. Logged as `role.visibility_changed` |
 
 ### Audit — `/api/audit`
 | Method | Path | Access |

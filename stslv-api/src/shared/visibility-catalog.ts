@@ -1,0 +1,110 @@
+import type { PermissionKey } from "./permissions";
+
+// Role visibility (owner request 2026-11-21): inside a page a role may open, Roles & Permissions can hide single
+// parts of it from that role: a Dashboard row or panel, a column of a table, or an action such as a download.
+// Page access itself stays with the permissions (MODULE:ACTION); this only takes away within a page, never gives.
+//
+// Rules:
+//   * Everything is visible until it is hidden: a role with nothing stored sees every page exactly as before.
+//   * Only the items listed here can be hidden; any other key is refused (deny by default, as with permissions).
+//   * The API enforces it: a hidden item's data is left out of the page's response and its downloads, and a hidden
+//     action is refused. The web app only hides what the API no longer sends.
+//   * A user holding several roles sees an item when ANY of their roles that may open the page shows it (the same
+//     union as permissions). Super Admin hides nothing.
+//
+// The keys are stored in role_hidden_items (migration 0123), so a key never changes once released.
+
+export type VisibilityKind = "row" | "panel" | "column" | "action";
+
+export interface VisibilityItem {
+  key: string;
+  label: string;
+  kind: VisibilityKind;
+  /** What hiding it does, for the Roles & Permissions screen. */
+  description?: string;
+}
+
+export interface VisibilityGroup {
+  title: string;
+  items: VisibilityItem[];
+}
+
+export interface VisibilitySection {
+  id: string;
+  title: string;
+  /** The page the items belong to. */
+  page: { label: string; path: string };
+  /** The permission that opens the page: only a role holding it is affected by these items. */
+  requires: PermissionKey;
+  groups: VisibilityGroup[];
+}
+
+export const VISIBILITY_CATALOG: VisibilitySection[] = [
+  {
+    id: "dashboard",
+    title: "Dashboard",
+    page: { label: "Dashboard", path: "/dashboard" },
+    requires: "DASHBOARD:VIEW",
+    groups: [
+      {
+        title: "Key figure rows",
+        items: [
+          { key: "dashboard.row.portfolio", label: "Row 1 · AMC Portfolio", kind: "row", description: "Active AMCs, Annual AMC Value, Final Credit, Expiring ≤45 Days" },
+          { key: "dashboard.row.month", label: "Row 2 · Current Month", kind: "row", description: "Services this month, pending, Invoices Generated / Not Generated" },
+          { key: "dashboard.row.ytd", label: "Row 3 · Current Year (YTD)", kind: "row", description: "Services and invoices from January 1 through today" },
+          { key: "dashboard.row.tillDate", label: "Row 4 · Overall Till Date", kind: "row", description: "Services and invoices from each contract's start through today" },
+          { key: "dashboard.row.overall", label: "Row 5 · Overall Contract", kind: "row", description: "Every service of the contracts, including visits ahead" },
+        ],
+      },
+      {
+        title: "Panels",
+        items: [
+          { key: "dashboard.panel.calendar", label: "AMC Maintenance Calendar", kind: "panel" },
+          { key: "dashboard.panel.workload", label: "Upcoming Service Workload", kind: "panel" },
+          { key: "dashboard.panel.paymentTrend", label: "Payment Trend", kind: "panel" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "invoices",
+    title: "Accounts › Invoices",
+    page: { label: "Invoices", path: "/finance/accounts" },
+    requires: "ACCOUNTS:VIEW",
+    // AMC Reference, Scheduled Month and Service Status (with the row colour) define a row and always stay.
+    groups: [
+      {
+        title: "Columns",
+        items: [
+          { key: "invoices.column.client", label: "Client", kind: "column" },
+          { key: "invoices.column.system", label: "System", kind: "column" },
+          { key: "invoices.column.frequency", label: "Frequency", kind: "column" },
+          { key: "invoices.column.service", label: "Service", kind: "column" },
+          { key: "invoices.column.serviceReportNo", label: "Service Report No.", kind: "column" },
+          { key: "invoices.column.serviceReport", label: "Service Report", kind: "column", description: "Also stops viewing and downloading the report" },
+          { key: "invoices.column.amcContract", label: "AMC Contract", kind: "column", description: "Also stops downloading the contract" },
+          { key: "invoices.column.salesEngineer", label: "Sales Engineer", kind: "column" },
+          { key: "invoices.column.serviceEngineer", label: "Service Engineer", kind: "column" },
+          { key: "invoices.column.amcValue", label: "AMC Value (ex VAT)", kind: "column", description: "Excel download only; the page does not show it" },
+          { key: "invoices.column.visitValue", label: "Service Value (ex VAT)", kind: "column", description: "Also hides the Total Value card, the value totals and AMC Value / Year" },
+          { key: "invoices.column.invoiceNo", label: "Invoice No.", kind: "column", description: "Also hides the Zoho invoice numbers and the Invoice No. field on this page. The row colour still shows Paid / Unpaid" },
+          { key: "invoices.column.invoiceValue", label: "Zoho Invoice Value (ex VAT)", kind: "column" },
+        ],
+      },
+      {
+        title: "Actions",
+        items: [
+          { key: "invoices.action.downloadContract", label: "Download AMC contract", kind: "action", description: "Without access to the AMC Contracts page" },
+          { key: "invoices.action.serviceReport", label: "View and download Service Report", kind: "action" },
+        ],
+      },
+    ],
+  },
+];
+
+export const VISIBILITY_KEYS: ReadonlySet<string> = new Set(VISIBILITY_CATALOG.flatMap((section) => section.groups.flatMap((group) => group.items.map((item) => item.key))));
+
+/** The section an item belongs to. */
+export function sectionOfItem(key: string): VisibilitySection | undefined {
+  return VISIBILITY_CATALOG.find((section) => section.groups.some((group) => group.items.some((item) => item.key === key)));
+}

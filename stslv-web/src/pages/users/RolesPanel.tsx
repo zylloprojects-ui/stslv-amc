@@ -7,6 +7,7 @@ import { isSuperAdmin } from '../../auth/roles'
 import { Alert, Button, Card, ConfirmDialog, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { Icon, IconTile } from '../dashboard/icons'
+import { VisibilityEditor } from './VisibilityEditor'
 import { api, ApiError, errorMessage } from '../../lib/api'
 import { cx } from '../../lib/format'
 import { dependencyNote, dependentActions, requiredActions } from '../../lib/permissionRules'
@@ -666,7 +667,9 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
   const active = catalogue.roles.filter((role) => role.isActive)
   const legacy = catalogue.roles.filter((role) => !role.isActive)
   const [selectedId, setSelectedId] = useState<string | null>(active[0]?.id ?? catalogue.roles[0]?.id ?? null)
-  const [dirty, setDirty] = useState(false)
+  const [permissionsDirty, setPermissionsDirty] = useState(false)
+  const [visibilityDirty, setVisibilityDirty] = useState(false)
+  const dirty = permissionsDirty || visibilityDirty
   const [pendingId, setPendingId] = useState<string | null>(null)
   const tabs = useRef<(HTMLButtonElement | null)[]>([])
   const role = catalogue.roles.find((candidate) => candidate.id === selectedId) ?? null
@@ -780,7 +783,11 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
         <div id="role-permissions" role="tabpanel" aria-labelledby={role ? `role-tab-${role.id}` : undefined}>
           {/* key: a fresh matrix for another role. A newer save of the same role is merged by the matrix itself. */}
           {role && (
-            <PermissionMatrix key={role.id} role={role} catalogue={catalogue} canEdit={canEdit} onDirtyChange={setDirty} />
+            <PermissionMatrix key={role.id} role={role} catalogue={catalogue} canEdit={canEdit} onDirtyChange={setPermissionsDirty} />
+          )}
+          {/* Role visibility (0123): what the role sees inside the pages it can open. Absent before the migration. */}
+          {role && catalogue.visibilityCatalog && (
+            <VisibilityEditor key={`visibility-${role.id}`} role={role} catalogue={catalogue.visibilityCatalog} canEdit={canEdit} onDirtyChange={setVisibilityDirty} />
           )}
         </div>
       </Card>
@@ -788,7 +795,7 @@ export function RolesPanel({ catalogue, canEdit, onDirtyChange }: RolesPanelProp
       {pendingId && (
         <ConfirmDialog
           title="Discard unsaved changes?"
-          message={<>The permissions of {role?.name} have changes that are not saved. Discard them and open {catalogue.roles.find((item) => item.id === pendingId)?.name}?</>}
+          message={<>The permissions or page visibility of {role?.name} have changes that are not saved. Discard them and open {catalogue.roles.find((item) => item.id === pendingId)?.name}?</>}
           confirmLabel="Discard changes"
           danger
           onConfirm={() => {

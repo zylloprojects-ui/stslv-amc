@@ -122,6 +122,8 @@ export async function resetData(): Promise<void> {
 
   await withAuditLogUnlocked("TRUNCATE activity_logs, clients_all, user_roles, users RESTART IDENTITY CASCADE");
   await pool.query("DELETE FROM role_permissions");
+  // Role visibility (0123): every role starts showing everything again.
+  await pool.query("DELETE FROM role_hidden_items");
   await pool.query(
     "DELETE FROM roles WHERE code NOT IN ('ADMIN', 'ADMINISTRATOR', 'FINANCE_EXECUTIVE', 'MASTER_DATA_EXECUTIVE', 'AMC_OPERATIONS_EXECUTIVE', 'VIEWER', 'ACCOUNTANT', 'PROCUREMENT', 'EXECUTION', 'INVOICING')"
   );
