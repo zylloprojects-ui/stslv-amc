@@ -5,7 +5,9 @@ import { listEntityHistory } from "../../shared/entity-history";
 import { assertExportSize, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
 import { conflict, isUniqueViolation, notFound, validationError } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
+import { keepHiddenFields } from "../../shared/visibility-fields";
 import type { AuthContext } from "../auth/access";
+import { FREQUENCY_FIELD_VISIBILITY, masterHiddenFields, visibleReportColumns } from "./masters.visibility";
 import {
   describeRule,
   engineSupports,
@@ -234,7 +236,11 @@ export async function listFrequencyHistory(id: string, page: number, pageSize: n
 // Create and edit
 // ---------------------------------------------------------------------------
 
-export async function createFrequency(auth: AuthContext, input: CreateFrequencyInput): Promise<FrequencyItem> {
+export async function createFrequency(auth: AuthContext, sent: CreateFrequencyInput): Promise<FrequencyItem> {
+  // Role visibility (0123, "Lock it"): a field hidden from the user is never taken from the request (a hidden sort
+  // order puts the new frequency at the end, as a blank one does).
+  const input = keepHiddenFields(sent, masterHiddenFields(auth, "maintenance_frequencies"));
+
   if (input.status === "active" && !engineSupports(input)) {
     throw validationError(ENGINE_UNSUPPORTED_MESSAGE, [{ field: "status", message: ENGINE_UNSUPPORTED_MESSAGE }]);
   }
@@ -312,7 +318,9 @@ interface Rejection {
   attempted: Record<string, unknown>;
 }
 
-export async function updateFrequency(auth: AuthContext, id: string, input: UpdateFrequencyInput): Promise<FrequencyItem> {
+export async function updateFrequency(auth: AuthContext, id: string, sent: UpdateFrequencyInput): Promise<FrequencyItem> {
+  // Role visibility (0123, "Lock it"): a field hidden from the user who saves keeps its stored value, whatever is sent.
+  const input = keepHiddenFields(sent, masterHiddenFields(auth, "maintenance_frequencies"));
   // Set inside the transaction; declared this way so TypeScript does not narrow it to null.
   let rejection = null as Rejection | null;
   let result: FrequencyItem;
@@ -606,7 +614,8 @@ export async function buildFrequenciesExport(auth: AuthContext, query: ExportFre
     tables: [
       {
         name: "Maintenance Frequencies",
-        columns: REPORT_COLUMNS,
+        // Role visibility (0123, step B): the columns hidden from the user's role are left out of the file.
+        columns: visibleReportColumns(auth, FREQUENCY_FIELD_VISIBILITY, { sortOrder: ["sortOrder"] }, REPORT_COLUMNS),
         rows: items.map(reportRow),
         notes: total > 0 ? [`${total} ${noun(total)}. Services per year and interval are blank for a custom frequency: its months are chosen on each contract.`] : [],
       },

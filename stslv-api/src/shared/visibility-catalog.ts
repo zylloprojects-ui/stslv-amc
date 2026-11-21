@@ -276,6 +276,138 @@ VISIBILITY_CATALOG.push(
   }
 );
 
+// Step B (2026-11-21): pages whose edit form is filled from the record and saves every field back. The owner's rule
+// ("Lock it"): a hidden field is blanked in every answer of the page and left out of its downloads; in the edit form
+// it is shown locked ("Hidden for your role") and is not sent; and the API always keeps the stored value of a field
+// hidden from the user who saves (shared/visibility-fields.ts), so nothing is ever erased or changed by hiding it.
+// Not hideable: what identifies a row (contract reference, client name, invoice number, a master's name or code),
+// fields required when adding a record (a role that cannot see them could not add one), values that drive the
+// schedule or amounts, and figures that an action or warning of the page works from (contract counts).
+VISIBILITY_CATALOG.push(
+  {
+    id: "invoiceTracking",
+    title: "Invoice Tracking",
+    page: { label: "Invoice Tracking", path: "/invoices" },
+    requires: "INVOICES:VIEW",
+    // Invoice no., client, date, the amount excluding VAT, VAT, what it covers and the status are required when
+    // recording an invoice, so they always stay.
+    groups: [
+      {
+        title: "Columns and fields",
+        items: [
+          { key: "invoiceTracking.column.total", label: "Total (incl. VAT)", kind: "column", description: "Also hides the Total figures, here and in the Dashboard's Recent Invoices" },
+          { key: "invoiceTracking.column.zohoReference", label: "Zoho Reference", kind: "column", description: "Locked in the invoice form" },
+          { key: "invoiceTracking.column.notes", label: "Notes", kind: "column", description: "Locked in the invoice form" },
+          { key: "invoiceTracking.column.recordedBy", label: "Recorded By", kind: "column" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "amcContracts",
+    title: "AMC Contracts",
+    page: { label: "AMC Contracts", path: "/amc/contracts" },
+    requires: "AMC_CONTRACTS:VIEW",
+    // Reference, client, system, Sales Engineer, validity, frequency, AMC Value / Year and Final Credit are required
+    // to add a contract; the Billing Basis and its custom value decide the service amounts; the status and the visit
+    // counts drive the page's actions. They always stay.
+    groups: [
+      {
+        title: "Columns and fields",
+        items: [
+          { key: "amcContracts.column.costPerVisit", label: "Cost per Visit", kind: "column", description: "Locked in the contract form; a renewal keeps the renewed contract's value" },
+          { key: "amcContracts.column.customerPoValue", label: "Customer PO Value (ex VAT)", kind: "column", description: "Locked in the contract form" },
+          { key: "amcContracts.column.description", label: "Description", kind: "column", description: "Locked in the contract form; a renewal keeps the renewed contract's text" },
+          { key: "amcContracts.column.notes", label: "Notes", kind: "column", description: "Locked in the contract form" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "clients",
+    title: "Clients",
+    page: { label: "Clients", path: "/clients" },
+    requires: "CLIENTS:VIEW",
+    // Client name and code identify the client; the client type is required when adding one.
+    groups: [
+      {
+        title: "Columns and fields",
+        items: [
+          { key: "clients.column.contactPerson", label: "Contact Person", kind: "column", description: "Locked in the client form" },
+          { key: "clients.column.email", label: "Email", kind: "column", description: "Locked in the client form" },
+          { key: "clients.column.phone", label: "Phone", kind: "column", description: "Locked in the client form" },
+          { key: "clients.column.address", label: "Address", kind: "column", description: "Locked in the client form" },
+          { key: "clients.column.vatNumber", label: "VAT Number", kind: "column", description: "Locked in the client form" },
+          { key: "clients.column.notes", label: "Remarks", kind: "column", description: "Locked in the client form" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "salesEngineers",
+    title: "Master Data › Sales Engineers",
+    page: { label: "Sales Engineers", path: "/master-data/sales-engineers" },
+    requires: "SALES_ENGINEERS:VIEW",
+    // Engineer code and name identify the engineer; the contract counts drive the assignment warnings.
+    groups: [
+      {
+        title: "Columns and fields",
+        items: [
+          { key: "salesEngineers.column.employeeNo", label: "Employee No.", kind: "column", description: "Locked in the engineer form" },
+          { key: "salesEngineers.column.email", label: "Email", kind: "column", description: "Locked in the engineer form" },
+          { key: "salesEngineers.column.phone", label: "Phone", kind: "column", description: "Locked in the engineer form" },
+          { key: "salesEngineers.column.department", label: "Department", kind: "column", description: "Locked in the engineer form" },
+          { key: "salesEngineers.column.linkedUser", label: "Linked User", kind: "column", description: "Locked in the engineer form" },
+          { key: "salesEngineers.column.notes", label: "Notes", kind: "column", description: "Locked in the engineer form" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "systemTypes",
+    title: "Master Data › System Types",
+    page: { label: "System Types", path: "/master-data/system-types" },
+    requires: "SYSTEM_TYPES:VIEW",
+    // Code and name identify the type; the contract count drives the page's actions.
+    groups: [
+      {
+        title: "Columns and fields",
+        items: [
+          { key: "systemTypes.column.description", label: "Description", kind: "column", description: "Locked in the system type form" },
+          { key: "systemTypes.column.sortOrder", label: "Sort Order", kind: "column", description: "Locked in the system type form; lists keep their order" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "maintenanceFrequencies",
+    title: "Master Data › Maintenance Frequencies",
+    page: { label: "Maintenance Frequencies", path: "/master-data/maintenance-frequencies" },
+    requires: "MAINTENANCE_FREQUENCIES:VIEW",
+    // Name, internal code, prefix and the scheduling rule are required and drive the schedule; the contract counts
+    // drive the status warnings.
+    groups: [
+      {
+        title: "Columns and fields",
+        items: [{ key: "maintenanceFrequencies.column.sortOrder", label: "Sort Order", kind: "column", description: "Locked in the frequency form; lists keep their order" }],
+      },
+    ],
+  },
+  {
+    id: "departments",
+    title: "Master Data › Departments",
+    page: { label: "Departments", path: "/master-data/departments" },
+    requires: "DEPARTMENTS:VIEW",
+    // Code and name identify the department; the engineer count drives the page's actions.
+    groups: [
+      {
+        title: "Columns and fields",
+        items: [{ key: "departments.column.description", label: "Description", kind: "column", description: "Locked in the department form" }],
+      },
+    ],
+  }
+);
+
 export const VISIBILITY_KEYS: ReadonlySet<string> = new Set(VISIBILITY_CATALOG.flatMap((section) => section.groups.flatMap((group) => group.items.map((item) => item.key))));
 
 /** The section an item belongs to. */

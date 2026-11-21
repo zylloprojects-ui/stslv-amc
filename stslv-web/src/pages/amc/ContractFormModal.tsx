@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
-import { Alert, Button, Modal, Spinner, TextAreaField, TextField } from '../../components/ui'
+import { Alert, Button, LockedField, Modal, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage, isForbidden } from '../../lib/api'
+import { useHiddenFields, withoutHidden } from '../../lib/visibility'
 import type { SystemType } from '../masters/masterTypes'
 import { queryString } from './amcApi'
 import { contractEndDate, formatDate, hasSeparateResponsibleEngineer, MONEY_PATTERN } from './amcFormat'
@@ -15,6 +16,13 @@ import { MONTH_NAMES, useFrequencyOptions } from './frequencyOptions'
 import { frequencyLabel, type Contract, type SavedContract, type SchedulePreview } from './types'
 
 const DURATION_YEARS = [1, 2, 3, 4, 5, 6]
+
+/**
+ * Page visibility (owner rule "Lock it", 2026-11-21): the AMC Contracts columns a role may have hidden, and the form
+ * field each one is. A hidden field is shown locked and never sent; the API keeps its stored value (a renewal keeps
+ * the renewed contract's Cost per Visit and Description).
+ */
+const LOCKABLE_FIELDS = { costPerVisit: 'defaultVisitAmount', customerPoValue: 'customerPoValue', description: 'description', notes: 'notes' }
 
 /** The billing basis a new contract starts with (2026-11-11, as the API's default): AMC Value / Year. It can be changed. */
 const NEW_CONTRACT_BILLING_BASIS = 'CONTRACT_VALUE'
@@ -129,6 +137,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
   const showResponsibleEngineer = hasSeparateResponsibleEngineer(contract ?? renewalOf ?? null)
   // Start Renewal (2026-11-09) also needs its own updated renewal contract document; the renewed contract's is never reused.
   const needsDocument = isNew || Boolean(renewalOf)
+  const lockedFields = useHiddenFields('amcContracts', LOCKABLE_FIELDS)
+  const locked = (field: string) => lockedFields.includes(field)
   const queryClient = useQueryClient()
   const documentInputId = useId()
   const documentInput = useRef<HTMLInputElement>(null)
@@ -329,7 +339,11 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
       // The AMC Reference Number: always sent when creating; on an edit only when it was changed.
       const { status, customMonths, billingBasis, customBillingValue, renewalNotes, amcReference, ...rest } = values
       // Months are sent only for a custom frequency; for a fixed one the API clears them.
-      const fields = { ...(isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest), billingBasis: billingBasis === '' ? null : billingBasis, ...(billingBasis === 'CUSTOM' ? { customBillingValue } : {}) }
+      // A field hidden from the user's role is never sent (page visibility); the API keeps its stored value.
+      const fields = withoutHidden(
+        { ...(isCustom(values.maintenanceFrequency) ? { ...rest, customMonths } : rest), billingBasis: billingBasis === '' ? null : billingBasis, ...(billingBasis === 'CUSTOM' ? { customBillingValue } : {}) },
+        lockedFields
+      )
 
       // The Sales Engineer master link is sent only when the picker is offered and its value changed.
       const link = engineerPicker && engineerId !== currentEngineerId ? { salesEngineerId: engineerId || null } : {}
@@ -813,13 +827,17 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
 
           <div className="grid gap-4 sm:grid-cols-3">
             <TextField label="AMC Value / Year (ex VAT)" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.contractValue?.message} {...contractValueField} />
-            <TextField
-              label="Default visit amount"
-              inputMode="decimal"
-              hint={chosenBasis ? 'Not used while a billing basis is selected: visit amounts are calculated from the basis.' : 'Amount for each generated visit when no billing basis is selected. Each visit can be changed afterwards.'}
-              error={errors.defaultVisitAmount?.message}
-              {...register('defaultVisitAmount')}
-            />
+            {locked('defaultVisitAmount') ? (
+              <LockedField label="Default visit amount" hint={renewalOf ? 'Kept from the contract being renewed.' : 'Kept as stored.'} />
+            ) : (
+              <TextField
+                label="Default visit amount"
+                inputMode="decimal"
+                hint={chosenBasis ? 'Not used while a billing basis is selected: visit amounts are calculated from the basis.' : 'Amount for each generated visit when no billing basis is selected. Each visit can be changed afterwards.'}
+                error={errors.defaultVisitAmount?.message}
+                {...register('defaultVisitAmount')}
+              />
+            )}
             <TextField
               label="Final Credit (ex VAT)"
               required={finalCreditRequired}
@@ -843,13 +861,17 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
           </SelectField>
           {chosenBasis === 'CUSTOM' && <TextField label="Custom Billing Value" hint="Annual amount in OMR, excluding VAT." required inputMode="decimal" error={errors.customBillingValue?.message} {...register('customBillingValue')} />}
 
-          <TextField
-            label="Customer PO Value (ex VAT)"
-            inputMode="decimal"
-            hint="The amount of the customer's purchase order, in OMR excluding VAT, for the whole PO. Shown to Accounts as AMC Value (ex VAT). Optional; it changes no visit amount."
-            error={errors.customerPoValue?.message}
-            {...register('customerPoValue')}
-          />
+          {locked('customerPoValue') ? (
+            <LockedField label="Customer PO Value (ex VAT)" />
+          ) : (
+            <TextField
+              label="Customer PO Value (ex VAT)"
+              inputMode="decimal"
+              hint="The amount of the customer's purchase order, in OMR excluding VAT, for the whole PO. Shown to Accounts as AMC Value (ex VAT). Optional; it changes no visit amount."
+              error={errors.customerPoValue?.message}
+              {...register('customerPoValue')}
+            />
+          )}
 
           {storageMissing && (
             <Alert>
@@ -927,8 +949,8 @@ export function ContractFormModal({ contract, renewalOf, draftOnly = false, onCl
             </p>
           )}
 
-          <TextAreaField label="Description" rows={2} error={errors.description?.message} {...register('description')} />
-          <TextAreaField label="Notes" rows={2} error={errors.notes?.message} {...register('notes')} />
+          {locked('description') ? <LockedField label="Description" /> : <TextAreaField label="Description" rows={2} error={errors.description?.message} {...register('description')} />}
+          {locked('notes') ? <LockedField label="Notes" /> : <TextAreaField label="Notes" rows={2} error={errors.notes?.message} {...register('notes')} />}
           {renewalOf && <TextAreaField label="Renewal notes" rows={2} hint="Optional. Kept in the new contract's history." error={errors.renewalNotes?.message} {...register('renewalNotes')} />}
 
           {!contract && draftOnly && (

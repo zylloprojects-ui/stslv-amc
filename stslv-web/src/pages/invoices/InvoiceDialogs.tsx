@@ -1,7 +1,9 @@
 import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useContext, useState } from 'react'
+import { AuthContext } from '../../auth/context'
 import { DetailRow, Money, OrDash } from '../../components/records'
+import { hiddenField } from '../../lib/visibility'
 import { Alert, Button, Modal, Spinner, TextAreaField } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
 import { formatDate, formatDateTime } from '../../lib/format'
@@ -89,6 +91,9 @@ function InvoiceDetailsModal({ invoiceId, canEdit, onEdit, onCancel, onClose }: 
   const query = useQuery({ queryKey: ['invoices', 'detail', invoiceId], queryFn: () => api.get<Invoice>(`/invoices/${invoiceId}`) })
   const invoice = query.data
   const active = invoice?.status === 'ISSUED'
+  // Page visibility (0123, step B): fields hidden from the user's role are not shown (the API sends none).
+  const user = useContext(AuthContext)?.user ?? null
+  const hides = (column: string) => hiddenField(user, 'invoiceTracking', column)
 
   return (
     <Modal
@@ -127,9 +132,11 @@ function InvoiceDetailsModal({ invoiceId, canEdit, onEdit, onCancel, onClose }: 
           <DetailRow label="VAT amount">
             <Money value={invoice.vatAmount} />
           </DetailRow>
-          <DetailRow label="Total incl. VAT">
-            <Money value={invoice.totalAmount} />
-          </DetailRow>
+          {!hides('total') && (
+            <DetailRow label="Total incl. VAT">
+              <Money value={invoice.totalAmount} />
+            </DetailRow>
+          )}
           <DetailRow label="Covers">
             <ul className="space-y-1">
               {invoice.allocations.map((allocation) => (
@@ -140,12 +147,16 @@ function InvoiceDetailsModal({ invoiceId, canEdit, onEdit, onCancel, onClose }: 
             </ul>
           </DetailRow>
           <DetailRow label="Raised in">Zoho</DetailRow>
-          <DetailRow label="Zoho reference">
-            <OrDash value={invoice.sourceReference} />
-          </DetailRow>
-          <DetailRow label="Notes">
-            <OrDash value={invoice.notes} />
-          </DetailRow>
+          {!hides('zohoReference') && (
+            <DetailRow label="Zoho reference">
+              <OrDash value={invoice.sourceReference} />
+            </DetailRow>
+          )}
+          {!hides('notes') && (
+            <DetailRow label="Notes">
+              <OrDash value={invoice.notes} />
+            </DetailRow>
+          )}
           {!active && (
             <DetailRow label="Cancelled">
               {formatDateTime(invoice.cancelledAt)}
@@ -153,7 +164,8 @@ function InvoiceDetailsModal({ invoiceId, canEdit, onEdit, onCancel, onClose }: 
             </DetailRow>
           )}
           <DetailRow label="Recorded">
-            {formatDateTime(invoice.createdAt)} by {invoice.createdBy.fullName}
+            {formatDateTime(invoice.createdAt)}
+            {!hides('recordedBy') && invoice.createdBy.fullName && ` by ${invoice.createdBy.fullName}`}
           </DetailRow>
           <DetailRow label="Last updated">{formatDateTime(invoice.updatedAt)}</DetailRow>
         </dl>

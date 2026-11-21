@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useId, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
-import { Alert, Badge, Button, Modal, SelectField, Spinner, TextAreaField, TextField } from '../../components/ui'
+import { Alert, Badge, Button, LockedField, Modal, SelectField, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
+import { useHiddenFields, withoutHidden } from '../../lib/visibility'
 import { applyApiErrors } from '../../lib/formErrors'
 import { formatDate } from '../../lib/format'
 import { visitLabel, type BillableWork, type Invoice } from '../../lib/invoiceTypes'
@@ -118,6 +119,11 @@ const initialAmounts = (invoice: Invoice | null, preset: InvoicePreset | undefin
       : {}
 
 export function InvoiceFormModal({ invoice, preset, onClose, onSaved }: InvoiceFormModalProps) {
+  // Page visibility (owner rule "Lock it", 2026-11-21): a field hidden from the user's role is shown locked and never
+  // sent; the API keeps its stored value. Total hidden: the form does not show it either.
+  const lockedFields = useHiddenFields('invoiceTracking', { zohoReference: 'sourceReference', notes: 'notes' })
+  const locked = (field: string) => lockedFields.includes(field)
+  const totalHidden = useHiddenFields('invoiceTracking', { total: 'total' }).length > 0
   const queryClient = useQueryClient()
   const workHeadingId = useId()
   const fixedClient = invoice?.client ?? preset?.client ?? null
@@ -175,8 +181,9 @@ export function InvoiceFormModal({ invoice, preset, onClose, onSaved }: InvoiceF
 
   const save = useMutation({
     mutationFn: (values: InvoiceForm) => {
+      // A field hidden from the user's role is never sent (page visibility); the API keeps its stored value.
       const body = {
-        ...values,
+        ...withoutHidden(values, lockedFields),
         allocations: selected.map((row) => {
           const [kind, id] = row.key.split(':')
           const amount = (amounts[row.key] ?? '').trim()
@@ -317,12 +324,14 @@ export function InvoiceFormModal({ invoice, preset, onClose, onSaved }: InvoiceF
             {...register('vatAmount')}
           />
         </div>
-        <p className="text-sm text-slate-700">
-          Total including VAT:{' '}
-          <strong data-testid="invoice-form-total" className="tabular-nums">
-            {formatMoney(total)}
-          </strong>
-        </p>
+        {!totalHidden && (
+          <p className="text-sm text-slate-700">
+            Total including VAT:{' '}
+            <strong data-testid="invoice-form-total" className="tabular-nums">
+              {formatMoney(total)}
+            </strong>
+          </p>
+        )}
 
         <section aria-labelledby={workHeadingId} className="rounded-lg border border-slate-200">
           <h3 id={workHeadingId} className="border-b border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-900">
@@ -397,13 +406,17 @@ export function InvoiceFormModal({ invoice, preset, onClose, onSaved }: InvoiceF
           </Alert>
         )}
 
-        <TextField
-          label="Zoho reference"
-          hint="Optional. Any further reference from Zoho, if you keep one."
-          error={errors.sourceReference?.message}
-          {...register('sourceReference')}
-        />
-        <TextAreaField label="Notes" rows={2} error={errors.notes?.message} {...register('notes')} />
+        {locked('sourceReference') ? (
+          <LockedField label="Zoho reference" />
+        ) : (
+          <TextField
+            label="Zoho reference"
+            hint="Optional. Any further reference from Zoho, if you keep one."
+            error={errors.sourceReference?.message}
+            {...register('sourceReference')}
+          />
+        )}
+        {locked('notes') ? <LockedField label="Notes" /> : <TextAreaField label="Notes" rows={2} error={errors.notes?.message} {...register('notes')} />}
       </form>
     </Modal>
   )

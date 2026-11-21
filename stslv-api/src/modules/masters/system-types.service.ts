@@ -4,6 +4,7 @@ import { assertExportSize, type ReportColumn, type ReportDefinition, type Report
 import type { AuthContext } from "../auth/access";
 import { getMasterUsage, moveMasterToRecycleBin } from "../recycle-bin/recycle-bin.service";
 import { getMaster, listAllMasters, SYSTEM_TYPES } from "./masters.service";
+import { SYSTEM_TYPE_FIELD_VISIBILITY, visibleReportColumns } from "./masters.visibility";
 import { SYSTEM_TYPE_STATUS_LABELS, type ExportSystemTypesQuery } from "./system-types.schemas";
 
 // System types only: the AMC contracts that use a type, moving a type to the
@@ -138,7 +139,8 @@ export async function buildSystemTypesExport(auth: AuthContext, query: ExportSys
     tables: [
       {
         name: "System Types",
-        columns: COLUMNS,
+        // Role visibility (0123, step B): the columns hidden from the user's role are left out of the file.
+        columns: visibleReportColumns(auth, SYSTEM_TYPE_FIELD_VISIBILITY, { description: ["description"], sortOrder: ["sortOrder"] }, COLUMNS),
         rows: (items as unknown as SystemTypeItem[]).map(typeRow),
         notes: total > 0 ? [`${total} ${total === 1 ? "system type" : "system types"}.`] : [],
       },

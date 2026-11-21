@@ -33,8 +33,8 @@ export interface Invoice {
   invoiceDate: string
   amountExclVat: string
   vatAmount: string
-  /** amountExclVat + vatAmount, added by the server. */
-  totalAmount: string
+  /** amountExclVat + vatAmount, added by the server. Null when Total is hidden from the user's role (page visibility). */
+  totalAmount: string | null
   status: InvoiceStatus
   source: 'ZOHO'
   sourceReference: string | null
@@ -54,7 +54,7 @@ export interface PagedInvoices {
   page: number
   pageSize: number
   /** Over every invoice that matches the filters; cancelled invoices are never counted. */
-  totals: { amountExclVat: string; vatAmount: string; totalAmount: string }
+  totals: { amountExclVat: string; vatAmount: string; totalAmount: string | null }
 }
 
 export interface BillableVisit {

@@ -10,6 +10,7 @@ import { Alert, Button, Card, EmptyState, OptionsNotice, PageHeader, Spinner } f
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
 import type { Paged } from '../../lib/types'
+import { hiddenField } from '../../lib/visibility'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { queryString } from './amcApi'
 import { formatDate, formatMoney } from './amcFormat'
@@ -337,6 +338,8 @@ export function AmcContractsPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
   const show = (key: ColumnKey) => !hiddenColumns.has(key)
+  // Page visibility (0123, step B): Cost per Visit hidden from the user's role.
+  const costPerVisitHidden = hiddenField(auth.user, 'amcContracts', 'costPerVisit')
 
   // Wait for a pause in typing before searching.
   useEffect(() => {
@@ -759,7 +762,8 @@ export function AmcContractsPage() {
                             {formatMoney(contract.schedule.perServiceAmount)} per service
                           </span>
                         ) : (
-                          contract.defaultVisitAmount && <span className="mt-0.5 block text-xs tabular-nums text-slate-500">{formatMoney(contract.defaultVisitAmount)} per visit</span>
+                          // Page visibility: Cost per Visit may be hidden from the role (the API then sends none).
+                          contract.defaultVisitAmount && !costPerVisitHidden && <span className="mt-0.5 block text-xs tabular-nums text-slate-500">{formatMoney(contract.defaultVisitAmount)} per visit</span>
                         )}
                       </td>}
                       {/* Styled as Contract Value (2026-11-18): the same size, weight, colour and alignment. The figure is unchanged. */}

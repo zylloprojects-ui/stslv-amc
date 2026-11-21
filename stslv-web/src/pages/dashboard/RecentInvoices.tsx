@@ -8,6 +8,7 @@ import { Alert, Spinner } from '../../components/ui'
 import { api } from '../../lib/api'
 import { cx, formatDate } from '../../lib/format'
 import type { InvoiceStatus, PagedInvoices } from '../../lib/invoiceTypes'
+import { useHiddenFields } from '../../lib/visibility'
 import { queryString } from '../amc/amcApi'
 import { InvoiceStatusBadge } from '../invoices/InvoicesTable'
 import { useHiddenColumns } from './dashboardPreferences'
@@ -54,7 +55,10 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
     placeholderData: keepPreviousData,
   })
 
-  const shown = (id: ColumnId) => !hidden.includes(id)
+  // Page visibility (0123, step B): Invoice Tracking's Total hidden from the user's role is not offered here either.
+  const totalHidden = useHiddenFields('invoiceTracking', { total: 'total' }).length > 0
+  const offered = COLUMNS.filter((column) => !(totalHidden && column.id === 'total'))
+  const shown = (id: ColumnId) => !hidden.includes(id) && !(totalHidden && id === 'total')
   const toggle = (id: ColumnId) => setHidden(hidden.includes(id) ? hidden.filter((column) => column !== id) : [...hidden, id])
   const visibleCount = COLUMNS.filter((column) => shown(column.id)).length
 
@@ -102,7 +106,7 @@ export function RecentInvoices({ userId, canExport }: { userId: string; canExpor
           </summary>
           <fieldset className="absolute right-0 z-10 mt-1 w-48 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
             <legend className="sr-only">Show or hide columns</legend>
-            {COLUMNS.map((column) => (
+            {offered.map((column) => (
               <label key={column.id} className="flex items-center gap-2 py-1 text-sm text-slate-700">
                 <input
                   type="checkbox"

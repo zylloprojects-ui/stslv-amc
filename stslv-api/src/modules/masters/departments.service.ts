@@ -3,6 +3,7 @@ import { logActivity } from "../../shared/activity-log";
 import { assertExportSize, type ReportColumn, type ReportDefinition, type ReportRow } from "../../shared/export/report";
 import type { AuthContext } from "../auth/access";
 import { DEPARTMENTS, listAllMasters, listMasters, type MasterSpec } from "./masters.service";
+import { DEPARTMENT_FIELD_VISIBILITY, visibleReportColumns } from "./masters.visibility";
 import { DEPARTMENT_STATUS_LABELS, type ExportDepartmentsQuery, type ListDepartmentsQuery } from "./departments.schemas";
 
 // Departments only: the list and its export. An engineer refers to a
@@ -103,7 +104,8 @@ export async function buildDepartmentsExport(auth: AuthContext, query: ExportDep
     tables: [
       {
         name: "Departments",
-        columns: COLUMNS,
+        // Role visibility (0123, step B): the columns hidden from the user's role are left out of the file.
+        columns: visibleReportColumns(auth, DEPARTMENT_FIELD_VISIBILITY, { description: ["description"] }, COLUMNS),
         rows: (items as unknown as DepartmentItem[]).map(departmentRow),
         notes: total > 0 ? [`${total} ${noun(total)}.`] : [],
       },

@@ -18,7 +18,8 @@ export interface SystemType {
   code: string
   name: string
   description: string | null
-  sortOrder: number
+  /** Null when Sort Order is hidden from the user's role (page visibility). */
+  sortOrder: number | null
   /** AMC contracts outside the Recycle Bin that use the type. */
   contractCount: number
   /** AMC contracts in the Recycle Bin that use it (migration 0106); they do not block moving it there. */

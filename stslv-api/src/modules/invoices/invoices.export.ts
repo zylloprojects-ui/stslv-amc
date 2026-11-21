@@ -17,6 +17,7 @@ import type { AuthContext } from "../auth/access";
 import type { InvoiceState } from "../projects/projects.schemas";
 import type { ExportBillableQuery, ExportInvoicesQuery, InvoiceStatus, RecentInvoiceColumn } from "./invoices.schemas";
 import { listAllInvoices, listBillableWork, type Invoice, type InvoiceAllocation } from "./invoices.service";
+import { invoiceHiddenReportKeys } from "./invoices.visibility";
 
 // Invoice Tracking as reports. Both are records of what this system tracks:
 // invoices are raised in Zoho, and nothing here is, or looks like, a tax
@@ -163,11 +164,16 @@ export async function buildInvoicesExport(
 ): Promise<{ report: ReportDefinition; recordExport: RecordExport }> {
   const { format, columns, ...filters } = query;
   const { items, total, totals } = await listAllInvoices(filters, (count) => assertExportSize(format, count));
+  // Role visibility (0123, step B): the columns hidden from the user's role are left out of the file.
+  const roleHidden = invoiceHiddenReportKeys(auth);
 
   if (columns) {
-    return buildRecentInvoicesExport(auth, query, columns, { items, total, totals });
+    const visible = roleHidden.has("totalAmount") ? columns.filter((id) => id !== "total") : columns;
+    if (visible.length === 0) throw forbidden("This is not available to your role.");
+    return buildRecentInvoicesExport(auth, query, visible, { items, total, totals });
   }
 
+  const showsTotal = !roleHidden.has("totalAmount");
   const report: ReportDefinition = {
     title: "Invoice Tracking Report",
     period: displayPeriod(query.dateFrom, query.dateTo),
@@ -180,16 +186,16 @@ export async function buildInvoicesExport(
     tables: [
       {
         name: "Invoices",
-        columns: INVOICE_COLUMNS,
-        rows: items.map(invoiceRow),
+        columns: INVOICE_COLUMNS.filter((column) => !roleHidden.has(column.key)),
+        rows: items.map(invoiceRow).map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => !roleHidden.has(key)))),
         totals: {
           label: `Total (${plural(total, "invoice", "invoices")})`,
-          values: { amountExclVat: totals.amountExclVat, vatAmount: totals.vatAmount, totalAmount: totals.totalAmount },
+          values: { amountExclVat: totals.amountExclVat, vatAmount: totals.vatAmount, ...(showsTotal ? { totalAmount: totals.totalAmount } : {}) },
           // The list's rule: a cancelled invoice is listed but never counted.
           excelFormulas: {
             amountExclVat: (range) => `SUMIFS(${range("amountExclVat")},${range("status")},${NOT_CANCELLED})`,
             vatAmount: (range) => `SUMIFS(${range("vatAmount")},${range("status")},${NOT_CANCELLED})`,
-            totalAmount: (range) => `SUMIFS(${range("totalAmount")},${range("status")},${NOT_CANCELLED})`,
+            ...(showsTotal ? { totalAmount: (range: (key: string) => string) => `SUMIFS(${range("totalAmount")},${range("status")},${NOT_CANCELLED})` } : {}),
           },
         },
         notes: ["Totals exclude cancelled invoices. Invoices are raised in Zoho; this report lists the invoice details recorded in the system."],

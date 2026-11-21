@@ -5,7 +5,9 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { isSuperAdmin } from "../../shared/role-model";
 import { escapeLike } from "../../shared/validation";
+import { keepHiddenFields } from "../../shared/visibility-fields";
 import type { AuthContext } from "../auth/access";
+import { contractHiddenFields } from "./contracts.visibility";
 import { featureUnavailable } from "../../middleware/require-schema";
 import { schemaHas } from "../../shared/schema-features";
 import { assertContractNotInvoiced } from "../invoices/invoice-locks";
@@ -1331,7 +1333,7 @@ export async function createRenewalWithDocument(
 
 export async function createContract(
   auth: AuthContext,
-  input: ContractCreateFields,
+  given: ContractCreateFields,
   options: {
     renewedFromId?: string;
     renewalNotes?: string | null;
@@ -1339,11 +1341,25 @@ export async function createContract(
     attach?: (db: Queryable, contractId: string) => Promise<void>;
   } = {}
 ): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
-  assertValidity(input.validFrom, input.validTo);
+  assertValidity(given.validFrom, given.validTo);
 
   // The typed reference must be stored as entered (migration 0105); without the column it would be lost.
   if (!(await hasStoredReference())) {
     throw featureUnavailable();
+  }
+
+  // Role visibility (0123, "Lock it"): a field hidden from the user is never taken from the request. A renewal keeps
+  // what its form starts from for such a field: the renewed contract's Cost per Visit and Description (the form never
+  // copies Customer PO Value or Notes, so they start empty, as for anyone).
+  const hidden = contractHiddenFields(auth);
+  let input = keepHiddenFields(given, hidden);
+  if (options.renewedFromId && (hidden.has("defaultVisitAmount") || hidden.has("description"))) {
+    const source = await findContract(pool, options.renewedFromId);
+    input = {
+      ...input,
+      ...(hidden.has("defaultVisitAmount") ? { defaultVisitAmount: source.defaultVisitAmount } : {}),
+      ...(hidden.has("description") ? { description: source.description } : {}),
+    };
   }
 
   try {
@@ -1464,7 +1480,8 @@ export async function updateContract(
   input: UpdateContractInput
 ): Promise<Contract & { scheduleChange: ScheduleChange | null }> {
   try {
-    return await updateContractFields(auth, id, input);
+    // Role visibility (0123, "Lock it"): a field hidden from the user who saves keeps its stored value, whatever is sent.
+    return await updateContractFields(auth, id, keepHiddenFields(input, contractHiddenFields(auth)));
   } catch (error) {
     // A new AMC Reference Number already used by another contract (any status, Recycle Bin included): the unique
     // index decides, so two simultaneous edits cannot both take one number. The whole edit is rolled back.

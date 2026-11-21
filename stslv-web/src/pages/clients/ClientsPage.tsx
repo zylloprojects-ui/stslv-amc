@@ -9,6 +9,7 @@ import { Pager } from '../../components/records'
 import { Alert, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { TABLE } from '../../components/table'
 import { api, errorMessage } from '../../lib/api'
+import { hiddenField } from '../../lib/visibility'
 import { Link } from 'react-router-dom'
 import { ToggleButton } from '../amc/components'
 import { CLIENT_STATUS_LABELS, CLIENT_TYPE_LABELS, type Client, type ClientFeatures, type Paged } from '../../lib/types'
@@ -133,8 +134,16 @@ export function ClientsPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
-  const columnOptions = COLUMN_OPTIONS.filter((option) => withDetails || !DETAIL_COLUMNS.has(option.key))
-  const show = (key: ColumnKey) => !hiddenColumns.has(key) && (withDetails || !DETAIL_COLUMNS.has(key))
+  // Page visibility (0123, step B): a column whose data is hidden from the user's role is not offered (Contact shows
+  // the contact person and email, so it goes only when both are hidden). The API no longer sends their values.
+  const roleHides = (key: ColumnKey) =>
+    key === 'vat'
+      ? hiddenField(auth.user, 'clients', 'vatNumber')
+      : key === 'phone'
+        ? hiddenField(auth.user, 'clients', 'phone')
+        : key === 'contact' && hiddenField(auth.user, 'clients', 'contactPerson') && hiddenField(auth.user, 'clients', 'email')
+  const columnOptions = COLUMN_OPTIONS.filter((option) => (withDetails || !DETAIL_COLUMNS.has(option.key)) && !roleHides(option.key))
+  const show = (key: ColumnKey) => !hiddenColumns.has(key) && (withDetails || !DETAIL_COLUMNS.has(key)) && !roleHides(key)
 
   // Wait for a pause in typing before searching.
   useEffect(() => {

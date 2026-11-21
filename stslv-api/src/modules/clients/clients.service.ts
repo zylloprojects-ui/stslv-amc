@@ -7,8 +7,10 @@ import { conflict, isUniqueViolation, notFound, validationError } from "../../sh
 import { schemaHas } from "../../shared/schema-features";
 import { getMasterUsage, moveMasterToRecycleBin } from "../recycle-bin/recycle-bin.service";
 import { escapeLike } from "../../shared/validation";
+import { keepHiddenFields } from "../../shared/visibility-fields";
 import type { AuthContext } from "../auth/access";
 import type { CreateClientInput, ListClientsQuery, UpdateClientInput } from "./clients.schemas";
+import { clientHiddenFields } from "./clients.visibility";
 
 interface ClientRow {
   id: string;
@@ -239,8 +241,10 @@ export async function listClientHistory(id: string, page: number, pageSize: numb
 /** A new client whose type is left out is a Company. An explicit value (including an explicit clear) is kept and checked as given. */
 export const DEFAULT_CLIENT_TYPE = "COMPANY" as const;
 
-export async function createClient(auth: AuthContext, given: CreateClientInput): Promise<Client> {
+export async function createClient(auth: AuthContext, sent: CreateClientInput): Promise<Client> {
   const details = await hasClientDetails();
+  // Role visibility (0123, "Lock it"): a field hidden from the user is never taken from the request.
+  const given = keepHiddenFields(sent, clientHiddenFields(auth));
   const input: CreateClientInput = details && given.clientType === undefined ? { ...given, clientType: DEFAULT_CLIENT_TYPE } : given;
 
   await assertDetailsStorable(input, details);
@@ -289,8 +293,10 @@ export async function createClient(auth: AuthContext, given: CreateClientInput):
   }
 }
 
-export async function updateClient(auth: AuthContext, id: string, input: UpdateClientInput): Promise<Client> {
+export async function updateClient(auth: AuthContext, id: string, sent: UpdateClientInput): Promise<Client> {
   const details = await hasClientDetails();
+  // Role visibility (0123, "Lock it"): a field hidden from the user who saves keeps its stored value, whatever is sent.
+  const input = keepHiddenFields(sent, clientHiddenFields(auth));
 
   await assertDetailsStorable(input, details);
   assertClientType(input, details, false);

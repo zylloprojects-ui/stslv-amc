@@ -7,6 +7,7 @@ import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Badge, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
+import { hiddenField } from '../../lib/visibility'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { FrequencyContractsModal, FrequencyFormModal, FrequencyStatusWarning } from './maintenanceFrequencyDialogs'
 import { FREQUENCY_STATUS_LABELS, type FrequencyStatus, type MaintenanceFrequencyRule } from './maintenanceFrequencyTypes'
@@ -121,7 +122,10 @@ export function MaintenanceFrequenciesPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
-  const show = (key: ColumnKey) => !hiddenColumns.has(key)
+  // Page visibility (0123, step B): Sort Order hidden from the user's role is not offered; the API no longer sends it.
+  const roleHides = (key: ColumnKey) => key === 'sortOrder' && hiddenField(auth.user, 'maintenanceFrequencies', 'sortOrder')
+  const columnOptions = COLUMN_OPTIONS.filter((option) => !roleHides(option.key))
+  const show = (key: ColumnKey) => !hiddenColumns.has(key) && !roleHides(key)
 
   // Wait for a pause in typing before searching.
   useEffect(() => {
@@ -312,7 +316,7 @@ export function MaintenanceFrequenciesPage() {
                 </div>
                 <div className="sm:ml-auto">
                   <ColumnsMenu
-                    options={COLUMN_OPTIONS}
+                    options={columnOptions}
                     hidden={hiddenColumns}
                     onChange={(next) => {
                       setHiddenColumns(next)
