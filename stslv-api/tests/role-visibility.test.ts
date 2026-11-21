@@ -29,6 +29,8 @@ const ROLE_GRANTS: [string, string][] = [
   ["INVOICES", "VIEW"],
   ["ACCOUNTS", "VIEW"],
   ["ACCOUNTS", "EXPORT"],
+  ["MASTER_AMC_STATUS", "VIEW"],
+  ["SERVICE_STATUS", "VIEW"],
 ];
 
 async function customRole(code: string, permissions: [string, string][]) {
@@ -223,6 +225,77 @@ describe("Accounts › Invoices columns and actions", () => {
     expect(keys).toContain("invoiceNo");
     expect(table.totals?.values ?? {}).not.toHaveProperty("visitValue");
     expect((table.notes ?? []).join(" ")).not.toMatch(/Total value|Value of Paid services/);
+  });
+});
+
+describe("Phase 2: Master AMC Status, Service Status, AMC Management", () => {
+  it("Master AMC Status: does not send hidden columns, drops value totals, and leaves them out of the export", async () => {
+    const user = await signedIn("ms-columns@example.com", [ACCOUNTS_ROLE]);
+    const before = await api().get("/api/amc/master-status").query({ pageSize: 200 }).set(user.headers);
+    expect(before.status).toBe(200);
+    expect(before.body.data.items.some((item: { client: { name: string } }) => item.client.name !== "")).toBe(true);
+
+    expect((await setHidden(ACCOUNTS_ROLE, ["masterStatus.column.client", "masterStatus.column.visitValue", "masterStatus.column.quotationNo"])).status).toBe(200);
+    const data = (await api().get("/api/amc/master-status").query({ pageSize: 200 }).set(user.headers)).body.data;
+    expect(data.items.length).toBeGreaterThan(0);
+    for (const item of data.items) {
+      expect(item.client.name).toBe("");
+      expect(item.visitValue).toBeNull();
+      expect(item.amcValue).toBeNull();
+      expect(item.quotationNo).toBeNull();
+      expect(item.reference).toBeTruthy();
+    }
+    expect(data.kpis).not.toHaveProperty("totalValue");
+    expect(data.kpis.total).toBe(data.items.length);
+    expect(data.amcValueVisible).toBe(false);
+
+    const { buildMasterStatusExport } = await import("../src/modules/amc/master-status.export");
+    const { exportMasterStatusSchema } = await import("../src/modules/amc/master-status.schemas");
+    const { report } = await buildMasterStatusExport(await authOf(user.id), exportMasterStatusSchema.parse({ format: "xlsx" }));
+    const keys = report.tables[0]!.columns.map((column) => column.key);
+    expect(keys).not.toContain("client");
+    expect(keys).not.toContain("visitValue");
+    expect(keys).not.toContain("quotationNo");
+    expect(report.tables[0]!.totals).toBeUndefined();
+  });
+
+  it("Service Status: blanks hidden read-only columns and their totals; edited columns are not hideable", async () => {
+    const user = await signedIn("ss-columns@example.com", [ACCOUNTS_ROLE]);
+    expect(VISIBILITY_KEYS.has("serviceStatus.column.workingDays")).toBe(false);
+    expect(VISIBILITY_KEYS.has("serviceStatus.column.report")).toBe(false);
+
+    expect((await setHidden(ACCOUNTS_ROLE, ["serviceStatus.column.serviceValue", "serviceStatus.column.engineer"])).status).toBe(200);
+    const data = (await api().get("/api/amc/service-status").query({ pageSize: 200 }).set(user.headers)).body.data;
+    expect(data.items.length).toBeGreaterThan(0);
+    for (const item of data.items) {
+      expect(item.serviceValue).toBeNull();
+      expect(item.salesEngineer).toBeNull();
+    }
+    // AMC Value stays, with its total; the Service Value total goes.
+    expect(data.amcValueVisible).toBe(true);
+    expect(data.totals).toHaveProperty("amcValue");
+    expect(data.totals).not.toHaveProperty("serviceValue");
+
+    // The single-service view follows the same rule.
+    const one = await api().get(`/api/amc/service-status/${data.items[0].id}`).set(user.headers);
+    expect(one.status).toBe(200);
+    expect(one.body.data.serviceValue).toBeNull();
+  });
+
+  it("AMC Management: leaves out a hidden KPI group and panel, and keeps the rest", async () => {
+    const user = await signedIn("mgmt@example.com", [ACCOUNTS_ROLE]);
+    const before = (await api().get("/api/amc/management/summary").set(user.headers)).body.data;
+    expect(before.contracts).toBeDefined();
+    expect(before.expiry).toBeDefined();
+
+    expect((await setHidden(ACCOUNTS_ROLE, ["amcManagement.group.contracts", "amcManagement.panel.expiry"])).status).toBe(200);
+    const after = (await api().get("/api/amc/management/summary").set(user.headers)).body.data;
+    expect(after).not.toHaveProperty("contracts");
+    expect(after.kpis.contracts).toBeNull();
+    expect(after).not.toHaveProperty("expiry");
+    expect(after.recentContracts).toEqual(before.recentContracts);
+    expect(after.schedule).toEqual(before.schedule);
+    expect(after.kpis.services).toEqual(before.kpis.services);
   });
 });
 

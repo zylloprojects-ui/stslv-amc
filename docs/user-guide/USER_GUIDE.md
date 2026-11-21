@@ -802,6 +802,9 @@ Below a role's permissions, **Page visibility** chooses what that role sees insi
 |---|---|
 | Dashboard | Each key-figure row (AMC Portfolio, Current Month, Current Year (YTD), Overall Till Date, Overall Contract) and the panels AMC Maintenance Calendar, Upcoming Service Workload and Payment Trend |
 | Accounts › Invoices | The columns Client, System, Frequency, Service, Service Report No., Service Report, AMC Contract, Sales Engineer, Service Engineer, AMC Value (Excel only), Service Value, Invoice No. and Zoho Invoice Value; the actions Download AMC contract and View and download Service Report |
+| Master AMC Status | The columns Client, System, Frequency, Service, Value, Service Engineer, Invoice No. (with the Zoho invoice numbers), Quote No., Invoice Acknowledged and Sales Engineer |
+| Service Status | The read-only columns Client, System, Frequency, Service, AMC Value, Service Value, Invoice Acknowledgement and Sales Engineer. Columns entered on this page (report number, Service Engineer, working days, manpower, Service Report) cannot be hidden |
+| AMC Management | The Contract, Schedule and Invoice KPI groups, and the panels Recent AMC Contracts and Expiry & Renewal |
 
 - **Ticked means shown**, which is the default, so nothing changes for a role until you untick something. Untick an item and choose **Save visibility**: everyone with that role stops seeing it, and everything else stays as it is.
 - **Enforced by the server:** hidden data is not sent to their browser and is left out of their Excel and PDF downloads. A hidden download is refused. Hiding Service Value also hides the Total Value card, the value totals and AMC Value / Year. The AMC Reference, Scheduled Month and Service Status (with the row colour) always stay, because they define the row.

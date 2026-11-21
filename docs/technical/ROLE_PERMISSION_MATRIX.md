@@ -96,6 +96,9 @@ Within a page a role may open, Roles & Permissions can hide single items from th
 | Page | Items | Enforced by the API |
 |---|---|---|
 | Dashboard (`DASHBOARD:VIEW`) | Rows: AMC Portfolio, Current Month, Current Year (YTD), Overall Till Date, Overall Contract. Panels: AMC Maintenance Calendar, Upcoming Service Workload, Payment Trend | `/api/dashboard/operations` leaves out the hidden row's figures and the hidden panel's data |
+| Master AMC Status (`MASTER_AMC_STATUS:VIEW`) | Columns: Client, System, Frequency, Service, Value, Service Engineer, Invoice No., Quote No., Invoice Acknowledged, Sales Engineer | `/api/amc/master-status` blanks them and drops value totals; `/export` leaves them out |
+| Service Status (`SERVICE_STATUS:VIEW`) | Read-only columns: Client, System, Frequency, Service, AMC Value, Service Value, Invoice Acknowledgement, Sales Engineer (columns edited there are not hideable) | `/api/amc/service-status` (list and one service) blanks them and their totals; `/export` leaves them out |
+| AMC Management (`AMC_CONTRACTS:VIEW`) | KPI groups: Contract, Schedule, Invoice. Panels: Recent AMC Contracts, Expiry & Renewal | `/api/amc/management/summary` leaves them out |
 | Accounts › Invoices (`ACCOUNTS:VIEW`) | Columns: Client, System, Frequency, Service, Service Report No., Service Report, AMC Contract, Sales Engineer, Service Engineer, AMC Value, Service Value, Invoice No., Zoho Invoice Value. Actions: Download AMC contract, View and download Service Report | `/api/accounts` blanks hidden columns and drops totals built from them; `/export` leaves them out; `/:id/contract-document` and `/:id/report` answer 403 when hidden |
 
 - A user with several roles sees an item when any of their active roles that holds the page's permission shows it. A role without that permission has no say.

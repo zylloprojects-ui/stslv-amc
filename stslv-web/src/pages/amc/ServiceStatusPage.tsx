@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { shows } from '../../lib/visibility'
 import { isAdmin } from '../../auth/roles'
 import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
@@ -760,7 +761,9 @@ export function ServiceStatusPage() {
       (column.key !== 'acknowledgement' || acknowledgementsVisible) &&
       (column.key !== 'engineerName' || engineerNameAvailable) &&
       (column.key !== 'workingDays' || workingDaysAvailable) &&
-      (column.key !== 'manpowerCount' || manpowerCountAvailable),
+      (column.key !== 'manpowerCount' || manpowerCountAvailable) &&
+      // Role visibility (Roles & Permissions): a column hidden from the user's role is neither shown nor offered.
+      shows(auth.user, `serviceStatus.column.${column.key}`),
   )
   const shown = (key: ColumnKey) => availableColumns.some((column) => column.key === key) && !hidden.has(key)
   const hiddenCount = availableColumns.filter((column) => hidden.has(column.key)).length

@@ -138,8 +138,10 @@ export async function buildServiceStatusExport(
   auth: AuthContext,
   query: ExportServiceStatusQuery & { hidden?: readonly ServiceStatusColumn[] }
 ): Promise<{ report: ReportDefinition; recordExport: () => Promise<void> }> {
-  const { format, hidden = [], ...filters } = query;
+  const { format, hidden: pageHidden = [], ...filters } = query;
   const access = await serviceStatusAccess(auth);
+  // Role visibility (0123): the role's hidden columns never reach the download, whatever the page sends.
+  const hidden = [...new Set([...pageHidden, ...(access.hiddenColumns ?? [])])];
   const { items, total, kpis, features, totals } = await listAllServiceStatus(filters, (count) => assertExportSize(format, count), access);
   const notes = [
     `Completed ${kpis.completed} · Not Completed ${kpis.notCompleted} · Waiting for Renewal ${kpis.waitingForRenewal} (of ${kpis.total} services matching the other filters).`,

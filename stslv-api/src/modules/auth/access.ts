@@ -30,6 +30,11 @@ export function shows(auth: Pick<AuthContext, "hidden">, key: string): boolean {
   return auth.hidden?.has(key) !== true;
 }
 
+/** Of the given page columns, those hidden from this user: `${page}.column.${id}` for each id. */
+export function hiddenColumnsOf<T extends string>(auth: Pick<AuthContext, "hidden">, page: string, columns: readonly T[]): Set<T> {
+  return new Set(columns.filter((column) => !shows(auth, `${page}.column.${column}`)));
+}
+
 /**
  * The page items hidden from a user by role visibility. An item is hidden only when EVERY active role of the user
  * that may open its page (holds the section's permission) hides it, the same union as permissions: one role

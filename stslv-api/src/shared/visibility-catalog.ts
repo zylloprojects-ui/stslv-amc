@@ -102,6 +102,82 @@ export const VISIBILITY_CATALOG: VisibilitySection[] = [
   },
 ];
 
+// Phase 2 (2026-11-21): Master AMC Status, Service Status and AMC Management. Only columns shown read-only on the page
+// are hideable: a column edited on the page (Service Status' report number, engineer, working days, manpower, report)
+// is not, so that hiding it can never lead to a save without it.
+VISIBILITY_CATALOG.push(
+  {
+    id: "masterStatus",
+    title: "Master AMC Status",
+    page: { label: "Master AMC Status", path: "/amc/master-status" },
+    requires: "MASTER_AMC_STATUS:VIEW",
+    // AMC Reference, Scheduled Month and Service Status (with the row colour) define a row and always stay.
+    groups: [
+      {
+        title: "Columns",
+        items: [
+          { key: "masterStatus.column.client", label: "Client", kind: "column" },
+          { key: "masterStatus.column.system", label: "System", kind: "column" },
+          { key: "masterStatus.column.frequency", label: "Frequency", kind: "column" },
+          { key: "masterStatus.column.service", label: "Service", kind: "column" },
+          { key: "masterStatus.column.visitValue", label: "Value (ex VAT)", kind: "column", description: "Also hides the Total Value card, the value totals and AMC Value / Year" },
+          { key: "masterStatus.column.serviceEngineer", label: "Service Engineer", kind: "column" },
+          { key: "masterStatus.column.invoiceNo", label: "Invoice No.", kind: "column", description: "Also hides the Zoho invoice numbers and references. The row colour still shows the status" },
+          { key: "masterStatus.column.quotationNo", label: "Quote No.", kind: "column" },
+          { key: "masterStatus.column.acknowledgement", label: "Invoice Acknowledged", kind: "column" },
+          { key: "masterStatus.column.salesEngineer", label: "Sales Engineer", kind: "column" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "serviceStatus",
+    title: "Service Status",
+    page: { label: "Service Status", path: "/amc/service-status" },
+    requires: "SERVICE_STATUS:VIEW",
+    // Columns edited on this page (report number, Service Engineer, working days, manpower, Service Report) are not
+    // hideable; AMC Reference, Scheduled Month / Due Date and Service Status always stay.
+    groups: [
+      {
+        title: "Columns",
+        items: [
+          { key: "serviceStatus.column.client", label: "Client", kind: "column" },
+          { key: "serviceStatus.column.system", label: "System", kind: "column" },
+          { key: "serviceStatus.column.frequency", label: "Frequency", kind: "column" },
+          { key: "serviceStatus.column.service", label: "Service", kind: "column" },
+          { key: "serviceStatus.column.amcValue", label: "AMC Value (ex VAT)", kind: "column", description: "Also hides its total" },
+          { key: "serviceStatus.column.serviceValue", label: "Service Value (ex VAT)", kind: "column", description: "Also hides its total" },
+          { key: "serviceStatus.column.acknowledgement", label: "Invoice Acknowledgement", kind: "column" },
+          { key: "serviceStatus.column.engineer", label: "Sales Engineer", kind: "column" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "amcManagement",
+    title: "AMC Management",
+    page: { label: "AMC Management", path: "/amc/management" },
+    requires: "AMC_CONTRACTS:VIEW",
+    groups: [
+      {
+        title: "Key figure groups",
+        items: [
+          { key: "amcManagement.group.contracts", label: "Contract KPIs", kind: "row", description: "Active AMCs, Annual AMC Value, Final Credit, Expiring" },
+          { key: "amcManagement.group.schedule", label: "Schedule KPIs", kind: "row" },
+          { key: "amcManagement.group.invoices", label: "Invoice KPIs", kind: "row" },
+        ],
+      },
+      {
+        title: "Panels",
+        items: [
+          { key: "amcManagement.panel.recentContracts", label: "Recent AMC Contracts", kind: "panel" },
+          { key: "amcManagement.panel.expiry", label: "Expiry & Renewal", kind: "panel" },
+        ],
+      },
+    ],
+  }
+);
+
 export const VISIBILITY_KEYS: ReadonlySet<string> = new Set(VISIBILITY_CATALOG.flatMap((section) => section.groups.flatMap((group) => group.items.map((item) => item.key))));
 
 /** The section an item belongs to. */

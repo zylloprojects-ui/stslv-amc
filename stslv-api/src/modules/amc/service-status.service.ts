@@ -7,7 +7,8 @@ import { hasAdminAccess } from "../../shared/role-model";
 import { schemaHas } from "../../shared/schema-features";
 import { escapeLike } from "../../shared/validation";
 import { holdsPermission } from "../../shared/permissions";
-import type { AuthContext } from "../auth/access";
+import { hiddenColumnsOf, type AuthContext } from "../auth/access";
+import type { ServiceStatusColumn } from "./service-status.schemas";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants";
 import type { ListServiceStatusQuery, SaveServiceStatusInput } from "./amc.schemas";
 import { env } from "../../config/env";
@@ -246,20 +247,63 @@ export interface ServiceStatusAccess {
   amcValue: boolean;
   /** The invoice acknowledgement indicator: Invoice Acknowledgements: View (serviceAcknowledgementsVisible). */
   acknowledgements?: boolean;
+  /** Columns hidden from the user's role (role visibility, 0123): their data is not sent. Read-only columns only. */
+  hiddenColumns?: ReadonlySet<ServiceStatusColumn>;
 }
+
+/**
+ * The Service Status columns role visibility can hide: only those shown read-only here. A column edited on this page
+ * (report number, Service Engineer, working days, manpower, Service Report) is never withheld, so a save can never
+ * be made from a blanked value.
+ */
+export const ROLE_HIDEABLE_SERVICE_COLUMNS = ["client", "system", "frequency", "service", "amcValue", "serviceValue", "acknowledgement", "engineer"] as const satisfies readonly ServiceStatusColumn[];
 
 /** Nothing extra: the safe default for any caller that does not say who is asking. */
 const NO_EXTRA_ACCESS: ServiceStatusAccess = { amcValue: false, acknowledgements: false };
 
-export async function serviceStatusAccess(auth: Pick<AuthContext, "permissions">): Promise<ServiceStatusAccess> {
+export async function serviceStatusAccess(auth: Pick<AuthContext, "permissions" | "hidden">): Promise<ServiceStatusAccess> {
   // No permission set (an internal caller): nothing extra is shown.
   return {
     amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false,
     acknowledgements: await serviceAcknowledgementsVisible(auth),
+    hiddenColumns: hiddenColumnsOf(auth, "serviceStatus", ROLE_HIDEABLE_SERVICE_COLUMNS),
   };
 }
 
+/** The value totals without those of a hidden value column; null when neither is left. */
+function totalsWithout(totals: ServiceStatusValueTotals | null, hidden: ReadonlySet<ServiceStatusColumn> | undefined): ServiceStatusValueTotals | null {
+  if (!totals || !hidden || (!hidden.has("amcValue") && !hidden.has("serviceValue"))) return totals;
+  if (hidden.has("amcValue") && hidden.has("serviceValue")) return null;
+  const copy: Partial<ServiceStatusValueTotals> = { ...totals };
+  if (hidden.has("amcValue")) delete copy.amcValue;
+  if (hidden.has("serviceValue")) {
+    delete copy.serviceValue;
+    delete copy.serviceValueMissing;
+  }
+  return copy as ServiceStatusValueTotals;
+}
+
 function toItem(row: ServiceRow, access: ServiceStatusAccess = NO_EXTRA_ACCESS): ServiceStatusItem {
+  const item = toFullItem(row, access);
+  const hidden = access.hiddenColumns;
+  if (!hidden || hidden.size === 0) return item;
+  const off = (column: ServiceStatusColumn) => hidden.has(column);
+
+  return {
+    ...item,
+    client: off("client") ? { id: item.client.id, name: "" } : item.client,
+    system: off("system") ? { description: "", typeId: null, typeName: null } : item.system,
+    frequency: off("frequency") ? { code: "", label: "" } : item.frequency,
+    service: off("service") ? { sequenceNo: 0, cycleNo: null, serviceCode: null } : item.service,
+    amcValue: off("amcValue") ? null : item.amcValue,
+    serviceValue: off("serviceValue") ? null : item.serviceValue,
+    valueSourceMissing: off("serviceValue") ? false : item.valueSourceMissing,
+    acknowledgement: off("acknowledgement") ? null : item.acknowledgement,
+    salesEngineer: off("engineer") ? null : item.salesEngineer,
+  };
+}
+
+function toFullItem(row: ServiceRow, access: ServiceStatusAccess = NO_EXTRA_ACCESS): ServiceStatusItem {
   return {
     id: row.id,
     reference: row.contract_reference,
@@ -443,8 +487,10 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
     workingDaysAvailable: f.workingDays,
     manpowerCountAvailable: f.manpowerCount,
     amcValueVisible: access.amcValue,
-    acknowledgementsVisible: access.acknowledgements === true,
-    totals,
+    acknowledgementsVisible: access.acknowledgements === true && !access.hiddenColumns?.has("acknowledgement"),
+    totals: totalsWithout(totals, access.hiddenColumns),
+    // The columns this user's role does not see (role visibility): the page leaves them out.
+    roleHiddenColumns: [...(access.hiddenColumns ?? [])],
   };
 }
 
@@ -472,7 +518,7 @@ export async function listAllServiceStatus(filters: ServiceStatusFilters, checkS
   const rows = await pool.query<ServiceRow>(`${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${ORDER}`, params);
   const totals = access.amcValue ? await valueTotals(where, params, f) : null;
 
-  return { items: rows.rows.map((row) => toItem(row, access)), total, kpis: figures, features: f, totals };
+  return { items: rows.rows.map((row) => toItem(row, access)), total, kpis: figures, features: f, totals: totalsWithout(totals, access.hiddenColumns) };
 }
 
 /** The lists for the page's filters, taken from the contracts that have visits on the page. */
