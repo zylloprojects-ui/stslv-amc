@@ -3,8 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
-import { Alert, Button, Modal, SelectField, TextAreaField, TextField } from '../../components/ui'
+import { Alert, Button, LockedField, Modal, SelectField, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
+import { useHiddenFields, withoutHidden } from '../../lib/visibility'
 import { CLIENT_TYPE_LABELS, type Client, type ClientFeatures } from '../../lib/types'
 
 // Mirrors the API's rules so most problems are caught before a request is sent.
@@ -39,6 +40,12 @@ const FIELD_LABELS: Record<(typeof FIELDS)[number], string> = {
   vatNumber: 'VAT number',
 }
 
+/**
+ * Page visibility (owner rule "Lock it", 2026-11-21): the Clients columns a role may have hidden, and the form field
+ * each one is. A hidden field is shown locked and never sent; the API keeps its stored value.
+ */
+const LOCKABLE_FIELDS = { contactPerson: 'contactPerson', email: 'email', phone: 'phone', address: 'address', vatNumber: 'vatNumber', notes: 'notes' }
+
 /** Add Client does not ask for a type: every new client is saved as a Company. */
 const NEW_CLIENT_TYPE = 'COMPANY' as const
 
@@ -50,6 +57,8 @@ interface ClientFormModalProps {
 }
 
 export function ClientFormModal({ client, onClose, onSaved }: ClientFormModalProps) {
+  const lockedFields = useHiddenFields('clients', LOCKABLE_FIELDS)
+  const locked = (field: string) => lockedFields.includes(field)
   const queryClient = useQueryClient()
   const [failure, setFailure] = useState<string | null>(null)
   // Client type and VAT number need migration 0074; on a database without it they are not offered.
@@ -78,7 +87,8 @@ export function ClientFormModal({ client, onClose, onSaved }: ClientFormModalPro
   const save = useMutation({
     mutationFn: (values: ClientForm) => {
       const { clientType, vatNumber, ...base } = values
-      const body = withDetails ? { ...base, clientType: client ? clientType : NEW_CLIENT_TYPE, vatNumber } : base
+      // A field hidden from the user's role is never sent (page visibility); the API keeps its stored value.
+      const body = withoutHidden(withDetails ? { ...base, clientType: client ? clientType : NEW_CLIENT_TYPE, vatNumber } : base, lockedFields)
 
       return client ? api.patch<Client>(`/clients/${client.id}`, body) : api.post<Client>('/clients', body)
     },
@@ -152,7 +162,7 @@ export function ClientFormModal({ client, onClose, onSaved }: ClientFormModalPro
 
         <TextField label="Client name" required error={errors.name?.message} {...register('name')} />
 
-        {withDetails && !client && <TextField label="VAT number" error={errors.vatNumber?.message} {...register('vatNumber')} />}
+        {withDetails && !client && (locked('vatNumber') ? <LockedField label="VAT number" /> : <TextField label="VAT number" error={errors.vatNumber?.message} {...register('vatNumber')} />)}
 
         {withDetails && client && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -161,17 +171,17 @@ export function ClientFormModal({ client, onClose, onSaved }: ClientFormModalPro
               <option value="COMPANY">{CLIENT_TYPE_LABELS.COMPANY}</option>
               <option value="INDIVIDUAL">{CLIENT_TYPE_LABELS.INDIVIDUAL}</option>
             </SelectField>
-            <TextField label="VAT number" error={errors.vatNumber?.message} {...register('vatNumber')} />
+            {locked('vatNumber') ? <LockedField label="VAT number" /> : <TextField label="VAT number" error={errors.vatNumber?.message} {...register('vatNumber')} />}
           </div>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Contact person" error={errors.contactPerson?.message} {...register('contactPerson')} />
-          <TextField label="Phone" type="tel" error={errors.phone?.message} {...register('phone')} />
+          {locked('contactPerson') ? <LockedField label="Contact person" /> : <TextField label="Contact person" error={errors.contactPerson?.message} {...register('contactPerson')} />}
+          {locked('phone') ? <LockedField label="Phone" /> : <TextField label="Phone" type="tel" error={errors.phone?.message} {...register('phone')} />}
         </div>
-        <TextField label="Email" type="email" error={errors.email?.message} {...register('email')} />
-        <TextAreaField label="Address" rows={2} error={errors.address?.message} {...register('address')} />
-        <TextAreaField label="Remarks" rows={3} error={errors.notes?.message} {...register('notes')} />
+        {locked('email') ? <LockedField label="Email" /> : <TextField label="Email" type="email" error={errors.email?.message} {...register('email')} />}
+        {locked('address') ? <LockedField label="Address" /> : <TextAreaField label="Address" rows={2} error={errors.address?.message} {...register('address')} />}
+        {locked('notes') ? <LockedField label="Remarks" /> : <TextAreaField label="Remarks" rows={3} error={errors.notes?.message} {...register('notes')} />}
       </form>
     </Modal>
   )

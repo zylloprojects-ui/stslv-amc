@@ -110,6 +110,23 @@ export function TextField({ label, error, hint, required, className, ...rest }: 
   )
 }
 
+/** The words a form field hidden from the user's role shows instead of its value. */
+export const HIDDEN_FOR_ROLE = 'Hidden for your role'
+
+/**
+ * A form field hidden from the user's role by page visibility (owner rule "Lock it", 2026-11-21): shown locked, never
+ * editable, and never sent with the form. The API keeps its stored value whatever is saved.
+ */
+export function LockedField({ label, hint }: { label: string; hint?: string }) {
+  const id = useId()
+
+  return (
+    <FieldShell id={id} label={label} hint={hint}>
+      <input id={id} readOnly disabled value={HIDDEN_FOR_ROLE} aria-describedby={hint ? `${id}-hint` : undefined} className={cx(INPUT_STYLE, 'border-slate-200 bg-slate-50 italic text-slate-500')} />
+    </FieldShell>
+  )
+}
+
 interface TextAreaFieldProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   ref?: Ref<HTMLTextAreaElement>
   label: string

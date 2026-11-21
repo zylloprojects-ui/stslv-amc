@@ -4,8 +4,9 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Badge, Button, EmptyState, Modal, Spinner, TableScroll, TextAreaField, TextField } from '../../components/ui'
+import { Alert, Badge, Button, EmptyState, LockedField, Modal, Spinner, TableScroll, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
+import { useHiddenFields, withoutHidden } from '../../lib/visibility'
 import type { Department, EngineerRecord, MasterList } from './masterTypes'
 
 // The dialogs of the Departments page: the add / edit form, the confirmation
@@ -41,6 +42,8 @@ function validate(values: Record<FieldName, string>): Record<string, string> {
 }
 
 export function DepartmentFormModal({ department, onClose, onSaved }: { department: DepartmentRecord | null; onClose: () => void; onSaved: (message: string) => void }) {
+  // Page visibility (owner rule "Lock it", 2026-11-21): a field hidden from the user's role is shown locked and never sent.
+  const lockedFields = useHiddenFields('departments', { description: 'description' })
   const queryClient = useQueryClient()
   const [values, setValues] = useState<Record<FieldName, string>>({
     code: department?.code ?? '',
@@ -51,7 +54,8 @@ export function DepartmentFormModal({ department, onClose, onSaved }: { departme
 
   const save = useMutation({
     mutationFn: () => {
-      const body = { code: values.code, name: values.name, description: values.description }
+      // A field hidden from the user's role is never sent (page visibility); the API keeps its stored value.
+      const body = withoutHidden({ code: values.code, name: values.name, description: values.description }, lockedFields)
 
       return department ? api.patch<Department>(`/masters/departments/${department.id}`, body) : api.post<Department>('/masters/departments', body)
     },
@@ -109,7 +113,11 @@ export function DepartmentFormModal({ department, onClose, onSaved }: { departme
           </Alert>
         )}
         <TextField label="Department name" required value={values.name} onChange={set('name')} error={errors.name} maxLength={LIMITS.name} />
-        <TextAreaField label="Description" value={values.description} onChange={set('description')} error={errors.description} maxLength={LIMITS.description} />
+        {lockedFields.includes('description') ? (
+          <LockedField label="Description" />
+        ) : (
+          <TextAreaField label="Description" value={values.description} onChange={set('description')} error={errors.description} maxLength={LIMITS.description} />
+        )}
       </form>
     </Modal>
   )

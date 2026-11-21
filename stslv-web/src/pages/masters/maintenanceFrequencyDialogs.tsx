@@ -3,8 +3,9 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
-import { Alert, Badge, Button, ConfirmDialog, EmptyState, Modal, SelectField, Spinner, TableScroll, TextField } from '../../components/ui'
+import { Alert, Badge, Button, ConfirmDialog, EmptyState, LockedField, Modal, SelectField, Spinner, TableScroll, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
+import { useHiddenFields } from '../../lib/visibility'
 import { formatDate } from '../../lib/format'
 import { CONTRACT_STATUS_LABELS, type ContractStatus } from '../amc/types'
 import type { MasterList } from './masterTypes'
@@ -63,7 +64,10 @@ export function FrequencyFormModal({ frequency, onClose, onSaved }: { frequency:
   const [isCustom, setIsCustom] = useState(frequency?.isCustom ?? false)
   const [serviceCount, setServiceCount] = useState(frequency?.serviceCount?.toString() ?? '')
   const [intervalMonths, setIntervalMonths] = useState(frequency?.intervalMonths?.toString() ?? '')
-  const [sortOrder, setSortOrder] = useState(frequency?.sortOrder.toString() ?? '')
+  // Page visibility (owner rule "Lock it", 2026-11-21): a Sort Order hidden from the user's role is shown locked and
+  // never sent (the API then sends none, and keeps the stored value; a new frequency goes to the end).
+  const sortOrderLocked = useHiddenFields('maintenanceFrequencies', { sortOrder: 'sortOrder' }).length > 0
+  const [sortOrder, setSortOrder] = useState(frequency?.sortOrder?.toString() ?? '')
   const [status, setStatus] = useState<'active' | 'disabled'>('active')
   const [errors, setErrors] = useState<FieldErrors>({})
 
@@ -102,7 +106,7 @@ export function FrequencyFormModal({ frequency, onClose, onSaved }: { frequency:
       serviceCount: isCustom ? null : Number(serviceCount),
       intervalMonths: isCustom ? null : Number(intervalMonths),
     }
-    const body: Record<string, unknown> = { name: name.trim(), ...(sortOrder.trim() === '' ? {} : { sortOrder: Number(sortOrder) }) }
+    const body: Record<string, unknown> = { name: name.trim(), ...(sortOrderLocked || sortOrder.trim() === '' ? {} : { sortOrder: Number(sortOrder) }) }
 
     if (!frequency) {
       save.mutate({ ...body, ...ruleFields, status })
@@ -177,7 +181,11 @@ export function FrequencyFormModal({ frequency, onClose, onSaved }: { frequency:
             error={errors.codePrefix}
             hint="1-4 letters, unique to this frequency. Visits are labelled with it, for example Q3."
           />
-          <TextField label="Sort order" inputMode="numeric" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} error={errors.sortOrder} hint={editing ? undefined : 'Leave blank to add it at the end.'} />
+          {sortOrderLocked ? (
+            <LockedField label="Sort order" />
+          ) : (
+            <TextField label="Sort order" inputMode="numeric" value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} error={errors.sortOrder} hint={editing ? undefined : 'Leave blank to add it at the end.'} />
+          )}
         </div>
 
         <fieldset className="rounded-xl border border-slate-200 p-4">

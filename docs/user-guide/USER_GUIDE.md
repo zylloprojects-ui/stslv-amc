@@ -809,6 +809,15 @@ Below a role's permissions, **Page visibility** chooses what that role sees insi
 | Service Sales | The columns Client, System, Frequency, Service, Service Report No., Service Report (with its view and download), Service Engineer, Sales Engineer, and the AMC Value and Service Value of the downloads. Quote No. is entered on this page and always stays |
 | AMC Renewals | The columns Client, System, Frequency, Services, Contract Status, AMC Value and Remarks, and the Renewal History tab with its download |
 | Reports | Each report on its own: a hidden report is not listed, cannot be opened and cannot be downloaded |
+| Invoice Tracking | Total (incl. VAT, with its totals, also in the Dashboard's Recent Invoices), Zoho Reference, Notes and Recorded By. Invoice No., client, date, the amounts, VAT, what it covers and the status are needed to record an invoice and always stay |
+| AMC Contracts | Cost per Visit (the form's Default visit amount), Customer PO Value, Description and Notes. The reference, client, system, Sales Engineer, validity, frequency, AMC Value / Year, Final Credit, Billing Basis, status and visits always stay |
+| Clients | Contact Person, Email, Phone, Address, VAT Number and Remarks. The client code, name and type always stay; the client lists of other pages keep the names |
+| Sales Engineers | Employee No., Email, Phone, Department (with its filter), Linked User and Notes. The engineer code, name and contract counts always stay |
+| System Types | Description and Sort Order. Lists keep their order |
+| Maintenance Frequencies | Sort Order. The name, code, prefix and scheduling rule always stay |
+| Departments | Description |
+
+**Forms on these last seven pages (rule "Lock it"):** a field hidden from the role is shown in the add or edit form as **Hidden for your role**. It cannot be changed and is not sent when saving, and the server always keeps its stored value, so hiding a field never erases or changes it. When such a person renews a contract, the renewal keeps the renewed contract's Cost per Visit and Description, as the form would have started from; Customer PO Value and Notes start empty, as for anyone. A field needed to add a record can never be hidden.
 
 The page sections are listed collapsed, like the permission sections: click a page to open it, or use **Expand all**. **Find a page** filters the list, and **Show all** / **Hide all** inside a page change every item of that page. The **Not set by role permissions** box comes last, after Page visibility.
 

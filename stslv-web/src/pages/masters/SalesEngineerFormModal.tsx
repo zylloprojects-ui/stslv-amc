@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { Alert, Button, Modal, SelectField, TextAreaField, TextField } from '../../components/ui'
+import { Alert, Button, LockedField, Modal, SelectField, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
+import { useHiddenFields, withoutHidden } from '../../lib/visibility'
+
+/** The Sales Engineers columns a role may have hidden (page visibility), and the form field each one is. */
+const LOCKABLE_FIELDS = { employeeNo: 'employeeNo', email: 'email', phone: 'phone', department: 'departmentId', linkedUser: 'userId', notes: 'notes' }
 import { ENGINEER_STATUS_LABELS, isFeatureUnavailable, type Department, type EngineerUserOption, type EngineerRecord } from './masterTypes'
 
 // Add or edit one sales engineer. No sign-in account is created here: the
@@ -67,6 +71,10 @@ export function AssignmentWarning({ engineer }: { engineer: Pick<EngineerRecord,
 }
 
 export function SalesEngineerFormModal({ engineer, onClose, onSaved }: { engineer: EngineerRecord | null; onClose: () => void; onSaved: (message: string) => void }) {
+  // Page visibility (owner rule "Lock it", 2026-11-21): a field hidden from the user's role is shown locked and never
+  // sent; the API keeps its stored value.
+  const lockedFields = useHiddenFields('salesEngineers', LOCKABLE_FIELDS)
+  const locked = (name: string) => lockedFields.includes(name)
   const queryClient = useQueryClient()
   const initial = initialValues(engineer)
   const [values, setValues] = useState<Values>(initial)
@@ -82,16 +90,20 @@ export function SalesEngineerFormModal({ engineer, onClose, onSaved }: { enginee
   const save = useMutation({
     mutationFn: async () => {
       const text = (name: FieldName) => values[name].trim()
-      const fields: Record<string, string> = {
-        code: text('code'),
-        name: text('name'),
-        employeeNo: text('employeeNo'),
-        userId: values.userId,
-        email: text('email'),
-        phone: text('phone'),
-        departmentId: values.departmentId,
-        notes: text('notes'),
-      }
+      // A field hidden from the user's role is never sent (page visibility); the API keeps its stored value.
+      const fields: Record<string, string> = withoutHidden(
+        {
+          code: text('code'),
+          name: text('name'),
+          employeeNo: text('employeeNo'),
+          userId: values.userId,
+          email: text('email'),
+          phone: text('phone'),
+          departmentId: values.departmentId,
+          notes: text('notes'),
+        },
+        lockedFields
+      )
 
       if (!engineer) {
         return api.post<EngineerRecord>('/masters/sales-engineers', { ...fields, isActive: values.status === 'active' })
@@ -172,8 +184,8 @@ export function SalesEngineerFormModal({ engineer, onClose, onSaved }: { enginee
           <TextField label="Engineer name" required maxLength={150} autoComplete="off" {...field('name')} />
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
-          <TextField label="Employee number" maxLength={50} autoComplete="off" {...field('employeeNo')} />
-          <SelectField label="Department" hint={departments.isError ? 'The department list could not be loaded.' : undefined} {...field('departmentId')}>
+          {locked('employeeNo') ? <LockedField label="Employee number" /> : <TextField label="Employee number" maxLength={50} autoComplete="off" {...field('employeeNo')} />}
+          {locked('departmentId') ? <LockedField label="Department" /> : <SelectField label="Department" hint={departments.isError ? 'The department list could not be loaded.' : undefined} {...field('departmentId')}>
             <option value="">None</option>
             {currentDepartment && (
               <option value={currentDepartment.id}>
@@ -186,11 +198,11 @@ export function SalesEngineerFormModal({ engineer, onClose, onSaved }: { enginee
                 {item.isActive ? '' : ' (inactive)'}
               </option>
             ))}
-          </SelectField>
-          <TextField label="Email" type="email" maxLength={254} autoComplete="off" {...field('email')} />
-          <TextField label="Phone" type="tel" maxLength={50} autoComplete="off" {...field('phone')} />
+          </SelectField>}
+          {locked('email') ? <LockedField label="Email" /> : <TextField label="Email" type="email" maxLength={254} autoComplete="off" {...field('email')} />}
+          {locked('phone') ? <LockedField label="Phone" /> : <TextField label="Phone" type="tel" maxLength={50} autoComplete="off" {...field('phone')} />}
         </div>
-        <SelectField
+        {locked('userId') ? <LockedField label="User account" /> : <SelectField
           label="User account"
           hint={
             users.isError
@@ -211,13 +223,13 @@ export function SalesEngineerFormModal({ engineer, onClose, onSaved }: { enginee
               {user.fullName} ({user.email})
             </option>
           ))}
-        </SelectField>
+        </SelectField>}
         <SelectField label="Status" hint="Archived is not available yet: it needs a database update." {...field('status')}>
           <option value="active">{ENGINEER_STATUS_LABELS.active}</option>
           <option value="inactive">{ENGINEER_STATUS_LABELS.inactive}</option>
         </SelectField>
         {engineer && engineer.isActive && values.status === 'inactive' && <AssignmentWarning engineer={engineer} />}
-        <TextAreaField label="Notes" maxLength={2000} {...field('notes')} />
+        {locked('notes') ? <LockedField label="Notes" /> : <TextAreaField label="Notes" maxLength={2000} {...field('notes')} />}
       </form>
     </Modal>
   )
