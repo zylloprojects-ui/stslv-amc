@@ -30,6 +30,10 @@ export function VisibilityEditor({ role, catalogue, canEdit, onDirtyChange }: Vi
   const [hidden, setHidden] = useState<Set<string>>(() => new Set(role.hiddenItems ?? []))
   const [saved, setSaved] = useState(false)
   const [stale, setStale] = useState(false)
+  // Like the permission sections: every page starts collapsed; find one, or open them all.
+  const [query, setQuery] = useState('')
+  const [expand, setExpand] = useState({ all: false, version: 0 })
+  const shownSections = catalogue.filter((section) => query.trim() === '' || section.title.toLowerCase().includes(query.trim().toLowerCase()))
 
   const original = new Set(base.hiddenItems ?? [])
   const dirty = !sameSet(hidden, original)
@@ -140,37 +144,78 @@ export function VisibilityEditor({ role, catalogue, canEdit, onDirtyChange }: Vi
         {saved && !dirty && <Alert tone="success">Visibility saved. It applies the next time their page loads.</Alert>}
       </div>
 
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[14rem] flex-1 sm:max-w-xs">
+          <svg viewBox="0 0 20 20" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <circle cx="9" cy="9" r="5.5" />
+            <path d="m13.5 13.5 3.5 3.5" strokeLinecap="round" />
+          </svg>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Find a page"
+            aria-label="Find a page"
+            className="block w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm shadow-sm placeholder:text-slate-400 focus:border-[#1479BD] focus:outline-none focus:ring-2 focus:ring-sky-100"
+          />
+        </div>
+        <span className="ml-auto flex gap-2">
+          <button type="button" onClick={() => setExpand((value) => ({ all: true, version: value.version + 1 }))} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-[#1479BD] hover:text-[#0b3b66]">
+            Expand all
+          </button>
+          <button type="button" onClick={() => setExpand((value) => ({ all: false, version: value.version + 1 }))} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:border-[#1479BD] hover:text-[#0b3b66]">
+            Collapse all
+          </button>
+        </span>
+      </div>
+
       <div className="mt-3 space-y-3">
-        {catalogue.map((section) => {
+        {shownSections.length === 0 && <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">No page matches.</p>}
+        {shownSections.map((section) => {
           const items = section.groups.flatMap((group) => group.items)
           const shownCount = items.filter((item) => !hidden.has(item.key)).length
           const opens = roleHolds(section.requires)
           const changeable = mayChange(section)
 
           return (
-            <details key={section.id} className="group rounded-xl border bg-white shadow-sm" open>
+            // Collapsed by default, like the permission sections above: click a page to open it.
+            <details key={`${section.id}-${expand.version}`} open={expand.all || query.trim() !== ''} className="group frame-hover overflow-hidden rounded-xl border bg-white shadow-sm">
               <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3 hover:bg-sky-50/60 [&::-webkit-details-marker]:hidden">
+                <svg viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-[#1479BD] transition-transform group-open:rotate-90" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true">
+                  <path d="m7 4 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
                 <span className="min-w-0 flex-1 text-sm font-bold text-[#0b3b66]">{section.title}</span>
                 {!opens && (
                   <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900 ring-1 ring-inset ring-amber-200">
                     This role cannot open {section.page.label}
                   </span>
                 )}
-                <span className="whitespace-nowrap text-xs font-semibold text-slate-500">
-                  {shownCount} of {items.length} shown
+                <span
+                  className={cx(
+                    'whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset',
+                    changeable ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-slate-100 text-slate-600 ring-slate-300',
+                  )}
+                >
+                  {changeable ? 'Editable' : 'Read only'}
                 </span>
-                {changeable && (
-                  <span className="flex gap-2 text-xs font-semibold">
-                    <button type="button" className="text-[#1479BD] hover:underline disabled:opacity-50" disabled={save.isPending} onClick={(event) => { event.preventDefault(); setSection(section, true) }}>
-                      Show all
-                    </button>
-                    <button type="button" className="text-[#1479BD] hover:underline disabled:opacity-50" disabled={save.isPending} onClick={(event) => { event.preventDefault(); setSection(section, false) }}>
-                      Hide all
-                    </button>
-                  </span>
-                )}
+                <span className="hidden h-1.5 w-24 overflow-hidden rounded-full bg-slate-200 sm:block" aria-hidden="true">
+                  <span className="block h-full rounded-full bg-gradient-to-r from-[#1479BD] to-[#00A6C8]" style={{ width: `${items.length === 0 ? 0 : Math.round((shownCount / items.length) * 100)}%` }} />
+                </span>
+                <span className="whitespace-nowrap text-xs font-semibold text-slate-500">
+                  {shownCount}/{items.length} shown
+                </span>
               </summary>
-              <div className="grid gap-4 border-t border-slate-200 p-4 md:grid-cols-2">
+              {changeable && (
+                <div className="flex justify-end gap-3 border-t border-slate-200 px-4 pt-3 text-xs font-semibold">
+                  <button type="button" className="text-[#1479BD] hover:underline disabled:opacity-50" disabled={save.isPending} onClick={() => setSection(section, true)} aria-label={`Show all of ${section.title}`}>
+                    Show all
+                  </button>
+                  <button type="button" className="text-[#1479BD] hover:underline disabled:opacity-50" disabled={save.isPending} onClick={() => setSection(section, false)} aria-label={`Hide all of ${section.title}`}>
+                    Hide all
+                  </button>
+                </div>
+              )}
+              <div className={cx('grid gap-4 p-4 md:grid-cols-2', !changeable && 'border-t border-slate-200')}>
                 {section.groups.map((group) => (
                   <fieldset key={group.title} className="min-w-0">
                     <legend className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-500">{group.title}</legend>

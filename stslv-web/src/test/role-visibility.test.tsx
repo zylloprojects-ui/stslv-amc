@@ -91,6 +91,29 @@ describe('Roles & Permissions › Page visibility', () => {
     await waitFor(() => expect(api.find('PUT', '/roles/7/visibility')[0]?.body).toEqual({ hidden: ['invoices.action.downloadContract'], expectedVersion: 'aaaaaaaaaaaaaaaa' }))
   })
 
+  it('lists each page collapsed, like the permission sections, and puts the fixed-access box last', async () => {
+    signIn()
+    mockApi((request) => {
+      if (request.path === '/auth/me') return ok({ user: ADMIN })
+      if (request.method === 'GET' && request.path === '/roles') return ok({ roles: ROLES, modules: MODULES, actions: ACTIONS, catalog: CATALOG, fixedAccess: { adminOnly: [{ label: 'Audit Log', path: '/admin/audit' }], everyone: [] }, visibilityCatalog: VISIBILITY })
+      if (request.method === 'GET' && request.path === '/users') return ok([])
+      return undefined
+    })
+    renderApp('/admin/roles')
+    const panel = await openRole('Accounts')
+
+    const sections = [...panel.querySelectorAll('details')]
+    expect(sections).toHaveLength(2)
+    for (const section of sections) expect(section).not.toHaveAttribute('open')
+    expect(within(panel).getByText('1/1 shown')).toBeInTheDocument()
+
+    await userEvent.click(within(panel).getByRole('button', { name: 'Expand all' }))
+    for (const section of panel.querySelectorAll('details')) expect(section).toHaveAttribute('open')
+
+    const fixed = screen.getByTestId('fixed-access')
+    expect(panel.compareDocumentPosition(fixed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   it("is read only for Super Admin's own role, which always sees everything", async () => {
     rolesApi()
     renderApp('/admin/roles')
