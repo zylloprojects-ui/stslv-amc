@@ -681,3 +681,16 @@ describe('Invoices Generated amount', () => {
     expect(dashboard.cards['overall-invoiced']?.body).toBe('3 | OMR 120.000 · 1 without amount · Invoice No. entered')
   })
 })
+
+describe('Role visibility (Roles & Permissions › Page visibility)', () => {
+  it('leaves out the KPI group and panel hidden from the role; the rest stays', async () => {
+    managementApi({ ...ADMIN, hidden: ['amcManagement.group.contracts', 'amcManagement.panel.expiry'] })
+    renderApp('/amc/management')
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'AMC Management' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Recent AMC Contracts' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Contract KPIs' })).not.toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Schedule KPIs' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Expiry & Renewal' })).not.toBeInTheDocument()
+  })
+})

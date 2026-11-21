@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { shows } from '../../lib/visibility'
 import { ExportButtons } from '../../components/ExportButtons'
 import { StatTile } from '../../components/StatTile'
 import { TABLE } from '../../components/table'
@@ -93,6 +94,7 @@ export function AcknowledgementStatusBadge({ item }: { item: AcknowledgementItem
 }
 
 function HideColumnsDialog({ hidden, amountsVisible, onSave, onClose }: { hidden: ReadonlySet<ColumnId>; amountsVisible: boolean; onSave: (hidden: ReadonlySet<ColumnId>) => void; onClose: () => void }) {
+  const { user } = useAuth()
   const [draft, setDraft] = useState<Set<ColumnId>>(new Set(hidden))
   const toggle = (id: ColumnId) => {
     const next = new Set(draft)
@@ -100,7 +102,8 @@ function HideColumnsDialog({ hidden, amountsVisible, onSave, onClose }: { hidden
     else next.add(id)
     setDraft(next)
   }
-  const offered = COLUMN_IDS.filter((id) => amountsVisible || !AMOUNT_COLUMNS.includes(id))
+  // Role visibility: a column hidden from the user's role is not offered.
+  const offered = COLUMN_IDS.filter((id) => (amountsVisible || !AMOUNT_COLUMNS.includes(id)) && shows(user, `invoiceAcks.column.${id}`))
 
   return (
     <Modal
@@ -210,7 +213,9 @@ export function InvoiceAcknowledgementsPage() {
   const data = list.data
   // The API decides (amounts only with Accounts: View); before the first answer, the same rule from the session.
   const amountsVisible = data ? data.kpis.invoiceValueTotal !== null : auth.can('ACCOUNTS', 'VIEW')
-  const shown = (id: ColumnId) => !hidden.has(id) && (amountsVisible || !AMOUNT_COLUMNS.includes(id))
+  // Role visibility (Roles & Permissions): a column hidden from the user's role is neither shown nor offered.
+  const roleShows = (id: ColumnId) => shows(auth.user, `invoiceAcks.column.${id}`)
+  const shown = (id: ColumnId) => !hidden.has(id) && (amountsVisible || !AMOUNT_COLUMNS.includes(id)) && roleShows(id)
   const visible = COLUMN_IDS.filter(shown)
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['invoice-acknowledgements'] })
   // Columns before the amount columns, for the totals row: #, Invoice No., then the shown text columns.
@@ -365,7 +370,7 @@ export function InvoiceAcknowledgementsPage() {
                   )}
                 </div>
                 <Button variant="secondary" onClick={() => setColumnsOpen(true)}>
-                  Hide Columns · {visible.length} of {COLUMN_IDS.filter((id) => amountsVisible || !AMOUNT_COLUMNS.includes(id)).length} shown
+                  Hide Columns · {visible.length} of {COLUMN_IDS.filter((id) => (amountsVisible || !AMOUNT_COLUMNS.includes(id)) && roleShows(id)).length} shown
                 </Button>
                 <span className="basis-full text-xs text-slate-500">
                   Invoice Date and Invoice Value come from the Invoice Tracking record of the invoice, counted once per invoice, where one is recorded. A manual Invoice No. carries no date or amount, so none is shown.

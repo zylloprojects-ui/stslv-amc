@@ -7,10 +7,12 @@ import { IN_SCOPE, serviceStatusSql } from "../amc/service-status.service";
 import { hasStoredReference, referenceSql } from "../amc/contract-reference";
 import { readServiceReport, SERVICE_REPORT_JSON_SQL, serviceReportsAvailable, toServiceReport, type ServiceReport } from "../amc/service-reports.service";
 import { notFound } from "../../shared/errors";
+import { readStoredFile } from "../attachments/attachments.service";
 import { schemaHas } from "../../shared/schema-features";
 import { hasServiceEngineer, serviceEngineerSql } from "../amc/service-engineer";
 import { normalizeMoney } from "../amc/amc.schemas";
 import type { AccountsColour, ListAccountsQuery } from "./accounts.schemas";
+import type { RoleHideableColumn } from "./accounts.visibility";
 
 // Accounts: a billing reconciliation with one row per scheduled maintenance visit
 // (amc_visits), never one per contract. It reads the same visit records as Service
@@ -184,8 +186,7 @@ export interface AccountsItem {
   serviceReport: ServiceReport | null;
   /**
    * The contract document of this service's AMC contract (see CONTRACT_DOCUMENT_JSON_SQL), metadata only. Downloaded
-   * through GET /api/attachments/:id/download, which checks AMC Contracts: View again. Null when the contract has none,
-   * and always null for a user without AMC Contracts: View (the response's contractDocumentVisible is then false).
+   * through GET /api/accounts/:id/contract-document (Accounts: View). Null when the contract has none.
    */
   contractDocument: ContractDocumentRef | null;
   /** The contract's Sales Engineer master link: the person who brought the AMC (client UAT CR-011). */
@@ -240,13 +241,58 @@ export interface AccountsAccess {
   /** The contract's AMC Value / Year under the service value: AMC Contracts: View, as on Master AMC Status. */
   annualAmcValue?: boolean;
   /**
-   * The AMC Contract column (the contract document): AMC Contracts: View, the permission the attachment download itself
-   * requires, so the page never lists a document its user could not download.
+   * The AMC Contract column (the contract document). The Accounts routes always ask for it (owner decision 2026-11-21);
+   * the document is downloaded through the Accounts route, never the AMC Contracts attachment download.
    */
   contractDocument?: boolean;
+  /** Columns hidden from the user's role (role visibility, see accounts.visibility.ts): their data is not sent. */
+  hiddenColumns?: ReadonlySet<RoleHideableColumn>;
 }
 
 const NO_EXTRA_ACCESS: AccountsAccess = { acknowledgements: false, amcValue: false, annualAmcValue: false, contractDocument: false };
+
+/** Blanks what the role may not see. The row (reference, month, status, colour) and its identifiers stay. */
+function withoutHiddenColumns(item: AccountsItem, hidden: ReadonlySet<RoleHideableColumn> | undefined): AccountsItem {
+  if (!hidden || hidden.size === 0) return item;
+  const off = (column: RoleHideableColumn) => hidden.has(column);
+
+  return {
+    ...item,
+    client: off("client") ? { id: item.client.id, name: "" } : item.client,
+    system: off("system") ? { description: "", typeId: null, typeName: null } : item.system,
+    frequency: off("frequency") ? { code: "", label: "" } : item.frequency,
+    service: off("service") ? { sequenceNo: 0, cycleNo: null, serviceCode: null } : item.service,
+    serviceReportNo: off("serviceReportNo") ? null : item.serviceReportNo,
+    serviceReport: off("serviceReport") ? null : item.serviceReport,
+    contractDocument: off("amcContract") ? null : item.contractDocument,
+    salesEngineer: off("salesEngineer") ? null : item.salesEngineer,
+    serviceEngineer: off("serviceEngineer") ? null : item.serviceEngineer,
+    amcValue: off("amcValue") ? null : item.amcValue,
+    visitValue: off("visitValue") ? null : item.visitValue,
+    valueSourceMissing: off("visitValue") ? false : item.valueSourceMissing,
+    annualAmcValue: off("visitValue") ? null : item.annualAmcValue,
+    manualInvoiceNo: off("invoiceNo") ? null : item.manualInvoiceNo,
+    invoiceNumbers: off("invoiceNo") ? [] : item.invoiceNumbers,
+    acknowledgementStatus: off("invoiceNo") ? null : item.acknowledgementStatus,
+    invoiceValue: off("invoiceValue") ? null : item.invoiceValue,
+  };
+}
+
+/** The card figures without the value totals of a hidden value column (the counts stay). */
+function kpisWithout(figures: AccountsKpis, hidden: ReadonlySet<RoleHideableColumn> | undefined): AccountsKpis {
+  if (!hidden || hidden.size === 0) return figures;
+  const copy: Partial<AccountsKpis> = { ...figures };
+  if (hidden.has("visitValue")) {
+    delete copy.totalValue;
+    delete copy.paidValue;
+    delete copy.valueMissing;
+  }
+  if (hidden.has("invoiceValue")) {
+    delete copy.invoiceValue;
+    delete copy.invoiced;
+  }
+  return copy as AccountsKpis;
+}
 
 function toItem(row: AccountsRow, access: AccountsAccess = NO_EXTRA_ACCESS): AccountsItem {
   return {
@@ -409,7 +455,19 @@ export async function listAccounts(query: ListAccountsQuery, access: AccountsAcc
     ),
   ]);
 
-  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.rows, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue, contractDocumentVisible: contractDocument };
+  const hidden = access.hiddenColumns;
+
+  return {
+    items: rows.rows.map((row) => withoutHiddenColumns(toItem(row, access), hidden)),
+    total: figures.rows,
+    page: query.page,
+    pageSize: query.pageSize,
+    kpis: kpisWithout(figures, hidden),
+    amcValueVisible: access.amcValue && !hidden?.has("amcValue"),
+    contractDocumentVisible: contractDocument && !hidden?.has("amcContract"),
+    // The columns this user's role does not see (role visibility): the page leaves them out.
+    roleHiddenColumns: [...(hidden ?? [])],
+  };
 }
 
 /**
@@ -459,4 +517,33 @@ export async function readAccountsServiceReport(visitId: string) {
   if (visit.rowCount === 0) throw notFound("AMC visit not found.");
 
   return readServiceReport(visitId);
+}
+
+/**
+ * The contract document of ONE visit shown on Accounts (the AMC Contract column), for its Download (owner decision
+ * 2026-11-21: Accounts users download it without AMC Contracts access). The same document the list names
+ * (CONTRACT_DOCUMENT_JSON_SQL): the current version of the visit's own contract's first SIGNED_CONTRACT document. Only a
+ * visit in Accounts' own scope is served, so no other contract's file and no other document type is reachable. Read
+ * through the private document storage and checked against its checksum.
+ */
+export async function readAccountsContractDocument(visitId: string) {
+  const found = await pool.query<{ storage_key: string; sha256: string; mime_type: string; original_name: string }>(
+    `SELECT a.storage_key, a.sha256, a.mime_type, a.original_name
+     FROM amc_visits v JOIN amc_contracts c ON c.id = v.amc_contract_id
+     JOIN LATERAL (
+       SELECT a.storage_key, a.sha256, a.mime_type, a.original_name
+       FROM attachments a
+       WHERE a.entity_type = 'amc_contracts' AND a.entity_id = c.id AND a.is_current AND a.category = 'SIGNED_CONTRACT'
+       ORDER BY a.document_id
+       LIMIT 1) a ON true
+     WHERE v.id = $1 AND ${IN_SCOPE}`,
+    [visitId]
+  );
+  const row = found.rows[0];
+
+  if (!row) throw notFound("No contract document was found for this service.");
+
+  const data = await readStoredFile(row.storage_key, row.sha256, "The stored contract document could not be found.");
+
+  return { data, mimeType: row.mime_type, fileName: row.original_name };
 }

@@ -50,6 +50,7 @@ describe("migrations", () => {
       "project_expenses",
       "projects",
       "protected_accounts",
+      "role_hidden_items",
       "role_permissions",
       "roles",
       "sales_engineer_retired_codes",

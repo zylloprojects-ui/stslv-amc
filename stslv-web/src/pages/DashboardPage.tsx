@@ -7,6 +7,7 @@ import { Alert, Spinner } from '../components/ui'
 import { api, errorMessage } from '../lib/api'
 import { cx, formatTime } from '../lib/format'
 import type { Module } from '../lib/types'
+import { shows } from '../lib/visibility'
 import { formatDate } from './amc/amcFormat'
 import { Icon, type IconName } from './dashboard/icons'
 import { KpiStrip } from './dashboard/KpiStrip'
@@ -89,7 +90,13 @@ export function DashboardPage() {
 
   const operations = useQuery({ queryKey: ['dashboard', 'operations'], queryFn: () => api.get<OperationsDashboard>('/dashboard/operations') })
 
-  const data = operations.data
+  const loaded = operations.data
+  // Role visibility: leave out a panel hidden from the role even if an older API still sent it.
+  const data = loaded && {
+    ...loaded,
+    workload: shows(auth.user, 'dashboard.panel.workload') ? loaded.workload : null,
+    paymentTrend: shows(auth.user, 'dashboard.panel.paymentTrend') ? loaded.paymentTrend : null,
+  }
   const refreshing = operations.isFetching
   const refresh = () => void operations.refetch()
 
@@ -161,12 +168,13 @@ export function DashboardPage() {
       <section aria-labelledby="dashboard-kpis" className="mb-7">
         <SectionHeading id="dashboard-kpis">Key figures</SectionHeading>
         {/* Twelve cards in a fixed order (the client's reference). Cards saved by the old Arrange KPIs are no longer read; nothing stored is deleted. */}
-        <KpiStrip data={data} failed={operations.isError} canView={canView} />
+        <KpiStrip data={data} failed={operations.isError} canView={canView} showsRow={(row) => shows(auth.user, `dashboard.row.${row}`)} />
       </section>
 
       {operations.isPending && <Spinner label="Loading dashboard" />}
 
-      {data?.schedule && (
+      {/* A panel hidden from the role (role visibility) arrives as null, as for a user without its module. */}
+      {data?.schedule && shows(auth.user, 'dashboard.panel.calendar') && (
         <Panel
           id="dashboard-calendar"
           icon="calendar"

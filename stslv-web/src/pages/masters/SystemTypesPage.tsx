@@ -9,6 +9,7 @@ import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Badge, Button, ConfirmDialog, EmptyState, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
+import { hiddenField } from '../../lib/visibility'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { MasterFormModal, type AnyRecord } from './MasterDataPage'
 import { isFeatureUnavailable, type MasterList, type SystemType } from './masterTypes'
@@ -96,7 +97,10 @@ export function SystemTypesPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
-  const show = (key: ColumnKey) => !hiddenColumns.has(key)
+  // Page visibility (0123, step B): Sort Order hidden from the user's role is not offered; the API no longer sends it.
+  const roleHides = (key: ColumnKey) => key === 'sortOrder' && hiddenField(auth.user, 'systemTypes', 'sortOrder')
+  const columnOptions = COLUMN_OPTIONS.filter((option) => !roleHides(option.key))
+  const show = (key: ColumnKey) => !hiddenColumns.has(key) && !roleHides(key)
 
   // Wait for a pause in typing before searching.
   useEffect(() => {
@@ -260,7 +264,7 @@ export function SystemTypesPage() {
                 </div>
                 <div className="sm:ml-auto">
                   <ColumnsMenu
-                    options={COLUMN_OPTIONS}
+                    options={columnOptions}
                     hidden={hiddenColumns}
                     onChange={(next) => {
                       setHiddenColumns(next)

@@ -4,8 +4,9 @@ import { useAuth } from '../../auth/context'
 import { LoadError, Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { ActionButton, ActionGroup } from '../../components/IconActions'
-import { Alert, Badge, Button, Card, EmptyState, Modal, PageHeader, SelectField, Spinner, TextAreaField, TextField } from '../../components/ui'
+import { Alert, Badge, Button, Card, EmptyState, LockedField, Modal, PageHeader, SelectField, Spinner, TextAreaField, TextField } from '../../components/ui'
 import { api, ApiError, errorMessage } from '../../lib/api'
+import { useHiddenFields } from '../../lib/visibility'
 import { cx } from '../../lib/format'
 import type { Module } from '../../lib/types'
 import { queryString } from '../amc/amcApi'
@@ -22,6 +23,14 @@ export type Tab = 'sales-engineers' | 'system-types' | 'departments' | 'maintena
 
 // Sales engineers have their own pages; this page serves the other lists, one route each.
 export type ListTab = Exclude<Tab, 'sales-engineers'>
+
+/** Each list's page visibility section and the form fields a role may have hidden (API shared/visibility-catalog.ts). */
+const LOCKABLE: Record<Tab, { page: string; fields: Record<string, string> }> = {
+  'sales-engineers': { page: 'salesEngineers', fields: { employeeNo: 'employeeNo', email: 'email', phone: 'phone', department: 'departmentId', linkedUser: 'userId', notes: 'notes' } },
+  'system-types': { page: 'systemTypes', fields: { description: 'description', sortOrder: 'sortOrder' } },
+  departments: { page: 'departments', fields: { description: 'description' } },
+  'maintenance-frequencies': { page: 'maintenanceFrequencies', fields: { sortOrder: 'sortOrder' } },
+}
 
 /** The permission module that governs each list (migration 0080). */
 const TAB_MODULE: Record<Tab, Module> = {
@@ -133,6 +142,8 @@ function initialValues(tab: Tab, record: AnyRecord | null): Record<string, strin
 export function MasterFormModal({ tab, record, onClose, onSaved }: { tab: Tab; record: AnyRecord | null; onClose: () => void; onSaved: (message: string) => void }) {
   const queryClient = useQueryClient()
   const auth = useAuth()
+  // Page visibility (owner rule "Lock it", 2026-11-21): a field hidden from the user's role is shown locked and never sent.
+  const lockedFields = useHiddenFields(LOCKABLE[tab].page, LOCKABLE[tab].fields)
   const spec = ALL_TABS.find((item) => item.key === tab) as TabSpec
   const [values, setValues] = useState(() => initialValues(tab, record))
   const [errors, setErrors] = useState<Record<string, string>>({})
@@ -150,6 +161,8 @@ export function MasterFormModal({ tab, record, onClose, onSaved }: { tab: Tab; r
       const body: Record<string, unknown> = {}
       for (const field of FIELDS[tab]) {
         if (field.kind === 'user' && !needsUsers) continue
+        // A field hidden from the user's role is never sent (page visibility); the API keeps its stored value.
+        if (lockedFields.includes(field.name)) continue
         const value = values[field.name] ?? ''
         body[field.name] = field.kind === 'number' ? Number(value || 0) : value
       }
@@ -200,6 +213,7 @@ export function MasterFormModal({ tab, record, onClose, onSaved }: { tab: Tab; r
         {FIELDS[tab].map((field) => {
           const common = { label: field.label, required: field.required, error: errors[field.name], hint: field.hint, value: values[field.name] ?? '', onChange: set(field.name) }
 
+          if (lockedFields.includes(field.name)) return <LockedField key={field.name} label={field.label} />
           if (field.kind === 'textarea') return <TextAreaField key={field.name} {...common} />
           if (field.kind === 'department')
             return (

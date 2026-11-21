@@ -9,6 +9,7 @@ import { api, errorMessage } from '../../lib/api'
 import { cx, formatCount, formatTime } from '../../lib/format'
 import { formatMoney } from '../../lib/money'
 import type { Module } from '../../lib/types'
+import { shows } from '../../lib/visibility'
 import { formatDate } from '../amc/amcFormat'
 import { ContractStatusPill, ToggleButton } from '../amc/components'
 import { ContractFormModal } from '../amc/ContractFormModal'
@@ -407,20 +408,26 @@ export function AmcManagementPage() {
         </div>
       )}
 
-      {KPI_GROUPS.filter((group) => group.visible(canView)).map((group) => (
+      {/* Role visibility: a group hidden from the role is left out (the API no longer sends its figures). */}
+      {KPI_GROUPS.filter((group) => group.visible(canView) && shows(auth.user, `amcManagement.group.${group.id}`)).map((group) => (
         <KpiGroup key={group.id} group={group} userId={userId} data={data} failed={summary.isError} canView={canView} />
       ))}
 
       {summary.isPending && <Spinner label="Loading AMC Management" />}
 
-      {data && (
+      {data && (data.recentContracts || data.expiry) && (
         <div className="mb-6 grid gap-6">
-          <Panel icon="contract" accent={['#1479BD', '#00A6C8']} title="Recent AMC Contracts" description={`Latest contracts added, newest first · ${formatCount(data.recentContracts.total)} in total`} link={{ to: '/amc/contracts', label: 'View All' }} open={recentOpen} onToggle={setRecentOpen}>
-            <RecentContracts recent={data.recentContracts} />
-          </Panel>
-          <Panel id="expiry" icon="calendar" accent={['#F59E0B', '#EF4444']} title="Expiry & Renewal" description="Warnings at 90, 60, 45, 30 and 15 days before the end of validity." link={{ to: '/amc/contracts', label: 'AMC Contracts' }} open={expiryOpen} onToggle={setExpiryOpen}>
-            <ExpiryRenewal expiry={data.expiry} />
-          </Panel>
+          {/* A panel hidden from the role (role visibility) is not sent by the API. */}
+          {data.recentContracts && shows(auth.user, 'amcManagement.panel.recentContracts') && (
+            <Panel icon="contract" accent={['#1479BD', '#00A6C8']} title="Recent AMC Contracts" description={`Latest contracts added, newest first · ${formatCount(data.recentContracts.total)} in total`} link={{ to: '/amc/contracts', label: 'View All' }} open={recentOpen} onToggle={setRecentOpen}>
+              <RecentContracts recent={data.recentContracts} />
+            </Panel>
+          )}
+          {data.expiry && shows(auth.user, 'amcManagement.panel.expiry') && (
+            <Panel id="expiry" icon="calendar" accent={['#F59E0B', '#EF4444']} title="Expiry & Renewal" description="Warnings at 90, 60, 45, 30 and 15 days before the end of validity." link={{ to: '/amc/contracts', label: 'AMC Contracts' }} open={expiryOpen} onToggle={setExpiryOpen}>
+              <ExpiryRenewal expiry={data.expiry} />
+            </Panel>
+          )}
         </div>
       )}
 

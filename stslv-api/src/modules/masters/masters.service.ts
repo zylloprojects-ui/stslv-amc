@@ -5,6 +5,8 @@ import { withTransaction, type Queryable } from "../../shared/db";
 import { listEntityHistory } from "../../shared/entity-history";
 import { conflict, isUniqueViolation, notFound, validationError } from "../../shared/errors";
 import { escapeLike } from "../../shared/validation";
+import { keepHiddenFields } from "../../shared/visibility-fields";
+import { masterHiddenFields } from "./masters.visibility";
 import { FREQUENCY_MONTHS, type MaintenanceFrequency } from "../amc/amc.constants";
 import type { AuthContext } from "../auth/access";
 import type { Module } from "../../shared/permissions";
@@ -428,7 +430,10 @@ export async function listMasterHistory(spec: MasterSpec, id: string, page: numb
   return listEntityHistory(spec.entityType, id, page, pageSize);
 }
 
-export async function createMaster(auth: AuthContext, spec: MasterSpec, input: Record<string, unknown>) {
+export async function createMaster(auth: AuthContext, spec: MasterSpec, sent: Record<string, unknown>) {
+  // Role visibility (0123, "Lock it"): a field hidden from the user is never taken from the request.
+  const input = keepHiddenFields(sent, masterHiddenFields(auth, spec.table));
+
   try {
     return await withTransaction(async (db) => {
       const values = Object.fromEntries(spec.fields.map((field) => [field.name, input[field.name] ?? null]));
@@ -466,7 +471,10 @@ export async function createMaster(auth: AuthContext, spec: MasterSpec, input: R
   }
 }
 
-export async function updateMaster(auth: AuthContext, spec: MasterSpec, id: string, input: Record<string, unknown>) {
+export async function updateMaster(auth: AuthContext, spec: MasterSpec, id: string, sent: Record<string, unknown>) {
+  // Role visibility (0123, "Lock it"): a field hidden from the user who saves keeps its stored value, whatever is sent.
+  const input = keepHiddenFields(sent, masterHiddenFields(auth, spec.table));
+
   try {
     return await withTransaction(async (db) => {
       const before = await findOne(db, spec, id, true);

@@ -4,6 +4,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { shows } from '../../lib/visibility'
 import { ExportButtons } from '../../components/ExportButtons'
 import { PageTabs, TabPanel } from '../../components/PageTabs'
 import { TABLE, actionButtonClass } from '../../components/table'
@@ -98,10 +99,11 @@ export function AmcRenewalPage() {
         onChange={setTab}
         tabs={[
           { id: 'queue', label: 'Renewal Queue' },
-          { id: 'history', label: 'Renewal History' },
+          // Role visibility: the Renewal History panel may be hidden from the user's role (the API refuses it too).
+          ...(shows(auth.user, 'amcRenewal.panel.history') ? [{ id: 'history' as const, label: 'Renewal History' }] : []),
         ]}
       />
-      {tab === 'queue' ? <QueueTab userId={auth.user?.id ?? 'anonymous'} onNotice={setNotice} /> : <HistoryTab />}
+      {tab === 'queue' || !shows(auth.user, 'amcRenewal.panel.history') ? <QueueTab userId={auth.user?.id ?? 'anonymous'} onNotice={setNotice} /> : <HistoryTab />}
     </>
   )
 }
@@ -148,7 +150,8 @@ function QueueTab({ userId, onNotice }: { userId: string; onNotice: (message: st
   }
   const filtered = search !== '' || renewalStatus !== ''
   const data = queue.data
-  const shown = (id: ColumnId) => !hidden.has(id)
+  // Role visibility (Roles & Permissions): a column hidden from the user's role is neither shown nor offered.
+  const shown = (id: ColumnId) => !hidden.has(id) && shows(auth.user, `amcRenewal.column.${id}`)
   const visible = COLUMN_IDS.filter(shown)
   const canView = (module: Parameters<typeof auth.can>[0]) => auth.can(module, 'VIEW')
 
@@ -161,7 +164,7 @@ function QueueTab({ userId, onNotice }: { userId: string; onNotice: (message: st
       actions={
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={() => setColumnsOpen(true)}>
-            Hide Columns · {visible.length} of {COLUMN_IDS.length} shown
+            Hide Columns · {visible.length} of {COLUMN_IDS.filter((id) => shows(auth.user, `amcRenewal.column.${id}`)).length} shown
           </Button>
           {auth.can('AMC_RENEWAL', 'EXPORT') && (
             <ExportButtons
@@ -415,6 +418,7 @@ function ActionDialog({ action, onClose, onDone }: { action: Action; onClose: ()
 
 /** Show or hide columns. AMC Reference, Renewal Status and Actions always stay. */
 function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<ColumnId>; onSave: (hidden: ReadonlySet<ColumnId>) => void; onClose: () => void }) {
+  const { user } = useAuth()
   const [draft, setDraft] = useState<Set<ColumnId>>(new Set(hidden))
   const toggle = (id: ColumnId) => {
     const next = new Set(draft)
@@ -445,7 +449,8 @@ function HideColumnsDialog({ hidden, onSave, onClose }: { hidden: ReadonlySet<Co
       <fieldset>
         <legend className="sr-only">Columns to show</legend>
         <ul className="grid gap-1 sm:grid-cols-2">
-          {COLUMN_IDS.map((id) => (
+          {/* Role visibility: a column hidden from the user's role is not offered. */}
+          {COLUMN_IDS.filter((id) => shows(user, `amcRenewal.column.${id}`)).map((id) => (
             <li key={id}>
               <label className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-slate-700 hover:bg-sky-50">
                 <input type="checkbox" checked={!draft.has(id)} onChange={() => toggle(id)} className="h-4 w-4 rounded border-slate-300 accent-[#1479BD]" />

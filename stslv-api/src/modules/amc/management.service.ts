@@ -1,7 +1,7 @@
 import { pool } from "../../config/database";
 import { canRead } from "../../shared/permissions";
 import { schemaHas } from "../../shared/schema-features";
-import type { AuthContext } from "../auth/access";
+import { shows, type AuthContext } from "../auth/access";
 import {
   canViewVisitCounts,
   COUNTED_VISIT,
@@ -324,7 +324,7 @@ export async function getAmcManagementSummary(auth: AuthContext): Promise<AmcMan
   // Always present here: the endpoint requires AMC_CONTRACTS:VIEW.
   const contracts = kpis.contracts as NonNullable<OperationsKpis["contracts"]>;
 
-  return {
+  return withoutHiddenParts(auth, {
     asOf: clock.rows[0]?.today ?? "",
     timeZone: clock.rows[0]?.time_zone ?? "",
     kpis,
@@ -341,5 +341,38 @@ export async function getAmcManagementSummary(auth: AuthContext): Promise<AmcMan
       },
     },
     recentContracts: recent,
+  });
+}
+
+/**
+ * Role visibility (0123): the figures of a KPI group or panel hidden from this user are left out of the response, so
+ * they never reach the browser. Each group also reads its shared Dashboard section (kpis.contracts, kpis.services,
+ * kpis.payments), which goes with it. Nothing is recalculated.
+ */
+function withoutHiddenParts(auth: AuthContext, summary: AmcManagementSummary): AmcManagementSummary {
+  const hide = (key: string) => !shows(auth, key);
+  const contracts = hide("amcManagement.group.contracts");
+  const schedule = hide("amcManagement.group.schedule");
+  const invoices = hide("amcManagement.group.invoices");
+  const recent = hide("amcManagement.panel.recentContracts");
+  const expiry = hide("amcManagement.panel.expiry");
+
+  if (!contracts && !schedule && !invoices && !recent && !expiry) return summary;
+
+  const copy: Record<string, unknown> = {
+    ...summary,
+    kpis: {
+      contracts: contracts ? null : summary.kpis.contracts,
+      services: schedule ? null : summary.kpis.services,
+      payments: invoices ? null : summary.kpis.payments,
+    },
+    schedule: schedule ? null : summary.schedule,
+    invoices: invoices ? null : summary.invoices,
   };
+  // These sections are always present for everyone else, so a hidden one is left out entirely.
+  if (contracts) delete copy.contracts;
+  if (recent) delete copy.recentContracts;
+  if (expiry) delete copy.expiry;
+
+  return copy as unknown as AmcManagementSummary;
 }

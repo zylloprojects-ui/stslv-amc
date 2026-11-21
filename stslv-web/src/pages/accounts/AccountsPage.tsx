@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../auth/context'
+import { shows } from '../../lib/visibility'
 import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
@@ -131,10 +132,13 @@ function ValueTile({ name, kpis, card, position }: { name: string; kpis: Account
 }
 
 /** The five KPI cards. The user may rename and reorder them; both are remembered per user in this browser. */
-function KpiCards({ userId, kpis }: { userId: string; kpis: AccountsKpis | undefined }) {
+function KpiCards({ userId, kpis, valueShown = true }: { userId: string; kpis: AccountsKpis | undefined; valueShown?: boolean }) {
   const [customizing, setCustomizing] = useState(false)
   const prefs = useKpiCustomization(userId, 'kpis', KPI_DEFAULTS, ACCOUNTS_PREFIX)
-  const cards = prefs.order.map((id) => KPI_CARDS.find((card) => card.id === id)).filter((card): card is KpiCard => card !== undefined)
+  // Total Value is built from Service Value: hidden with it (role visibility).
+  const cards = prefs.order
+    .map((id) => KPI_CARDS.find((card) => card.id === id))
+    .filter((card): card is KpiCard => card !== undefined && (valueShown || card.id !== 'totalValue'))
 
   const move = (index: number, by: -1 | 1) => {
     const a = cards[index]?.id
@@ -345,9 +349,11 @@ export function AccountsPage() {
   // The AMC Value (ex VAT) column (CR-013, the Customer PO Value) is not shown in this table or offered in Hide Columns
   // (owner request 2026-11-18). The API, its data and the downloads are unchanged; the downloads still follow the
   // hidden list as before. The AMC Value / Year line under Service Value is a separate figure and stays.
-  // The AMC Contract column (the contract document) only for users who may view AMC Contracts: the API sends the
-  // documents, and the attachment download serves them, only to those users.
-  const offered = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id) && (id !== 'amcContract' || canViewContract))
+  // The AMC Contract column (the contract document) is part of the page for everyone who may open it (owner decision
+  // 2026-11-21); it is downloaded through the Accounts route, so no AMC Contracts access is needed or given.
+  // Role visibility (Roles & Permissions): a column hidden from the user's role is neither shown nor offered; the API
+  // does not send its data either.
+  const offered = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id) && shows(auth.user, `invoices.column.${id}`))
   const shown = (id: ColumnId) => offered.includes(id) && !hidden.has(id)
   const visible = offered.filter(shown)
 
@@ -376,7 +382,7 @@ export function AccountsPage() {
       )}
 
       {/* Keyed by user: the saved names and order are read when the cards mount, so a change of user reads them again. */}
-      <KpiCards key={userId} userId={userId} kpis={data?.kpis} />
+      <KpiCards key={userId} userId={userId} kpis={data?.kpis} valueShown={shows(auth.user, 'invoices.column.visitValue')} />
       <div className="-mt-3 mb-4">
         <KpiScopeNote cards={`${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} rows={`the same ${scheduledPeriod(filters.month, filters.year)}, with every filter applied.`} />
       </div>
@@ -651,7 +657,7 @@ function FilteredTotals({ kpis, visible }: { kpis: AccountsKpis; visible: readon
  * on Service Sales. Both fetch /accounts/:visitId/report with the signed-in user's token (ACCOUNTS:VIEW, checked by
  * the API); View opens the read-only viewer, Download saves the file under its original name.
  */
-function ServiceReportCell({ item }: { item: AccountsItem }) {
+function ServiceReportCell({ item, canOpen = true }: { item: AccountsItem; canOpen?: boolean }) {
   const report = item.serviceReport
   const [viewing, setViewing] = useState(false)
   const [downloading, setDownloading] = useState(false)
@@ -663,6 +669,10 @@ function ServiceReportCell({ item }: { item: AccountsItem }) {
         Not uploaded
       </span>
     )
+  }
+  // Role visibility: the role sees that a report exists but may not open it (the API refuses it too).
+  if (!canOpen) {
+    return <span className="whitespace-nowrap text-slate-600">Uploaded</span>
   }
 
   const subject = `${item.reference} ${serviceCodeLabel(item.service)}`
@@ -696,10 +706,10 @@ function ServiceReportCell({ item }: { item: AccountsItem }) {
 
 /**
  * The AMC Contract column: the contract document uploaded on AMC Contracts for THIS service's contract. Download only,
- * through the shared attachment download (/attachments/:id/download), which checks AMC Contracts: View on the server;
- * the file is saved under its original name and nothing is copied or changed.
+ * through the Accounts route (/accounts/:id/contract-document, Accounts: View), so an Accounts user needs no AMC
+ * Contracts access; the file is saved under its original name and nothing is copied or changed.
  */
-function ContractDocumentCell({ item }: { item: AccountsItem }) {
+function ContractDocumentCell({ item, canDownload = true }: { item: AccountsItem; canDownload?: boolean }) {
   const contractFile = item.contractDocument
   const [downloading, setDownloading] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
@@ -711,12 +721,16 @@ function ContractDocumentCell({ item }: { item: AccountsItem }) {
       </span>
     )
   }
+  // Role visibility: the role sees that the contract has a document but may not download it (the API refuses it too).
+  if (!canDownload) {
+    return <span className="whitespace-nowrap text-slate-600">Uploaded</span>
+  }
 
   const save = async () => {
     setDownloading(true)
     setFailure(null)
     try {
-      const file = await download(`/attachments/${contractFile.id}/download`)
+      const file = await download(`/accounts/${item.id}/contract-document`)
       // The original name as uploaded (already cleaned by the API), never the server's ASCII fallback.
       saveFile({ blob: new Blob([file.blob], { type: contractFile.mimeType }), filename: contractFile.originalName }, contractFile.originalName)
     } catch (error) {
@@ -740,6 +754,7 @@ function ContractDocumentCell({ item }: { item: AccountsItem }) {
 
 function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProps) {
   const tone = COLOUR_TONE[item.colour]
+  const auth = useAuth()
 
   return (
     <tr className={cx(TABLE.row, 'acc-row')} data-colour={item.colour}>
@@ -794,12 +809,12 @@ function Row({ item, number, shown, canViewContract, canEditInvoiceNo }: RowProp
       )}
       {shown('serviceReport') && (
         <td className={TABLE.td}>
-          <ServiceReportCell item={item} />
+          <ServiceReportCell item={item} canOpen={shows(auth.user, 'invoices.action.serviceReport')} />
         </td>
       )}
       {shown('amcContract') && (
         <td className={TABLE.td}>
-          <ContractDocumentCell item={item} />
+          <ContractDocumentCell item={item} canDownload={shows(auth.user, 'invoices.action.downloadContract')} />
         </td>
       )}
       {/* Client UAT CR-011 to CR-013: the contract's Sales Engineer, the visit's Service Engineer, the contract's Customer PO Value. */}

@@ -10,6 +10,7 @@ import { Pager } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Alert, Badge, Button, ConfirmDialog, EmptyState, OptionsNotice, PageHeader, Spinner, TableScroll } from '../../components/ui'
 import { api, errorMessage } from '../../lib/api'
+import { hiddenField } from '../../lib/visibility'
 import { ColumnsMenu, type ColumnOption } from '../clients/ColumnsMenu'
 import { AssignmentWarning, SalesEngineerFormModal } from './SalesEngineerFormModal'
 import { ENGINEER_STATUS_LABELS, isFeatureUnavailable, type Department, type MasterList, type EngineerRecord } from './masterTypes'
@@ -46,6 +47,8 @@ const COLUMN_OPTIONS: ColumnOption<ColumnKey>[] = [
   { key: 'user', label: 'User account' },
   { key: 'status', label: 'Status' },
 ]
+/** The table columns a role may have hidden (page visibility, API shared/visibility-catalog.ts), by catalogue column. */
+const ROLE_COLUMNS = { employeeNo: 'employeeNo', department: 'department', email: 'email', phone: 'phone', user: 'linkedUser' } as const
 
 // The hidden columns, remembered in this browser only. Storage may be blocked; the choice then lasts for this visit.
 const COLUMNS_KEY = 'stslev.sales-engineers.hidden-columns'
@@ -124,7 +127,10 @@ export function SalesEngineersPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [hiddenColumns, setHiddenColumns] = useState<Set<ColumnKey>>(readHiddenColumns)
-  const show = (key: ColumnKey) => !hiddenColumns.has(key)
+  // Page visibility (0123, step B): a column hidden from the user's role is not offered; the API no longer sends it.
+  const roleHides = (key: ColumnKey) => key in ROLE_COLUMNS && hiddenField(auth.user, 'salesEngineers', ROLE_COLUMNS[key as keyof typeof ROLE_COLUMNS])
+  const columnOptions = COLUMN_OPTIONS.filter((option) => !roleHides(option.key))
+  const show = (key: ColumnKey) => !hiddenColumns.has(key) && !roleHides(key)
 
   // Wait for a pause in typing before searching.
   useEffect(() => {
@@ -302,7 +308,8 @@ export function SalesEngineersPage() {
                     </select>
                   )}
                 </Field>
-                <Field label="Department">
+                {/* A Department hidden from the role is not offered as a filter either. */}
+                {!roleHides('department') && <Field label="Department">
                   {(id) => (
                     <select
                       id={id}
@@ -324,7 +331,7 @@ export function SalesEngineersPage() {
                       <option value="none">No department</option>
                     </select>
                   )}
-                </Field>
+                </Field>}
                 <Field label="Sort">
                   {(id) => (
                     <select
@@ -346,7 +353,7 @@ export function SalesEngineersPage() {
                 </Field>
                 <div className="sm:ml-auto">
                   <ColumnsMenu
-                    options={COLUMN_OPTIONS}
+                    options={columnOptions}
                     hidden={hiddenColumns}
                     onChange={(next) => {
                       setHiddenColumns(next)

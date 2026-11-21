@@ -685,10 +685,10 @@ describe('Accounts AMC Contract column (contract document download)', () => {
     return saved
   }
 
-  it('sits right after Service Report and downloads the document of each row\'s own contract through the attachment download', async () => {
+  it('sits right after Service Report and downloads the document of each row\'s own contract through the Accounts route', async () => {
     const saved = captureSaves()
     const api = accountsApi(VIEWER, [WITH_DOC, OTHER_DOC, NO_DOC], (request) =>
-      request.path === '/attachments/501/download' || request.path === '/attachments/502/download' ? ok('%PDF-1.4') : undefined,
+      request.path === '/accounts/1/contract-document' || request.path === '/accounts/2/contract-document' ? ok('%PDF-1.4') : undefined,
     )
     renderPage()
     await screen.findByText('AMC-0007')
@@ -697,12 +697,13 @@ describe('Accounts AMC Contract column (contract document download)', () => {
 
     await userEvent.click(within(cellOf('AMC-0008')).getByRole('button', { name: /^Download AMC contract for AMC-0008/ }))
     await waitFor(() => expect(saved).toEqual(['Beta contract.pdf']))
-    expect(api.find('GET', '/attachments/502/download')).toHaveLength(1)
-    expect(api.find('GET', '/attachments/501/download')).toHaveLength(0)
+    expect(api.find('GET', '/accounts/2/contract-document')).toHaveLength(1)
+    expect(api.find('GET', '/accounts/1/contract-document')).toHaveLength(0)
+    expect(api.find('GET', '/attachments/502/download')).toHaveLength(0)
 
     await userEvent.click(within(cellOf('AMC-0007')).getByRole('button', { name: /^Download AMC contract for AMC-0007/ }))
     await waitFor(() => expect(saved).toEqual(['Beta contract.pdf', 'Alpha signed contract.pdf']))
-    expect(api.find('GET', '/attachments/501/download')[0]?.authorization).toBe('Bearer test-token')
+    expect(api.find('GET', '/accounts/1/contract-document')[0]?.authorization).toBe('Bearer test-token')
   })
 
   it('shows "Not uploaded" and no button when the contract has no document', async () => {
@@ -716,7 +717,7 @@ describe('Accounts AMC Contract column (contract document download)', () => {
 
   it('shows the server\'s reason when the download is refused, and saves nothing', async () => {
     const saved = captureSaves()
-    accountsApi(VIEWER, [WITH_DOC], (request) => (request.path === '/attachments/501/download' ? fail(403, 'FORBIDDEN', 'You do not have permission to perform this action.') : undefined))
+    accountsApi(VIEWER, [WITH_DOC], (request) => (request.path === '/accounts/1/contract-document' ? fail(403, 'FORBIDDEN', 'You do not have permission to perform this action.') : undefined))
     renderPage()
     await screen.findByText('AMC-0007')
 
@@ -725,15 +726,48 @@ describe('Accounts AMC Contract column (contract document download)', () => {
     expect(saved).toEqual([])
   })
 
-  it('is neither shown nor offered in Hide Columns to a user without AMC Contracts: View', async () => {
-    accountsApi(ACCOUNTS_ONLY, [{ ...WITH_DOC, contractDocument: null }])
+  it('is shown to an Accounts user without AMC Contracts: View, who downloads it without getting the contract link', async () => {
+    const saved = captureSaves()
+    const api = accountsApi(ACCOUNTS_ONLY, [WITH_DOC], (request) => (request.path === '/accounts/1/contract-document' ? ok('%PDF-1.4') : undefined))
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    expect(headers()).toContain('AMC Contract')
+    expect(screen.getByRole('button', { name: 'Hide Columns · 13 of 14 shown' })).toBeInTheDocument()
+    // The AMC Reference stays plain text: AMC Contracts itself still needs AMC Contracts: View.
+    expect(within(rowOf('AMC-0007')).queryByRole('link', { name: /Contract AMC-0007/ })).not.toBeInTheDocument()
+
+    await userEvent.click(within(cellOf('AMC-0007')).getByRole('button', { name: /^Download AMC contract for AMC-0007/ }))
+    await waitFor(() => expect(saved).toEqual(['Alpha signed contract.pdf']))
+    expect(api.find('GET', '/accounts/1/contract-document')).toHaveLength(1)
+  })
+
+  it('shows "Uploaded" without a download when the role may not download the contract (role visibility)', async () => {
+    const api = accountsApi({ ...ACCOUNTS_ONLY, hidden: ['invoices.action.downloadContract'] }, [WITH_DOC])
+    renderPage()
+    await screen.findByText('AMC-0007')
+
+    expect(cellOf('AMC-0007')).toHaveTextContent('Uploaded')
+    expect(within(cellOf('AMC-0007')).queryByRole('button')).not.toBeInTheDocument()
+    expect(api.find('GET', '/accounts/1/contract-document')).toHaveLength(0)
+  })
+
+  it('is neither shown nor offered when the column is hidden from the role, nor are other hidden columns', async () => {
+    accountsApi({ ...ACCOUNTS_ONLY, hidden: ['invoices.column.amcContract', 'invoices.column.salesEngineer', 'invoices.column.visitValue'] }, [{ ...WITH_DOC, contractDocument: null }])
     renderPage()
     await screen.findByText('AMC-0007')
 
     expect(headers()).not.toContain('AMC Contract')
-    expect(screen.getByRole('button', { name: 'Hide Columns · 12 of 13 shown' })).toBeInTheDocument()
+    expect(headers()).not.toContain('Sales Engineer')
+    expect(headers()).not.toContain('Service Value (ex VAT)')
+    expect(headers()).toContain('Invoice No.')
+    // Total Value is built from Service Value, so its card goes too.
+    expect(document.querySelector('[data-kpi="totalValue"]')).toBeNull()
+    expect(document.querySelector('[data-kpi="rows"]')).not.toBeNull()
     await userEvent.click(screen.getByRole('button', { name: /Hide Columns/ }))
-    expect(within(screen.getByRole('dialog')).queryByRole('checkbox', { name: 'AMC Contract' })).not.toBeInTheDocument()
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).queryByRole('checkbox', { name: 'AMC Contract' })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('checkbox', { name: 'Sales Engineer' })).not.toBeInTheDocument()
   })
 
   it('can be hidden, is remembered, and never reaches the export as a hidden column', async () => {

@@ -31,7 +31,8 @@ export interface MaintenanceFrequencyRule {
   codePrefix: string
   /** "4 services · every 3 months". */
   ruleSummary: string
-  sortOrder: number
+  /** Null when Sort Order is hidden from the user's role (page visibility). */
+  sortOrder: number | null
   status: FrequencyStatus
   isActive: boolean
   archivedAt: string | null

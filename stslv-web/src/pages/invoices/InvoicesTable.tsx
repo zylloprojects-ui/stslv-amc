@@ -4,6 +4,7 @@ import { Money } from '../../components/records'
 import { TABLE } from '../../components/table'
 import { Badge } from '../../components/ui'
 import { cx, formatDate } from '../../lib/format'
+import { hiddenField } from '../../lib/visibility'
 import { allocationLabel, INVOICE_STATUS_LABELS, type Invoice } from '../../lib/invoiceTypes'
 import type { InvoiceDialog } from './InvoiceDialogs'
 
@@ -23,7 +24,10 @@ export function InvoiceStatusBadge({ status }: { status: Invoice['status'] }) {
 
 export function InvoicesTable({ items, showClient, canEdit, onDialog, startAt = 0 }: InvoicesTableProps) {
   // One invoice's details need View; data-only Read shows the numbers in this list only.
-  const canOpen = useAuth().can('INVOICES', 'VIEW')
+  const auth = useAuth()
+  const canOpen = auth.can('INVOICES', 'VIEW')
+  // Page visibility (0123, step B): Total may be hidden from the user's role; the API then sends none.
+  const showTotal = !hiddenField(auth.user, 'invoiceTracking', 'total')
   return (
     <div className={TABLE.wrapper}>
       <table className={TABLE.table}>
@@ -53,9 +57,11 @@ export function InvoicesTable({ items, showClient, canEdit, onDialog, startAt = 
             <th scope="col" className={`${TABLE.th} text-right`}>
               VAT
             </th>
-            <th scope="col" className={`${TABLE.th} text-right`}>
-              Total
-            </th>
+            {showTotal && (
+              <th scope="col" className={`${TABLE.th} text-right`}>
+                Total
+              </th>
+            )}
             <th scope="col" className={TABLE.th}>
               Status
             </th>
@@ -96,9 +102,11 @@ export function InvoicesTable({ items, showClient, canEdit, onDialog, startAt = 
                 <td className={cx(TABLE.td, 'text-right', cancelled && 'line-through')}>
                   <Money value={invoice.vatAmount} />
                 </td>
-                <td className={cx(TABLE.td, 'text-right', cancelled && 'line-through')}>
-                  <Money value={invoice.totalAmount} />
-                </td>
+                {showTotal && (
+                  <td className={cx(TABLE.td, 'text-right', cancelled && 'line-through')}>
+                    <Money value={invoice.totalAmount} />
+                  </td>
+                )}
                 <td className={`${TABLE.td} whitespace-nowrap`}>
                   <InvoiceStatusBadge status={invoice.status} />
                 </td>

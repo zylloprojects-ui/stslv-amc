@@ -2,8 +2,10 @@ import { createHash } from "node:crypto";
 import { pool } from "../../config/database";
 import { logActivity } from "../../shared/activity-log";
 import { withTransaction, type Queryable } from "../../shared/db";
-import { conflict, forbidden, notFound, validationError } from "../../shared/errors";
+import { AppError, conflict, forbidden, notFound, validationError } from "../../shared/errors";
 import { isGrantable } from "../../shared/permission-catalog";
+import { schemaHas } from "../../shared/schema-features";
+import { sectionOfItem, VISIBILITY_KEYS } from "../../shared/visibility-catalog";
 import { ADMIN_ROLE_CODE, holdsPermission, permissionKey, type Action, type Module, type PermissionKey } from "../../shared/permissions";
 import {
   BUILT_IN_ROLE_NAMES,
@@ -33,6 +35,7 @@ interface RoleRow {
   is_active: boolean;
   user_count: number;
   permissions: Permission[];
+  hidden_items: string[];
 }
 
 export interface Role {
@@ -65,6 +68,10 @@ export interface Role {
   scope: PermissionKey[] | null;
   /** Whether the signed-in user may give this role to someone: active, and within their own authority. */
   assignable: boolean;
+  /** The page items hidden from this role (shared/visibility-catalog.ts). Empty: the role sees every page in full. */
+  hiddenItems: string[];
+  /** Identifies the saved hidden items, as permissionsVersion does the permissions. */
+  visibilityVersion: string;
 }
 
 const SUPER_ADMIN_LOCKED = "Super Admin always has full access. Its permissions cannot be changed.";
@@ -72,18 +79,24 @@ export const ROLE_ADMINISTRATORS_ONLY = `Only Super Admin, and ${BUILT_IN_ROLE_N
 const BUILT_IN_SUPER_ADMIN_ONLY = "Only Super Admin can change a built-in role or its permissions.";
 const OWN_ROLE = "You cannot change a role you hold yourself.";
 const BEYOND_AUTHORITY = "This role grants permissions you do not hold. Only Super Admin can change it.";
+const STALE_VISIBILITY =
+  "This role's page visibility was changed by someone else since you opened it. Load the latest settings and make your change again.";
 const STALE_PERMISSIONS =
   "These permissions were changed by someone else since you opened them. Load the latest permissions and make your change again.";
 
-const ROLE_SELECT = `
+/** `visibility`: whether migration 0123 (role_hidden_items) is applied; before it no role hides anything. */
+const roleSelect = (visibility: boolean) => `
   SELECT r.id, r.code, r.name, r.description, r.is_active,
          (SELECT count(*)::int FROM user_roles ur WHERE ur.role_id = r.id) AS user_count,
          COALESCE(
            (SELECT json_agg(json_build_object('module', rp.module, 'action', rp.action) ORDER BY rp.module, rp.action)
             FROM role_permissions rp WHERE rp.role_id = r.id),
            '[]'
-         ) AS permissions
+         ) AS permissions,
+         ${visibility ? "COALESCE(ARRAY(SELECT h.item_key FROM role_hidden_items h WHERE h.role_id = r.id ORDER BY h.item_key), '{}')" : "'{}'::text[]"} AS hidden_items
   FROM roles r`;
+
+const visibilityInstalled = () => schemaHas(["role_hidden_items"]);
 
 /**
  * Who manages roles (approved 2026-11-09): Super Admin, and Admin while holding Users & Access Edit. Super Admin
@@ -155,17 +168,24 @@ function toRole(auth: AuthContext, row: RoleRow): Role {
       row.is_active &&
       (!isPrivilegedRole(row.code) || isSuperAdmin(auth.roles)) &&
       row.permissions.every((permission) => holdsPermission(auth.permissions, keyOf(permission))),
+    hiddenItems: row.hidden_items,
+    visibilityVersion: visibilityVersionOf(row.hidden_items),
   };
 }
 
+/** A short fingerprint of a set of hidden items, independent of order. */
+export function visibilityVersionOf(hidden: readonly string[]): string {
+  return createHash("sha256").update(["visibility", ...[...hidden].sort()].join(",")).digest("hex").slice(0, 16);
+}
+
 export async function listRoles(auth: AuthContext): Promise<Role[]> {
-  const result = await pool.query<RoleRow>(`${ROLE_SELECT} ORDER BY r.id`);
+  const result = await pool.query<RoleRow>(`${roleSelect(await visibilityInstalled())} ORDER BY r.id`);
 
   return result.rows.map((row) => toRole(auth, row));
 }
 
 async function findRole(auth: AuthContext, db: Queryable, id: string): Promise<Role> {
-  const result = await db.query<RoleRow>(`${ROLE_SELECT} WHERE r.id = $1`, [id]);
+  const result = await db.query<RoleRow>(`${roleSelect(await visibilityInstalled())} WHERE r.id = $1`, [id]);
   const row = result.rows[0];
 
   if (!row) {
@@ -280,6 +300,74 @@ export function setRolePermissions(auth: AuthContext, roleId: string, permission
       entityId: roleId,
       description: `Permissions changed for role "${role.name}".`,
       metadata: { added: added.map(keyOf), removed: removed.map(keyOf) },
+    });
+
+    return findRole(auth, client, roleId);
+  });
+}
+
+/**
+ * Replaces the page items hidden from a role (role visibility, shared/visibility-catalog.ts). The same people may do
+ * it as may change the role's permissions (lockedReason): Super Admin, or Admin for a role it may configure. Admin
+ * changes only items of pages Admin may open itself. Super Admin's own role never hides anything. expectedVersion
+ * is the visibilityVersion the change started from: a set changed meanwhile is not overwritten (409).
+ */
+export async function setRoleVisibility(auth: AuthContext, roleId: string, hidden: string[], expectedVersion: string): Promise<Role> {
+  assertRoleAdministrator(auth);
+
+  if (!(await visibilityInstalled())) {
+    throw new AppError(503, "FEATURE_UNAVAILABLE", "Role visibility is not available until the database is updated (migration 0123).");
+  }
+
+  const unknown = hidden.find((key) => !VISIBILITY_KEYS.has(key));
+  if (unknown) {
+    throw validationError(`"${unknown}" is not a page item that can be hidden.`);
+  }
+
+  return withTransaction(async (client) => {
+    await client.query("SELECT 1 FROM roles WHERE id = $1 FOR UPDATE", [roleId]);
+    const role = await findRole(auth, client, roleId);
+
+    if (role.lockedReason) {
+      throw forbidden(role.lockedReason);
+    }
+    if (role.visibilityVersion !== expectedVersion) {
+      throw conflict(STALE_VISIBILITY);
+    }
+
+    const wanted = new Set(hidden);
+    const current = new Set(role.hiddenItems);
+    const added = [...wanted].filter((key) => !current.has(key)).sort();
+    const removed = [...current].filter((key) => !wanted.has(key)).sort();
+
+    if (added.length === 0 && removed.length === 0) {
+      return role;
+    }
+
+    // Admin changes only what Admin can see the page of itself (Super Admin sees every page).
+    const beyond = [...added, ...removed].find((key) => {
+      const section = sectionOfItem(key);
+      return section !== undefined && !holdsPermission(auth.permissions, section.requires);
+    });
+    if (beyond) {
+      throw forbidden(`You cannot change "${beyond}" because you cannot open its page yourself.`);
+    }
+
+    if (removed.length > 0) {
+      await client.query("DELETE FROM role_hidden_items WHERE role_id = $1 AND item_key = ANY($2::text[])", [roleId, removed]);
+    }
+    if (added.length > 0) {
+      await client.query("INSERT INTO role_hidden_items (role_id, item_key) SELECT $1, unnest($2::text[])", [roleId, added]);
+    }
+
+    await logActivity(client, {
+      userId: auth.user.id,
+      action: "role.visibility_changed",
+      module: "USERS",
+      entityType: "roles",
+      entityId: roleId,
+      description: `Page visibility changed for role "${role.name}".`,
+      metadata: { hidden: added, shown: removed },
     });
 
     return findRole(auth, client, roleId);

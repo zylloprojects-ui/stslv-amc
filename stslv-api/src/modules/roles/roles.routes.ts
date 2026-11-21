@@ -6,7 +6,9 @@ import { forbidden } from "../../shared/errors";
 import { FIXED_ACCESS, PERMISSION_CATALOG } from "../../shared/permission-catalog";
 import { ACTIONS, MODULES } from "../../shared/permissions";
 import { parseIdParam } from "../../shared/validation";
-import { canManageRoles, createRole, deleteRole, listRoles, ROLE_ADMINISTRATORS_ONLY, setRolePermissions, updateRole } from "./roles.service";
+import { schemaHas } from "../../shared/schema-features";
+import { VISIBILITY_CATALOG, VISIBILITY_KEYS } from "../../shared/visibility-catalog";
+import { canManageRoles, createRole, deleteRole, listRoles, ROLE_ADMINISTRATORS_ONLY, setRolePermissions, setRoleVisibility, updateRole } from "./roles.service";
 
 /** Super Admin, or Admin with Users & Access Edit. Which roles Admin may change is decided per role by the service. */
 const roleAdministrators: RequestHandler = (req, _res, next) => {
@@ -59,8 +61,28 @@ rolesRouter.get("/", authorize("USERS", "VIEW"), async (req, res) => {
   // catalog: what each module governs and which of its actions are used, for Roles & Permissions.
   res.json({
     success: true,
-    data: { roles: await listRoles(auth), canManageRoles: canManageRoles(auth), modules: MODULES, actions: ACTIONS, catalog: PERMISSION_CATALOG, fixedAccess: FIXED_ACCESS },
+    data: {
+      roles: await listRoles(auth),
+      canManageRoles: canManageRoles(auth),
+      modules: MODULES,
+      actions: ACTIONS,
+      catalog: PERMISSION_CATALOG,
+      fixedAccess: FIXED_ACCESS,
+      // Role visibility (0123): the page items that can be hidden from a role; null before the migration.
+      visibilityCatalog: (await schemaHas(["role_hidden_items"])) ? VISIBILITY_CATALOG : null,
+    },
   });
+});
+
+const setVisibilitySchema = z.strictObject({
+  hidden: z.array(z.string().max(80)).max(VISIBILITY_KEYS.size),
+  expectedVersion: z.string().regex(/^[0-9a-f]{16}$/, "Reload the role settings and try again."),
+});
+
+rolesRouter.put("/:id/visibility", roleAdministrators, async (req, res) => {
+  const { hidden, expectedVersion } = setVisibilitySchema.parse(req.body);
+
+  res.json({ success: true, data: await setRoleVisibility(requireAuth(req), parseIdParam(req.params.id), hidden, expectedVersion) });
 });
 
 rolesRouter.post("/", roleAdministrators, async (req, res) => {

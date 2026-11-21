@@ -19,6 +19,7 @@ import { invoiceAcknowledgementsRouter } from "./modules/invoice-acknowledgement
 import { departmentsRouter } from "./modules/masters/departments.routes";
 import { maintenanceFrequenciesRouter } from "./modules/masters/maintenance-frequencies.routes";
 import { mastersRouter } from "./modules/masters/masters.routes";
+import { MASTER_VISIBILITY } from "./modules/masters/masters.visibility";
 import { systemTypesRouter } from "./modules/masters/system-types.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { procurementRouter } from "./modules/procurement/procurement.routes";
@@ -107,6 +108,9 @@ export function createApp() {
   app.use("/api/audit", auditRouter);
   app.use("/api/security", securityRouter);
   app.use("/api/reports", reportsRouter);
+  // Role visibility (0123, step B) on the master lists: placed ahead of every router that answers a list's routes,
+  // so each JSON answer leaves out the fields hidden from the user's role. It reads req.auth only when answering.
+  for (const { path, handler } of MASTER_VISIBILITY) app.use(path, handler);
   // System type export, linked contracts and delete; anything else falls through to the shared master-list routes.
   app.use("/api/masters/system-types", systemTypesRouter);
   // Department list (description search, name order) and export; anything else falls through to the shared master-list routes.

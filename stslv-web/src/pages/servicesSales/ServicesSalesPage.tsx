@@ -2,6 +2,7 @@ import { refreshOperationalData } from '../../lib/refreshOperationalData'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState, type ReactNode } from 'react'
 import { useAuth } from '../../auth/context'
+import { shows } from '../../lib/visibility'
 import { ExportButtons } from '../../components/ExportButtons'
 import { KpiScopeNote } from '../../components/KpiScopeNote'
 import { StatTile } from '../../components/StatTile'
@@ -348,7 +349,8 @@ export function ServicesSalesPage() {
   const data = sales.data
   // The value columns are not shown in this table (2026-11-18), whatever the user's access; the API, its data and the
   // downloads are unchanged.
-  const available = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id))
+  // Role visibility (Roles & Permissions): a column hidden from the user's role is neither shown nor offered.
+  const available = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id) && shows(auth.user, `serviceSales.column.${id}`))
   const shown = (id: ColumnId) => available.includes(id) && !hidden.has(id)
 
   return (

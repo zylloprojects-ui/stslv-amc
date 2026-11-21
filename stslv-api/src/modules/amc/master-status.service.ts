@@ -1,9 +1,9 @@
 import { pool } from "../../config/database";
 import { escapeLike } from "../../shared/validation";
 import { holdsPermission } from "../../shared/permissions";
-import type { AuthContext } from "../auth/access";
+import { hiddenColumnsOf, type AuthContext } from "../auth/access";
 import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants";
-import type { ListMasterStatusQuery, RowColour } from "./master-status.schemas";
+import type { ListMasterStatusQuery, MasterStatusColumn, RowColour } from "./master-status.schemas";
 import { serviceStatusSql } from "./service-status.service";
 import { NO_AMOUNT_SOURCE_SQL } from "./value-source";
 import { hasStoredReference, referenceSql } from "./contract-reference";
@@ -153,13 +153,51 @@ export interface MasterStatusAccess {
   amcValue: boolean;
   /** The Invoice Acknowledged column: Invoice Acknowledgements: View. */
   acknowledgements?: boolean;
+  /** Columns hidden from the user's role (role visibility, 0123): their data is not sent. */
+  hiddenColumns?: ReadonlySet<MasterStatusColumn>;
 }
 
-export async function masterStatusAccess(auth: Pick<AuthContext, "permissions">): Promise<MasterStatusAccess> {
+/** The Master AMC Status columns role visibility can hide (the row-defining ones always stay). */
+export const ROLE_HIDEABLE_MASTER_COLUMNS = ["client", "system", "frequency", "service", "visitValue", "serviceEngineer", "invoiceNo", "quotationNo", "acknowledgement", "salesEngineer"] as const satisfies readonly MasterStatusColumn[];
+
+/** Blanks what the role may not see. The row (reference, month, status, colour) and its identifiers stay. */
+function withoutHiddenColumns(item: MasterStatusItem, hidden: ReadonlySet<MasterStatusColumn> | undefined): MasterStatusItem {
+  if (!hidden || hidden.size === 0) return item;
+  const off = (column: MasterStatusColumn) => hidden.has(column);
+
+  return {
+    ...item,
+    client: off("client") ? { id: item.client.id, name: "" } : item.client,
+    system: off("system") ? { description: "", typeId: null, typeName: null } : item.system,
+    frequency: off("frequency") ? { code: "", label: "" } : item.frequency,
+    service: off("service") ? { sequenceNo: 0, cycleNo: null, serviceCode: null } : item.service,
+    visitValue: off("visitValue") ? null : item.visitValue,
+    valueSourceMissing: off("visitValue") ? false : item.valueSourceMissing,
+    amcValue: off("visitValue") ? null : item.amcValue,
+    invoiceValue: off("visitValue") ? null : item.invoiceValue,
+    serviceEngineer: off("serviceEngineer") ? null : item.serviceEngineer,
+    manualInvoiceNo: off("invoiceNo") ? null : item.manualInvoiceNo,
+    invoiceNumbers: off("invoiceNo") ? [] : item.invoiceNumbers,
+    invoiceReferences: off("invoiceNo") ? [] : item.invoiceReferences,
+    quotationNo: off("quotationNo") ? null : item.quotationNo,
+    acknowledgement: off("acknowledgement") ? null : item.acknowledgement,
+    salesEngineer: off("salesEngineer") ? null : item.salesEngineer,
+  };
+}
+
+/** The card figures without the value totals when the value column is hidden (the counts stay). */
+function kpisWithout(figures: MasterStatusKpis, hidden: ReadonlySet<MasterStatusColumn> | undefined): MasterStatusKpis {
+  if (!hidden?.has("visitValue")) return figures;
+  const { totalValue: _t, valueMissing: _m, paidValue: _p, invoiceValue: _i, ...counts } = figures;
+  return counts as MasterStatusKpis;
+}
+
+export async function masterStatusAccess(auth: Pick<AuthContext, "permissions" | "hidden">): Promise<MasterStatusAccess> {
   // No permission set (an internal caller): nothing extra is shown.
   return {
     amcValue: auth.permissions ? holdsPermission(auth.permissions, "AMC_CONTRACTS:VIEW") : false,
     acknowledgements: await serviceAcknowledgementsVisible(auth),
+    hiddenColumns: hiddenColumnsOf(auth, "masterStatus", ROLE_HIDEABLE_MASTER_COLUMNS),
   };
 }
 
@@ -314,7 +352,19 @@ export async function listMasterStatus(query: ListMasterStatusQuery, access: Mas
     ]),
   ]);
 
-  return { items: rows.rows.map((row) => toItem(row, access)), total: figures.total, page: query.page, pageSize: query.pageSize, kpis: figures, amcValueVisible: access.amcValue, acknowledgementsVisible: access.acknowledgements === true };
+  const hidden = access.hiddenColumns;
+
+  return {
+    items: rows.rows.map((row) => withoutHiddenColumns(toItem(row, access), hidden)),
+    total: figures.total,
+    page: query.page,
+    pageSize: query.pageSize,
+    kpis: kpisWithout(figures, hidden),
+    amcValueVisible: access.amcValue && !hidden?.has("visitValue"),
+    acknowledgementsVisible: access.acknowledgements === true && !hidden?.has("acknowledgement"),
+    // The columns this user's role does not see (role visibility): the page leaves them out.
+    roleHiddenColumns: [...(hidden ?? [])],
+  };
 }
 
 /**
