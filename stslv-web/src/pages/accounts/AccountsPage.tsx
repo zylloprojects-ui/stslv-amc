@@ -345,9 +345,9 @@ export function AccountsPage() {
   // The AMC Value (ex VAT) column (CR-013, the Customer PO Value) is not shown in this table or offered in Hide Columns
   // (owner request 2026-11-18). The API, its data and the downloads are unchanged; the downloads still follow the
   // hidden list as before. The AMC Value / Year line under Service Value is a separate figure and stays.
-  // The AMC Contract column (the contract document) only for users who may view AMC Contracts: the API sends the
-  // documents, and the attachment download serves them, only to those users.
-  const offered = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id) && (id !== 'amcContract' || canViewContract))
+  // The AMC Contract column (the contract document) is part of the page for everyone who may open it (owner decision
+  // 2026-11-21); it is downloaded through the Accounts route, so no AMC Contracts access is needed or given.
+  const offered = COLUMN_IDS.filter((id) => !TABLE_HIDDEN_COLUMNS.has(id))
   const shown = (id: ColumnId) => offered.includes(id) && !hidden.has(id)
   const visible = offered.filter(shown)
 
@@ -696,8 +696,8 @@ function ServiceReportCell({ item }: { item: AccountsItem }) {
 
 /**
  * The AMC Contract column: the contract document uploaded on AMC Contracts for THIS service's contract. Download only,
- * through the shared attachment download (/attachments/:id/download), which checks AMC Contracts: View on the server;
- * the file is saved under its original name and nothing is copied or changed.
+ * through the Accounts route (/accounts/:id/contract-document, Accounts: View), so an Accounts user needs no AMC
+ * Contracts access; the file is saved under its original name and nothing is copied or changed.
  */
 function ContractDocumentCell({ item }: { item: AccountsItem }) {
   const contractFile = item.contractDocument
@@ -716,7 +716,7 @@ function ContractDocumentCell({ item }: { item: AccountsItem }) {
     setDownloading(true)
     setFailure(null)
     try {
-      const file = await download(`/attachments/${contractFile.id}/download`)
+      const file = await download(`/accounts/${item.id}/contract-document`)
       // The original name as uploaded (already cleaned by the API), never the server's ASCII fallback.
       saveFile({ blob: new Blob([file.blob], { type: contractFile.mimeType }), filename: contractFile.originalName }, contractFile.originalName)
     } catch (error) {

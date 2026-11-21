@@ -571,8 +571,9 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 > **AMC Contract column (2026-11-19).** After the *Service Report* column, *AMC Contract* has a download icon that saves
 > the contract document uploaded on AMC Contracts for **that service's own contract** (a renewal's services give the
 > renewal's own document), under its original file name. When the contract has none, the cell reads "Not uploaded". The
-> column is shown, and offered in Hide Columns, only to users who may view AMC Contracts, the same permission the
-> document needs everywhere else; nothing is copied or changed, and the file is not part of the Excel or PDF downloads.
+> column is shown to everyone who may open Invoices, even without access to AMC Contracts (2026-11-21): it downloads
+> only that service's contract document and does not open the AMC Contracts pages. Nothing is copied or changed, and
+> the file is not part of the Excel or PDF downloads.
 
 **Page:** Accounts → Invoices (`/finance/accounts`; the page is titled Accounts). **Permissions:** *Accounts: View / Export*; *Invoice Tracking: Edit* to change the Invoice No.
 

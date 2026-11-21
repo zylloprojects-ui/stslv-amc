@@ -9,8 +9,9 @@ import { activeContract, contractBody, contractDocument, createClient, grant, le
 import { api, closePool, resetData, signedIn } from "./helpers";
 
 // Accounts → Invoices: the AMC Contract column. Each service row names the contract document of ITS OWN contract (the
-// SIGNED_CONTRACT document saved with Add AMC Contract or Start Renewal), downloaded through the existing attachment
-// download, which checks AMC Contracts: View. Accounts writes nothing and copies no file. Every record here is invented.
+// SIGNED_CONTRACT document saved with Add AMC Contract or Start Renewal). Since 2026-11-21 (owner decision) it is part of
+// the page for every Accounts: View user and is downloaded through GET /api/accounts/:id/contract-document, without any
+// AMC Contracts access. Accounts writes nothing and copies no file. Every record here is invented.
 
 let folder: string;
 let disk: LocalDiskStorage;
@@ -40,6 +41,15 @@ const download = (id: string, session?: Session) => {
   });
 };
 
+const contractDownload = (visitId: string, session?: Session) => {
+  const request = api().get(`/api/accounts/${visitId}/contract-document`);
+  return (session ? request.set(session.headers) : request).buffer(true).parse((res, done) => {
+    const chunks: Buffer[] = [];
+    res.on("data", (chunk: Buffer) => chunks.push(chunk));
+    res.on("end", () => done(null, Buffer.concat(chunks)));
+  });
+};
+
 async function customRole(code: string, permissions: [string, string][]) {
   await pool.query("INSERT INTO roles (code, name) VALUES ($1, $1) ON CONFLICT DO NOTHING", [code]);
   await grant(code, permissions);
@@ -62,6 +72,7 @@ beforeAll(async () => {
     ["AMC_CONTRACTS", "VIEW"],
   ]);
   accountsAndContracts = await signedIn("accounts-contracts@example.com", ["ACC_CONTRACTS_TEST"]);
+  await customRole("CONTRACTS_ONLY_TEST", [["AMC_CONTRACTS", "VIEW"]]);
 });
 beforeEach(() => setStorageForTests(disk));
 afterAll(async () => {
@@ -195,20 +206,45 @@ describe("Accounts: AMC Contract column", () => {
     expect(Object.keys(document).sort()).toEqual(["id", "mimeType", "originalName", "sizeBytes", "title", "uploadedAt", "version"]);
   });
 
-  it("lists no contract document for a user without AMC Contracts: View, whose download is refused", async () => {
+  it("lists the contract document for an Accounts user without AMC Contracts: View (owner decision 2026-11-21)", async () => {
     const { items, contractDocumentVisible } = await list(accountsOnly);
-    expect(contractDocumentVisible).toBe(false);
-    expect(items.length).toBeGreaterThan(0);
-    for (const item of items) expect(item.contractDocument).toBeNull();
+    expect(contractDocumentVisible).toBe(true);
+    const alphaDocument = (await list(admin)).items.find((item) => item.contract.id === alphaContract)!.contractDocument!;
+    expect(items.find((item) => item.contract.id === alphaContract)?.contractDocument?.id).toBe(alphaDocument.id);
+  });
 
+  it("downloads each service's own contract document through the Accounts route with Accounts: View alone", async () => {
+    const { items } = await list(accountsOnly);
+    const alphaRow = items.find((item) => item.contract.id === alphaContract)!;
+    const legacyRow = items.find((item) => item.contract.id === legacy)!;
+    const lpoRow = items.find((item) => item.contract.id === lpoOnly)!;
+
+    const file = await contractDownload(alphaRow.id, accountsOnly);
+    expect(file.status).toBe(200);
+    expect(file.headers["content-type"]).toContain("application/pdf");
+    expect(file.headers["content-disposition"]).toContain("Alpha%20signed%20contract.pdf");
+    expect(file.headers["cache-control"]).toBe("no-store");
+    expect(Buffer.compare(file.body as Buffer, ALPHA_PDF)).toBe(0);
+
+    // A contract without a document, or with only an LPO, has nothing to download.
+    expect((await contractDownload(legacyRow.id, accountsOnly)).status).toBe(404);
+    expect((await contractDownload(lpoRow.id, accountsOnly)).status).toBe(404);
+    expect((await contractDownload("999999", accountsOnly)).status).toBe(404);
+    expect((await contractDownload(alphaRow.id)).status).toBe(401);
+  });
+
+  it("gives an Accounts-only user no AMC Contracts access: the contract pages and their document routes stay refused", async () => {
     const alphaDocument = (await list(admin)).items.find((item) => item.contract.id === alphaContract)!.contractDocument!;
     expect((await download(alphaDocument.id, accountsOnly)).status).toBe(403);
-    expect((await download(alphaDocument.id)).status).toBe(401);
+    expect((await api().get("/api/attachments").query({ entityType: "amc_contracts", entityId: alphaContract }).set(accountsOnly.headers)).status).toBe(403);
+    expect((await api().get(`/api/amc/contracts/${alphaContract}`).set(accountsOnly.headers)).status).toBe(403);
+    expect((await api().get("/api/amc/contracts").set(accountsOnly.headers)).status).toBe(403);
+  });
 
-    // With AMC Contracts: View added, the same Accounts user sees the column.
-    const permitted = await list(accountsAndContracts);
-    expect(permitted.contractDocumentVisible).toBe(true);
-    expect(permitted.items.find((item) => item.contract.id === alphaContract)?.contractDocument?.id).toBe(alphaDocument.id);
+  it("refuses the Accounts contract download to a user without Accounts: View", async () => {
+    const contractsOnly = await signedIn("contracts-only@example.com", ["CONTRACTS_ONLY_TEST"]);
+    const alphaRow = (await list(admin)).items.find((item) => item.contract.id === alphaContract)!;
+    expect((await contractDownload(alphaRow.id, contractsOnly)).status).toBe(403);
   });
 
   it("changes no document: listing and downloading leave every attachment row and stored file as they were", async () => {
