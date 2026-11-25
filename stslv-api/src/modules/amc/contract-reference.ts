@@ -60,6 +60,33 @@ export function referenceStaticSql(alias: string): string {
   return labelled(`COALESCE(to_jsonb(${alias}) ->> 'amc_reference', ${rawReferenceSql(alias, false)})`, alias);
 }
 
+/**
+ * ORDER BY terms that sort contracts by their AMC Reference the way people read it (owner decision 2026-11-25: the
+ * default order of every contract and service list): the text before the first number without regard to case, then that
+ * number as a number, so AMC-2 comes before AMC-10, then the whole reference, then the version (the original before its
+ * renewals). References are typed by users, so a reference without a number sorts after those with one. `direction`
+ * applies to every term; append a stable tie-breaker such as the row id.
+ */
+export function referenceOrderSql(alias: string, stored: boolean, direction: "asc" | "desc" = "asc"): string {
+  const raw = rawReferenceSql(alias, stored);
+  const dir = direction === "desc" ? "DESC" : "ASC";
+
+  return [
+    `lower(substring(${raw} from '^[^0-9]*')) ${dir}`,
+    `substring(${raw} from '[0-9]+')::numeric ${dir} NULLS LAST`,
+    `lower(${raw}) ${dir}`,
+    `${versionSql(alias)} ${dir}`,
+  ].join(", ");
+}
+
+/**
+ * The default order of every service (visit) list (owner decision 2026-11-25): by the contract's AMC Reference
+ * (referenceOrderSql), then each contract's services in date order (Q1, Q2, …), then the id so paging is stable.
+ */
+export function serviceOrderSql(contractAlias: string, visitAlias: string, stored: boolean): string {
+  return `${referenceOrderSql(contractAlias, stored)}, ${visitAlias}.scheduled_date, ${visitAlias}.id`;
+}
+
 /** SQL for the reference of the contract whose id is the given expression (any contract, Recycle Bin included). */
 export function referenceOfIdSql(idSql: string, stored: boolean): string {
   return stored

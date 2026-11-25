@@ -281,11 +281,34 @@ describe("A4 — AMC Contracts sorting on the server", () => {
     await pool.query("UPDATE amc_contracts_all SET status = 'DRAFT' WHERE amc_reference = 'SORT-C'");
   });
 
-  it("keeps the usual order when no sort is asked for", async () => {
+  it("orders by AMC Reference, ascending, when no sort is asked for (owner decision 2026-11-25)", async () => {
     const response = await list({});
     expect(response.status).toBe(200);
-    // One client: newest validity first.
-    expect(refs(response.body.data.items)).toEqual(["SORT-C", "SORT-B", "SORT-A", "SORT-D"]);
+    expect(refs(response.body.data.items)).toEqual(["SORT-A", "SORT-B", "SORT-C", "SORT-D"]);
+  });
+
+  it("sorts the numbers inside references as numbers: 2 before 10, both ways", async () => {
+    const numbered = await createClient(admin, "Numbered Sorting Client");
+    for (const amcReference of ["NUM-10", "NUM-2", "NUM-001", "NUM-100"]) {
+      await activeContract(admin, numbered, { amcReference, systemDescription: amcReference });
+    }
+    const numberedRefs = async (query: Record<string, unknown>) =>
+      refs((await get("/amc/contracts", { clientId: numbered, pageSize: 100, ...query }, admin)).body.data.items);
+
+    expect(await numberedRefs({})).toEqual(["NUM-001", "NUM-2", "NUM-10", "NUM-100"]);
+    expect(await numberedRefs({ sort: "reference", direction: "desc" })).toEqual(["NUM-100", "NUM-10", "NUM-2", "NUM-001"]);
+
+    // The service pages open in the same order, each contract's services together and in date order.
+    for (const path of ["/amc/master-status", "/accounts", "/services-sales"]) {
+      const response = await get(path, { clientId: numbered, pageSize: 200 }, admin);
+      expect(response.status).toBe(200);
+      const items = response.body.data.items as { reference: string; scheduledDate: string }[];
+      const grouped = items.map((item) => item.reference).filter((reference, index, all) => index === 0 || all[index - 1] !== reference);
+      expect(grouped, path).toEqual(["NUM-001", "NUM-2", "NUM-10", "NUM-100"]);
+      for (let index = 1; index < items.length; index++) {
+        if (items[index]!.reference === items[index - 1]!.reference) expect(items[index]!.scheduledDate >= items[index - 1]!.scheduledDate, path).toBe(true);
+      }
+    }
   });
 
   it("sorts amounts as numbers, both ways", async () => {

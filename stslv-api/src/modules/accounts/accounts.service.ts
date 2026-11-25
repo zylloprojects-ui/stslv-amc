@@ -4,7 +4,7 @@ import type { ContractStatus, ServiceStatus, VisitStatus } from "../amc/amc.cons
 import type { PaymentStatus } from "../amc/manual-invoice.service";
 import { getMasterStatusOptions } from "../amc/master-status.service";
 import { IN_SCOPE, serviceStatusSql } from "../amc/service-status.service";
-import { hasStoredReference, referenceSql } from "../amc/contract-reference";
+import { hasStoredReference, referenceSql, serviceOrderSql } from "../amc/contract-reference";
 import { readServiceReport, SERVICE_REPORT_JSON_SQL, serviceReportsAvailable, toServiceReport, type ServiceReport } from "../amc/service-reports.service";
 import { notFound } from "../../shared/errors";
 import { readStoredFile } from "../attachments/attachments.service";
@@ -70,16 +70,19 @@ const ACKNOWLEDGEMENT_SQL = `CASE WHEN v.manual_invoice_no IS NULL THEN NULL ELS
 /**
  * The contract document of the service's AMC contract, as JSON (metadata only, never the storage key): the current
  * version of the contract's SIGNED_CONTRACT document, the category Add AMC Contract and Start Renewal record their
- * mandatory document under. Should a contract hold more than one such document, the first one recorded (the one saved
- * with the contract) is shown. A renewal is its own contract, so its services show the renewal's document, never the
- * renewed contract's. Read through the attachments_entity_idx index.
+ * mandatory document under. Should a contract hold more than one such document, the most recently uploaded one is
+ * shown (owner decision 2026-11-25): a document added later with Attach document, or a new version uploaded with
+ * Replace, takes over from the one saved with the contract. A renewal is its own contract, so its services show the
+ * renewal's document, never the renewed contract's. Read through the attachments_entity_idx index.
  */
+const LATEST_CONTRACT_DOCUMENT_ORDER = "ORDER BY a.uploaded_at DESC, a.id DESC";
+
 const CONTRACT_DOCUMENT_JSON_SQL = `(
   SELECT jsonb_build_object('id', a.id::text, 'title', a.title, 'version', a.version, 'originalName', a.original_name,
                             'mimeType', a.mime_type, 'sizeBytes', a.size_bytes, 'uploadedAt', a.uploaded_at)
   FROM attachments a
   WHERE a.entity_type = 'amc_contracts' AND a.entity_id = c.id AND a.is_current AND a.category = 'SIGNED_CONTRACT'
-  ORDER BY a.document_id
+  ${LATEST_CONTRACT_DOCUMENT_ORDER}
   LIMIT 1)`;
 
 /** The row columns; `storedReference` is whether migration 0105 stores the AMC Reference Number. */
@@ -368,7 +371,8 @@ function filterSql(query: AccountsFilters, storedReference: boolean) {
   return { where: `WHERE ${conditions.join(" AND ")}`, params };
 }
 
-const ORDER = "ORDER BY v.scheduled_date, lower(cl.name), v.id";
+/** The default order (owner decision 2026-11-25): AMC Reference ascending, each contract's services in date order. */
+const order = (storedReference: boolean) => `ORDER BY ${serviceOrderSql("c", "v", storedReference)}`;
 
 export interface AccountsKpis {
   rows: number;
@@ -450,7 +454,7 @@ export async function listAccounts(query: ListAccountsQuery, access: AccountsAcc
   const [figures, rows] = await Promise.all([
     kpis(where, params),
     pool.query<AccountsRow>(
-      `${selectSql(storedReference, await serviceReportsAvailable(), acknowledgements, await hasServiceEngineer(), contractDocument)} ${FROM} ${where} ${ORDER} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      `${selectSql(storedReference, await serviceReportsAvailable(), acknowledgements, await hasServiceEngineer(), contractDocument)} ${FROM} ${where} ${order(storedReference)} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, query.pageSize, (query.page - 1) * query.pageSize]
     ),
   ]);
@@ -482,7 +486,7 @@ export async function listAllAccounts(filters: AccountsFilters, checkSize: (coun
 
   checkSize(figures.rows);
 
-  const rows = await pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable(), false, await hasServiceEngineer())} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<AccountsRow>(`${selectSql(storedReference, await serviceReportsAvailable(), false, await hasServiceEngineer())} ${FROM} ${where} ${order(storedReference)}`, params);
 
   return { items: rows.rows.map((row) => toItem(row, { acknowledgements: false, amcValue: access.amcValue })), kpis: figures };
 }
@@ -522,7 +526,7 @@ export async function readAccountsServiceReport(visitId: string) {
 /**
  * The contract document of ONE visit shown on Accounts (the AMC Contract column), for its Download (owner decision
  * 2026-11-21: Accounts users download it without AMC Contracts access). The same document the list names
- * (CONTRACT_DOCUMENT_JSON_SQL): the current version of the visit's own contract's first SIGNED_CONTRACT document. Only a
+ * (CONTRACT_DOCUMENT_JSON_SQL): the most recently uploaded current SIGNED_CONTRACT document of the visit's own contract. Only a
  * visit in Accounts' own scope is served, so no other contract's file and no other document type is reachable. Read
  * through the private document storage and checked against its checksum.
  */
@@ -534,7 +538,7 @@ export async function readAccountsContractDocument(visitId: string) {
        SELECT a.storage_key, a.sha256, a.mime_type, a.original_name
        FROM attachments a
        WHERE a.entity_type = 'amc_contracts' AND a.entity_id = c.id AND a.is_current AND a.category = 'SIGNED_CONTRACT'
-       ORDER BY a.document_id
+       ${LATEST_CONTRACT_DOCUMENT_ORDER}
        LIMIT 1) a ON true
      WHERE v.id = $1 AND ${IN_SCOPE}`,
     [visitId]

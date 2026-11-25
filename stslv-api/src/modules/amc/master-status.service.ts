@@ -6,7 +6,7 @@ import type { ContractStatus, ServiceStatus, VisitStatus } from "./amc.constants
 import type { ListMasterStatusQuery, MasterStatusColumn, RowColour } from "./master-status.schemas";
 import { serviceStatusSql } from "./service-status.service";
 import { NO_AMOUNT_SOURCE_SQL } from "./value-source";
-import { hasStoredReference, referenceSql } from "./contract-reference";
+import { hasStoredReference, referenceOrderSql, referenceSql, serviceOrderSql } from "./contract-reference";
 import { SERVICE_IN_SCOPE } from "./service-scope";
 import { SERVICE_ACKNOWLEDGEMENT_SQL, serviceAcknowledgementsVisible, toServiceAcknowledgement, type ServiceAcknowledgement } from "../invoice-acknowledgements/service-acknowledgement";
 import { hasServiceEngineer, serviceEngineerSql } from "./service-engineer";
@@ -234,14 +234,19 @@ function toItem(row: MasterRow, access: MasterStatusAccess = NO_EXTRA_ACCESS): M
 
 export type MasterStatusFilters = Omit<ListMasterStatusQuery, "page" | "pageSize" | "sort" | "direction">;
 
-const sortSql = (sort: ListMasterStatusQuery["sort"], storedReference: boolean): string =>
-  ({
-    scheduledDate: "v.scheduled_date",
-    // The reference as text, without regard to case. One expression: the direction is appended to it.
-    reference: `lower(${referenceSql("c", storedReference)})`,
-    client: "lower(cl.name)",
-    visitValue: "v.visit_amount",
-  })[sort];
+/**
+ * ORDER BY for the chosen column and direction. The reference sorts as people read it (referenceOrderSql: AMC-2 before
+ * AMC-10); every sort ends with the default order (serviceOrderSql) so equal values and paging stay stable.
+ */
+const orderSql = (sort: ListMasterStatusQuery["sort"], direction: "asc" | "desc", storedReference: boolean): string => {
+  const dir = direction === "desc" ? "DESC" : "ASC";
+  const first =
+    sort === "reference"
+      ? referenceOrderSql("c", storedReference, direction)
+      : `${{ scheduledDate: "v.scheduled_date", client: "lower(cl.name)", visitValue: "v.visit_amount" }[sort]} ${dir} NULLS LAST`;
+
+  return `ORDER BY ${first}, ${serviceOrderSql("c", "v", storedReference)}`;
+};
 
 /** One WHERE clause for the rows, the cards and the export, so the three always agree. */
 function filterSql(query: MasterStatusFilters, storedReference: boolean) {
@@ -281,7 +286,8 @@ function filterSql(query: MasterStatusFilters, storedReference: boolean) {
   return { where: `WHERE ${conditions.join(" AND ")}`, params };
 }
 
-const ORDER = "ORDER BY v.scheduled_date, lower(cl.name), v.id";
+/** The default order (owner decision 2026-11-25): AMC Reference ascending, each contract's services in date order. */
+const order = (storedReference: boolean) => `ORDER BY ${serviceOrderSql("c", "v", storedReference)}`;
 
 export interface MasterStatusKpis {
   total: number;
@@ -345,7 +351,7 @@ export async function listMasterStatus(query: ListMasterStatusQuery, access: Mas
   const { where, params } = filterSql(query, storedReference);
   const [figures, rows] = await Promise.all([
     kpis(where, params),
-    pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements, serviceEngineer)} ${FROM} ${where} ORDER BY ${sortSql(query.sort, storedReference)} ${query.direction === "desc" ? "DESC" : "ASC"} NULLS LAST, v.scheduled_date, lower(cl.name), v.id LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
+    pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements, serviceEngineer)} ${FROM} ${where} ${orderSql(query.sort, query.direction, storedReference)} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`, [
       ...params,
       query.pageSize,
       (query.page - 1) * query.pageSize,
@@ -379,7 +385,7 @@ export async function listAllMasterStatus(filters: MasterStatusFilters, checkSiz
 
   checkSize(figures.total);
 
-  const rows = await pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements, await hasServiceEngineer())} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<MasterRow>(`${selectSql(storedReference, access.acknowledgements, await hasServiceEngineer())} ${FROM} ${where} ${order(storedReference)}`, params);
 
   return { items: rows.rows.map((row) => toItem(row, access)), kpis: figures };
 }

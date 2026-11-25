@@ -161,8 +161,11 @@ describe('A4 — AMC Contracts sorting', () => {
     renderApp('/amc/contracts')
     await screen.findByRole('table', { name: 'AMC contracts' })
 
-    // No sort until one is chosen: the usual order.
-    expect(lastQuery(api).sort).toBeUndefined()
+    // Opens sorted by AMC Reference, ascending (owner decision 2026-11-25), and says so.
+    expect(lastQuery(api)).toMatchObject({ sort: 'reference', direction: 'asc' })
+    expect(screen.getByRole('columnheader', { name: /AMC Reference/ })).toHaveAttribute('aria-sort', 'ascending')
+    await userEvent.click(screen.getByRole('button', { name: 'AMC Reference: sort descending' }))
+    await waitFor(() => expect(lastQuery(api)).toMatchObject({ sort: 'reference', direction: 'desc', page: '1' }))
     // Client UAT CR-019: the heading reads "Contract Value (ex VAT)"; sorting is unchanged.
     await userEvent.click(screen.getByRole('button', { name: 'Contract Value (ex VAT): sort ascending' }))
     await waitFor(() => expect(lastQuery(api)).toMatchObject({ sort: 'contractValue', direction: 'asc', page: '1' }))
@@ -178,7 +181,9 @@ describe('A4 — AMC Contracts sorting', () => {
     renderApp('/amc/contracts')
     await screen.findByRole('table', { name: 'AMC contracts' })
 
-    for (const label of ['AMC Reference', 'Client', 'Sales Engineer', 'Start', 'End', 'Contract Value (ex VAT)', 'Final Credit (ex VAT)', 'Status']) {
+    // AMC Reference is already ascending (the default), so its button offers descending.
+    expect(screen.getByRole('button', { name: 'AMC Reference: sort descending' })).toBeInTheDocument()
+    for (const label of ['Client', 'Sales Engineer', 'Start', 'End', 'Contract Value (ex VAT)', 'Final Credit (ex VAT)', 'Status']) {
       expect(screen.getByRole('button', { name: `${label}: sort ascending` })).toBeInTheDocument()
     }
 

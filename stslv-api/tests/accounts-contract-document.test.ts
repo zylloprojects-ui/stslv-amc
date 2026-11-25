@@ -175,6 +175,54 @@ describe("Accounts: AMC Contract column", () => {
     expect(Buffer.compare((await download(original.id, admin)).body as Buffer, BETA_PDF)).toBe(0);
   });
 
+  it("follows the most recently uploaded contract document: a later Attach document, then a later Replace (owner decision 2026-11-25)", async () => {
+    const client = await createClient(admin, "Contract Column Latest");
+    const contract = await activeContract(admin, client, { contractDocument: contractDocument(pdf("first"), "first.pdf") });
+    const first = (await list(admin, { clientId: client })).items.find((item) => item.contract.id === contract)!.contractDocument!;
+    expect(first.originalName).toBe("first.pdf");
+
+    // A second contract document added with Attach document (not a Replace) takes over on every service row.
+    const added = pdf("added later");
+    const attached = await api()
+      .post("/api/attachments")
+      .query({ entityType: "amc_contracts", entityId: contract, category: "SIGNED_CONTRACT", title: "Signed contract (updated)" })
+      .set(admin.headers)
+      .set("Content-Type", "application/octet-stream")
+      .set("X-File-Name", "added.pdf")
+      .send(added);
+    expect(attached.status).toBe(201);
+
+    let rows = (await list(admin, { clientId: client })).items.filter((item) => item.contract.id === contract);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) expect(row.contractDocument).toMatchObject({ id: String(attached.body.data.id), originalName: "added.pdf", version: 1 });
+    expect(Buffer.compare((await contractDownload(rows[0]!.id, accountsOnly)).body as Buffer, added)).toBe(0);
+
+    // Another document type added later never takes over.
+    const lpo = await api()
+      .post("/api/attachments")
+      .query({ entityType: "amc_contracts", entityId: contract, category: "LPO", title: "Client LPO" })
+      .set(admin.headers)
+      .set("Content-Type", "application/octet-stream")
+      .set("X-File-Name", "lpo-later.pdf")
+      .send(pdf("lpo later"));
+    expect(lpo.status).toBe(201);
+    rows = (await list(admin, { clientId: client })).items.filter((item) => item.contract.id === contract);
+    for (const row of rows) expect(row.contractDocument?.originalName).toBe("added.pdf");
+
+    // A new version of the first document, uploaded after that, is now the most recent upload.
+    const replacement = pdf("first v2");
+    const replaced = await api()
+      .post(`/api/attachments/${first.id}/versions`)
+      .set(admin.headers)
+      .set("Content-Type", "application/octet-stream")
+      .set("X-File-Name", "first-v2.pdf")
+      .send(replacement);
+    expect(replaced.status).toBe(201);
+    rows = (await list(admin, { clientId: client })).items.filter((item) => item.contract.id === contract);
+    for (const row of rows) expect(row.contractDocument).toMatchObject({ id: String(replaced.body.data.id), originalName: "first-v2.pdf", version: 2 });
+    expect(Buffer.compare((await contractDownload(rows[0]!.id, accountsOnly)).body as Buffer, replacement)).toBe(0);
+  });
+
   it("shows a renewal's own renewal document on the renewal's services, never the renewed contract's", async () => {
     const client = await createClient(admin, "Contract Column Renewal");
     const source = await activeContract(admin, client, { validFrom: "2027-01-01", validTo: "2027-12-31", contractDocument: contractDocument(pdf("source"), "source.pdf") });
