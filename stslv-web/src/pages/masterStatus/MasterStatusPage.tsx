@@ -284,7 +284,7 @@ function SortHeader({ label, column, sort, onSort, right }: { label: string; col
     <th scope="col" aria-sort={active ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'} className={cx(TABLE.th, right && 'text-right')}>
       <button type="button" onClick={() => onSort(column)} className="inline-flex items-center gap-1 font-semibold uppercase hover:text-[#1479BD]">
         {label}
-        {active && !(column === 'scheduledDate' && sort.direction === 'asc') && <span aria-hidden="true">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
+        {active && !(column === 'reference' && sort.direction === 'asc') && <span aria-hidden="true">{sort.direction === 'asc' ? '▲' : '▼'}</span>}
       </button>
     </th>
   )
@@ -352,7 +352,8 @@ export function MasterStatusPage() {
   const [draft, setDraft] = useState<Filters>(NO_FILTERS)
   const [filters, setFilters] = useState<Filters>(NO_FILTERS)
   const [page, setPage] = useState(1)
-  const [sort, setSort] = useState<Sort>({ column: 'scheduledDate', direction: 'asc' })
+  // Opens sorted by AMC Reference, ascending (owner decision 2026-11-25); each contract's services stay in date order.
+  const [sort, setSort] = useState<Sort>({ column: 'reference', direction: 'asc' })
   const chooseSort = (column: SortColumn) => {
     setSort(sort.column === column ? { column, direction: sort.direction === 'asc' ? 'desc' : 'asc' } : { column, direction: 'asc' })
     setPage(1)
@@ -366,7 +367,7 @@ export function MasterStatusPage() {
     queryKey: ['amc', 'master-status', 'list', { ...filters, page, sort }],
     queryFn: () =>
       api.get<MasterStatusList>(
-        `/amc/master-status${queryString({ ...filters, ...(sort.column === 'scheduledDate' && sort.direction === 'asc' ? {} : { sort: sort.column, direction: sort.direction }), page, pageSize: PAGE_SIZE })}`,
+        `/amc/master-status${queryString({ ...filters, ...(sort.column === 'reference' && sort.direction === 'asc' ? {} : { sort: sort.column, direction: sort.direction }), page, pageSize: PAGE_SIZE })}`,
       ),
     placeholderData: keepPreviousData,
   })

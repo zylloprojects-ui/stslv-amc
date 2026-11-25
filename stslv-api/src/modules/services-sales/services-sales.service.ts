@@ -8,7 +8,7 @@ import { holdsPermission } from "../../shared/permissions";
 import type { AuthContext } from "../auth/access";
 import { readStoredFile } from "../attachments/attachments.service";
 import type { ContractStatus, VisitStatus } from "../amc/amc.constants";
-import { hasStoredReference, referenceSql } from "../amc/contract-reference";
+import { hasStoredReference, referenceSql, serviceOrderSql } from "../amc/contract-reference";
 import { SERVICE_IN_SCOPE } from "../amc/service-scope";
 import { hasServiceEngineer, serviceEngineerSql } from "../amc/service-engineer";
 import type { ListServicesSalesQuery, SalesStatus, SaveQuotationInput, ServiceStatus } from "./services-sales.schemas";
@@ -308,7 +308,8 @@ function filterSql(query: ServicesSalesFilters, storedReference: boolean, access
   return { where: `WHERE ${conditions.join(" AND ")}`, params };
 }
 
-const ORDER = "ORDER BY v.scheduled_date, lower(cl.name), v.id";
+/** The default order (owner decision 2026-11-25): AMC Reference ascending, each contract's services in date order. */
+const order = (storedReference: boolean) => `ORDER BY ${serviceOrderSql("c", "v", storedReference)}`;
 
 export interface ServicesSalesKpis {
   total: number;
@@ -371,7 +372,7 @@ export async function listServicesSales(query: ListServicesSalesQuery, access: S
   // Never computed, so never sent, for a user who may not see contract values.
   const amcValue = access.amcValue ? await amcValueTotal(where, params) : null;
   const rows = await pool.query<SalesRow>(
-    `${selectSql(storedReference, reports, serviceEngineer)} ${FROM} ${where} ${ORDER}
+    `${selectSql(storedReference, reports, serviceEngineer)} ${FROM} ${where} ${order(storedReference)}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
@@ -402,7 +403,7 @@ export async function listAllServicesSales(filters: ServicesSalesFilters, checkS
 
   checkSize(figures.total);
 
-  const rows = await pool.query<SalesRow>(`${selectSql(storedReference, await serviceReportsAvailable(), await hasServiceEngineer())} ${FROM} ${where} ${ORDER}`, params);
+  const rows = await pool.query<SalesRow>(`${selectSql(storedReference, await serviceReportsAvailable(), await hasServiceEngineer())} ${FROM} ${where} ${order(storedReference)}`, params);
 
   const amcValue = access.amcValue ? await amcValueTotal(where, params) : null;
 

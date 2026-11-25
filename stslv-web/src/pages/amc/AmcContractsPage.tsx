@@ -327,7 +327,8 @@ export function AmcContractsPage() {
   const [year, setYear] = useState('')
   const [salesEngineerId, setSalesEngineerId] = useState('')
   const [page, setPage] = useState(1)
-  const [sort, setSort] = useState<ContractSort | null>(null)
+  // Opens sorted by AMC Reference, ascending (owner decision 2026-11-25); any column can still be sorted.
+  const [sort, setSort] = useState<ContractSort | null>({ column: 'reference', direction: 'asc' })
   // A new column sorts ascending; the same column again switches direction. Either way the list starts at page 1.
   const chooseSort = (column: ContractSortColumn) => {
     setSort((current) => (current?.column === column ? { column, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { column, direction: 'asc' }))

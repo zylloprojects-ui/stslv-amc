@@ -308,6 +308,8 @@ same name, figure, wording, icon and colour, from the same calculation.
 ### Columns
 #, AMC Reference (opens Contract 360), Client, System, Sales Engineer (the contract's linked Sales Engineer; a contract with no link shows the engineer name typed on it), Validity (progress bar and days remaining), Frequency, Contract Value (ex VAT) (and the value of one service: *per service* from the Billing basis, or *per visit* from the Default visit amount when there is no basis), Final Credit (ex VAT), Visits (% completed), Status, Actions. Footer: **Filtered Total**. An amber **Validity ended** pill marks an Active contract past its end date. The amounts are stored excluding VAT; the headings changed at the client UAT (2026-11-16), the amounts did not.
 
+**Default order (2026-11-25):** the register opens sorted by **AMC Reference, ascending** (AMC-001, AMC-002, AMC-003 …; numbers inside a reference sort as numbers, so AMC-2 comes before AMC-10). Master AMC Status, Accounts › Invoices, Service Status and Service Sales open in the same order, each contract's services together in date order. You can still sort by any other column.
+
 **Sorting (2026-11-11):** click AMC Reference, Client, Sales Engineer, Validity *Start* or *End*, Contract Value, Final Credit or Status to sort ascending; click again for descending (▲ / ▼; keyboard: Tab to the heading, Enter). The whole filtered list is sorted before it is split into pages, together with search and filters; the download uses the same order. Amounts sort as numbers, dates as dates, Status as Draft → Active → Expired → Cancelled; an empty Sales Engineer or Final Credit comes last.
 
 KPI tiles: All AMC Contracts, Total AMC Value, Total Final Credit, Expired.
@@ -570,7 +572,9 @@ Scheduled, In progress, Postponed and Completed services count. On a **cancelled
 
 > **AMC Contract column (2026-11-19).** After the *Service Report* column, *AMC Contract* has a download icon that saves
 > the contract document uploaded on AMC Contracts for **that service's own contract** (a renewal's services give the
-> renewal's own document), under its original file name. When the contract has none, the cell reads "Not uploaded". The
+> renewal's own document), under its original file name. When the contract has more than one contract document, it is
+> the most recently uploaded one (2026-11-25): a document added later with *Attach document*, or a new version uploaded
+> with *Replace*, takes over. When the contract has none, the cell reads "Not uploaded". The
 > column is shown to everyone who may open Invoices, even without access to AMC Contracts (2026-11-21): it downloads
 > only that service's contract document and does not open the AMC Contracts pages. Nothing is copied or changed, and
 > the file is not part of the Excel or PDF downloads.

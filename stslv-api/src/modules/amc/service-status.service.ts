@@ -14,7 +14,7 @@ import type { ListServiceStatusQuery, SaveServiceStatusInput } from "./amc.schem
 import { env } from "../../config/env";
 import { SERVICE_REPORT_JSON_SQL, SERVICE_REPORT_TYPES_TEXT, serviceReportsAvailable, toServiceReport, type ServiceReport } from "./service-reports.service";
 import { applyExecution } from "./visits.service";
-import { hasStoredReference, referenceSql } from "./contract-reference";
+import { hasStoredReference, referenceSql, serviceOrderSql } from "./contract-reference";
 import { SERVICE_IN_SCOPE } from "./service-scope";
 import { BUSINESS_TODAY_SQL } from "../../shared/business-date";
 import { NO_AMOUNT_SOURCE_SQL } from "./value-source";
@@ -386,7 +386,8 @@ function filterSql(query: ServiceStatusFilters, f: Features) {
   return { where, withoutStatus, params };
 }
 
-const ORDER = "ORDER BY v.scheduled_date, lower(cl.name), v.id";
+/** The default order (owner decision 2026-11-25): AMC Reference ascending, each contract's services in date order. */
+const order = (storedReference: boolean) => `ORDER BY ${serviceOrderSql("c", "v", storedReference)}`;
 
 export interface ServiceStatusKpis {
   total: number;
@@ -468,7 +469,7 @@ export async function listServiceStatus(query: ListServiceStatusQuery, access: S
   // Never computed, so never sent, for a user who may not see the values.
   const totals = access.amcValue ? await valueTotals(where, params, f) : null;
   const rows = await pool.query<ServiceRow>(
-    `${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${ORDER}
+    `${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${order(f.storedReference)}
      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
     [...params, query.pageSize, (query.page - 1) * query.pageSize]
   );
@@ -515,7 +516,7 @@ export async function listAllServiceStatus(filters: ServiceStatusFilters, checkS
 
   checkSize(total);
 
-  const rows = await pool.query<ServiceRow>(`${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${ORDER}`, params);
+  const rows = await pool.query<ServiceRow>(`${selectSql(f, access.acknowledgements)} ${fromSql(f)} ${where} ${order(f.storedReference)}`, params);
   const totals = access.amcValue ? await valueTotals(where, params, f) : null;
 
   return { items: rows.rows.map((row) => toItem(row, access)), total, kpis: figures, features: f, totals: totalsWithout(totals, access.hiddenColumns) };

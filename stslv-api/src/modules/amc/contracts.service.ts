@@ -13,7 +13,7 @@ import { schemaHas } from "../../shared/schema-features";
 import { assertContractNotInvoiced } from "../invoices/invoice-locks";
 import { attachStoredDocument, discardStoredFile, prepareContractDocument, storePreparedDocument } from "../attachments/attachments.service";
 import { clientCode } from "../clients/clients.service";
-import { hasStoredReference, rawReferenceSql, referenceOfIdSql, referenceSql, rethrowDuplicateReference, versionSql } from "./contract-reference";
+import { hasStoredReference, rawReferenceSql, referenceOfIdSql, referenceOrderSql, referenceSql, rethrowDuplicateReference, versionSql } from "./contract-reference";
 import { contractParents, restoreBlockers } from "../recycle-bin/contract-parents";
 import { amountForService, expectedTermTotal, serviceAmounts, servicesPerCycle, subtractMoney } from "./amc.billing";
 import { applyContractMasters } from "./contract-masters.service";
@@ -511,18 +511,22 @@ export const CONTRACT_VALIDITY_FILTERS = {
   due: `(c.status = 'ACTIVE' AND c.valid_to BETWEEN ${BUSINESS_TODAY_SQL} AND ${BUSINESS_TODAY_SQL} + ${RENEWAL_WARNING_DAYS})`,
 } as const;
 
-/** The register's usual order, also the tie-breaker of every sort so paging is stable. */
-const DEFAULT_CONTRACT_ORDER = "lower(cl.name), c.valid_from DESC, c.id";
+/**
+ * The register's usual order (owner decision 2026-11-25): AMC Reference ascending, numbers as numbers (AMC-001, AMC-002,
+ * … AMC-010). Also the tie-breaker of every sort, with the id last, so paging is stable.
+ */
+const defaultContractOrder = (storedReference: boolean) => `${referenceOrderSql("c", storedReference)}, c.id`;
 
 /**
  * ORDER BY for a sorted column (2026-11-11): whitelisted expressions only, never request text. Amounts sort as numbers
  * and dates as dates; text ignores case; status follows the workflow (Draft, Active, Expired, Cancelled). Empty values
- * (no engineer, no Final Credit) come last in either direction.
+ * (no engineer, no Final Credit) come last in either direction. No column chosen: the reference, ascending.
  */
 function contractOrderSql(sort: ListContractsQuery["sort"], direction: "asc" | "desc", storedReference: boolean, withEngineer: boolean): string {
-  if (!sort) return `ORDER BY ${DEFAULT_CONTRACT_ORDER}`;
-  const expressions: Record<NonNullable<ListContractsQuery["sort"]>, string> = {
-    reference: `lower(${referenceSql("c", storedReference)})`,
+  const fallback = defaultContractOrder(storedReference);
+  if (!sort) return `ORDER BY ${fallback}`;
+  if (sort === "reference") return `ORDER BY ${referenceOrderSql("c", storedReference, direction)}, c.id`;
+  const expressions: Record<Exclude<NonNullable<ListContractsQuery["sort"]>, "reference">, string> = {
     client: "lower(cl.name)",
     // The Sales Engineer the column shows (CR-006).
     engineer: `lower(NULLIF(btrim(${shownEngineerSql(withEngineer)}), ''))`,
@@ -533,7 +537,7 @@ function contractOrderSql(sort: ListContractsQuery["sort"], direction: "asc" | "
     status: `array_position(ARRAY[${CONTRACT_STATUSES.map((status) => `'${status}'`).join(", ")}]::text[], c.status::text)`,
   };
 
-  return `ORDER BY ${expressions[sort]} ${direction === "desc" ? "DESC" : "ASC"} NULLS LAST, ${DEFAULT_CONTRACT_ORDER}`;
+  return `ORDER BY ${expressions[sort]} ${direction === "desc" ? "DESC" : "ASC"} NULLS LAST, ${fallback}`;
 }
 
 export async function listContracts(query: ListContractsQuery) {

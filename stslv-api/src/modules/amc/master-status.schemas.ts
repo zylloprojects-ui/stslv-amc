@@ -55,7 +55,7 @@ export const listMasterStatusSchema = z.object({
   invoiceStatus: z.enum(RECORDED_FILTERS, { error: "Select Invoice recorded or No invoice recorded." }).optional(),
   quotationStatus: z.enum(RECORDED_FILTERS, { error: "Select Quote recorded or No quote recorded." }).optional(),
   colour: z.enum(ROW_COLOURS, { error: "Select Red, Yellow, Blue or Green." }).optional(),
-  sort: z.enum(MASTER_STATUS_SORTS, { error: "Select a column to sort by." }).default("scheduledDate"),
+  sort: z.enum(MASTER_STATUS_SORTS, { error: "Select a column to sort by." }).default("reference"),
   direction: z.enum(["asc", "desc"], { error: "Select ascending or descending." }).default("asc"),
   page,
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
